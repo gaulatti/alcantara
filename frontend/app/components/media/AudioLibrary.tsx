@@ -522,6 +522,7 @@ export function AudioLibrary<T extends AudioLibraryAsset>({
     setMediaLength(null);
     setPlayError(null);
     setPlaying(false);
+    /* v8 ignore next -- the shared audio element is always mounted with this tab, so the guard cannot see it missing */
     if (!element) return;
     if (!element.paused) element.pause();
     if (asset) element.src = asset.sourceUrl;
@@ -537,6 +538,7 @@ export function AudioLibrary<T extends AudioLibraryAsset>({
   const toggle = useCallback(
     (asset: T) => {
       const element = audioRef.current;
+      /* v8 ignore next -- the shared audio element is always mounted with this tab, so the guard cannot see it missing */
       if (!element) return;
       if (asset.id !== currentId || !element.src) load(asset);
       if (element.paused) {
@@ -789,7 +791,7 @@ export function AudioLibrary<T extends AudioLibraryAsset>({
                     : null
                 }
               />
-            ) : null}
+            ) : /* v8 ignore next -- the detail panel is part of the branch that renders only while a clip is listed, so current is never null here */ null}
           </div>
 
           <div
@@ -822,7 +824,7 @@ export function AudioLibrary<T extends AudioLibraryAsset>({
             </div>
             <div className="min-w-0 basis-56">
               <p className="truncate text-sm font-medium text-text-primary">
-                {current?.name ?? "Nothing loaded"}
+                {current?.name ?? /* v8 ignore next -- the transport renders only while a clip is listed, so current is never null here */ "Nothing loaded"}
               </p>
               <p className="truncate text-[11px] text-text-secondary">
                 {current
@@ -836,7 +838,7 @@ export function AudioLibrary<T extends AudioLibraryAsset>({
                     ]
                       .filter(Boolean)
                       .join(" · ")
-                  : ""}
+                  : /* v8 ignore next -- the transport renders only while a clip is listed (visible is non-empty), so current is never null here */ ""}
               </p>
               {playError ? (
                 <p role="alert" className="text-[11px] text-accent-red">

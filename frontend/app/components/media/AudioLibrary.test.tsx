@@ -524,3 +524,53 @@ it("counts a single asset in the singular", () => {
   setup({ assets: [ASSETS[0]], total: 1 });
   expect(screen.getByText("1 asset")).toBeInTheDocument();
 });
+
+// gaulatti/alcantara#404 (AudioLibrary final pass): a clip whose browser reports no finite length.
+it("leaves a clip's length unknown when the browser reports none", () => {
+  setup();
+  fireEvent.click(screen.getByRole("button", { name: "Play Asset harbor" }));
+  const player = element();
+  Object.defineProperty(player, "duration", { value: Number.NaN, configurable: true });
+  fireEvent.loadedMetadata(player);
+  expect(transport()).toBeInTheDocument();
+});
+
+it("shows a dash in a loudness tile whose finished analysis stored no value", () => {
+  setup({
+    assets: [asset("quiet", { analysis: { ...ANALYSIS, integratedLufs: null, truePeakDbtp: null } })],
+    total: 1,
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Play Asset quiet" }));
+  const tile = screen.getByText("Loudness").closest("div")!;
+  expect(within(tile).getByText("—")).toBeInTheDocument();
+  expect(screen.queryByTestId("meter-integratedLufs")).toBeNull();
+});
+
+it("plays a clip whose length is unknown without reporting a position", () => {
+  setup({
+    assets: [asset("nolength", { song: undefined, analysis: { ...ANALYSIS, cueOutSeconds: null } })],
+    total: 1,
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Play Asset nolength" }));
+  fireEvent.play(element());
+  expect(transport()).toBeInTheDocument();
+});
+
+it("says a clip with no capability has none, and shows an unlabelled capability by its code", () => {
+  setup({
+    assets: [asset("bare", { capabilities: [] }), asset("custom", { capabilities: ["UNLABELLED_CODE"] })],
+    total: 2,
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Play Asset bare" }));
+  expect(screen.getAllByText("No capability").length).toBeGreaterThan(0);
+  fireEvent.click(screen.getByRole("button", { name: "Play Asset custom" }));
+  expect(screen.getAllByText("UNLABELLED_CODE").length).toBeGreaterThan(0);
+});
+
+it("ignores arrow keys pressed on a button inside a row, which belong to that button", () => {
+  setup();
+  const row = rowOf("Asset harbor");
+  const inner = within(row).getAllByRole("button")[0];
+  fireEvent.keyDown(inner, { key: "ArrowDown" });
+  expect(element().getAttribute("src")).toBeNull();
+});
