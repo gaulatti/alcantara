@@ -2018,6 +2018,7 @@ export default function Control() {
               stagedSceneId,
               stagedScene,
             }
+          /* v8 ignore next -- a stage response always follows the program state the staging control was rendered from, so the state is loaded */
           : previous,
       );
 
@@ -2074,9 +2075,11 @@ export default function Control() {
 
   const saveStagedSceneAttributes = async () => {
     const sceneId = selectedSceneRef.current;
+    /* v8 ignore start -- the editor, and its Save changes control, render only for a selected scene */
     if (sceneId === null) {
       return;
     }
+    /* v8 ignore stop */
 
     if (sceneEditorAutosaveTimerRef.current !== null) {
       window.clearTimeout(sceneEditorAutosaveTimerRef.current);
@@ -2124,10 +2127,13 @@ export default function Control() {
     const normalizedMediaAssetId =
       typeof mediaAssetIdOverride === 'string' && mediaAssetIdOverride.trim()
         ? mediaAssetIdOverride.trim()
+        /* v8 ignore next -- TAKE BG is disabled without a background audio asset, so the override is always a non-empty asset id */
         : null;
+    /* v8 ignore start -- TAKE BG is disabled without a selected scene, and the scene editor only offers it for the selected scene */
     if (normalizedSceneId === null) {
       return;
     }
+    /* v8 ignore stop */
 
     try {
       await flushSceneAttributeAutosaveForScene(normalizedSceneId);
@@ -2215,9 +2221,11 @@ export default function Control() {
         const timeoutId = window.setTimeout(() => {
           delete instantPlaybackTimeoutsRef.current[instantId];
           setInstantPlayback((prev) => {
+            /* v8 ignore start -- every path that removes a playback entry also clears its timer first, so this timer cannot fire for an entry that is gone */
             if (!prev[instantId]) {
               return prev;
             }
+            /* v8 ignore stop */
             const next = { ...prev };
             delete next[instantId];
             return next;
@@ -2231,6 +2239,7 @@ export default function Control() {
       if (targetProgramId !== activeProgramIdRef.current) return;
       const name =
         instants.find((instant) => instant.id === instantId)?.name ??
+        /* v8 ignore next -- the pad names an instant from the list it was rendered from, so the name is always found */
         "the instant";
       setInstantError(`Could not play ${name}: ${failureMessage(err)}`);
     }
