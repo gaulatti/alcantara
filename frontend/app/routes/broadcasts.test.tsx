@@ -775,3 +775,36 @@ it("labels a custom RTMP destination with no ingest address without inventing on
   await page();
   expect(screen.getByText(/^Custom RTMP\(S\) ·$/)).toBeInTheDocument();
 });
+
+// gaulatti/alcantara#404 (broadcasts route): a hand-added destination given a custom service sends its address with its
+// first key, and a rename is refused over 100 characters.
+it("sends the custom address with a hand-added destination's first key, and refuses a rename over 100 characters", async () => {
+  await page();
+  fireEvent.click(screen.getAllByRole("button", { name: /Set key/ })[0]);
+  const keyDialog = await screen.findByRole("dialog", { name: "Set key" });
+  fireEvent.click(within(keyDialog).getByRole("button", { name: "Custom RTMP(S)" }));
+  fireEvent.change(within(keyDialog).getByRole("textbox", { name: /^Ingest URL/ }), {
+    target: { value: "rtmps://ingest.example.test/first" },
+  });
+  fireEvent.change(within(keyDialog).getByLabelText("Stream key"), {
+    target: { value: "live_First-5566" },
+  });
+  fireEvent.click(within(keyDialog).getByRole("button", { name: "Save key" }));
+  await toast("Key replaced. It applies from the next start.");
+  expect(api.put).toHaveBeenLastCalledWith("/broadcast/destinations/primary/key", {
+    streamKey: "live_First-5566",
+    service: "custom",
+    ingestUrl: "rtmps://ingest.example.test/first",
+  });
+
+  fireEvent.click(screen.getAllByRole("button", { name: /^Rename$/ })[0]);
+  const renameDialog = await screen.findByRole("dialog", { name: "Rename destination" });
+  fireEvent.change(within(renameDialog).getByRole("textbox", { name: /^Name/ }), {
+    target: { value: "n".repeat(101) },
+  });
+  expect(within(renameDialog).getByRole("button", { name: "Rename" })).toBeDisabled();
+  fireEvent.change(within(renameDialog).getByRole("textbox", { name: /^Name/ }), {
+    target: { value: "Renamed platform" },
+  });
+  expect(within(renameDialog).getByRole("button", { name: "Rename" })).toBeEnabled();
+});
