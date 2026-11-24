@@ -1,6 +1,12 @@
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdtempSync, renameSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
 
@@ -12,7 +18,49 @@ import { Client } from 'pg';
 const serverUrl = process.env.ALCANTARA_MIGRATION_TEST_DATABASE_URL;
 const migrationName = '20261123150000_operator_change_record';
 const backend = join(__dirname, '..', '..');
-const migrationDir = join(backend, 'prisma', 'migrations', migrationName);
+const migrationsDir = join(backend, 'prisma', 'migrations');
+
+/**
+ * Deploys the migrations before this one, from a scratch copy: the shared migrations folder is
+ * never moved, so specs running at the same time cannot see a partial folder, and a later migration
+ * that alters this table cannot run before the table exists.
+ */
+function deployBefore(databaseUrl: string): void {
+  const scratch = mkdtempSync(join(backend, '.migrations-before-'));
+  try {
+    const target = join(scratch, 'migrations');
+    mkdirSync(target);
+    cpSync(
+      join(migrationsDir, 'migration_lock.toml'),
+      join(target, 'migration_lock.toml'),
+    );
+    for (const entry of readdirSync(migrationsDir)) {
+      if (entry !== 'migration_lock.toml' && entry < migrationName) {
+        cpSync(join(migrationsDir, entry), join(target, entry), {
+          recursive: true,
+        });
+      }
+    }
+    const config = join(scratch, 'prisma.config.ts');
+    writeFileSync(
+      config,
+      `import { defineConfig } from 'prisma/config';
+export default defineConfig({
+  schema: ${JSON.stringify(join(backend, 'prisma', 'schema.prisma'))},
+  migrations: { path: ${JSON.stringify(target)} },
+  datasource: { url: process.env.DATABASE_URL as string },
+});
+`,
+    );
+    execFileSync('npx', ['prisma', 'migrate', 'deploy', '--config', config], {
+      cwd: backend,
+      env: { ...process.env, DATABASE_URL: databaseUrl },
+      stdio: 'pipe',
+    });
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
 
 function withDatabase(name: string): string {
   const url = new URL(serverUrl as string);
@@ -58,6 +106,9 @@ async function tableExists(
 
 const describeWithServer = serverUrl ? describe : describe.skip;
 
+// Each case deploys every migration to a fresh database, which takes longer than the default 5 s under a full run.
+jest.setTimeout(120_000);
+
 describeWithServer('OperatorChangeRecord migration', () => {
   it('applies to an empty database and creates the table', async () => {
     const name = 'operator_change_empty';
@@ -71,15 +122,8 @@ describeWithServer('OperatorChangeRecord migration', () => {
   it('applies to a database with rows and leaves them as they were', async () => {
     const name = 'operator_change_rows';
     await createDatabase(name);
-    // Bring the database to the state before this change: every migration but this one.
-    const scratch = mkdtempSync(join(tmpdir(), 'operator-change-'));
-    try {
-      renameSync(migrationDir, join(scratch, migrationName));
-      deploy(withDatabase(name));
-    } finally {
-      renameSync(join(scratch, migrationName), migrationDir);
-      rmSync(scratch, { recursive: true, force: true });
-    }
+    // The state before this change: every migration before this one.
+    deployBefore(withDatabase(name));
     expect(await tableExists(withDatabase(name), 'OperatorChangeRecord')).toBe(
       false,
     );
