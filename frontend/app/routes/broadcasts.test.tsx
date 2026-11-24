@@ -699,3 +699,22 @@ it("says so when the catalog is empty, with the next step", async () => {
     catalog = saved;
   }
 });
+
+// gaulatti/alcantara#404 (broadcasts route, outside the #404 list): a destination's name and stream key have length limits,
+// and a custom destination shows its ingest address.
+it("refuses a name over 100 characters and a stream key over 512", async () => {
+  await page();
+  fireEvent.click(screen.getByRole("button", { name: /Add destination/ }));
+  const dialog = await screen.findByRole("dialog", { name: "Add destination" });
+  fireEvent.change(within(dialog).getByRole("textbox", { name: /^Name/ }), {
+    target: { value: "n".repeat(101) },
+  });
+  expect(await within(dialog).findByText("Use at most 100 characters.")).toBeInTheDocument();
+  fireEvent.change(within(dialog).getByRole("textbox", { name: /^Name/ }), {
+    target: { value: "Third platform" },
+  });
+  fireEvent.change(within(dialog).getByLabelText("Stream key"), {
+    target: { value: "k".repeat(513) },
+  });
+  expect(await within(dialog).findByText("A stream key is at most 512 characters.")).toBeInTheDocument();
+});
