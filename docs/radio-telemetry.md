@@ -635,3 +635,42 @@ Contract: gaulatti/palazzo#40 §5.
 
 Every series is exported at 0 from start-up, and no label carries a song, URL,
 program or request ID.
+
+## Two sources on the program bus (#242)
+
+Alcántara does not hold or delay a command while a spot is on air (decided on #242). Instead it detects, read-only,
+when two sources are audible on a radio program's bus at once, so the case is noticed in seconds, not minutes.
+`ProgramBusOverlapDetector` (`backend/src/radio/program-bus-overlap.detector.ts`) observes the Palazzo events the
+engine has already handled. It never sends a command and never changes the engine's state or decisions.
+
+- **`song_song`:** two Palazzo song requests are started and not yet ended. Palazzo sums both decks on one bus, so the
+  `song` level cannot show this; only the `track.started` and `track.ended` events can.
+- **`spot_song`:** one of the engine's bumper spots (read with `SongExecutionEngine.isBumperSpot` before the engine
+  handles the `instant.started`) is on air while a song is.
+- **Not sources:** an intro, which plays over its own song by design; an operator's cartwall instant (not a bumper id);
+  and the live input.
+
+An overlap is raised once it lasts longer than **3 s** (`PROGRAM_BUS_OVERLAP_ALLOWANCE_MS`):
+- **Normal song changes stay quiet:** on 2026-11-23 00:00–06:00Z, every one of 99 started 3 ms to 10.4 s after the
+  previous end, and Palazzo emits a `track.ended` 3 to 100 ms after the next start.
+- **2026-11-21 08:10Z:** `spot_song` (about 7 s) is raised 3 s after the commanded song started under the spot, and
+  `song_song` (210.7 s) 3 s after the second song started.
+- **The allowance assumes no overlap:** Alcantara announces every song with an overlap of 0 today, because the
+  analysis does not measure one. A change that sends a real overlap must add it to the allowance.
+
+**Id mismatches:** a `track.ended` for a request the detector never saw start closes the oldest open song, since decks
+end in start order. This keeps as-run id mismatches quiet. A snapshot restarts the bus from its one track; a status
+other than `connected` (a `polling` status, a disconnect) and a stopped client forget it. Raised overlaps then end
+without counting again. In `polling` mode only snapshots arrive, so overlaps are not detected until the event stream
+is back.
+
+**On a raise:**
+- **Metric:** `alcantara_program_bus_overlaps_total{kind="song_song|spot_song"}` counts it once.
+- **Gauge:** `alcantara_program_bus_overlap_active{kind}` holds the overlaps on air now.
+- **Log:** a warning names the program and the playback ids.
+- **As-run flag:** the later song's `started` row gets `reviewFlag = overlap`, which operators and `get_as_run` already
+  show. It is written only when the row has no flag yet, and counted under
+  `alcantara_program_bus_overlap_flags_total{result="flagged|missing|failed"}`; a failed flag never affects playout.
+
+Labels are bounded: no program, song or request id. The alert rule lives with the Prometheus configuration in the
+observability repository, for example `increase(alcantara_program_bus_overlaps_total[5m]) > 0`.

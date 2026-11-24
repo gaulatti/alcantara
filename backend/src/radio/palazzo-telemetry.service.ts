@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { SongExecutionEngine } from './song-execution.engine';
+import { ProgramBusOverlapDetector } from './program-bus-overlap.detector';
 import { RadioMetricsService } from './radio-metrics.service';
 import {
   PalazzoProgramClient,
@@ -61,6 +62,7 @@ export class PalazzoRadioTelemetryService
     private readonly engine: SongExecutionEngine,
     private readonly metrics: RadioMetricsService,
     private readonly machineClient: PalazzoMachineClient,
+    private readonly overlaps: ProgramBusOverlapDetector,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -227,11 +229,26 @@ export class PalazzoRadioTelemetryService
       metrics: this.metrics,
       machineClient: this.machineClient,
       callbacks: {
-        onSnapshot: (pid, state) =>
-          this.engine.handlePalazzoSnapshot(pid, state),
-        onEvent: (pid, event) =>
-          this.engine.handlePalazzoEvent(pid, event as never),
-        onStatus: (pid, status) => this.handleStatus(pid, status),
+        onSnapshot: (pid, state) => {
+          this.engine.handlePalazzoSnapshot(pid, state);
+          this.overlaps.snapshot(pid, state);
+        },
+        onEvent: (pid, event) => {
+          // Read before the engine handles the event, which forgets a spot once it starts (#242).
+          const spot =
+            event.type === 'instant.started' &&
+            this.engine.isBumperSpot(
+              pid,
+              (event.data as { playbackId: string }).playbackId,
+            );
+          this.engine.handlePalazzoEvent(pid, event as never);
+          this.overlaps.observe(pid, event, spot);
+        },
+        onStatus: (pid, status) => {
+          // Off the live event stream, the bus is no longer known: it restarts at the next snapshot (#242).
+          if (status.connection !== 'connected') this.overlaps.reset(pid);
+          this.handleStatus(pid, status);
+        },
         validateInstance: (pid, instanceId) =>
           this.validateInstance(pid, instanceId),
       },
@@ -247,6 +264,7 @@ export class PalazzoRadioTelemetryService
     const client = this.clients.get(programId);
     if (!client) return;
     client.stop();
+    this.overlaps.reset(programId);
     this.clients.delete(programId);
     this.statusByProgram.delete(programId);
     const instanceId = this.instanceByProgram.get(programId);

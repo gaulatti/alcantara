@@ -90,11 +90,7 @@ export interface SongPlaybackData {
 }
 
 export type IntroPlaybackStatus =
-  | 'none'
-  | 'pending'
-  | 'playing'
-  | 'completed'
-  | 'degraded';
+  'none' | 'pending' | 'playing' | 'completed' | 'degraded';
 
 export type SongEngineEvent =
   | { type: 'playback_update'; programId: string; playback: SongPlaybackData }
@@ -451,10 +447,7 @@ export type SongEngineTrackEvent = {
  * longer the engine's successor, so the engine replaced it at once.
  */
 export type SongEngineEndReason =
-  | 'stopped'
-  | 'replaced'
-  | 'superseded'
-  | 'preempted';
+  'stopped' | 'replaced' | 'superseded' | 'preempted';
 
 /**
  * Drives radio automation from authoritative Palazzo playback state.
@@ -1531,6 +1524,16 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     } else {
       this.reconcileIdleSnapshot(programId, state, snapshot);
     }
+  }
+
+  /**
+   * Whether a Palazzo instant is one of this engine's bumper spots, sent and not yet started. A read only, for the
+   * program bus overlap check (gaulatti/alcantara#242), asked before the event is handled.
+   */
+  isBumperSpot(programId: string, playbackId: string): boolean {
+    return (
+      this.states.get(programId)?.bumperSpotsSent?.has(playbackId) ?? false
+    );
   }
 
   handlePalazzoEvent(

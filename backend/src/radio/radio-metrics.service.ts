@@ -16,10 +16,7 @@ export type PalazzoEventIgnoreReason =
  * field, never the unknown value.
  */
 export type PalazzoUnknownField =
-  | 'availability'
-  | 'status'
-  | 'intro-status'
-  | 'withdrawn-reason';
+  'availability' | 'status' | 'intro-status' | 'withdrawn-reason';
 
 export type PalazzoMachineOperation =
   | 'song-play'
@@ -61,15 +58,9 @@ export type PalazzoMachineResult =
  * (Palazzo was playing; nothing to do), `unavailable` (no state could be read).
  */
 export type EngineResyncTrigger =
-  | 'foreign_ended'
-  | 'watchdog'
-  | 'command_failed';
+  'foreign_ended' | 'watchdog' | 'command_failed';
 export type EngineResyncResult =
-  | 'resumed'
-  | 'resumed_no_command'
-  | 'playing'
-  | 'unavailable'
-  | 'undecided';
+  'resumed' | 'resumed_no_command' | 'playing' | 'unavailable' | 'undecided';
 /**
  * Engine paths that degrade instead of failing (#237): Palazzo state unreadable
  * at resync, radio settings unreadable when advancing the bumper sequence, a
@@ -161,11 +152,7 @@ export type SimilarityActionResult =
 
 /** Outcome of announcing the next song to Palazzo (contract palazzo#40 §5). */
 export type NextAnnouncementResult =
-  | 'accepted'
-  | 'not_ready'
-  | 'rejected'
-  | 'unsupported'
-  | 'withdrawn';
+  'accepted' | 'not_ready' | 'rejected' | 'unsupported' | 'withdrawn';
 
 /** How the engine moved from one song to the next at an accepted end. */
 export type HandoffPath = 'preloaded' | 'command' | 'race_replaced';
@@ -226,9 +213,7 @@ const isBumperSeries = (path: BumperPath, result: BumperResult): boolean =>
   !(path === 'announced' && (result === 'failed' || result === 'retried'));
 
 export type SnapshotReconciliationResult =
-  | 'accepted'
-  | 'instance-mismatch'
-  | 'instance-conflict';
+  'accepted' | 'instance-mismatch' | 'instance-conflict';
 
 export interface RadioMetricsSnapshot {
   connectionsByState: Record<string, number>;
@@ -460,6 +445,14 @@ export class RadioMetricsService {
 
   private readonly listenerConfiguration = { success: 0, failure: 0 };
   private readonly operatorChangeRecords = { recorded: 0, failed: 0 };
+  /** gaulatti/alcantara#242: two sources on a program's bus past the allowance, by bounded kind. */
+  private readonly programBusOverlaps = { song_song: 0, spot_song: 0 };
+  private readonly programBusOverlapsActive = { song_song: 0, spot_song: 0 };
+  private readonly programBusOverlapFlags = {
+    flagged: 0,
+    missing: 0,
+    failed: 0,
+  };
   private readonly outputConfidenceTransitions = new Map<string, number>();
   private readonly radioLogResults = new Map<string, number>();
   private readonly recoveryPreparations = new Map<string, number>();
@@ -710,6 +703,27 @@ export class RadioMetricsService {
   /** gaulatti/alcantara#236: whether the operator change record of a settings write was stored. */
   recordOperatorChangeRecord(result: 'recorded' | 'failed'): void {
     this.operatorChangeRecords[result] += 1;
+  }
+
+  /** gaulatti/alcantara#242: an overlap on a program's bus lasted past the allowance. */
+  recordProgramBusOverlap(kind: 'song_song' | 'spot_song'): void {
+    this.programBusOverlaps[kind] += 1;
+  }
+
+  /** gaulatti/alcantara#242: a raised overlap began (+1) or ended (-1). */
+  setProgramBusOverlapActive(
+    kind: 'song_song' | 'spot_song',
+    delta: 1 | -1,
+  ): void {
+    this.programBusOverlapsActive[kind] = Math.max(
+      0,
+      this.programBusOverlapsActive[kind] + delta,
+    );
+  }
+
+  /** gaulatti/alcantara#242: whether the as-run review flag of a raised overlap was stored. */
+  recordProgramBusOverlapFlag(result: 'flagged' | 'missing' | 'failed'): void {
+    this.programBusOverlapFlags[result] += 1;
   }
 
   recordRadioLogResult(result: string): void {
@@ -1016,6 +1030,24 @@ export class RadioMetricsService {
       ...(['recorded', 'failed'] as const).map(
         (result) =>
           `alcantara_radio_operator_change_records_total{result="${result}"} ${this.operatorChangeRecords[result]}`,
+      ),
+      '# HELP alcantara_program_bus_overlaps_total Two sources on a radio program bus past the allowance, by kind (song_song, spot_song).',
+      '# TYPE alcantara_program_bus_overlaps_total counter',
+      ...(['song_song', 'spot_song'] as const).map(
+        (kind) =>
+          `alcantara_program_bus_overlaps_total{kind="${kind}"} ${this.programBusOverlaps[kind]}`,
+      ),
+      '# HELP alcantara_program_bus_overlap_active Raised overlaps on a radio program bus that are on air now, by kind.',
+      '# TYPE alcantara_program_bus_overlap_active gauge',
+      ...(['song_song', 'spot_song'] as const).map(
+        (kind) =>
+          `alcantara_program_bus_overlap_active{kind="${kind}"} ${this.programBusOverlapsActive[kind]}`,
+      ),
+      '# HELP alcantara_program_bus_overlap_flags_total As-run review flags of raised overlaps by result; a failed flag never affects playout.',
+      '# TYPE alcantara_program_bus_overlap_flags_total counter',
+      ...(['flagged', 'missing', 'failed'] as const).map(
+        (result) =>
+          `alcantara_program_bus_overlap_flags_total{result="${result}"} ${this.programBusOverlapFlags[result]}`,
       ),
     );
     lines.push(

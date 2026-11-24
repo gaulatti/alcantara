@@ -6,6 +6,7 @@ import { RadioService } from './radio.service';
 import { SongExecutionEngine } from './song-execution.engine';
 import { NowPlayingPublisherService } from './now-playing-publisher.service';
 import { PalazzoRadioTelemetryService } from './palazzo-telemetry.service';
+import { ProgramBusOverlapDetector } from './program-bus-overlap.detector';
 import { RadioMetricsService } from './radio-metrics.service';
 import { RadioOutputConfidenceService } from './radio-output-confidence.service';
 import { PalazzoMachineClient } from './palazzo-machine.client';
@@ -24,6 +25,7 @@ import { RadioMcpTools } from '../mcp/capabilities/radio';
     SongExecutionEngine,
     NowPlayingPublisherService,
     PalazzoRadioTelemetryService,
+    ProgramBusOverlapDetector,
     RadioMetricsService,
     RadioOutputConfidenceService,
     PalazzoMachineClient,

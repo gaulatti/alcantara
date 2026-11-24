@@ -26,13 +26,19 @@ function createService() {
     connectEvents: jest.fn().mockRejectedValue(new Error('offline')),
     getPlaybackState: jest.fn().mockRejectedValue(new Error('offline')),
   };
+  const overlaps = {
+    observe: jest.fn(),
+    snapshot: jest.fn(),
+    reset: jest.fn(),
+  };
   const service = new PalazzoRadioTelemetryService(
     prisma as unknown as PrismaService,
     engine as unknown as SongExecutionEngine,
     metrics,
     machineClient as any,
+    overlaps as any,
   );
-  return { service, prisma, engine, metrics };
+  return { service, prisma, engine, metrics, overlaps };
 }
 
 describe('PalazzoRadioTelemetryService instance ownership', () => {

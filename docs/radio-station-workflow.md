@@ -132,6 +132,10 @@ crossfade is not affected, because the overlapped song always ends before the
 next one does. Each close logs one warning (with the record id, never a title)
 and counts `alcantara_radio_log_transitions_total{result="unended-closed"}`.
 
+A song that came on air while another song or one of the engine's spots was still on the bus, for longer than 3 s,
+has its `started` row flagged `reviewFlag = overlap` by the program bus overlap check (#242, see
+`docs/radio-telemetry.md`). The play still counts; the flag says it was heard over another source.
+
 To find rows written wrongly before this (every restart since the adoption code
 landed, cac3b74), run the read-only listing against the database after
 `npm run build`:
