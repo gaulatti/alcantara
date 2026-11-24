@@ -6,6 +6,11 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import {
+  OperatorChangeRecorder,
+  summarizeChange,
+} from '../operator-change/operator-change-recorder';
+import { MEDIA_GROUP_CHANGE_FIELDS } from '../operator-change/library-change-fields';
+import {
   deleteLegacyMediaGroupLabel,
   syncLegacyMediaGroupLabel,
 } from '../media-assets/media-label-sync';
@@ -37,7 +42,10 @@ type MediaGroupRecord = Prisma.MediaGroupGetPayload<{
 
 @Injectable()
 export class MediaGroupsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly recorder: OperatorChangeRecorder,
+  ) {}
 
   async findAll(params: FindAllParams) {
     const { search, sortBy, sortOrder, page, limit } = params;
@@ -170,6 +178,7 @@ export class MediaGroupsService {
   }
 
   async update(id: number, data: MediaGroupInput) {
+    const actor = this.recorder.actor();
     await this.ensureMediaGroupExists(id);
 
     const updateData: Prisma.MediaGroupUpdateInput = {};
@@ -188,6 +197,14 @@ export class MediaGroupsService {
     if (hasMediaIds) {
       await this.assertMediaIdsExist(mediaIds);
     }
+
+    // The size of the list before it is replaced, for the change record; never in the way of the change.
+    const previousCount =
+      actor && hasMediaIds
+        ? await this.prisma.mediaGroupItem
+            .count({ where: { mediaGroupId: id } })
+            .catch(() => null)
+        : null;
 
     let group: MediaGroupRecord | null = null;
     try {
@@ -241,6 +258,20 @@ export class MediaGroupsService {
       throw new NotFoundException('Media group not found after update');
     }
 
+    // The change is final; recording who made it never blocks it (gaulatti/alcantara#236).
+    await this.recorder.record({
+      actor,
+      target: 'media_group',
+      targetId: String(id),
+      programId: null,
+      capability: { mcp: 'media_group_update', console: 'media-groups.update' },
+      summary: summarizeChange(
+        MEDIA_GROUP_CHANGE_FIELDS,
+        { ...data },
+        { mediaIds: previousCount },
+        { mediaIds: group.mediaItems.length },
+      ),
+    });
     return this.mapGroup(group);
   }
 

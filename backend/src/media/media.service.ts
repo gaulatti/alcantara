@@ -10,6 +10,11 @@ import {
 } from '../media-assets/media-asset-sync';
 import { syncLegacyMediaGroupLabel } from '../media-assets/media-label-sync';
 import { PrismaService } from '../prisma.service';
+import {
+  OperatorChangeRecorder,
+  summarizeChange,
+} from '../operator-change/operator-change-recorder';
+import { MEDIA_CHANGE_FIELDS } from '../operator-change/library-change-fields';
 
 interface MediaInput {
   name?: string;
@@ -28,7 +33,10 @@ const ALLOWED_SORT_FIELDS = ['id', 'name', 'updatedAt', 'createdAt'] as const;
 
 @Injectable()
 export class MediaService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly recorder: OperatorChangeRecorder,
+  ) {}
 
   async findAll(params: FindAllParams) {
     const { search, sortBy, sortOrder, page, limit } = params;
@@ -93,6 +101,7 @@ export class MediaService {
   }
 
   async update(id: number, data: MediaInput) {
+    const actor = this.recorder.actor();
     await this.findOne(id);
 
     const updateData: Prisma.MediaUpdateInput = {};
@@ -112,11 +121,21 @@ export class MediaService {
       return this.findOne(id);
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const media = await tx.media.update({ where: { id }, data: updateData });
       await syncImageAsset(tx, media);
       return tx.media.findUniqueOrThrow({ where: { id } });
     });
+    // The change is final; recording who made it never blocks it (gaulatti/alcantara#236).
+    await this.recorder.record({
+      actor,
+      target: 'media',
+      targetId: String(id),
+      programId: null,
+      capability: { mcp: 'media_update', console: 'media.update' },
+      summary: summarizeChange(MEDIA_CHANGE_FIELDS, { ...data }, null, null),
+    });
+    return result;
   }
 
   async remove(id: number) {

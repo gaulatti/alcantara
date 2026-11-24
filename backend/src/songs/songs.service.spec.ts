@@ -1,3 +1,4 @@
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 import { BadRequestException } from '@nestjs/common';
 import { MediaAssetKind, MediaAssetType } from '@prisma/client';
 import { SongsService } from './songs.service';
@@ -29,7 +30,11 @@ function buildService() {
       operation(tx),
     ),
   };
-  return { service: new SongsService(prisma as never), prisma, tx };
+  return {
+    service: new SongsService(prisma as never, noRecorder()),
+    prisma,
+    tx,
+  };
 }
 
 const song = {

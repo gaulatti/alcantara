@@ -190,6 +190,13 @@ const OPERATOR_CHANGE_TARGETS = new Set([
   'layout',
   'flight_sequence',
   'program',
+  'instant',
+  'stinger',
+  'song',
+  'media',
+  'media_label',
+  'media_label_assets',
+  'media_group',
 ]);
 const OPERATOR_CHANGE_RESULTS = new Set(['recorded', 'failed']);
 /** gaulatti/alcantara#424: a recipe use previewed or built (`issues`: built, with something to fix). */
@@ -232,16 +239,10 @@ const SOURCE_RESULTS = new Set(['success', 'rejected', 'not-found', 'failure']);
 const PROGRAM_SSE_SNAPSHOT_RESULTS = new Set(['success', 'failure']);
 /** How a confirmed playing track's cover lookup ended (gaulatti/alcantara#179). */
 export type PlayingTrackCoverLookupResult =
-  | 'included'
-  | 'absent'
-  | 'rejected'
-  | 'error';
+  'included' | 'absent' | 'rejected' | 'error';
 /** How a filler version's preparation ended (gaulatti/alcantara#126). */
 export type FillerPreparationResult =
-  | 'ready'
-  | 'failed'
-  | 'unavailable'
-  | 'profile-unavailable';
+  'ready' | 'failed' | 'unavailable' | 'profile-unavailable';
 const FILLER_LEGS = ['television', 'radio'] as const;
 const FILLER_PREPARATION_RESULTS: readonly FillerPreparationResult[] = [
   'ready',
@@ -251,10 +252,7 @@ const FILLER_PREPARATION_RESULTS: readonly FillerPreparationResult[] = [
 ];
 /** What a television Start did with the program filler (gaulatti/alcantara#126). */
 export type FillerStartBindingResult =
-  | 'bound'
-  | 'mismatch'
-  | 'not-configured'
-  | 'legacy-executor';
+  'bound' | 'mismatch' | 'not-configured' | 'legacy-executor';
 /**
  * A template manifest member Alcantara does not know and leaves out instead of
  * refusing the template (gaulatti/ariston#217). The label is the member kind,

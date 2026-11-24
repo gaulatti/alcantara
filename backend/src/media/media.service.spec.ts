@@ -1,3 +1,4 @@
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 import { MediaAssetKind, MediaAssetType } from '@prisma/client';
 import { MediaService } from './media.service';
 
@@ -25,7 +26,12 @@ function buildService() {
       operation(tx),
     ),
   };
-  return { service: new MediaService(prisma as never), prisma, tx, media };
+  return {
+    service: new MediaService(prisma as never, noRecorder()),
+    prisma,
+    tx,
+    media,
+  };
 }
 
 describe('MediaService canonical asset writes', () => {

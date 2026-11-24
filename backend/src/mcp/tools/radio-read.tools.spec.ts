@@ -362,7 +362,7 @@ async function harness() {
     noRecorder(),
   );
   const asRun = new AsRunService(prisma);
-  const songs = new SongsService(prisma);
+  const songs = new SongsService(prisma, noRecorder());
   const statuses = new Map<string, unknown>([
     [
       PROGRAM,

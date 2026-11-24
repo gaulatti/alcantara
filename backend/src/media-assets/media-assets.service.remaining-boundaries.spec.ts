@@ -1,3 +1,4 @@
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { MediaAssetType } from '@prisma/client';
 import type { PrismaService } from '../prisma.service';
@@ -33,6 +34,7 @@ describe('media label missing-record and legacy image boundaries', () => {
       service: new MediaAssetsService(
         prisma as unknown as PrismaService,
         new ManagedMetricsService(),
+        noRecorder(),
       ),
       prisma,
       tx,

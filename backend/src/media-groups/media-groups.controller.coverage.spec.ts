@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { ProgramService } from '../program/program.service';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { IS_PUBLIC_KEY } from '../auth/public.decorator';
@@ -17,6 +18,14 @@ import { MediaGroupsService } from './media-groups.service';
   exports: [ProgramService],
 })
 class ProgramStubModule {}
+
+// The metrics service is global in the application; the operator change recorder counts its records there.
+@Global()
+@Module({
+  providers: [{ provide: ManagedMetricsService, useValue: {} }],
+  exports: [ManagedMetricsService],
+})
+class MetricsStubModule {}
 
 function build() {
   const groups = {
@@ -114,7 +123,7 @@ describe('MediaGroupsModule (coverage)', () => {
       mediaGroup: { findUnique: jest.fn().mockResolvedValue(null) },
     };
     const moduleRef = await Test.createTestingModule({
-      imports: [ProgramStubModule, MediaGroupsModule],
+      imports: [ProgramStubModule, MetricsStubModule, MediaGroupsModule],
     })
       .overrideProvider(PrismaService)
       .useValue(prisma)

@@ -1,3 +1,4 @@
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 import { MediaAssetKind, MediaAssetType } from '@prisma/client';
 import { StingersService } from './stingers.service';
 
@@ -24,7 +25,7 @@ describe('StingersService canonical asset writes', () => {
         operation(tx),
       ),
     };
-    const service = new StingersService(prisma as never);
+    const service = new StingersService(prisma as never, noRecorder());
 
     await expect(
       service.create({

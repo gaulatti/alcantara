@@ -1,3 +1,4 @@
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 import { BadRequestException } from '@nestjs/common';
 import type { PrismaService } from '../prisma.service';
 import { SongsService } from './songs.service';
@@ -44,7 +45,10 @@ describe('song creation intro and optional metadata boundaries', () => {
       ),
     };
     return {
-      service: new SongsService(prisma as unknown as PrismaService),
+      service: new SongsService(
+        prisma as unknown as PrismaService,
+        noRecorder(),
+      ),
       tx,
     };
   }

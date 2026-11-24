@@ -29,6 +29,17 @@ describe('ManagedMetricsService program SSE metrics', () => {
     metrics.recordOperatorChangeRecord('scene', 'recorded');
     metrics.recordOperatorChangeRecord('flight_sequence', 'failed');
     metrics.recordOperatorChangeRecord('private-target-name', 'private-result');
+    // gaulatti/alcantara#236 slice 3: the library targets are bounded too.
+    for (const target of [
+      'instant',
+      'stinger',
+      'song',
+      'media',
+      'media_label',
+      'media_label_assets',
+      'media_group',
+    ])
+      metrics.recordOperatorChangeRecord(target, 'recorded');
     metrics.recordRecordingCommand('start', 'accepted');
     metrics.recordRecordingCommand('private-action', 'private-result');
     metrics.recordRecordingStatus('finalizing', 'success');
@@ -81,6 +92,18 @@ describe('ManagedMetricsService program SSE metrics', () => {
       'alcantara_operator_change_records_total{target="unknown",result="unknown"} 1',
     ])
       expect(output).toContain(line);
+    for (const target of [
+      'instant',
+      'stinger',
+      'song',
+      'media',
+      'media_label',
+      'media_label_assets',
+      'media_group',
+    ])
+      expect(output).toContain(
+        `alcantara_operator_change_records_total{target="${target}",result="recorded"} 1`,
+      );
     expect(output).not.toContain('private-target-name');
     expect(output).toContain(
       'alcantara_recording_commands_total{action="start",result="accepted"} 1',

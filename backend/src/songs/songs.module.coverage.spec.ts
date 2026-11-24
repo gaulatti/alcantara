@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { ProgramService } from '../program/program.service';
 import { PrismaService } from '../prisma.service';
 import { SongsController } from './songs.controller';
@@ -15,13 +16,21 @@ import { SongsService } from './songs.service';
 })
 class ProgramStubModule {}
 
+// The metrics service is global in the application; the operator change recorder counts its records there.
+@Global()
+@Module({
+  providers: [{ provide: ManagedMetricsService, useValue: {} }],
+  exports: [ManagedMetricsService],
+})
+class MetricsStubModule {}
+
 describe('SongsModule', () => {
   it('wires the controller to the service and prisma', async () => {
     const prisma = {
       song: { findUnique: jest.fn().mockResolvedValue(null) },
     };
     const moduleRef = await Test.createTestingModule({
-      imports: [ProgramStubModule, SongsModule],
+      imports: [ProgramStubModule, MetricsStubModule, SongsModule],
     })
       .overrideProvider(PrismaService)
       .useValue(prisma)

@@ -652,19 +652,19 @@ Every W capability, and whether it changes what is on air or queued:
 | `filler_prepare_television` | `backend/src/mcp/capabilities/filler.ts:36` | No | - | Its description: it does not change what is on air; the version is pending for the next session. |
 | `filler_prepare_radio` | `backend/src/mcp/capabilities/filler.ts:60` | No | - | Same: pending for the next recovery start, a running session keeps its version. |
 | `instant_create_instant` | `backend/src/mcp/capabilities/instants.ts:138` | No | - | A new library row; nothing names it yet. |
-| `instant_update_instant` | `backend/src/mcp/capabilities/instants.ts:167` | Live output | No record to write (see below) | Declares `onAir` while it plays as a scene background, is named by a scene on air or staged, or is in the rotation of a program with bumpers on (instants.ts:197). |
+| `instant_update_instant` | `backend/src/mcp/capabilities/instants.ts:167` | Live output | Recorded: an `OperatorChangeRecord` with no program (see "Operator change records for library changes" below) | Declares `onAir` while it plays as a scene background, is named by a scene on air or staged, or is in the rotation of a program with bumpers on (instants.ts:197). |
 | `layout_create` | `backend/src/mcp/capabilities/layouts.ts:84` | No | - | A new library row. |
 | `layout_update` | `backend/src/mcp/capabilities/layouts.ts:109` | Live output | Recorded: an `OperatorChangeRecord` of who made the change, the changed field names and, for names, ids and flags, the value before and after (#236); free text, JSON, cues and template addresses are named, never valued | Declares `onAir` while a scene of the layout is on air (layouts.ts:131). |
 | `media_asset_create_background_audio` | `backend/src/mcp/capabilities/media-assets.ts:224` | No | - | A new library asset. |
 | `media_asset_replace_asset_labels` | `backend/src/mcp/capabilities/media-assets.ts:254` | No | - | Label membership of one asset; the spec declares no on-air effect. |
 | `media_set_artist_label` | `backend/src/mcp/capabilities/artist-labels.ts:42` | No | - | Attaches a media label to an artist; the artist bumper and the song recipe read it when they next build, nothing on air changes. |
 | `media_asset_create_label` | `backend/src/mcp/capabilities/media-assets.ts:279` | No | - | A new, empty label. |
-| `media_asset_update_label` | `backend/src/mcp/capabilities/media-assets.ts:301` | Live output | No record to write (see below) | Declares `onAir` while a program that reads the label is on air (media-assets.ts:322). |
-| `media_asset_replace_label_assets` | `backend/src/mcp/capabilities/media-assets.ts:332` | Live output | No record to write (see below) | Declares `onAir` while a program that reads the label is on air (media-assets.ts:350). |
+| `media_asset_update_label` | `backend/src/mcp/capabilities/media-assets.ts:301` | Live output | Recorded: an `OperatorChangeRecord` with no program (see "Operator change records for library changes" below) | Declares `onAir` while a program that reads the label is on air (media-assets.ts:322). |
+| `media_asset_replace_label_assets` | `backend/src/mcp/capabilities/media-assets.ts:332` | Live output | Recorded: an `OperatorChangeRecord` with no program (see "Operator change records for library changes" below) | Declares `onAir` while a program that reads the label is on air (media-assets.ts:350). |
 | `media_group_create` | `backend/src/mcp/capabilities/media-groups.ts:88` | No | - | A new group; nothing assigns it. |
-| `media_group_update` | `backend/src/mcp/capabilities/media-groups.ts:114` | Live output | No record to write (see below) | Changes the media a live page may read; the spec declares no `onAir` flag (judgement: treated as live output, not as queue). |
+| `media_group_update` | `backend/src/mcp/capabilities/media-groups.ts:114` | Live output | Recorded: an `OperatorChangeRecord` with no program (see "Operator change records for library changes" below) | Changes the media a live page may read; the spec declares no `onAir` flag (judgement: treated as live output, not as queue). |
 | `media_create` | `backend/src/mcp/capabilities/media.ts:88` | No | - | A new image row. |
-| `media_update` | `backend/src/mcp/capabilities/media.ts:106` | Live output | No record to write (see below) | Declares `onAir` while a group or scene on air reads the image (media.ts:131). |
+| `media_update` | `backend/src/mcp/capabilities/media.ts:106` | Live output | Recorded: an `OperatorChangeRecord` with no program (see "Operator change records for library changes" below) | Declares `onAir` while a group or scene on air reads the image (media.ts:131). |
 | `preference_publish` | `backend/src/mcp/capabilities/preferences.ts:106` | No | - | A shared console layout for operators; its plan says nothing on air changes. |
 | `preference_load` | `backend/src/mcp/capabilities/preferences.ts:158` | No | - | Copies a layout into the caller's own console profile. |
 | `preference_save` | `backend/src/mcp/capabilities/preferences.ts:195` | No | - | The caller's own console profile. |
@@ -688,9 +688,9 @@ Every W capability, and whether it changes what is on air or queued:
 | `scene_create` | `backend/src/mcp/capabilities/scenes.ts:112` | No | - | A new library scene. |
 | `scene_update` | `backend/src/mcp/capabilities/scenes.ts:147` | Live output | Recorded: an `OperatorChangeRecord` of who made the change, the changed field names and, for names, ids and flags, the value before and after (#236); free text, JSON, cues and template addresses are named, never valued | Declares `onAir` while the scene is on air (scenes.ts:177): viewers see the change at once. |
 | `song_create` | `backend/src/mcp/capabilities/songs.ts:155` | No | - | A new catalog song. |
-| `song_update` | `backend/src/mcp/capabilities/songs.ts:173` | Live output | No record to write (see below) | Declares `onAir` while the song is playing (songs.ts:199); a queued song shows the change when it plays. |
+| `song_update` | `backend/src/mcp/capabilities/songs.ts:173` | Live output | Recorded: an `OperatorChangeRecord` with no program (see "Operator change records for library changes" below) | Declares `onAir` while the song is playing (songs.ts:199); a queued song shows the change when it plays. |
 | `stinger_create_stinger` | `backend/src/mcp/capabilities/stingers.ts:84` | No | - | A new stinger. |
-| `stinger_update_stinger` | `backend/src/mcp/capabilities/stingers.ts:113` | Live output | No record to write (see below) | Declares `onAir` while a program that plays it has a scene or fade on air (stingers.ts:137). |
+| `stinger_update_stinger` | `backend/src/mcp/capabilities/stingers.ts:113` | Live output | Recorded: an `OperatorChangeRecord` with no program (see "Operator change records for library changes" below) | Declares `onAir` while a program that plays it has a scene or fade on air (stingers.ts:137). |
 | `revoke_my_token` | `backend/src/mcp/capabilities/access.ts:115` | No | - | Revokes the caller's own token. |
 | `import_media_from_url` | `backend/src/mcp/capabilities/media-import.ts:46` | No | - | Stores an upload; its plan: it creates no media asset and nothing changes on air. |
 
@@ -734,6 +734,27 @@ The record never blocks the change: if it cannot be stored, the change stands, a
 `alcantara_operator_change_records_total{target="scene|layout|flight_sequence|program",result="recorded|failed"}` is
 counted. The `programId` column must be nullable for scene and layout records (a separate migration); until it is, those
 two records fail to store and are counted as `failed`.
+
+## Operator change records for library changes (#236 slice 3)
+
+Seven library writes, from the MCP and from the console routes that make the same change, write one
+`OperatorChangeRecord` after the change through the same recorder. A library item belongs to no single program, so the
+record has `programId` NULL (`20261124010000_operator_change_library` makes the column nullable; how to read the table
+with those rows is in `docs/operator-change-records.md`).
+
+| Change | MCP capability | Console capability | Target | Valued before and after |
+|---|---|---|---|---|
+| Instant | `instant_update_instant` | `instants.update` | `instant` | `volume`, `enabled` |
+| Stinger | `stinger_update_stinger` | `stingers.update` | `stinger` | `cutPointMs`, `enabled` |
+| Song | `song_update` | `songs.update` | `song` | `durationMs`, `enabled` |
+| Media (image) | `media_update` | `media.update` | `media` | none |
+| Media label | `media_asset_update_label` | `media-assets.update-label` | `media_label` | none |
+| Media label assets | `media_asset_replace_label_assets` | `media-assets.replace-label-assets` | `media_label_assets` | `assetIds`: the number of assets |
+| Media group | `media_group_update` | `media-groups.update` | `media_group` | `mediaIds`: the number of media |
+
+Names, URLs, descriptions, chart identifiers and the ids of a replaced list are named, never valued. As for the other
+records, the change is never blocked: a record that cannot be stored is logged and counted under
+`alcantara_operator_change_records_total{target,result}` with the targets above, and an automatic change writes nothing.
 
 ## Every registered capability by name (#220)
 

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment -- Jest mocks are intentionally loosely typed. */
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 import { SongsService } from './songs.service';
 
 const base = {
@@ -44,7 +45,7 @@ function build() {
     },
     $transaction: jest.fn((op: (client: typeof tx) => unknown) => op(tx)),
   };
-  return { service: new SongsService(prisma as never), prisma, tx };
+  return { service: new SongsService(prisma as never, noRecorder()), prisma, tx };
 }
 
 function p2002() {

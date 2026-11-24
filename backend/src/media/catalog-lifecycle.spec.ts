@@ -113,9 +113,9 @@ function fixture() {
     media: () => media,
     song: () => song,
     stinger: () => stinger,
-    images: new MediaService(prisma),
-    songs: new SongsService(prisma),
-    stingers: new StingersService(prisma),
+    images: new MediaService(prisma, noRecorder()),
+    songs: new SongsService(prisma, noRecorder()),
+    stingers: new StingersService(prisma, noRecorder()),
     layouts: new LayoutsService(prisma, noRecorder()),
   };
 }

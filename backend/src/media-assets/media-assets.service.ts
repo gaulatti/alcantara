@@ -6,6 +6,14 @@ import {
 import { MediaAssetKind, MediaAssetType, Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma.service';
+import {
+  OperatorChangeRecorder,
+  summarizeChange,
+} from '../operator-change/operator-change-recorder';
+import {
+  MEDIA_LABEL_ASSETS_CHANGE_FIELDS,
+  MEDIA_LABEL_CHANGE_FIELDS,
+} from '../operator-change/library-change-fields';
 import { MEDIA_ANALYSIS_SELECT } from '../songs/songs.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import {
@@ -96,6 +104,7 @@ export class MediaAssetsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly metrics: ManagedMetricsService,
+    private readonly recorder: OperatorChangeRecorder,
   ) {}
 
   async findAll(
@@ -417,6 +426,7 @@ export class MediaAssetsService {
     input: { name?: unknown; description?: unknown },
     authorization: MediaAssetAuthorization,
   ) {
+    const actor = this.recorder.actor();
     assertCanManageLabels(authorization.permissions);
     const labelId = this.requiredId(id, 'label id');
     const existing = await this.prisma.mediaLabel.findUnique({
@@ -456,7 +466,25 @@ export class MediaAssetsService {
           include: MEDIA_LABEL_INCLUDE,
         });
       });
-      return this.mapLabel(label);
+      const mapped = this.mapLabel(label);
+      // The change is final; recording who made it never blocks it (gaulatti/alcantara#236).
+      await this.recorder.record({
+        actor,
+        target: 'media_label',
+        targetId: String(labelId),
+        programId: null,
+        capability: {
+          mcp: 'media_asset_update_label',
+          console: 'media-assets.update-label',
+        },
+        summary: summarizeChange(
+          MEDIA_LABEL_CHANGE_FIELDS,
+          { ...input },
+          null,
+          null,
+        ),
+      });
+      return mapped;
     } catch (error) {
       this.rethrowUniqueName(error);
     }
@@ -467,6 +495,7 @@ export class MediaAssetsService {
     assetIdsValue: unknown,
     authorization: MediaAssetAuthorization,
   ) {
+    const actor = this.recorder.actor();
     const labelId = this.requiredId(id, 'label id');
     const assetIds = this.normalizeIds(assetIdsValue, 'assetIds');
     const label = await this.prisma.mediaLabel.findUnique({
@@ -527,6 +556,23 @@ export class MediaAssetsService {
       },
       { maxWait: 30_000, timeout: 30_000 },
     );
+    // The change is final; recording who made it never blocks it (gaulatti/alcantara#236).
+    await this.recorder.record({
+      actor,
+      target: 'media_label_assets',
+      targetId: String(labelId),
+      programId: null,
+      capability: {
+        mcp: 'media_asset_replace_label_assets',
+        console: 'media-assets.replace-label-assets',
+      },
+      summary: summarizeChange(
+        MEDIA_LABEL_ASSETS_CHANGE_FIELDS,
+        { assetIds },
+        { assetIds: currentAssignments.length },
+        { assetIds: assetIds.length },
+      ),
+    });
     return this.findLabel(labelId, authorization);
   }
 
