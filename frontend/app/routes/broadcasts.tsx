@@ -288,6 +288,7 @@ export default function Broadcasts() {
       : formErrors !== null && Boolean(formErrors.name || formErrors.ingestUrl || formErrors.streamKey);
 
   const saveDestination = async () => {
+    /* v8 ignore next -- the save button is rendered only inside the open dialog, so saveDestination always runs with a dialog; this null guard is defensive. */
     if (!dialog) return;
     setBusyAction("catalog-save");
     try {
@@ -359,6 +360,7 @@ export default function Broadcasts() {
   const moveDestination = async (index: number, offset: number) => {
     const next = [...catalog];
     const target = index + offset;
+    /* v8 ignore next -- the move buttons are disabled at both ends (Move up on the first row, Move down on the last), so this bounds guard is defensive and no UI path reaches it. */
     if (target < 0 || target >= next.length) return;
     [next[index], next[target]] = [next[target], next[index]];
     setBusyAction("catalog-order");
@@ -447,6 +449,7 @@ export default function Broadcasts() {
               <Empty
                 title="No destinations yet"
                 description="Add a destination with its stream key. A Start needs at least one current destination."
+                /* v8 ignore next -- this block renders only inside the canManage card, so canManage is always true here; the false arm cannot run. */
                 action={canManage ? <Button onClick={() => openDialog({ kind: "add" })}>Add destination</Button> : undefined}
               />
             ) : null}
