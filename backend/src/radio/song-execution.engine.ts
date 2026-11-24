@@ -136,6 +136,8 @@ export type SongEngineEvent =
 export interface SongEngineOnAirView {
   playbackRequestId: string | null;
   songId: number | null;
+  /** The catalog song of the announced next song, when it can be told (gaulatti/alcantara#235). */
+  nextSongId: number | null;
   next: {
     playbackId: string;
     status: 'pending' | 'accepted' | 'not-announced';
@@ -1341,6 +1343,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     return {
       playbackRequestId: active?.playbackRequestId ?? null,
       songId: active?.songId ?? null,
+      nextSongId: announced
+        ? this.announcedSongId(state?.sequence ?? null, announced.itemId)
+        : null,
       next: announced
         ? {
             playbackId: announced.playbackId,
@@ -1352,6 +1357,18 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       mode: state?.sequence?.mode ?? null,
       frozen: state?.frozen ?? false,
     };
+  }
+
+  /** The catalog song an announced item is: a catalog entry names it, a playlist leaf carries it. */
+  private announcedSongId(
+    sequence: ProgramSongSequence | null,
+    itemId: string,
+  ): number | null {
+    if (itemId.startsWith(CATALOG_ITEM_PREFIX)) {
+      const id = Number(itemId.slice(CATALOG_ITEM_PREFIX.length));
+      return Number.isInteger(id) && id > 0 ? id : null;
+    }
+    return findUniqueProgramSongLeafById(sequence, itemId)?.songId ?? null;
   }
 
   // ---------------------------------------------------------------------

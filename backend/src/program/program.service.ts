@@ -2211,6 +2211,38 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /**
+   * For each given song, the programs it is on air in (gaulatti/alcantara#235): the program is playing it now, or
+   * has announced it to Palazzo as the next song (an announcement Palazzo has not refused). Every given song has an
+   * entry, empty when it is not on air.
+   */
+  async programsHoldingSongs(
+    songs: Array<{ id: number; audioUrl: string }>,
+  ): Promise<Map<number, string[]>> {
+    const holding = new Map<number, string[]>(
+      songs.map((song) => [song.id, []]),
+    );
+    const states = await this.prisma.programState.findMany({
+      select: { programId: true },
+    });
+    for (const { programId } of states) {
+      const playback = await this.getProgramSongPlayback(programId);
+      const view = this.songExecutionEngine.getOnAirView(programId);
+      for (const song of songs) {
+        const playing =
+          view.songId === song.id ||
+          (playback.isPlaying &&
+            playback.audioUrl.trim() === song.audioUrl.trim());
+        const next =
+          view.nextSongId === song.id &&
+          view.next !== null &&
+          view.next.status !== 'not-announced';
+        if (playing || next) holding.get(song.id)!.push(programId);
+      }
+    }
+    return holding;
+  }
+
   async getProgramSongPlayback(
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
   ) {

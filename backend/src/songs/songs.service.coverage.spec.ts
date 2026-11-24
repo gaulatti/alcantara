@@ -622,10 +622,7 @@ describe('SongsService generic chart fields and identity', () => {
   it('updates the chart identity without resetting its provider, and sets the provider only when one is sent', async () => {
     const { service, prisma, tx } = build();
     prisma.song.findUnique.mockResolvedValue(base);
-    (tx as any).songChartIdentity = {
-      upsert: jest.fn(),
-      deleteMany: jest.fn(),
-    };
+    (tx as any).songChartIdentity = { upsert: jest.fn(), deleteMany: jest.fn() };
     tx.song.update.mockResolvedValue({
       ...base,
       earoneSongId: '303',
@@ -698,12 +695,8 @@ describe('SongsService generic chart fields and identity', () => {
       externalChartProvider: '   ',
       programId: 'main',
     });
-    expect(
-      (tx as any).songChartIdentity.upsert.mock.calls.at(-1)[0].update,
-    ).not.toHaveProperty('provider');
-    expect(
-      (tx as any).songChartIdentity.upsert.mock.calls.at(-1)[0].create.provider,
-    ).toBe('earone');
+    expect((tx as any).songChartIdentity.upsert.mock.calls.at(-1)[0].update).not.toHaveProperty('provider');
+    expect((tx as any).songChartIdentity.upsert.mock.calls.at(-1)[0].create.provider).toBe('earone');
 
     // Test update with only rank
     tx.song.update.mockResolvedValueOnce({
@@ -820,45 +813,15 @@ describe('SongsService generic chart fields and identity', () => {
 
   it('removes the chart identity when an update clears every chart value, so no stale rank or spins remain', async () => {
     const { service, prisma, tx } = build();
-    prisma.song.findUnique.mockResolvedValue({
-      ...base,
-      earoneSongId: '303',
-      earoneRank: '5',
-      earoneSpins: '12',
-    });
-    (tx as any).songChartIdentity = {
-      upsert: jest.fn(),
-      deleteMany: jest.fn(),
-    };
-    tx.song.update.mockResolvedValue({
-      ...base,
-      earoneSongId: null,
-      earoneRank: null,
-      earoneSpins: null,
-    });
-    tx.song.findUniqueOrThrow.mockResolvedValue({
-      ...base,
-      earoneSongId: null,
-      earoneRank: null,
-      earoneSpins: null,
-      intro: null,
-    });
+    prisma.song.findUnique.mockResolvedValue({ ...base, earoneSongId: '303', earoneRank: '5', earoneSpins: '12' });
+    (tx as any).songChartIdentity = { upsert: jest.fn(), deleteMany: jest.fn() };
+    tx.song.update.mockResolvedValue({ ...base, earoneSongId: null, earoneRank: null, earoneSpins: null });
+    tx.song.findUniqueOrThrow.mockResolvedValue({ ...base, earoneSongId: null, earoneRank: null, earoneSpins: null, intro: null });
 
-    const result = await service.update(7, {
-      earoneSongId: null,
-      earoneRank: null,
-      earoneSpins: null,
-      programId: 'main',
-    });
+    const result = await service.update(7, { earoneSongId: null, earoneRank: null, earoneSpins: null, programId: 'main' });
 
-    expect((tx as any).songChartIdentity.deleteMany).toHaveBeenCalledWith({
-      where: { songId: 7 },
-    });
+    expect((tx as any).songChartIdentity.deleteMany).toHaveBeenCalledWith({ where: { songId: 7 } });
     expect((tx as any).songChartIdentity.upsert).not.toHaveBeenCalled();
-    expect(result).toMatchObject({
-      externalChartId: null,
-      externalChartRank: null,
-      externalChartSpins: null,
-    });
+    expect(result).toMatchObject({ externalChartId: null, externalChartRank: null, externalChartSpins: null });
   });
 });

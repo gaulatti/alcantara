@@ -39,9 +39,6 @@ export const MEDIA_ANALYSIS_SELECT = {
   updatedAt: true,
 } satisfies Prisma.MediaAssetAnalysisSelect;
 
-/** The most songs one re-analysis request may name: the rollout of a new cue rule is paced in small batches. */
-export const MAX_REANALYSIS_BATCH = 25;
-
 interface SongInput {
   artist?: string;
   title?: string;
@@ -378,42 +375,6 @@ export class SongsService {
       delete given[legacy];
     }
     return given;
-  }
-
-  /**
-   * Asks the media-analysis job to analyse songs again, which a new cue rule needs (gaulatti/alcantara#235). Only
-   * songs with a finished analysis are queued: they keep their current cue points until the new result replaces them.
-   * At most MAX_REANALYSIS_BATCH songs per request. Songs that are not found or have no finished analysis are listed.
-   */
-  async requestReanalysis(songIds: unknown, now = new Date()) {
-    if (
-      !Array.isArray(songIds) ||
-      songIds.length < 1 ||
-      songIds.length > MAX_REANALYSIS_BATCH ||
-      songIds.some((id) => !Number.isInteger(id) || id <= 0) ||
-      new Set(songIds).size !== songIds.length
-    ) {
-      throw new BadRequestException(
-        `songIds must be 1 to ${MAX_REANALYSIS_BATCH} distinct song ids`,
-      );
-    }
-    const ids = songIds as number[];
-    const rows = await this.prisma.mediaAssetAnalysis.findMany({
-      where: {
-        assetId: { in: ids.map((id) => `song:${id}`) },
-        status: 'success',
-      },
-      select: { assetId: true },
-    });
-    const queued = new Set(rows.map((row) => row.assetId));
-    const { count } = await this.prisma.mediaAssetAnalysis.updateMany({
-      where: { assetId: { in: [...queued] }, status: 'success' },
-      data: { nextAttemptAt: now },
-    });
-    return {
-      requested: count,
-      skipped: ids.filter((id) => !queued.has(`song:${id}`)),
-    };
   }
 
   async remove(id: number) {
