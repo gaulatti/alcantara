@@ -71,6 +71,7 @@ export function mergeMarks(explicit: OverlayMarks, program: OverlayMarks): Overl
  * branded is drawn: the page never shows a default station (gaulatti/alcantara#333).
  */
 export default function Overlay() {
+  /* v8 ignore next -- the page reads its URL during render, and this route only renders in the browser, where a window always exists */
   const explicit = overlayMarks(typeof window === 'undefined' ? '' : window.location.search);
   const [fromProgram, setFromProgram] = useState<OverlayMarks>(NO_MARKS);
 
