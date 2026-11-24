@@ -160,3 +160,42 @@ it("saves the previous scene's edit to that scene when the operator switches whi
   expect(server.requests("PUT /scenes/1")[1]).toEqual(edit);
   expect(server.requests("PUT /scenes/2")).toHaveLength(0);
 });
+
+// gaulatti/alcantara#404 (stronger pass, line 2105): after a save fails, its edit stays queued for the retry. Save
+// changes pressed before the retry sends that queued edit at once, and only once.
+it("sends a failed edit at once when Save changes is pressed before its retry", async () => {
+  open();
+  let saves = 0;
+  server.answer("PUT /scenes/1", () => {
+    saves += 1;
+    return saves === 1
+      ? new Response("down", { status: 500 })
+      : Response.json(first);
+  });
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Show component" }),
+  );
+  expect(
+    await screen.findByText("Scene save failed. Retrying..."),
+  ).toBeVisible();
+  const edit = server.requests("PUT /scenes/1")[0];
+
+  const saveButton = await screen.findByRole("button", {
+    name: "Save changes",
+  });
+  await waitFor(() => expect(saveButton).toBeEnabled());
+  fireEvent.click(saveButton);
+  // Well inside the 800 ms retry pause: only the manual save can send it now.
+  await waitFor(
+    () => expect(server.requests("PUT /scenes/1")).toHaveLength(2),
+    { timeout: 300 },
+  );
+  expect(server.requests("PUT /scenes/1")[1]).toEqual(edit);
+  await waitFor(() =>
+    expect(screen.queryByText("Scene save failed. Retrying...")).toBeNull(),
+  );
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  });
+  expect(server.requests("PUT /scenes/1")).toHaveLength(2);
+});
