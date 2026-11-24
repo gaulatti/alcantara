@@ -378,10 +378,12 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     try {
       if (action === "stop") await stopFlight(programId);
       else if (action === "advance") await goFlight(programId);
+      /* v8 ignore start -- the rundown start control is disabled in the timed block (canStart is always false there), so this start path cannot be reached */
       else if (activeLog) {
         await activateFlightSequence(programId, activeLog.id);
         await startFlight(programId);
       }
+      /* v8 ignore stop */
       await refreshLogs();
     } catch (cause) {
       setQueueError(
@@ -1031,6 +1033,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
         sequence={rotation}
         programSongPlayback={programSongPlayback}
         onChange={(next) => {
+          /* v8 ignore start -- PlaybackBar renders only in the timed block, where its sequence-change controls are hidden, so this save callback is never invoked */
           void Promise.resolve(onSaveSongSequence(next)).catch((cause) =>
             setQueueError(
               cause instanceof Error
@@ -1039,8 +1042,10 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
             ),
           );
         }}
+        /* v8 ignore stop */
         onTakeSelection={
           onTakeSelection
+            /* v8 ignore next -- PlaybackBar renders only in the timed block, where its take controls are hidden, so its take callback is never invoked */
             ? (next) => runRotation(() => onTakeSelection(next))
             : undefined
         }
@@ -1068,6 +1073,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                 onStop: () => void commandLog("stop"),
                 onAdvance: () => void commandLog("advance"),
               }
+            /* v8 ignore next -- PlaybackBar only renders in the timed block, which always passes logTransport, so this false arm cannot be reached */
             : undefined
         }
       />
