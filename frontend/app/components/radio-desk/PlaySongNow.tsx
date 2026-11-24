@@ -69,6 +69,7 @@ export function PlaySongNow({
   };
 
   const cueNext = (candidate: PlayCandidate) => {
+    /* v8 ignore next -- cueNext is reached only from the Cue next button, rendered only for a candidate with a leaf, and from Enter when that candidate has a leaf; a library-only candidate never gets here, so this guard is unreachable. */
     if (!candidate.leaf) return;
     const leaf = candidate.leaf;
     void run(() => onCueNext(leaf), `${candidate.title} queued next`);
