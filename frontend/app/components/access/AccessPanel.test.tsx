@@ -331,3 +331,23 @@ it('says there are no tokens yet', async () => {
   await open({ ...memoryAccessClient(), listMyTokens: () => Promise.resolve([]) });
   expect(screen.getByText('No tokens yet')).toBeVisible();
 });
+
+it('reads an access refusal with an unlisted code as "not available yet"', async () => {
+  await open({ ...memoryAccessClient(), revokeMyToken: () => Promise.reject({ status: 409, error: 'quota_full' }) });
+  fireEvent.click(screen.getByRole('button', { name: 'Revoke Console script' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Access is not available yet.');
+});
+
+it('shows "None" for a token that reaches no permissions', async () => {
+  await open({ ...memoryAccessClient(), listMyTokens: () => Promise.resolve([{ ...fixtureToken, permissions: [] }]) });
+  expect(await screen.findByText('Studio laptop')).toBeVisible();
+  const row = screen.getByText('Studio laptop').closest('tr')!;
+  expect(within(row).getByText('None')).toBeVisible();
+});
+
+it('shows a history entry that carries no time, without a made-up one', async () => {
+  await open({ ...memoryAccessClient(), listHistory: () => Promise.resolve([{ ...fixtureHistory[0], at: '' }]) });
+  fireEvent.click(screen.getByRole('tab', { name: 'History' }));
+  expect(screen.getByText('bruno@example.test: Viewer')).toBeVisible();
+  expect(screen.queryByText(/UTC/)).not.toBeInTheDocument();
+});
