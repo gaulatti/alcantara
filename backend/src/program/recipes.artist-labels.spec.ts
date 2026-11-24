@@ -45,8 +45,18 @@ const RECIPE = {
   steps: ['bumperPoint', 'song', 'slideshowPoint'],
 };
 
-function prismaWith(teamId: number | null) {
+// gaulatti/alcantara#464, the production shape: a catalog song has no team (null), the link was
+// written under the caller's team, and the program row carries that team. The lookup must resolve
+// under the program's team, never the song's.
+function prismaWith(
+  songTeamId: number | null,
+  programTeamId: number | null = songTeamId,
+  linkTeamId: number | null = programTeamId,
+) {
   return {
+    program: {
+      findUnique: jest.fn(async () => ({ teamId: programTeamId })),
+    },
     programState: {
       findUnique: jest.fn(async () => ({ id: 1, programId: 'tv', type: 'tv' })),
     },
@@ -58,11 +68,14 @@ function prismaWith(teamId: number | null) {
         title: 'Fictional Song',
         enabled: true,
         audioUrl: 'https://media.example.test/a.mp3',
-        teamId,
+        teamId: songTeamId,
       })),
     },
     artistLabel: {
-      findFirst: jest.fn(async () => ({ labelId: 'artist-label' })),
+      findFirst: jest.fn(
+        async ({ where }: { where: { teamId: number | null } }) =>
+          where.teamId === linkTeamId ? { labelId: 'artist-label' } : null,
+      ),
     },
     mediaAssetLabel: { count: jest.fn(async () => 3) },
     scene: {
@@ -113,6 +126,33 @@ describe('the song recipe reads artist labels (gaulatti/alcantara#427)', () => {
     expect(moduleRef.get(ARTIST_LABEL_LOOKUP)).not.toBe(
       moduleRef.get(ArtistLabelsService),
     );
+    await moduleRef.close();
+  });
+
+  it("finds the label of a song with no team under the program's team, where the link was written", async () => {
+    const prisma = prismaWith(null, 5, 5);
+    const moduleRef = await compile(prisma);
+    const { items, issues } = await moduleRef
+      .get(RecipesService)
+      .expand('tv', 7, { params: { songId: 42 } });
+    expect(issues).toEqual([]);
+    expect(items[2].metadataPatch).toEqual({
+      slideshow: { labelId: 'artist-label' },
+    });
+    expect(prisma.artistLabel.findFirst).toHaveBeenCalledWith({
+      where: { teamId: 5, artistKey: 'fictional artist' },
+      select: { labelId: true },
+    });
+    await moduleRef.close();
+  });
+
+  it("does not use another team's link for the program", async () => {
+    const prisma = prismaWith(null, 5, 9);
+    const moduleRef = await compile(prisma);
+    const { issues } = await moduleRef
+      .get(RecipesService)
+      .expand('tv', 7, { params: { songId: 42 } });
+    expect(issues.map((issue) => issue.code)).toContain('artist_label_missing');
     await moduleRef.close();
   });
 

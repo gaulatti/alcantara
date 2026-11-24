@@ -37,6 +37,7 @@ const SONG_WITH_SCENES = (componentType: string, programs = [1]) => ({
 
 function setup() {
   const prisma = {
+    program: { findUnique: jest.fn(async () => ({ teamId: 5 })) },
     programState: {
       findUnique: jest.fn(async () => ({ id: 1, programId: 'tv', type: 'tv' })),
     },

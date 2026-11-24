@@ -24,7 +24,6 @@ const SONG = {
   title: 'Fictional Song',
   enabled: true,
   audioUrl: 'https://media.example.test/a.mp3',
-  teamId: 5,
 };
 const scene = (componentType: string, programs = [1]) => ({
   name: `${componentType} scene`,
@@ -32,8 +31,15 @@ const scene = (componentType: string, programs = [1]) => ({
   programScenes: programs.map((programStateId) => ({ programStateId })),
 });
 
-function setup(over: { type?: string; label?: string | null } = {}) {
+function setup(
+  over: { type?: string; label?: string | null; program?: unknown } = {},
+) {
   const prisma = {
+    program: {
+      findUnique: jest.fn(async () =>
+        'program' in over ? over.program : { teamId: 5 },
+      ),
+    },
     programState: {
       findUnique: jest.fn(async () => ({
         id: 1,
@@ -283,6 +289,15 @@ describe('RecipesService (gaulatti/alcantara#424)', () => {
       });
       expect(issues).toEqual([]);
       expect(metrics.recordRecipeExpansion).toHaveBeenCalledWith('ok');
+    });
+
+    it('looks the artist up as no team when the program row carries none (gaulatti/alcantara#464)', async () => {
+      const { service, lookup } = setup({ program: null });
+      await service.expand('tv', 7, { params: { songId: 42 } });
+      expect(lookup.artistLabelFor).toHaveBeenCalledWith(
+        null,
+        'Fictional Artist',
+      );
     });
 
     it("uses the label given for the use instead of the artist's", async () => {
