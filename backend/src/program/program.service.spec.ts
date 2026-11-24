@@ -1,4 +1,5 @@
 import { MediaAssetKind, MediaAssetType } from '@prisma/client';
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 import { ProgramService } from './program.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 
@@ -49,6 +50,8 @@ describe('ProgramService switcher state', () => {
       {} as never,
       {} as never,
       metrics,
+      undefined,
+      noRecorder(),
     );
     return { service, prisma, metrics };
   };

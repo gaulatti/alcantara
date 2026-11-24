@@ -4,6 +4,7 @@ import { MediaService } from './media.service';
 import { SongsService } from '../songs/songs.service';
 import { StingersService } from '../stingers/stingers.service';
 import { LayoutsService } from '../layouts/layouts.service';
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 
 function fixture() {
   let media: any = {
@@ -115,7 +116,7 @@ function fixture() {
     images: new MediaService(prisma),
     songs: new SongsService(prisma),
     stingers: new StingersService(prisma),
-    layouts: new LayoutsService(prisma),
+    layouts: new LayoutsService(prisma, noRecorder()),
   };
 }
 

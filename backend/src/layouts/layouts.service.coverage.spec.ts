@@ -1,4 +1,8 @@
 import { LayoutsService } from './layouts.service';
+import {
+  mcpActor,
+  noRecorder,
+} from '../operator-change/operator-change-recorder.testing';
 
 function build() {
   const prisma = {
@@ -10,7 +14,12 @@ function build() {
       delete: jest.fn(),
     },
   };
-  return { service: new LayoutsService(prisma as never), prisma };
+  const recorder = noRecorder();
+  return {
+    service: new LayoutsService(prisma as never, recorder),
+    prisma,
+    recorder,
+  };
 }
 
 describe('LayoutsService', () => {
@@ -82,5 +91,50 @@ describe('LayoutsService', () => {
     prisma.layout.delete.mockResolvedValue({ id: 5 });
     await expect(service.remove(5)).resolves.toEqual({ id: 5 });
     expect(prisma.layout.delete).toHaveBeenCalledWith({ where: { id: 5 } });
+  });
+});
+
+describe('LayoutsService operator change record (gaulatti/alcantara#236)', () => {
+  it('records who changed a layout with before and after of the name and type, never the settings', async () => {
+    const { service, prisma, recorder } = build();
+    recorder.actor.mockReturnValue(mcpActor);
+    prisma.layout.findUnique.mockResolvedValue({
+      id: 3,
+      name: 'Old',
+      componentType: 'ticker',
+      settings: '{"url":"https://x.test?key=1"}',
+    });
+    prisma.layout.update.mockResolvedValue({
+      id: 3,
+      name: 'New',
+      componentType: 'ticker',
+    });
+    await service.update(3, {
+      name: 'New',
+      settings: { url: 'https://y.test' },
+    });
+    expect(recorder.record).toHaveBeenCalledWith({
+      actor: mcpActor,
+      target: 'layout',
+      targetId: '3',
+      programId: null,
+      capability: { mcp: 'layout_update', console: 'layout.update' },
+      summary: {
+        changed: ['settings', 'name'],
+        before: { name: 'Old' },
+        after: { name: 'New' },
+      },
+    });
+    expect(JSON.stringify(recorder.record.mock.calls)).not.toContain('x.test');
+  });
+
+  it('records nothing when the layout does not exist', async () => {
+    const { service, prisma, recorder } = build();
+    prisma.layout.findUnique.mockResolvedValue(null);
+    prisma.layout.update.mockRejectedValue(new Error('Record not found'));
+    await expect(service.update(9, { name: 'x' })).rejects.toThrow(
+      'Record not found',
+    );
+    expect(recorder.record).not.toHaveBeenCalled();
   });
 });

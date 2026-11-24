@@ -1,9 +1,17 @@
 import { Injectable } from '@nestjs/common';
+import {
+  LAYOUT_CHANGE_FIELDS,
+  OperatorChangeRecorder,
+  summarizeChange,
+} from '../operator-change/operator-change-recorder';
 import { PrismaService } from '../prisma.service';
 
 @Injectable()
 export class LayoutsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly recorder: OperatorChangeRecorder,
+  ) {}
 
   async findAll() {
     return this.prisma.layout.findMany({
@@ -32,6 +40,7 @@ export class LayoutsService {
     id: number,
     data: { name?: string; componentType?: string; settings?: any },
   ) {
+    const actor = this.recorder.actor();
     const updateData: any = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.componentType !== undefined)
@@ -39,10 +48,20 @@ export class LayoutsService {
     if (data.settings !== undefined)
       updateData.settings = JSON.stringify(data.settings);
 
-    return this.prisma.layout.update({
+    const previous = await this.prisma.layout.findUnique({ where: { id } });
+    const layout = await this.prisma.layout.update({
       where: { id },
       data: updateData,
     });
+    await this.recorder.record({
+      actor,
+      target: 'layout',
+      targetId: String(id),
+      programId: null,
+      capability: { mcp: 'layout_update', console: 'layout.update' },
+      summary: summarizeChange(LAYOUT_CHANGE_FIELDS, data, previous, layout),
+    });
+    return layout;
   }
 
   async remove(id: number) {

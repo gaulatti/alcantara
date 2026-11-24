@@ -10,6 +10,12 @@ import {
   OnModuleDestroy,
   Logger,
 } from '@nestjs/common';
+import {
+  FLIGHT_SEQUENCE_CHANGE_FIELDS,
+  FLIGHT_SEQUENCE_PUBLISH_FIELDS,
+  OperatorChangeRecorder,
+  summarizeChange,
+} from '../operator-change/operator-change-recorder';
 import { PrismaService } from '../prisma.service';
 import type { Prisma } from '@prisma/client';
 import { ProgramService } from './program.service';
@@ -65,7 +71,9 @@ function normalizeOptionalNumber(value: unknown): number | undefined {
  * Keeps a well-formed recipe-use tag (C1). A malformed tag is dropped and the cue kept: the cue still
  * plays, it just stops being grouped with its use.
  */
-export function normalizeRecipeUse(value: unknown): FlightRecipeUse | undefined {
+export function normalizeRecipeUse(
+  value: unknown,
+): FlightRecipeUse | undefined {
   if (!isRecord(value)) return undefined;
   const text = (input: unknown): string | null =>
     typeof input === 'string' && input.trim().length > 0 && input.length <= 64
@@ -82,10 +90,17 @@ export function normalizeRecipeUse(value: unknown): FlightRecipeUse | undefined 
   if (!useId || !step || !recipeId || !recipeRevision || !songId) {
     return undefined;
   }
-  if (params.labelId !== undefined && params.labelId !== null && typeof params.labelId !== 'string') {
+  if (
+    params.labelId !== undefined &&
+    params.labelId !== null &&
+    typeof params.labelId !== 'string'
+  ) {
     return undefined;
   }
-  const labelId = params.labelId === undefined ? undefined : (params.labelId as string | null);
+  const labelId =
+    params.labelId === undefined
+      ? undefined
+      : (params.labelId as string | null);
   return {
     useId,
     recipeId,
@@ -267,6 +282,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     @Inject(forwardRef(() => ProgramService))
     private readonly programService: ProgramService,
     private readonly metrics: RadioMetricsService,
+    private readonly recorder: OperatorChangeRecorder,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -696,6 +712,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     sequenceId: number,
     revision: number,
   ) {
+    const actor = this.recorder.actor();
     const state = await this.getProgramStateRecord(programId);
     if (state.type !== 'radio' && state.type !== 'both')
       throw new BadRequestException('program has no radio leg');
@@ -730,11 +747,28 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         'log revision changed; reload before publishing',
       );
     this.metrics.recordRadioLogResult('published');
-    return this.toFlightSequence(
+    const published = this.toFlightSequence(
       await this.prisma.flightSequence.findUniqueOrThrow({
         where: { id: sequenceId },
       }),
     );
+    await this.recorder.record({
+      actor,
+      target: 'flight_sequence',
+      targetId: String(sequenceId),
+      programId,
+      capability: {
+        mcp: 'program_publish_flight_sequence_by_id',
+        console: 'program.publish-flight-sequence',
+      },
+      summary: summarizeChange(
+        FLIGHT_SEQUENCE_PUBLISH_FIELDS,
+        { publishedAt: true, revision: true },
+        sequence,
+        published,
+      ),
+    });
+    return published;
   }
 
   private async startDuePublishedLogs(): Promise<void> {
@@ -877,9 +911,35 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       revision?: number;
     },
   ): Promise<Omit<FlightSequence, 'programStateId'>> {
-    return this.serializeCueOperation(this.normalizeProgramId(programId), () =>
-      this.updateFlightSequenceUnlocked(programId, sequenceId, data),
+    const actor = this.recorder.actor();
+    let previous: Record<string, unknown> | null = null;
+    const result = await this.serializeCueOperation(
+      this.normalizeProgramId(programId),
+      async () => {
+        if (actor)
+          previous = await this.prisma.flightSequence.findUnique({
+            where: { id: sequenceId },
+          });
+        return this.updateFlightSequenceUnlocked(programId, sequenceId, data);
+      },
     );
+    await this.recorder.record({
+      actor,
+      target: 'flight_sequence',
+      targetId: String(sequenceId),
+      programId: this.normalizeProgramId(programId),
+      capability: {
+        mcp: 'program_update_flight_sequence_by_id',
+        console: 'program.update-flight-sequence',
+      },
+      summary: summarizeChange(
+        FLIGHT_SEQUENCE_CHANGE_FIELDS,
+        data,
+        previous,
+        result,
+      ),
+    });
+    return result;
   }
 
   private async updateFlightSequenceUnlocked(

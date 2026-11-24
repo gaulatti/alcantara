@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await -- Jest mocks are intentionally loosely typed. */
 import { BadRequestException } from '@nestjs/common';
 import { ScenesService } from './scenes.service';
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 
 const TYPE = 'modoitaliano-bracket';
 
@@ -23,7 +24,11 @@ function build() {
     getState: jest.fn(),
     broadcastUpdate: jest.fn(),
   };
-  const service = new ScenesService(prisma as never, program as never);
+  const service = new ScenesService(
+    prisma as never,
+    program as never,
+    noRecorder(),
+  );
   prisma.layout.findUnique.mockResolvedValue({ componentType: 'text' });
   prisma.scene.update.mockImplementation(
     async ({ where, data }: { where: { id: number }; data: unknown }) => ({
@@ -463,7 +468,10 @@ describe('ScenesService.drawModoItalianoBracket', () => {
     expect([...start.songIds].sort()).toEqual([10, 11, 12]);
     // Each of the two programs gets the legacy and the generic start signal.
     expect(program.broadcastUpdate).toHaveBeenCalledTimes(4);
-    expect(program.broadcastUpdate.mock.calls[1][1]).toEqual({ ...start, type: 'audience_interaction_draw_start' });
+    expect(program.broadcastUpdate.mock.calls[1][1]).toEqual({
+      ...start,
+      type: 'audience_interaction_draw_start',
+    });
 
     // the same seed yields the same order
     program.broadcastUpdate.mockClear();
@@ -926,10 +934,17 @@ describe('ScenesService generic audience interaction bracket draws and voting', 
       layout: { componentType: 'unsupported-component' },
     });
 
-    await service.drawModoItalianoBracket(1, { componentType: 'invalid-component', seed: 1 });
-    expect(program.broadcastUpdate).toHaveBeenCalledWith('main', expect.objectContaining({
-      type: 'audience_interaction_draw_start', componentType: TYPE,
-    }));
+    await service.drawModoItalianoBracket(1, {
+      componentType: 'invalid-component',
+      seed: 1,
+    });
+    expect(program.broadcastUpdate).toHaveBeenCalledWith(
+      'main',
+      expect.objectContaining({
+        type: 'audience_interaction_draw_start',
+        componentType: TYPE,
+      }),
+    );
   });
 
   it('falls back to layout componentType or default when not specified', async () => {
@@ -1003,11 +1018,15 @@ describe('ScenesService generic audience interaction bracket draws and voting', 
       componentType: 'poll.audience.interaction',
       matchId: 1,
     });
-    expect(lastMetadata(prisma)['poll.audience.interaction'].activeVotingMatchId).toBe(1);
+    expect(
+      lastMetadata(prisma)['poll.audience.interaction'].activeVotingMatchId,
+    ).toBe(1);
 
     // Test empty or whitespace componentType
     expect((service as any).isAudienceInteractionComponent('')).toBe(false);
     expect((service as any).isAudienceInteractionComponent('   ')).toBe(false);
-    expect((service as any).isAudienceInteractionComponent(undefined)).toBe(false);
+    expect((service as any).isAudienceInteractionComponent(undefined)).toBe(
+      false,
+    );
   });
 });

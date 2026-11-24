@@ -5,11 +5,16 @@ describe('LayoutsService decorator metadata', () => {
   it('records Object as the constructor type when the PrismaService token is unresolved', () => {
     jest.isolateModules(() => {
       jest.doMock('../prisma.service', () => ({}));
+      jest.doMock('../operator-change/operator-change-recorder', () => ({}));
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { LayoutsService } = require('./layouts.service');
-      expect(Reflect.getMetadata('design:paramtypes', LayoutsService)).toEqual([
-        Object,
-      ]);
+      expect(
+        (
+          Reflect.getMetadata('design:paramtypes', LayoutsService) as Array<{
+            name: string;
+          }>
+        ).map((type) => type.name),
+      ).toEqual(['Object', 'Object']);
     });
   });
 });

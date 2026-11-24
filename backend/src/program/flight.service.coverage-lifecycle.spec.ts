@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { FlightService } from './flight.service';
 import { RadioMetricsService } from '../radio/radio-metrics.service';
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 
 function minuteAt(offsetMs: number): string {
   const date = new Date(Date.now() + offsetMs);
@@ -54,7 +55,12 @@ function harness(stateExtra: Record<string, unknown> = {}) {
   };
   const metrics = new RadioMetricsService();
   const recorded = jest.spyOn(metrics, 'recordRadioLogResult');
-  const service = new FlightService(prisma as any, program as any, metrics);
+  const service = new FlightService(
+    prisma as any,
+    program as any,
+    metrics,
+    noRecorder(),
+  );
   jest.spyOn(console, 'log').mockImplementation(() => undefined);
   return {
     prisma,

@@ -42,6 +42,7 @@ import { McpController } from '../mcp.controller';
 import { McpRegistry } from '../mcp-registry.service';
 import { McpChangeFeed } from './mcp-change.feed';
 import { McpRadioReadTools } from './radio-read.tools';
+import { noRecorder } from '../../operator-change/operator-change-recorder.testing';
 
 const PROGRAM = 'radio1';
 const PALAZZO_URL = 'http://palazzo:3100';
@@ -529,7 +530,12 @@ async function build() {
     metrics,
     confidence,
   );
-  const flight = new FlightService(prisma, programs, radioMetrics);
+  const flight = new FlightService(
+    prisma,
+    programs,
+    radioMetrics,
+    noRecorder(),
+  );
   const asRun = new AsRunService(prisma);
   const songs = new SongsService(prisma);
   const status = {

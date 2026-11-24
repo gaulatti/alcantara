@@ -7,16 +7,29 @@ import type { FlightCue } from './flight.types';
 
 const START = 1_800_000_000_000;
 const NO_DURATIONS = new Map<number, number>();
-const tag = { useId: 'use-1', recipeId: 7, recipeRevision: 2, step: 'song', params: { songId: 42 } };
+const tag = {
+  useId: 'use-1',
+  recipeId: 7,
+  recipeRevision: 2,
+  step: 'song',
+  params: { songId: 42 },
+};
 
 describe('normalizeRecipeUse', () => {
   it('keeps a well-formed tag, with or without a label', () => {
     expect(normalizeRecipeUse(tag)).toEqual(tag);
-    expect(normalizeRecipeUse({ ...tag, params: { songId: 42, labelId: 'label-a' } })).toEqual({
+    expect(
+      normalizeRecipeUse({
+        ...tag,
+        params: { songId: 42, labelId: 'label-a' },
+      }),
+    ).toEqual({
       ...tag,
       params: { songId: 42, labelId: 'label-a' },
     });
-    expect(normalizeRecipeUse({ ...tag, params: { songId: 42, labelId: null } })).toEqual({
+    expect(
+      normalizeRecipeUse({ ...tag, params: { songId: 42, labelId: null } }),
+    ).toEqual({
       ...tag,
       params: { songId: 42, labelId: null },
     });
@@ -45,13 +58,20 @@ describe('normalizeRecipeUse', () => {
 
 describe('rundown items keep the tag', () => {
   it('keeps a tag on a cue through normalization', () => {
-    const [cue] = normalizeFlightItems([{ id: 'use-1.song', kind: 'playSong', songId: 42, recipeUse: tag }]);
+    const [cue] = normalizeFlightItems([
+      { id: 'use-1.song', kind: 'playSong', songId: 42, recipeUse: tag },
+    ]);
     expect(cue.recipeUse).toEqual(tag);
   });
 
   it('drops a malformed tag and keeps the cue', () => {
     const [cue] = normalizeFlightItems([
-      { id: 'use-1.song', kind: 'playSong', songId: 42, recipeUse: { ...tag, recipeId: 0 } },
+      {
+        id: 'use-1.song',
+        kind: 'playSong',
+        songId: 42,
+        recipeUse: { ...tag, recipeId: 0 },
+      },
     ]);
     expect(cue.id).toBe('use-1.song');
     expect(cue.kind).toBe('playSong');
@@ -62,8 +82,17 @@ describe('rundown items keep the tag', () => {
 describe('the resolver ignores the tag', () => {
   it('resolves a tagged cue exactly as the same cue without the tag', () => {
     const plain: FlightCue[] = [{ id: 'take', kind: 'scene', sceneId: 1 }];
-    const tagged: FlightCue[] = [{ id: 'take', kind: 'scene', sceneId: 1, recipeUse: tag }];
-    expect(resolve({ items: tagged, loop: false }, START, START + 1000, NO_DURATIONS)).toEqual(
+    const tagged: FlightCue[] = [
+      { id: 'take', kind: 'scene', sceneId: 1, recipeUse: tag },
+    ];
+    expect(
+      resolve(
+        { items: tagged, loop: false },
+        START,
+        START + 1000,
+        NO_DURATIONS,
+      ),
+    ).toEqual(
       resolve({ items: plain, loop: false }, START, START + 1000, NO_DURATIONS),
     );
   });

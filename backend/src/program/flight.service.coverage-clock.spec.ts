@@ -9,6 +9,7 @@ import { RadioMetricsService } from '../radio/radio-metrics.service';
 import { generateRadioLog, parseRadioLogRules } from './radio-log-generator';
 import { fillRadioRundown, parseFillerRules } from './radio-rundown-filler';
 import './flight.types';
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 
 jest.mock('./radio-log-generator');
 jest.mock('./radio-rundown-filler');
@@ -54,7 +55,12 @@ function harness() {
   };
   const metrics = new RadioMetricsService();
   const recorded = jest.spyOn(metrics, 'recordRadioLogResult');
-  const service = new FlightService(prisma as any, program as any, metrics);
+  const service = new FlightService(
+    prisma as any,
+    program as any,
+    metrics,
+    noRecorder(),
+  );
   return {
     prisma,
     program,

@@ -3,6 +3,7 @@ import { ProgramController } from './program.controller';
 import { ProgramService } from './program.service';
 import { ProgramRealtimeService } from './program.realtime.service';
 import { FlightService } from './flight.service';
+import { OperatorChangeModule } from '../operator-change/operator-change.module';
 import { PrismaService } from '../prisma.service';
 import { ProgramTemplateService } from './program-template.service';
 import { FlightMcpTools } from '../mcp/capabilities/flight';
@@ -20,7 +21,7 @@ import { ArtistLabelsService } from '../artist-labels/artist-labels.service';
 
 @Global()
 @Module({
-  imports: [ArtistLabelsModule],
+  imports: [ArtistLabelsModule, OperatorChangeModule],
   controllers: [ProgramController, RecipesController],
   providers: [
     ProgramService,

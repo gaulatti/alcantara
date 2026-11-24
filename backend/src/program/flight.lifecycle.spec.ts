@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { FlightService } from './flight.service';
 import { RadioMetricsService } from '../radio/radio-metrics.service';
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 
 function fixture() {
   const state: any = {
@@ -144,7 +145,7 @@ function fixture() {
     }),
   };
   const metrics = new RadioMetricsService();
-  const service = new FlightService(prisma, programs, metrics);
+  const service = new FlightService(prisma, programs, metrics, noRecorder());
   return {
     service,
     prisma,
@@ -1523,7 +1524,10 @@ describe('FlightService public lifecycle and clock boundary', () => {
     await f.service.updateFlightSequence('news', 7, {
       items: [
         taggedWait('use-1.wait', 500),
-        { ...taggedWait('use-1.tail', 500), recipeUse: { ...recipeTag, recipeId: 0 } },
+        {
+          ...taggedWait('use-1.tail', 500),
+          recipeUse: { ...recipeTag, recipeId: 0 },
+        },
       ],
     });
     const [listed] = await f.service.listFlightSequences(' news ');
@@ -1540,12 +1544,19 @@ describe('FlightService public lifecycle and clock boundary', () => {
       name: 'Recipe rundown',
       items: [taggedWait('use-1.wait', 1000), taggedWait('use-1.tail', 1000)],
     });
-    expect(created.items[0]).toEqual(expect.objectContaining({ recipeUse: recipeTag }));
+    expect(created.items[0]).toEqual(
+      expect.objectContaining({ recipeUse: recipeTag }),
+    );
 
-    f.sequence().items = [taggedWait('use-1.wait', 1000), taggedWait('use-1.tail', 1000)];
+    f.sequence().items = [
+      taggedWait('use-1.wait', 1000),
+      taggedWait('use-1.tail', 1000),
+    ];
     await f.service.start('news');
     await jest.advanceTimersByTimeAsync(0);
-    expect(f.sequence()).toEqual(expect.objectContaining({ isRunning: true, activeItemId: 'use-1.wait' }));
+    expect(f.sequence()).toEqual(
+      expect.objectContaining({ isRunning: true, activeItemId: 'use-1.wait' }),
+    );
 
     // The played cue is the same tagged cue; only the tail changes.
     await expect(
@@ -1558,7 +1569,10 @@ describe('FlightService public lifecycle and clock boundary', () => {
     await expect(
       f.service.updateFlightSequence('news', 7, {
         items: [
-          { ...taggedWait('use-1.wait', 1000), recipeUse: { ...recipeTag, step: 'other' } },
+          {
+            ...taggedWait('use-1.wait', 1000),
+            recipeUse: { ...recipeTag, step: 'other' },
+          },
           taggedWait('use-1.tail', 500),
         ],
       }),

@@ -654,7 +654,7 @@ Every W capability, and whether it changes what is on air or queued:
 | `instant_create_instant` | `backend/src/mcp/capabilities/instants.ts:138` | No | - | A new library row; nothing names it yet. |
 | `instant_update_instant` | `backend/src/mcp/capabilities/instants.ts:167` | Live output | No record to write (see below) | Declares `onAir` while it plays as a scene background, is named by a scene on air or staged, or is in the rotation of a program with bumpers on (instants.ts:197). |
 | `layout_create` | `backend/src/mcp/capabilities/layouts.ts:84` | No | - | A new library row. |
-| `layout_update` | `backend/src/mcp/capabilities/layouts.ts:109` | Live output | No record to write (see below) | Declares `onAir` while a scene of the layout is on air (layouts.ts:131). |
+| `layout_update` | `backend/src/mcp/capabilities/layouts.ts:109` | Live output | Recorded: an `OperatorChangeRecord` of who made the change, the changed field names and, for names, ids and flags, the value before and after (#236); free text, JSON, cues and template addresses are named, never valued | Declares `onAir` while a scene of the layout is on air (layouts.ts:131). |
 | `media_asset_create_background_audio` | `backend/src/mcp/capabilities/media-assets.ts:224` | No | - | A new library asset. |
 | `media_asset_replace_asset_labels` | `backend/src/mcp/capabilities/media-assets.ts:254` | No | - | Label membership of one asset; the spec declares no on-air effect. |
 | `media_set_artist_label` | `backend/src/mcp/capabilities/artist-labels.ts:42` | No | - | Attaches a media label to an artist; the artist bumper and the song recipe read it when they next build, nothing on air changes. |
@@ -670,23 +670,23 @@ Every W capability, and whether it changes what is on air or queued:
 | `preference_save` | `backend/src/mcp/capabilities/preferences.ts:195` | No | - | The caller's own console profile. |
 | `program_inspect_template` | `backend/src/mcp/capabilities/program.ts:201` | No | - | Fetches and reports a manifest; nothing is stored. |
 | `program_create_program` | `backend/src/mcp/capabilities/program.ts:213` | No | - | Its plan: the program starts empty and off air. |
-| `program_rename_program` | `backend/src/mcp/capabilities/program.ts:244` | Live output | No record to write (see below) | Declares `onAir` while the program has a scene, fade, song, queue, flight sequence or scene instant live (program.ts:269); players lose the old id. |
+| `program_rename_program` | `backend/src/mcp/capabilities/program.ts:244` | Live output | Recorded: an `OperatorChangeRecord` of who made the change, the changed field names and, for names, ids and flags, the value before and after (#236); free text, JSON, cues and template addresses are named, never valued | Declares `onAir` while the program has a scene, fade, song, queue, flight sequence or scene instant live (program.ts:269); players lose the old id. |
 | `program_remove_program_song_leaves_by_id` | `alcantara:program:operate` | A | Removes exactly the playlist leaves with these ids (1 to 200, nested blocks included) against the live rotation cursor; the leaf on air is refused unless keep_rotation is set; dry_run lists what would go. |
 | `program_remove_queued_program_song_by_id` | `backend/src/mcp/capabilities/program.ts:466` | Queue | Yes, through the executor's attribution wrap | Removes a Play Next entry: `ProgramService.removeQueuedProgramSong` -> `SongExecutionEngine.removeQueuedSong` (song-execution.engine.ts:682) reads the actor and emits `song_queue_update` with it. |
 | `program_add_scene_to_program` | `backend/src/mcp/capabilities/program.ts:498` | No | - | Assignment only; its plan: nothing goes on air. |
 | `program_add_media_group_to_program` | `backend/src/mcp/capabilities/program.ts:513` | No | - | Assignment only; takes effect when a scene or page reads it. |
 | `program_add_stinger_to_program` | `backend/src/mcp/capabilities/program.ts:530` | No | - | Assignment only; played by a later scene change. |
 | `program_create_flight_sequence_by_id` | `backend/src/mcp/capabilities/flight.ts:270` | No | - | A new inactive sequence; its plan: it does not air until activated and started. |
-| `program_update_flight_sequence_by_id` | `backend/src/mcp/capabilities/flight.ts:293` | Live output | No record to write (see below) | Declares `onAir` while the sequence runs (flight.ts:322): later cues of a running rundown change at once. Cues fire by timer, which reads no actor. |
+| `program_update_flight_sequence_by_id` | `backend/src/mcp/capabilities/flight.ts:293` | Live output | Recorded: an `OperatorChangeRecord` of who made the change, the changed field names and, for names, ids and flags, the value before and after (#236); free text, JSON, cues and template addresses are named, never valued | Declares `onAir` while the sequence runs (flight.ts:322): later cues of a running rundown change at once. Cues fire by timer, which reads no actor. |
 | `program_generate_tagged_log` | `backend/src/mcp/capabilities/flight.ts:333` | No | - | Returns a proposal; nothing is saved or aired. |
 | `program_fill_rundown` | `backend/src/mcp/capabilities/flight.ts:353` | No | - | Returns a proposal; nothing is saved or aired. |
-| `program_publish_flight_sequence_by_id` | `backend/src/mcp/capabilities/flight.ts:375` | Live output | No record to write (see below) | Schedules a log to start itself at its time; that start is automatic (timer) and stays null by design. |
+| `program_publish_flight_sequence_by_id` | `backend/src/mcp/capabilities/flight.ts:375` | Live output | Recorded: an `OperatorChangeRecord` of who made the change, the changed field names and, for names, ids and flags, the value before and after (#236); free text, JSON, cues and template addresses are named, never valued | Schedules a log to start itself at its time; that start is automatic (timer) and stays null by design. |
 | `radio_similarity_upload` | `backend/src/mcp/capabilities/similarity.ts:87` | No | - | Embeddings for song similarity; they inform later automatic picks only. |
 | `radio_update_settings` | `backend/src/mcp/capabilities/radio.ts:204` | Live output | Recorded: an `OperatorChangeRecord` (see "Operator change records" below) | Declares `onAir` for the live settings (radio.ts:225: Palazzo address, bumpers, segue, similarity, enabled). |
 | `radio_prepare_recovery` | `backend/src/mcp/capabilities/radio.ts:266` | No | - | A prepared version; a running session keeps its own. |
 | `radio_replace_now_playing_consumers` | `backend/src/mcp/capabilities/radio.ts:290` | No | - | Who is told what plays; not what plays. |
 | `scene_create` | `backend/src/mcp/capabilities/scenes.ts:112` | No | - | A new library scene. |
-| `scene_update` | `backend/src/mcp/capabilities/scenes.ts:147` | Live output | No record to write (see below) | Declares `onAir` while the scene is on air (scenes.ts:177): viewers see the change at once. |
+| `scene_update` | `backend/src/mcp/capabilities/scenes.ts:147` | Live output | Recorded: an `OperatorChangeRecord` of who made the change, the changed field names and, for names, ids and flags, the value before and after (#236); free text, JSON, cues and template addresses are named, never valued | Declares `onAir` while the scene is on air (scenes.ts:177): viewers see the change at once. |
 | `song_create` | `backend/src/mcp/capabilities/songs.ts:155` | No | - | A new catalog song. |
 | `song_update` | `backend/src/mcp/capabilities/songs.ts:173` | Live output | No record to write (see below) | Declares `onAir` while the song is playing (songs.ts:199); a queued song shows the change when it plays. |
 | `stinger_create_stinger` | `backend/src/mcp/capabilities/stingers.ts:84` | No | - | A new stinger. |
@@ -715,7 +715,25 @@ no URL, key or token reaches the table.
 The record is written after the settings write and never blocks it: if the record cannot be stored, the change
 stands, a warning is logged and `alcantara_radio_operator_change_records_total{result="failed"}` is counted
 (`recorded` counts the stored ones). Read it with `SELECT * FROM "OperatorChangeRecord" WHERE "programId" = ... ORDER BY "createdAt" DESC`.
-The other tier-W capabilities that declare `onAir` still write no record (#236 slice 2).
+Scenes, layouts, rundowns and programs record the same way (next section); the library capabilities (instants, stingers, songs, media) are slice 3 of #236 and still write no record.
+
+## Operator change records for scenes, layouts, rundowns and programs (#236)
+
+`scene_update`, `layout_update`, `program_update_flight_sequence_by_id`, `program_publish_flight_sequence_by_id` and
+`program_rename_program`, and the console routes that make the same changes, write one `OperatorChangeRecord` after
+the change: the actor principal, `via` (`mcp` or `console`), the MCP client, the capability (or the route name:
+`scene.update`, `layout.update`, `program.update-flight-sequence`, `program.publish-flight-sequence`,
+`program.rename`) and a `summary`. A scene or layout belongs to no single program, so its record has no `programId`;
+a rundown change carries its program and a rename carries the new program id. The summary holds
+`target: { kind, id }` (`scene`, `layout`, `flight_sequence`, `program`), `changed` (the fields given) and
+`before`/`after` for the fields that may carry a value (names, ids, flags, schedule, publication time and revision);
+chyron text, scene metadata, layout settings, cues and template addresses are named, never valued, so no URL, key or
+free text reaches the table. An automatic change (no actor) writes nothing.
+
+The record never blocks the change: if it cannot be stored, the change stands, a warning is logged and
+`alcantara_operator_change_records_total{target="scene|layout|flight_sequence|program",result="recorded|failed"}` is
+counted. The `programId` column must be nullable for scene and layout records (a separate migration); until it is, those
+two records fail to store and are counted as `failed`.
 
 ## Every registered capability by name (#220)
 

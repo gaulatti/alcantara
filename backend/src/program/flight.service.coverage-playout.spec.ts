@@ -3,6 +3,7 @@ import { BadRequestException } from '@nestjs/common';
 import { FlightService } from './flight.service';
 import { ProgramService } from './program.service';
 import { RadioMetricsService } from '../radio/radio-metrics.service';
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 
 const MAX_TIMER = 2_147_483_647;
 
@@ -39,7 +40,12 @@ function harness(stateExtra: Record<string, unknown> = {}) {
   };
   const metrics = new RadioMetricsService();
   const recorded = jest.spyOn(metrics, 'recordRadioLogResult');
-  const service = new FlightService(prisma as any, program as any, metrics);
+  const service = new FlightService(
+    prisma as any,
+    program as any,
+    metrics,
+    noRecorder(),
+  );
   jest.spyOn(console, 'log').mockImplementation(() => undefined);
   const errors = jest
     .spyOn(console, 'error')
@@ -1198,16 +1204,27 @@ describe('FlightService module load without injectable classes', () => {
       jest.doMock('../radio/radio-metrics.service', () => ({
         RadioMetricsService: undefined,
       }));
+      jest.doMock('../operator-change/operator-change-recorder', () => ({
+        OperatorChangeRecorder: undefined,
+      }));
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const loaded = require('./flight.service') as {
         FlightService: new (...args: never[]) => unknown;
       };
-      expect(
-        Reflect.getMetadata('design:paramtypes', loaded.FlightService),
-      ).toEqual([Object, Object, Object]);
+      const types = Reflect.getMetadata(
+        'design:paramtypes',
+        loaded.FlightService,
+      ) as Array<{ name: string }>;
+      expect(types.map((type) => type.name)).toEqual([
+        'Object',
+        'Object',
+        'Object',
+        'Object',
+      ]);
     });
     jest.dontMock('../prisma.service');
     jest.dontMock('./program.service');
     jest.dontMock('../radio/radio-metrics.service');
+    jest.dontMock('../operator-change/operator-change-recorder');
   });
 });

@@ -141,7 +141,8 @@ model BroadcastDestinationKeyChange {
 model OperatorChangeRecord {
   id         String   @id @default(uuid())
   teamId     Int?
-  programId  String
+  /// The program the change was made in; null for a scene or layout, which belong to no single program.
+  programId  String?
   principal  String?
   via        String
   client     String?

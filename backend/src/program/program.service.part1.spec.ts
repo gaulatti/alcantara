@@ -47,7 +47,9 @@ describe('ProgramService part 1 (settings, versions, state lookup)', () => {
         create: jest.fn().mockResolvedValue({}),
       },
       program: { upsert: jest.fn().mockResolvedValue({}) },
-      $transaction: jest.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+      $transaction: jest.fn(async (operations: Promise<unknown>[]) =>
+        Promise.all(operations),
+      ),
       broadcastSettings: { upsert: jest.fn() },
     };
     const engine = { setBroadcastHandler: jest.fn(), trackEvents$: EMPTY };
@@ -1038,20 +1040,31 @@ describe('ProgramService constructor metadata with unresolved imports', () => {
       jest.doMock('../radio/song-execution.engine', () => ({}));
       jest.doMock('../observability/managed-metrics.service', () => ({}));
       jest.doMock('../radio/radio-output-confidence.service', () => ({}));
+      jest.doMock('../operator-change/operator-change-recorder', () => ({}));
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const isolated = require('./program.service') as {
           ProgramService: new (...args: never[]) => unknown;
         };
-        expect(
-          Reflect.getMetadata('design:paramtypes', isolated.ProgramService),
-        ).toEqual([Object, Object, Object, Object, Object]);
+        const types = Reflect.getMetadata(
+          'design:paramtypes',
+          isolated.ProgramService,
+        ) as Array<{ name: string }>;
+        expect(types.map((type) => type.name)).toEqual([
+          'Object',
+          'Object',
+          'Object',
+          'Object',
+          'Object',
+          'Object',
+        ]);
       } finally {
         jest.dontMock('../prisma.service');
         jest.dontMock('../radio/radio.service');
         jest.dontMock('../radio/song-execution.engine');
         jest.dontMock('../observability/managed-metrics.service');
         jest.dontMock('../radio/radio-output-confidence.service');
+        jest.dontMock('../operator-change/operator-change-recorder');
       }
     });
   });

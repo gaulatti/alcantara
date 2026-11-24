@@ -1,8 +1,9 @@
 import { ScenesService } from './scenes.service';
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 
 describe('ScenesService neutral bracket entry points', () => {
   it('hands each call, unchanged, to the bracket method of the same verb', async () => {
-    const service = new ScenesService({} as never, {} as never);
+    const service = new ScenesService({} as never, {} as never, noRecorder());
     const draw = jest
       .spyOn(service, 'drawModoItalianoBracket')
       .mockResolvedValue({ drawId: 1 } as never);

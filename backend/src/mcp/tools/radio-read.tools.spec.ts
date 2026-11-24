@@ -25,6 +25,7 @@ import { McpRegistry } from '../mcp-registry.service';
 import { MCP_READ_LIMITS, MCP_WAIT_MAX_SECONDS } from '../mcp.constants';
 import { McpChangeFeed } from './mcp-change.feed';
 import { McpRadioReadTools } from './radio-read.tools';
+import { noRecorder } from '../../operator-change/operator-change-recorder.testing';
 
 const PROGRAM = 'radio1';
 const NOW = new Date('2026-11-17T12:00:00.000Z');
@@ -354,7 +355,12 @@ async function harness() {
     {} as never,
     radioMetrics,
   );
-  const flight = new FlightService(prisma, programs, radioMetrics);
+  const flight = new FlightService(
+    prisma,
+    programs,
+    radioMetrics,
+    noRecorder(),
+  );
   const asRun = new AsRunService(prisma);
   const songs = new SongsService(prisma);
   const statuses = new Map<string, unknown>([

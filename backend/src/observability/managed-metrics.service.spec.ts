@@ -26,6 +26,9 @@ describe('ManagedMetricsService program SSE metrics', () => {
     metrics.recordArtistLabelWrite('cleared');
     metrics.recordArtistLabelWrite('rejected');
     metrics.recordArtistLabelWrite('rob');
+    metrics.recordOperatorChangeRecord('scene', 'recorded');
+    metrics.recordOperatorChangeRecord('flight_sequence', 'failed');
+    metrics.recordOperatorChangeRecord('private-target-name', 'private-result');
     metrics.recordRecordingCommand('start', 'accepted');
     metrics.recordRecordingCommand('private-action', 'private-result');
     metrics.recordRecordingStatus('finalizing', 'success');
@@ -71,6 +74,14 @@ describe('ManagedMetricsService program SSE metrics', () => {
         `alcantara_artist_label_writes_total{result="${result}"} 1`,
       );
     expect(output).not.toContain('rob');
+    // gaulatti/alcantara#236: bounded target and result, never a name or an id.
+    for (const line of [
+      'alcantara_operator_change_records_total{target="scene",result="recorded"} 1',
+      'alcantara_operator_change_records_total{target="flight_sequence",result="failed"} 1',
+      'alcantara_operator_change_records_total{target="unknown",result="unknown"} 1',
+    ])
+      expect(output).toContain(line);
+    expect(output).not.toContain('private-target-name');
     expect(output).toContain(
       'alcantara_recording_commands_total{action="start",result="accepted"} 1',
     );

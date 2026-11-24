@@ -17,6 +17,7 @@ import { RecipeMcpTools } from '../mcp/capabilities/recipes';
 import { RecipesController } from './recipes.controller';
 import { RecipesService } from './recipes.service';
 import { ARTIST_LABEL_LOOKUP } from './artist-label-lookup';
+import { OperatorChangeModule } from '../operator-change/operator-change.module';
 import { ArtistLabelsModule } from '../artist-labels/artist-labels.module';
 import { ArtistLabelsService } from '../artist-labels/artist-labels.service';
 
@@ -168,6 +169,7 @@ describe('ProgramModule wiring', () => {
     ]);
     expect(Reflect.getMetadata('imports', ProgramModule)).toEqual([
       ArtistLabelsModule,
+      OperatorChangeModule,
     ]);
   });
 });
