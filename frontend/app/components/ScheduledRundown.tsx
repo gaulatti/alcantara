@@ -203,6 +203,7 @@ export default function ScheduledRundown({
   };
 
   const save = async (nextItems = items): Promise<FlightSequence> => {
+    /* v8 ignore next -- save is reached only from the Save button (enabled only while dirty, and edits need a selected log) and from the check and publish paths, which run only with a selected log; this guard is defensive. */
     if (!selected) throw new Error("Select a radio log");
     setBusy(true);
     setError(null);
@@ -227,6 +228,7 @@ export default function ScheduledRundown({
   };
 
   const check = async () => {
+    /* v8 ignore next -- check() is reached only through the Check button, which is disabled while no log is selected (line 481); this guard is defensive. */
     if (!selected) return;
     setBusy(true);
     setError(null);
@@ -247,6 +249,7 @@ export default function ScheduledRundown({
   };
 
   const publish = async (checked?: FlightSequence) => {
+    /* v8 ignore next -- publish() is reached only when canPublish holds (it requires a selected log), or from the overrun dialog that canPublish opened; this guard is defensive. */
     if (!selected) return;
     setBusy(true);
     setError(null);
@@ -275,6 +278,7 @@ export default function ScheduledRundown({
 
   // ⌘↵: save, Check on that revision, and publish only when Check passes.
   const checkAndPublish = async () => {
+    /* v8 ignore next -- checkAndPublish() is reached only from the ⌘↵ shortcut and the check button, both gated on canPublish, which requires a selected log; this guard is defensive. */
     if (!selected) return;
     setBusy(true);
     setError(null);
