@@ -1225,3 +1225,30 @@ it("pages to the next page of a library that spans several pages", async () => {
     expect(authFetch).toHaveBeenCalledWith(expect.stringContaining("page=2"), undefined),
   );
 });
+
+// gaulatti/alcantara#404 (media route): the audio library pages through its results, and a search that finds nothing in
+// a visual library says the filters are the reason.
+it("pages to the next page of an audio library that spans several pages", async () => {
+  assets = [asset("bed", { mediaType: "AUDIO", capabilities: ["BACKGROUND"] })];
+  meta2 = { total: 120, totalPages: 3 };
+  open("/media?type=AUDIO");
+  const pager = await screen.findByRole("navigation", { name: "Pagination" });
+  fireEvent.click(within(pager).getByTitle("Next page"));
+  await waitFor(() =>
+    expect(authFetch).toHaveBeenCalledWith(
+      "/media-assets?page=2&limit=50&mediaType=AUDIO",
+      undefined,
+    ),
+  );
+});
+
+it("tells a visual library search that found nothing to clear its filters", async () => {
+  open("/media");
+  expect(await screen.findByText("No image media found")).toBeInTheDocument();
+  fireEvent.change(screen.getByPlaceholderText("Search image media…"), {
+    target: { value: "nothing" },
+  });
+  expect(
+    await screen.findByText("Clear the filters and try again."),
+  ).toBeInTheDocument();
+});

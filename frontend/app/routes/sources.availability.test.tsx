@@ -7,11 +7,12 @@ import { authFetch } from '../services/api';
 import type { ExternalSource } from '../services/externalSources';
 
 const connectMock = vi.hoisted(() => vi.fn());
+const disconnectMock = vi.hoisted(() => vi.fn());
 
 vi.mock('livekit-client', () => ({
   Room: class {
     connect = connectMock;
-    disconnect = vi.fn();
+    disconnect = disconnectMock;
     on = vi.fn();
     off = vi.fn();
     remoteParticipants = new Map();
@@ -135,5 +136,53 @@ describe('SourcesRoute preview availability', () => {
     await renderPage();
     await waitFor(() => expect(screen.getByTestId('preview-availability')).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+  it('deselects a previewed source when its preview button is pressed again', async () => {
+    stub(json({ livekit: { enabled: true } }));
+    const button = await renderPage();
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    const stop = await screen.findByRole('button', { name: 'Stop previewing Camera One' });
+    expect(stop).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(stop);
+    expect(await screen.findByRole('button', { name: 'Preview Camera One' })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    );
+  });
+
+  it('disconnects a room whose connect finishes after the page was left', async () => {
+    stub(json({ livekit: { enabled: true } }));
+    let finish: () => void = () => {};
+    connectMock.mockReturnValueOnce(new Promise<void>((resolve) => (finish = resolve)));
+    const { unmount } = render(<SourcesRoute initialSources={[source]} />);
+    await waitFor(() => expect(connectMock).toHaveBeenCalled());
+    unmount();
+    // Leaving the page disconnects the room that was being created...
+    expect(disconnectMock).toHaveBeenCalledTimes(1);
+    finish();
+    // ...and the late connect disconnects it again instead of publishing a stale room.
+    await waitFor(() => expect(disconnectMock).toHaveBeenCalledTimes(2));
+  });
+
+  it('refreshes the list every ten seconds and stops when the page is left', async () => {
+    stub(json({ livekit: { enabled: true } }));
+    vi.mocked(authFetch).mockImplementation(async (path: string) =>
+      path === '/external-sources' ? json([source]) : json({ serverUrl: 'wss://x', token: 't' })
+    );
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    try {
+      const { unmount } = render(<SourcesRoute initialSources={[source]} />);
+      const listCalls = () =>
+        vi.mocked(authFetch).mock.calls.filter(([path]) => path === '/external-sources').length;
+      expect(listCalls()).toBe(0);
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(listCalls()).toBe(1);
+      unmount();
+      await vi.advanceTimersByTimeAsync(20000);
+      expect(listCalls()).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

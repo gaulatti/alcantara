@@ -885,3 +885,43 @@ it("waits for both preflight checks before joining", async () => {
   fireEvent.click(screen.getByLabelText(/I am wearing headphones/));
   expect(joinButton()).toBeDisabled();
 });
+
+// gaulatti/alcantara#404 (guest route): a single-feed return (preview or alana) is shown when it arrives and released
+// when it leaves.
+it("shows a single-feed return when it arrives and waits again when it leaves", async () => {
+  joinAnswer = () =>
+    Response.json({
+      serverUrl: "wss://livekit.example",
+      token: "fictional-guest-token",
+      sessionToken: "session-1",
+      displayName: "Ada",
+      programId: "main",
+      participantIdentity: "guest-ada",
+      returnVideo: "preview",
+      returnAudioBus: "aux-2",
+    });
+  openPage();
+  await preflight();
+  fireEvent.click(joinButton());
+  await screen.findByText("Ada · main · preview video · aux-2 mix-minus");
+  const attached: string[] = [];
+  const track = {
+    kind: "video",
+    attach: () => attached.push("attach"),
+    detach: () => attached.push("detach"),
+  };
+  const publication = {
+    kind: "video",
+    trackName: "",
+    setSubscribed: async () => {},
+  };
+  const preview = { identity: "preview-feed-main" };
+  emit("trackSubscribed", track, publication, preview);
+  expect(attached).toEqual(["attach"]);
+  expect(
+    screen.queryByText("Waiting for selected return feed"),
+  ).not.toBeInTheDocument();
+  emit("trackUnsubscribed", track, publication, preview);
+  expect(attached).toEqual(["attach", "detach"]);
+  expect(screen.getByText("Waiting for selected return feed")).toBeVisible();
+});

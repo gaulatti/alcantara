@@ -537,6 +537,26 @@ describe("the level meter attached to an instant", () => {
     ).toBe(true);
   });
 
+  it("stops every playing instant and gives each its sound back, whatever the meter nodes do", async () => {
+    await attach();
+    playInstant();
+    playInstant({ name: "Second" });
+    const context = FakeAudioContext.instances[0];
+    expect(context.nodes).toHaveLength(4);
+    context.nodes.forEach((node) => {
+      node.throwOnDisconnect = true;
+    });
+    const [first, second] = FakeAudio.instances;
+    expect(first.muted).toBe(true);
+    expect(second.muted).toBe(true);
+    emit({ type: "instant_stop_all", programId: "main" });
+    for (const audio of [first, second]) {
+      expect(audio.paused).toBe(true);
+      expect(audio.muted).toBe(false);
+    }
+    expect(context.nodes.every((node) => node.disconnects === 1)).toBe(true);
+  });
+
   it("plays unmetered when the browser has no audio context", async () => {
     await attach();
     Reflect.deleteProperty(window, "AudioContext");
