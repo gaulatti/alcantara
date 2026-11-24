@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import Connect from './connect';
+import Connect, { meta } from './connect';
 
 const URL_ = 'http://localhost:3000/mcp';
 
@@ -102,5 +102,14 @@ describe('Connect', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined)));
     render(<Connect />);
     expect(screen.getByText(/Loading the capability list/)).toBeTruthy();
+  });
+});
+
+describe('Connect route meta', () => {
+  it('titles the page for the browser and describes the five clients', () => {
+    expect(meta({} as never)).toEqual([
+      { title: 'Connect an AI client - Alcántara' },
+      { name: 'description', content: 'Add the Alcántara MCP server to ChatGPT, Claude, Claude Code, Codex or Cursor' },
+    ]);
   });
 });
