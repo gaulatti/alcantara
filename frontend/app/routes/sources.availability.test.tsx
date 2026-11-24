@@ -185,4 +185,17 @@ describe('SourcesRoute preview availability', () => {
       vi.useRealTimers();
     }
   });
+  // gaulatti/alcantara#527 (sources route, untriaged gaps): leaving the page while the operator token is still on its way
+  // must not open a room for a page that has gone.
+  it('does not open a preview room when the page is left while its token is pending', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ livekit: { enabled: true } })));
+    let release!: (value: Response) => void;
+    vi.mocked(authFetch).mockImplementation(() => new Promise<Response>((resolve) => (release = resolve)));
+    const view = render(<SourcesRoute initialSources={[source]} />);
+    await waitFor(() => expect(authFetch).toHaveBeenCalled());
+    view.unmount();
+    release(json({ serverUrl: 'wss://x', token: 't' }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(connectMock).not.toHaveBeenCalled();
+  });
 });
