@@ -90,6 +90,18 @@ describe("useSSE", () => {
     expect(FakeEventSource.instances).toHaveLength(1);
   });
 
+  it("reports a stream that cannot be created to its callers before retrying", () => {
+    FakeEventSource.failNext = true;
+    const onConnectionChange = vi.fn();
+    const onConnectionStateChange = vi.fn();
+    const { result } = renderHook(() => useSSE({ url: "/e", onConnectionChange, onConnectionStateChange }));
+    expect(result.current).toEqual({ isConnected: false, error: expect.any(Error) });
+    expect(onConnectionChange).toHaveBeenLastCalledWith(false);
+    expect(onConnectionStateChange).toHaveBeenLastCalledWith("disconnected");
+    act(() => void vi.advanceTimersByTime(3000));
+    expect(FakeEventSource.instances).toHaveLength(1);
+  });
+
   it("stops everything when it unmounts, ignoring late events", () => {
     const onConnectionChange = vi.fn();
     const { unmount } = renderHook(() => useSSE({ url: "/e", onConnectionChange }));
