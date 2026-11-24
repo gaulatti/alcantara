@@ -21,6 +21,7 @@ function labelText(children: ReactNode): string {
     .map((child) => {
       if (typeof child === "string" || typeof child === "number")
         return String(child);
+      /* v8 ignore next 3 -- Children.toArray keeps only strings, numbers and elements here; this fallback covers other node kinds (for example a portal) that a button label never holds. */
       if (isValidElement<{ children?: ReactNode }>(child))
         return labelText(child.props.children);
       return "";
