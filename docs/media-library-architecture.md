@@ -199,7 +199,10 @@ or `bounded`. Continuous audio gets no cue points.
 `song_request_reanalysis`) takes 1 to 25 song ids and makes their finished
 analyses due now. The job takes them one at a time under the duty cycle above; a
 song keeps its current cue points until its new result replaces them, and while
-its analysis runs it is `pending` (it plays without cue points for those seconds).
+its analysis runs it is `pending` (it plays without cue points for those seconds),
+so a song that is on air is refused: `409 on_air` (MCP `on_air`, listed per song in
+the dry run) for a song a program is playing or has announced to Palazzo as the next
+song, checked again when the songs are queued. None of the batch is queued then.
 Nothing re-analyses the catalogue by itself: a new rule is rolled out in staged,
 paced batches, and `ruleVersion` says which rule each song has. Reverting is
 re-running with the old constants. A stored success always
