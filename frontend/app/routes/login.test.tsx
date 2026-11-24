@@ -68,6 +68,27 @@ describe('Login', () => {
     expect(signInWithRedirect).not.toHaveBeenCalled();
     listeners[0]({ signedIn: false, error: 'The sign-in return did not match' });
     expect(await screen.findByText('Sign-in could not begin. Please retry or contact your administrator.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /sign in with google/i })).toBeEnabled();
+    fireEvent.submit(screen.getByRole('button', { name: /sign in with google/i }).closest('form')!);
+    await waitFor(() => expect(auth.signIn).toHaveBeenCalledTimes(2));
+  });
+
+  it('shows the sign-in failure when the desktop app refuses to open the browser', async () => {
+    const auth = {
+      currentSession: vi.fn(),
+      signIn: vi.fn(async () => {
+        throw new Error('no browser');
+      }),
+      signOut: vi.fn(),
+      onChange: vi.fn(() => vi.fn()),
+    };
+    desktop.host = { auth };
+    renderLogin('ready');
+    fireEvent.submit(screen.getByRole('button', { name: /sign in with google/i }).closest('form')!);
+    expect(await screen.findByText('Sign-in could not begin. Please retry or contact your administrator.')).toBeInTheDocument();
+    expect(auth.signIn).toHaveBeenCalledTimes(1);
+    expect(signInWithRedirect).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /sign in with google/i })).toBeEnabled();
   });
 
   it.each([
