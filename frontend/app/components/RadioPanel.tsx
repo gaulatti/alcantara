@@ -394,6 +394,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     }
   };
   const editLog = async (items: FlightSequence["items"]) => {
+    /* v8 ignore next -- every caller (cue controls and the add-song control) is rendered only when activeLog is set, so the closure always holds a log; defensive. */
     if (!activeLog) return;
     setLogBusy(true);
     setQueueError(null);
@@ -415,6 +416,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     }
   };
   const moveCue = (index: number, target: number) => {
+    /* v8 ignore next -- moveCue is reached only from the cue controls, rendered inside the activeLog branch, so the closure always holds a log; this guard is defensive. */
     if (!activeLog) return;
     const items = [...activeLog.items];
     const [cue] = items.splice(index, 1);

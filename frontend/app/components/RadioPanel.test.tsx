@@ -13,7 +13,7 @@ import type { ComponentProps } from "react";
 import { readFileSync } from "node:fs";
 import { RadioPanel } from "./RadioPanel";
 import { RadioMonitorProvider } from "./RadioMonitor";
-import { faderToDb } from "../utils/audioTaper";
+import { dbToFader, faderToDb } from "../utils/audioTaper";
 import * as flight from "../services/flight";
 vi.mock("../services/flight", () => ({
   fetchFlightSequences: vi.fn(),
@@ -1577,4 +1577,22 @@ it("starts and stops the shared listener monitor from the desk's M key", async (
   await waitFor(() => expect(desk()).toHaveAttribute("aria-pressed", "false"));
   expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
   expect(screen.queryByRole("button", { name: "Stop listening" })).not.toBeInTheDocument();
+});
+
+// gaulatti/alcantara#527 (RadioPanel, untriaged gaps): bad inputs the desk can receive. A silent fader still moves
+// one decibel from silence; a rundown can be advanced without a take callback.
+it("moves a silent fader one decibel up from silence with the arrow keys", () => {
+  const p = props();
+  p.mixer = { ...p.mixer, instants: { volume: 0, peak: 0 } };
+  mount(p);
+  fireEvent.keyDown(screen.getByRole("slider", { name: "Cartwall level" }), { key: "ArrowUp" });
+  expect(p.onInstantVolumeChange).toHaveBeenCalledWith(dbToFader(-79));
+});
+
+it("advances the rundown without a take callback supplied", async () => {
+  const p = props();
+  delete (p as { onTakeSelection?: unknown }).onTakeSelection;
+  mount(p);
+  fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
+  await waitFor(() => expect(flight.goFlight).toHaveBeenCalledWith("radio-demo"));
 });
