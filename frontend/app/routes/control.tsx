@@ -606,9 +606,11 @@ export default function Control() {
   );
 
   useEffect(() => {
+    /* v8 ignore start -- effects do not run during server rendering, so this guard only exists for an environment where an effect runs with no window */
     if (typeof window === "undefined") {
       return;
     }
+    /* v8 ignore stop */
     if (!canUseProgramRealtimeFallback) {
       programRealtimeSocketRef.current?.close();
       programRealtimeSocketRef.current = null;
@@ -620,9 +622,11 @@ export default function Control() {
     let reconnectTimer: number | null = null;
 
     const connect = async () => {
+      /* v8 ignore start -- connect is called synchronously by the effect, and the cleanup clears the reconnect timer, so disposed is false on entry */
       if (disposed) {
         return;
       }
+      /* v8 ignore stop */
 
       let socket: WebSocket;
       try {
@@ -3567,10 +3571,12 @@ export default function Control() {
         onChange={(nextSequence) => {
           void saveProgramAudioBusSongSequence(nextSequence);
         }}
+        /* v8 ignore start -- the sheet renders its editor in catalog view, where the take-on-air buttons are not rendered, so this callback cannot be invoked from the sheet */
         onTakeSelection={async (nextSequence) => {
           /* v8 ignore next -- the sheet's editor renders in catalog view, where its take-on-air buttons are not rendered (the queue block is hidden), so this callback cannot be invoked from the sheet */
           await takeProgramSongSelection(nextSequence);
         }}
+        /* v8 ignore stop */
       />
     </div>
   );
