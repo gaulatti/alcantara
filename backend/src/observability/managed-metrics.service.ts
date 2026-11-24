@@ -184,6 +184,14 @@ const JOBS = new Set([
 const JOB_RESULTS = new Set(['success', 'failure', 'skipped', 'unknown']);
 const MEDIA_LABEL_ASSIGNMENT_RESULTS = new Set(['success', 'failure']);
 const ARTIST_LABEL_WRITE_RESULTS = ['set', 'cleared', 'rejected'] as const;
+/** gaulatti/alcantara#236: what an operator change record is about, and whether it was stored. */
+const OPERATOR_CHANGE_TARGETS = new Set([
+  'scene',
+  'layout',
+  'flight_sequence',
+  'program',
+]);
+const OPERATOR_CHANGE_RESULTS = new Set(['recorded', 'failed']);
 /** gaulatti/alcantara#424: a recipe use previewed or built (`issues`: built, with something to fix). */
 const RECIPE_EXPANSION_RESULTS = new Set(['ok', 'issues', 'rejected']);
 /** gaulatti/alcantara#424: a use rebuilt after its recipe changed, left on air, or lost to a concurrent edit. */
@@ -224,10 +232,16 @@ const SOURCE_RESULTS = new Set(['success', 'rejected', 'not-found', 'failure']);
 const PROGRAM_SSE_SNAPSHOT_RESULTS = new Set(['success', 'failure']);
 /** How a confirmed playing track's cover lookup ended (gaulatti/alcantara#179). */
 export type PlayingTrackCoverLookupResult =
-  'included' | 'absent' | 'rejected' | 'error';
+  | 'included'
+  | 'absent'
+  | 'rejected'
+  | 'error';
 /** How a filler version's preparation ended (gaulatti/alcantara#126). */
 export type FillerPreparationResult =
-  'ready' | 'failed' | 'unavailable' | 'profile-unavailable';
+  | 'ready'
+  | 'failed'
+  | 'unavailable'
+  | 'profile-unavailable';
 const FILLER_LEGS = ['television', 'radio'] as const;
 const FILLER_PREPARATION_RESULTS: readonly FillerPreparationResult[] = [
   'ready',
@@ -237,7 +251,10 @@ const FILLER_PREPARATION_RESULTS: readonly FillerPreparationResult[] = [
 ];
 /** What a television Start did with the program filler (gaulatti/alcantara#126). */
 export type FillerStartBindingResult =
-  'bound' | 'mismatch' | 'not-configured' | 'legacy-executor';
+  | 'bound'
+  | 'mismatch'
+  | 'not-configured'
+  | 'legacy-executor';
 /**
  * A template manifest member Alcantara does not know and leaves out instead of
  * refusing the template (gaulatti/ariston#217). The label is the member kind,
@@ -312,6 +329,7 @@ export class ManagedMetricsService {
   private readonly jobs: Counter<string>;
   private readonly mediaLabelAssignments: Counter<string>;
   private readonly artistLabelWrites: Counter<string>;
+  private readonly operatorChangeRecords: Counter<string>;
   private readonly recipeExpansions: Counter<string>;
   private readonly recipeRebuilds: Counter<string>;
   private readonly recipeDeletes: Counter<string>;
@@ -411,6 +429,12 @@ export class ManagedMetricsService {
     });
     for (const result of ARTIST_LABEL_WRITE_RESULTS)
       this.artistLabelWrites.labels(result).inc(0);
+    this.operatorChangeRecords = new Counter({
+      name: 'alcantara_operator_change_records_total',
+      help: 'Operator change records of on-air changes by bounded target and result; a failed record never fails the change.',
+      labelNames: ['target', 'result'],
+      registers: [this.registry],
+    });
     this.recipeExpansions = new Counter({
       name: 'alcantara_recipe_expansions_total',
       help: 'Rundown recipe uses previewed or built, by result.',
@@ -684,6 +708,13 @@ export class ManagedMetricsService {
   recordArtistLabelWrite(result: string): void {
     this.artistLabelWrites.inc({
       result: bounded(result, new Set<string>(ARTIST_LABEL_WRITE_RESULTS)),
+    });
+  }
+
+  recordOperatorChangeRecord(target: string, result: string): void {
+    this.operatorChangeRecords.inc({
+      target: bounded(target, OPERATOR_CHANGE_TARGETS),
+      result: bounded(result, OPERATOR_CHANGE_RESULTS),
     });
   }
 
