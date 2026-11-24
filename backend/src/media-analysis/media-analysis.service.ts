@@ -87,6 +87,7 @@ const EMPTY_MEASUREMENT = {
   truePeakDbtp: null,
   isrc: null,
   musicbrainzRecordingId: null,
+  ruleVersion: null,
 };
 
 /** Prisma codes of a database that is slow or unreachable, not of a query or schema that is wrong. */
@@ -386,6 +387,7 @@ export class MediaAnalysisService
       return;
     }
 
+    this.metrics.recordCueRule(analysis.cueRule);
     await this.store({
       candidate,
       previousAttempts,
@@ -404,6 +406,7 @@ export class MediaAnalysisService
         durationSeconds: storedDuration(analysis),
         isrc: analysis.isrc,
         musicbrainzRecordingId: analysis.musicbrainzRecordingId,
+        ruleVersion: analysis.ruleVersion,
         error: null,
         nextAttemptAt: null,
       },

@@ -19,6 +19,7 @@ describe('SongExecutionEngine.getOnAirView', () => {
     expect(engine().getOnAirView('p1')).toEqual({
       playbackRequestId: null,
       songId: null,
+      nextSongId: null,
       next: null,
       mode: null,
       frozen: false,
@@ -38,6 +39,7 @@ describe('SongExecutionEngine.getOnAirView', () => {
     expect(e.getOnAirView('p1')).toEqual({
       playbackRequestId: null,
       songId: null,
+      nextSongId: null,
       next: null,
       mode: 'shuffle',
       frozen: true,
@@ -61,12 +63,14 @@ describe('SongExecutionEngine.getOnAirView', () => {
         title: 'T',
         artist: 'A',
         audioUrl: 'https://media.test/b.mp3?token=secret',
+        itemId: 'catalog:5',
       },
     });
     const view = e.getOnAirView('p1');
     expect(view).toEqual({
       playbackRequestId: 'req-1',
       songId: null,
+      nextSongId: 5,
       next: {
         playbackId: 'next-1',
         status: 'pending',
@@ -77,5 +81,45 @@ describe('SongExecutionEngine.getOnAirView', () => {
       frozen: false,
     });
     expect(JSON.stringify(view)).not.toContain('secret');
+  });
+
+  it('tells the catalog song of the announced next song, from a catalog entry or a playlist leaf (gaulatti/alcantara#235)', () => {
+    const e = engine();
+    const announce = (itemId: string, sequence: unknown = null) =>
+      (e as any).states.set('p1', {
+        sequence,
+        frozen: false,
+        activeSong: null,
+        announcement: {
+          playbackId: 'n',
+          status: 'accepted',
+          title: 'T',
+          artist: 'A',
+          itemId,
+        },
+      });
+    announce('catalog:42');
+    expect(e.getOnAirView('p1').nextSongId).toBe(42);
+    announce('catalog:nope');
+    expect(e.getOnAirView('p1').nextSongId).toBeNull();
+    announce('catalog:0');
+    expect(e.getOnAirView('p1').nextSongId).toBeNull();
+    announce('leaf-1', {
+      mode: 'manual',
+      activeItemId: 'leaf-1',
+      items: [
+        {
+          id: 'leaf-1',
+          kind: 'preset',
+          songId: 7,
+          artist: 'A',
+          title: 'T',
+          coverUrl: '',
+        },
+      ],
+    });
+    expect(e.getOnAirView('p1').nextSongId).toBe(7);
+    announce('leaf-unknown');
+    expect(e.getOnAirView('p1').nextSongId).toBeNull();
   });
 });

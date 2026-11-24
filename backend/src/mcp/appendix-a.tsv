@@ -152,6 +152,7 @@ scenes	DELETE	/scenes/:id	scene.manage	remove	scene_remove	D
 songs	GET	/songs	song.read	findAll	song_find_all	R
 songs	GET	/songs/:id	song.read	findOne	song_find_one	R
 songs	POST	/songs	song.manage	create	song_create	W
+songs	POST	/songs/reanalysis	song.manage	requestReanalysis	song_request_reanalysis	W
 songs	PUT	/songs/:id	song.manage	update	song_update	W
 songs	DELETE	/songs/:id	song.manage	remove	song_remove	D
 stingers	GET	/stingers	stinger.read	listStingers	stinger_list_stingers	R

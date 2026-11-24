@@ -153,6 +153,7 @@ describeWithDatabase('media analysis duration (PostgreSQL e2e)', () => {
       const updates: unknown[] = [];
       const metrics = {
         record: jest.fn(),
+        recordCueRule: jest.fn(),
         setBacklog: jest.fn(),
         setDurationBackfill: jest.fn(),
       };
