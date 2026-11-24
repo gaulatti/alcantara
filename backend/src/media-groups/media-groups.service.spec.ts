@@ -1,3 +1,4 @@
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { MediaGroupsService } from './media-groups.service';
@@ -48,7 +49,12 @@ function fixture() {
       callback(tx),
     ),
   };
-  return { service: new MediaGroupsService(prisma as any), prisma, tx, group };
+  return {
+    service: new MediaGroupsService(prisma as any, noRecorder()),
+    prisma,
+    tx,
+    group,
+  };
 }
 
 describe('MediaGroupsService application boundary', () => {

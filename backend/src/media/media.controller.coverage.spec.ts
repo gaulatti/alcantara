@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { REQUIRED_PERMISSION_KEY } from '../auth/require-permission.decorator';
 import { ProgramService } from '../program/program.service';
@@ -91,16 +92,18 @@ describe('MediaController (coverage)', () => {
 });
 
 describe('MediaService metadata (coverage)', () => {
-  it('records Object as the paramtype when PrismaService is unresolved', () => {
+  it('records Object as the paramtype when PrismaService and OperatorChangeRecorder are unresolved', () => {
     jest.isolateModules(() => {
       jest.doMock('../prisma.service', () => ({}));
+      jest.doMock('../operator-change/operator-change-recorder', () => ({}));
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const mod = require('./media.service');
       expect(
         Reflect.getMetadata('design:paramtypes', mod.MediaService),
-      ).toEqual([Object]);
+      ).toEqual([Object, Object]);
     });
     jest.dontMock('../prisma.service');
+    jest.dontMock('../operator-change/operator-change-recorder');
   });
 });
 
@@ -113,13 +116,21 @@ describe('MediaService metadata (coverage)', () => {
 })
 class ProgramStubModule {}
 
+// The metrics service is global in the application; the operator change recorder counts its records there.
+@Global()
+@Module({
+  providers: [{ provide: ManagedMetricsService, useValue: {} }],
+  exports: [ManagedMetricsService],
+})
+class MetricsStubModule {}
+
 describe('MediaModule (coverage)', () => {
   it('provides and exports a MediaService backed by PrismaService', async () => {
     const prisma = {
       media: { findUnique: jest.fn().mockResolvedValue({ id: 1 }) },
     };
     const moduleRef = await Test.createTestingModule({
-      imports: [ProgramStubModule, MediaModule],
+      imports: [ProgramStubModule, MetricsStubModule, MediaModule],
     })
       .overrideProvider(PrismaService)
       .useValue(prisma)

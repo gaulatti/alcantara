@@ -1,3 +1,4 @@
+import { noRecorder } from '../src/operator-change/operator-change-recorder.testing';
 import { MediaAssetKind, MediaAssetType } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { ALCANTARA_PERMISSIONS } from '../src/auth/permissions';
@@ -37,7 +38,11 @@ describeWithDatabase(
       }
       prisma = new PrismaService();
       await prisma.$connect();
-      service = new MediaAssetsService(prisma, new ManagedMetricsService());
+      service = new MediaAssetsService(
+        prisma,
+        new ManagedMetricsService(),
+        noRecorder(),
+      );
       await prisma.mediaLabel.create({ data: { id: labelId, name: labelId } });
       await prisma.mediaAsset.createMany({
         data: assetIds.map((id, index) => ({

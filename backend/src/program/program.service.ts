@@ -18,6 +18,7 @@ import {
   PROGRAM_CHANGE_FIELDS,
   summarizeChange,
 } from '../operator-change/operator-change-recorder';
+import { INSTANT_CHANGE_FIELDS } from '../operator-change/library-change-fields';
 import { PrismaService } from '../prisma.service';
 import {
   OUTBOUND_REFUSAL_MESSAGES,
@@ -1770,9 +1771,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
 
   async updateProgramAudioBus(
     data:
-      | { songSequence?: unknown; mixerSettings?: unknown }
-      | null
-      | undefined,
+      { songSequence?: unknown; mixerSettings?: unknown } | null | undefined,
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
   ) {
     const normalizedProgramId = this.normalizeProgramId(programId);
@@ -3555,9 +3554,12 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       enabled?: boolean;
     },
   ) {
+    const recorder = this.requireRecorder();
+    const actor = recorder.actor();
+    // The volume and enabled flag before the change, for its record (gaulatti/alcantara#236).
     const instant = await this.prisma.instant.findUnique({
       where: { id: instantId },
-      select: { id: true },
+      select: { id: true, volume: true, enabled: true },
     });
 
     if (!instant) {
@@ -3593,7 +3595,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       updateData.enabled = Boolean(data.enabled);
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.instant.update({
         where: { id: instant.id },
         data: updateData,
@@ -3601,6 +3603,19 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       await syncAudioClipAsset(tx, updated);
       return tx.instant.findUniqueOrThrow({ where: { id: instant.id } });
     });
+    // The change is final; recording who made it never blocks it (gaulatti/alcantara#236).
+    await recorder.record({
+      actor,
+      target: 'instant',
+      targetId: String(instant.id),
+      programId: null,
+      capability: {
+        mcp: 'instant_update_instant',
+        console: 'instants.update',
+      },
+      summary: summarizeChange(INSTANT_CHANGE_FIELDS, data, instant, result),
+    });
+    return result;
   }
 
   async deleteInstant(instantId: number) {

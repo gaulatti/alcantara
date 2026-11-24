@@ -1,3 +1,4 @@
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { StingersService } from './stingers.service';
 
@@ -15,7 +16,11 @@ function build() {
     stinger: { findMany: jest.fn(), findUnique: jest.fn() },
     $transaction: jest.fn((op: (client: typeof tx) => unknown) => op(tx)),
   };
-  return { service: new StingersService(prisma as never), prisma, tx };
+  return {
+    service: new StingersService(prisma as never, noRecorder()),
+    prisma,
+    tx,
+  };
 }
 
 const row = {

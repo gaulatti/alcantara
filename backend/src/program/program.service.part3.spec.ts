@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 import { BadGatewayException, BadRequestException } from '@nestjs/common';
 import { MediaAssetKind } from '@prisma/client';
 import { EMPTY } from 'rxjs';
@@ -116,6 +117,7 @@ function build(opts: { metrics?: boolean; state?: any } = {}) {
     engine,
     opts.metrics === false ? undefined : metrics,
     confidence,
+    noRecorder(),
   );
   return { service, prisma, radio, engine, metrics, confidence };
 }

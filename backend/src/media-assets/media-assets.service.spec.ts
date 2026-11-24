@@ -1,3 +1,4 @@
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 import {
   BadRequestException,
   ForbiddenException,
@@ -101,7 +102,11 @@ function buildService() {
   };
   const metrics = { recordMediaLabelAssignment: jest.fn() };
   return {
-    service: new MediaAssetsService(prisma as never, metrics as never),
+    service: new MediaAssetsService(
+      prisma as never,
+      metrics as never,
+      noRecorder(),
+    ),
     prisma,
     tx,
     metrics,

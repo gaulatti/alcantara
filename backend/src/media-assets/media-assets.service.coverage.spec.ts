@@ -1,3 +1,4 @@
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 import {
   BadRequestException,
   ForbiddenException,
@@ -82,7 +83,11 @@ function buildService() {
   };
   const metrics = { recordMediaLabelAssignment: jest.fn() };
   return {
-    service: new MediaAssetsService(prisma as never, metrics as never),
+    service: new MediaAssetsService(
+      prisma as never,
+      metrics as never,
+      noRecorder(),
+    ),
     prisma,
     tx,
     metrics,
@@ -1019,13 +1024,15 @@ describe('MediaAssetsService (coverage)', () => {
     jest.isolateModules(() => {
       jest.doMock('../prisma.service', () => ({}));
       jest.doMock('../observability/managed-metrics.service', () => ({}));
+      jest.doMock('../operator-change/operator-change-recorder', () => ({}));
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const mod = require('./media-assets.service');
       expect(
         Reflect.getMetadata('design:paramtypes', mod.MediaAssetsService),
-      ).toEqual([Object, Object]);
+      ).toEqual([Object, Object, Object]);
     });
     jest.dontMock('../prisma.service');
     jest.dontMock('../observability/managed-metrics.service');
+    jest.dontMock('../operator-change/operator-change-recorder');
   });
 });

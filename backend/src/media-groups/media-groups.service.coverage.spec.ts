@@ -1,3 +1,4 @@
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { MediaGroupsService } from './media-groups.service';
@@ -49,7 +50,11 @@ function buildService() {
       operation(tx),
     ) as jest.Mock,
   };
-  return { service: new MediaGroupsService(prisma as never), prisma, tx };
+  return {
+    service: new MediaGroupsService(prisma as never, noRecorder()),
+    prisma,
+    tx,
+  };
 }
 
 const mapped = {
@@ -400,15 +405,17 @@ describe('MediaGroupsService (coverage)', () => {
     });
   });
 
-  it('records Object as the paramtype when PrismaService is unresolved', () => {
+  it('records Object as the paramtype when PrismaService and OperatorChangeRecorder are unresolved', () => {
     jest.isolateModules(() => {
       jest.doMock('../prisma.service', () => ({}));
+      jest.doMock('../operator-change/operator-change-recorder', () => ({}));
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const mod = require('./media-groups.service');
       expect(
         Reflect.getMetadata('design:paramtypes', mod.MediaGroupsService),
-      ).toEqual([Object]);
+      ).toEqual([Object, Object]);
     });
     jest.dontMock('../prisma.service');
+    jest.dontMock('../operator-change/operator-change-recorder');
   });
 });

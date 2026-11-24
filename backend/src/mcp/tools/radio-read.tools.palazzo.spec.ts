@@ -537,7 +537,7 @@ async function build() {
     noRecorder(),
   );
   const asRun = new AsRunService(prisma);
-  const songs = new SongsService(prisma);
+  const songs = new SongsService(prisma, noRecorder());
   const status = {
     programId: PROGRAM,
     programType: 'radio',

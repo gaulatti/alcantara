@@ -9,6 +9,11 @@ import {
   syncTransitionAsset,
 } from '../media-assets/media-asset-sync';
 import { PrismaService } from '../prisma.service';
+import {
+  OperatorChangeRecorder,
+  summarizeChange,
+} from '../operator-change/operator-change-recorder';
+import { STINGER_CHANGE_FIELDS } from '../operator-change/library-change-fields';
 
 interface StingerInput {
   name?: string;
@@ -19,7 +24,10 @@ interface StingerInput {
 
 @Injectable()
 export class StingersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly recorder: OperatorChangeRecorder,
+  ) {}
 
   async findAll() {
     return this.prisma.stinger.findMany({
@@ -54,7 +62,8 @@ export class StingersService {
   }
 
   async update(id: number, data: StingerInput) {
-    await this.findOne(id);
+    const actor = this.recorder.actor();
+    const previous = await this.findOne(id);
 
     const updateData: Record<string, unknown> = {};
 
@@ -81,7 +90,7 @@ export class StingersService {
       return this.findOne(id);
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const stinger = await tx.stinger.update({
         where: { id },
         data: updateData,
@@ -89,6 +98,21 @@ export class StingersService {
       await syncTransitionAsset(tx, stinger);
       return tx.stinger.findUniqueOrThrow({ where: { id } });
     });
+    // The change is final; recording who made it never blocks it (gaulatti/alcantara#236).
+    await this.recorder.record({
+      actor,
+      target: 'stinger',
+      targetId: String(id),
+      programId: null,
+      capability: { mcp: 'stinger_update_stinger', console: 'stingers.update' },
+      summary: summarizeChange(
+        STINGER_CHANGE_FIELDS,
+        { ...data },
+        previous,
+        result,
+      ),
+    });
+    return result;
   }
 
   async remove(id: number) {

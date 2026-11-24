@@ -10,6 +10,11 @@ import {
   syncSongAsset,
 } from '../media-assets/media-asset-sync';
 import { PrismaService } from '../prisma.service';
+import {
+  OperatorChangeRecorder,
+  summarizeChange,
+} from '../operator-change/operator-change-recorder';
+import { SONG_CHANGE_FIELDS } from '../operator-change/library-change-fields';
 
 /**
  * The media-analysis columns exposed to clients. Shared with the media-assets
@@ -94,7 +99,10 @@ const ALLOWED_SORT_FIELDS = [
 
 @Injectable()
 export class SongsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly recorder: OperatorChangeRecorder,
+  ) {}
 
   async findAll(params: FindAllParams) {
     const { search, enabled, sortBy, sortOrder, page, limit } = params;
@@ -249,6 +257,7 @@ export class SongsService {
   }
 
   async update(id: number, data: SongInput) {
+    const actor = this.recorder.actor();
     const existing = await this.prisma.song.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException('Song not found');
@@ -315,8 +324,8 @@ export class SongsService {
       updateData.enabled = Boolean(data.enabled);
     }
 
-    try {
-      return await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma
+      .$transaction(async (tx) => {
         const song = await tx.song.update({ where: { id }, data: updateData });
         await syncSongAsset(tx, song);
         if (tx.songChartIdentity) {
@@ -332,10 +341,40 @@ export class SongsService {
         return this.withGenericChartFields(
           this.scopeIntro(saved, this.normalizeProgramId(data.programId)),
         );
-      });
-    } catch (error) {
-      this.rethrowIntroConflict(error);
+      })
+      .catch((error: unknown) => this.rethrowIntroConflict(error));
+    // The change is final; recording who made it never blocks it (gaulatti/alcantara#236).
+    await this.recorder.record({
+      actor,
+      target: 'song',
+      targetId: String(id),
+      programId: null,
+      capability: { mcp: 'song_update', console: 'songs.update' },
+      summary: summarizeChange(
+        SONG_CHANGE_FIELDS,
+        this.changeGiven(data),
+        existing,
+        result,
+      ),
+    });
+    return result;
+  }
+
+  /**
+   * A song change as its record names it (gaulatti/alcantara#236): the legacy chart fields are the same values as
+   * the generic ones, so a field given under its legacy name is named by its generic name.
+   */
+  private changeGiven(data: SongInput): Record<string, unknown> {
+    const given: Record<string, unknown> = { ...data };
+    for (const [legacy, generic] of [
+      ['earoneSongId', 'externalChartSongId'],
+      ['earoneRank', 'externalChartRank'],
+      ['earoneSpins', 'externalChartSpins'],
+    ] as const) {
+      if (given[generic] === undefined) given[generic] = given[legacy];
+      delete given[legacy];
     }
+    return given;
   }
 
   async remove(id: number) {

@@ -9,6 +9,14 @@ export const OPERATOR_CHANGE_TARGETS = [
   'layout',
   'flight_sequence',
   'program',
+  // Library changes (gaulatti/alcantara#236 slice 3): no program.
+  'instant',
+  'stinger',
+  'song',
+  'media',
+  'media_label',
+  'media_label_assets',
+  'media_group',
 ] as const;
 export type OperatorChangeTarget = (typeof OPERATOR_CHANGE_TARGETS)[number];
 
