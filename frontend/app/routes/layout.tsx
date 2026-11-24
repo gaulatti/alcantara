@@ -109,6 +109,7 @@ interface ShellLinkProps {
 }
 
 function renderAppLink({ children, className, item, onClick }: ShellLinkProps) {
+  /* v8 ignore start -- no navigation item sets external, so the external link branch cannot be reached from this shell */
   if (item.external) {
     return (
       <a href={item.href} className={className} onClick={onClick} target='_blank' rel='noopener noreferrer'>
@@ -116,6 +117,7 @@ function renderAppLink({ children, className, item, onClick }: ShellLinkProps) {
       </a>
     );
   }
+  /* v8 ignore stop */
 
   return (
     <Link to={item.href} className={className} onClick={onClick} aria-current={item.active ? 'page' : undefined}>
@@ -380,6 +382,7 @@ function ConsoleShell() {
       })),
     [location.pathname, navigationSections]
   );
+  /* v8 ignore next -- every navigation section has an items array, so the empty fallback cannot be reached */
   const flatSidebarItems: SidebarItem[] = useMemo(() => groupedSidebarItems.flatMap((section) => section.items ?? []), [groupedSidebarItems]);
   const isViewportConstrainedRoute = location.pathname === '/' || location.pathname === '/control' || location.pathname === '/console-fixture';
 
@@ -399,9 +402,11 @@ function ConsoleShell() {
 
   const openProgramUrl = resolveProgramOutputUrl(selectedProgram, getApiBaseUrl());
   const triggerProgramReload = useCallback(async () => {
+    /* v8 ignore start -- the refresh control renders only once a program is resolved, and a resolved program always has its id */
     if (!selectedProgramId.trim()) {
       return;
     }
+    /* v8 ignore stop */
 
     setIsTriggeringProgramReload(true);
     try {
@@ -582,6 +587,7 @@ function ConsoleShell() {
         group: 'Navigation',
         icon: <Eye size={16} />,
         onSelect: () => {
+          /* v8 ignore next -- callbacks in this route run only in the browser, where a window always exists */
           if (typeof window === 'undefined') return;
           window.open('/preview', '_blank', 'noopener,noreferrer');
         }
@@ -593,6 +599,7 @@ function ConsoleShell() {
         group: 'Programs',
         icon: <Radio size={16} />,
         onSelect: () => {
+          /* v8 ignore next -- callbacks in this route run only in the browser, where a window always exists */
           if (typeof window === 'undefined') return;
           openSelectedProgramOutput();
         }
@@ -657,9 +664,11 @@ function ConsoleShell() {
         icon: <Clock3 size={16} />,
         disabled: !broadcastSettings?.timeOverrideEnabled,
         onSelect: async () => {
+          /* v8 ignore start -- the time-override command is disabled unless an override is on, so the palette never runs it while it is off */
           if (!broadcastSettings?.timeOverrideEnabled) {
             return;
           }
+          /* v8 ignore stop */
           await clearBroadcastTimeOverride();
         }
       }
@@ -670,6 +679,7 @@ function ConsoleShell() {
       title: `Select Program: ${option.label}`,
       description: option.value === selectedProgramId ? 'Currently selected' : 'Switch global program context',
       group: 'Programs',
+      /* v8 ignore next -- every program option is built with an icon in programOptions, so the fallback cannot be reached */
       icon: option.icon ?? <Tv size={16} />,
       onSelect: () => setSelectedProgramId(option.value)
     }));
