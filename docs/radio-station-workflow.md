@@ -63,6 +63,7 @@ stream URLs, tickets, or free-form errors in metric labels. The old
 `alcantara_radio_listener_configuration_total{result="success|failure"}` remains
 for compatibility with the earlier listener URL settings API, which the monitor
 no longer uses.
+`alcantara_radio_operator_change_records_total{result="recorded|failed"}` counts the operator change records of radio settings writes (who changed them; see `docs/mcp-capabilities.md`, "Operator change records"); a failed record never fails the write.
 It is exposed through the same authenticated private `/metrics` boundary and
 contains no URL or station labels. Updating only the listener URL does not
 reconnect Palazzo telemetry. The nullable database column is additive; reverting

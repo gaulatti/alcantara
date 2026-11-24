@@ -27,29 +27,42 @@ const VALUE_FIELDS = new Set([
   'similarityThreshold',
 ]);
 
+type Scalar = string | number | boolean | null;
+
 export type OperatorChangeSummary = {
   changed: string[];
-  values: Record<string, string | number | boolean>;
+  /** The setting before the change, for each changed field that may carry a value; null when it had none. */
+  before: Record<string, Scalar>;
+  /** The setting after the change, for each changed field that may carry a value. */
+  after: Record<string, Scalar>;
 };
 
-/** The summary of a radio-settings change: the names of the fields given, and the new value of the allowlisted ones. */
+const scalar = (value: unknown): Scalar =>
+  typeof value === 'string' ||
+  typeof value === 'number' ||
+  typeof value === 'boolean'
+    ? value
+    : null;
+
+/**
+ * The summary of a radio-settings change: the names of the fields given and, for the allowlisted
+ * enum, boolean and number settings only, their value before and after. `previous` and `current`
+ * are the settings rows before and after the write; a URL, key or other text is never copied.
+ */
 export function radioSettingsChangeSummary(
   data: Record<string, unknown>,
+  previous: Record<string, unknown> | null,
+  current: Record<string, unknown>,
 ): OperatorChangeSummary {
   const changed: string[] = [];
-  const values: Record<string, string | number | boolean> = {};
+  const before: Record<string, Scalar> = {};
+  const after: Record<string, Scalar> = {};
   for (const field of RADIO_SETTINGS_CHANGE_FIELDS) {
-    const value = data[field];
-    if (value === undefined) continue;
+    if (data[field] === undefined) continue;
     changed.push(field);
-    if (
-      VALUE_FIELDS.has(field) &&
-      (typeof value === 'string' ||
-        typeof value === 'number' ||
-        typeof value === 'boolean')
-    ) {
-      values[field] = value;
-    }
+    if (!VALUE_FIELDS.has(field)) continue;
+    before[field] = scalar(previous?.[field]);
+    after[field] = scalar(current[field]);
   }
-  return { changed, values };
+  return { changed, before, after };
 }

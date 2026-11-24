@@ -20,7 +20,10 @@ describeWithDatabase('radio settings and their operator change record', () => {
   beforeAll(async () => {
     prisma = new PrismaService();
     await prisma.$connect();
-    const metrics = { recordListenerConfiguration: jest.fn() };
+    const metrics = {
+      recordListenerConfiguration: jest.fn(),
+      recordOperatorChangeRecord: jest.fn(),
+    };
     service = new RadioService(
       prisma,
       {} as never,
@@ -58,7 +61,7 @@ describeWithDatabase('radio settings and their operator change record', () => {
     await prisma.$disconnect();
   });
 
-  it('records an MCP change with its principal and client, in the same transaction as the change', async () => {
+  it('records an MCP change with its principal and client, with the before and after of the change', async () => {
     await ActorContext.run(
       { principalId: 'principal-mcp', via: 'mcp', client: 'claude-desktop' },
       () =>
@@ -84,7 +87,8 @@ describeWithDatabase('radio settings and their operator change record', () => {
     });
     expect(records[0].summary).toEqual({
       changed: ['bumperMode', 'enabled'],
-      values: { bumperMode: 'random', enabled: true },
+      before: { bumperMode: null, enabled: null },
+      after: { bumperMode: 'random', enabled: true },
     });
   });
 
@@ -104,7 +108,7 @@ describeWithDatabase('radio settings and their operator change record', () => {
     });
   });
 
-  it('rolls the settings change back and surfaces the error when the record write fails', async () => {
+  it('keeps the settings change when the record write is refused', async () => {
     const refused = 'operator-change-refused';
     await prisma.programState.deleteMany({ where: { programId: refused } });
     await prisma.programState.create({ data: { programId: refused } });
@@ -115,16 +119,19 @@ describeWithDatabase('radio settings and their operator change record', () => {
         palazzoUrl: 'http://palazzo:3100',
       },
     });
-    await expect(
-      ActorContext.run(
-        { principalId: 'principal-console', via: 'console', client: null },
-        () => service.updateRadioSettings(refused, { enabled: true }),
-      ),
-    ).rejects.toThrow('record write refused by the fixture');
+    await ActorContext.run(
+      { principalId: 'principal-console', via: 'console', client: null },
+      () => service.updateRadioSettings(refused, { enabled: true }),
+    );
     const settings = await prisma.radioSettings.findFirstOrThrow({
       where: { programState: { programId: refused } },
     });
-    expect(settings.enabled).toBe(false);
+    expect(settings.enabled).toBe(true);
+    expect(
+      await prisma.operatorChangeRecord.count({
+        where: { programId: refused },
+      }),
+    ).toBe(0);
     await prisma.programState.deleteMany({ where: { programId: refused } });
   });
 });

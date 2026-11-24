@@ -681,7 +681,7 @@ Every W capability, and whether it changes what is on air or queued:
 | `program_fill_rundown` | `backend/src/mcp/capabilities/flight.ts:353` | No | - | Returns a proposal; nothing is saved or aired. |
 | `program_publish_flight_sequence_by_id` | `backend/src/mcp/capabilities/flight.ts:375` | Live output | No record to write (see below) | Schedules a log to start itself at its time; that start is automatic (timer) and stays null by design. |
 | `radio_similarity_upload` | `backend/src/mcp/capabilities/similarity.ts:87` | No | - | Embeddings for song similarity; they inform later automatic picks only. |
-| `radio_update_settings` | `backend/src/mcp/capabilities/radio.ts:204` | Live output | No record to write (see below) | Declares `onAir` for the live settings (radio.ts:225: Palazzo address, bumpers, segue, similarity, enabled). |
+| `radio_update_settings` | `backend/src/mcp/capabilities/radio.ts:204` | Live output | Recorded: an `OperatorChangeRecord` (see "Operator change records" below) | Declares `onAir` for the live settings (radio.ts:225: Palazzo address, bumpers, segue, similarity, enabled). |
 | `radio_prepare_recovery` | `backend/src/mcp/capabilities/radio.ts:266` | No | - | A prepared version; a running session keeps its own. |
 | `radio_replace_now_playing_consumers` | `backend/src/mcp/capabilities/radio.ts:290` | No | - | Who is told what plays; not what plays. |
 | `scene_create` | `backend/src/mcp/capabilities/scenes.ts:112` | No | - | A new library scene. |
@@ -699,6 +699,22 @@ attribution provider and the real engine: an MCP call carries the principal, `vi
 and the client name, the console call carries `via: 'console'`, and an automatic
 queue update carries nothing. `mcp-action.executor.spec.ts` pins that W, A and D
 are wrapped and a dry run is not.
+
+## Operator change records (#236)
+
+`radio_update_settings` and the console route it mirrors (`PUT /radio/:programId/settings`) record who changed the
+on-air radio settings in the `OperatorChangeRecord` table: the actor principal, `via` (`mcp` or `console`), the MCP
+client name (null for the console), the capability (`radio_update_settings` or `radio.update-settings`), the program
+and a `summary`. The summary is `{ changed, before, after }`: `changed` names the fields given; `before` and `after`
+carry the value only of the enum, boolean and number settings (`bumperEnabled`, `bumperInterval`, `bumperMode`,
+`enabled`, `segueMode`, `similarityMode`, `similarityThreshold`), `null` where there was none. The Palazzo and
+listener addresses, the bumper instant ids and any field outside the allowlist are named at most, never valued, so
+no URL, key or token reaches the table.
+
+The record is written after the settings write and never blocks it: if the record cannot be stored, the change
+stands, a warning is logged and `alcantara_radio_operator_change_records_total{result="failed"}` is counted
+(`recorded` counts the stored ones). Read it with `SELECT * FROM "OperatorChangeRecord" WHERE "programId" = ... ORDER BY "createdAt" DESC`.
+The other tier-W capabilities that declare `onAir` still write no record (#236 slice 2).
 
 ## Every registered capability by name (#220)
 

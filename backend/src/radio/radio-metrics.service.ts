@@ -459,6 +459,7 @@ export class RadioMetricsService {
   }
 
   private readonly listenerConfiguration = { success: 0, failure: 0 };
+  private readonly operatorChangeRecords = { recorded: 0, failed: 0 };
   private readonly outputConfidenceTransitions = new Map<string, number>();
   private readonly radioLogResults = new Map<string, number>();
   private readonly recoveryPreparations = new Map<string, number>();
@@ -704,6 +705,11 @@ export class RadioMetricsService {
 
   recordListenerConfiguration(result: 'success' | 'failure'): void {
     this.listenerConfiguration[result] += 1;
+  }
+
+  /** gaulatti/alcantara#236: whether the operator change record of a settings write was stored. */
+  recordOperatorChangeRecord(result: 'recorded' | 'failed'): void {
+    this.operatorChangeRecords[result] += 1;
   }
 
   recordRadioLogResult(result: string): void {
@@ -1004,6 +1010,12 @@ export class RadioMetricsService {
       ...(['success', 'failure'] as const).map(
         (result) =>
           `alcantara_radio_listener_configuration_total{result="${result}"} ${this.listenerConfiguration[result]}`,
+      ),
+      '# HELP alcantara_radio_operator_change_records_total Operator change records of radio settings writes by result; a failed record never fails the write.',
+      '# TYPE alcantara_radio_operator_change_records_total counter',
+      ...(['recorded', 'failed'] as const).map(
+        (result) =>
+          `alcantara_radio_operator_change_records_total{result="${result}"} ${this.operatorChangeRecords[result]}`,
       ),
     );
     lines.push(

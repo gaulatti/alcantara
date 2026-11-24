@@ -338,41 +338,71 @@ export class RadioService {
     const segueMode = this.normalizeSegueMode(data.segueMode);
     const similarity = this.normalizeSimilarityPayload(data);
     const actor = ActorContext.current();
-    const upsertSettings = (tx: Pick<typeof this.prisma, 'radioSettings'>) =>
-      tx.radioSettings.upsert({
-        where: { programStateId: state.id },
-        update: {
-          ...(data.palazzoUrl !== undefined && { palazzoUrl: data.palazzoUrl }),
-          ...(listenerUrl !== undefined && { listenerUrl }),
-          ...(data.bumperEnabled !== undefined && {
-            bumperEnabled: data.bumperEnabled,
-          }),
-          ...(data.bumperInterval !== undefined && { bumperInterval }),
-          ...(data.bumperInstantIds !== undefined && { bumperInstantIds }),
-          ...(data.bumperMode !== undefined && { bumperMode }),
-          ...(data.enabled !== undefined && { enabled: data.enabled }),
-          ...(segueMode !== undefined && { segueMode }),
-          ...similarity,
-        },
-        create: {
-          programStateId: state.id,
-          palazzoUrl: data.palazzoUrl ?? 'http://palazzo:3100',
-          listenerUrl: listenerUrl ?? null,
-          bumperEnabled: data.bumperEnabled ?? true,
-          bumperInterval: bumperInterval ?? null,
-          bumperInstantIds: bumperInstantIds ?? [],
-          bumperMode: bumperMode ?? 'sequential',
-          enabled: data.enabled ?? false,
-          segueMode: segueMode ?? 'on',
-          ...similarity,
-        },
+    const previous = actor ? await this.previousRadioSettings(state.id) : null;
+    const result = await this.prisma.radioSettings.upsert({
+      where: { programStateId: state.id },
+      update: {
+        ...(data.palazzoUrl !== undefined && { palazzoUrl: data.palazzoUrl }),
+        ...(listenerUrl !== undefined && { listenerUrl }),
+        ...(data.bumperEnabled !== undefined && {
+          bumperEnabled: data.bumperEnabled,
+        }),
+        ...(data.bumperInterval !== undefined && { bumperInterval }),
+        ...(data.bumperInstantIds !== undefined && { bumperInstantIds }),
+        ...(data.bumperMode !== undefined && { bumperMode }),
+        ...(data.enabled !== undefined && { enabled: data.enabled }),
+        ...(segueMode !== undefined && { segueMode }),
+        ...similarity,
+      },
+      create: {
+        programStateId: state.id,
+        palazzoUrl: data.palazzoUrl ?? 'http://palazzo:3100',
+        listenerUrl: listenerUrl ?? null,
+        bumperEnabled: data.bumperEnabled ?? true,
+        bumperInterval: bumperInterval ?? null,
+        bumperInstantIds: bumperInstantIds ?? [],
+        bumperMode: bumperMode ?? 'sequential',
+        enabled: data.enabled ?? false,
+        segueMode: segueMode ?? 'on',
+        ...similarity,
+      },
+    });
+    // The settings write above is final. Recording who made it comes after and never blocks it: a record
+    // that cannot be stored is logged and counted, and the change stands (gaulatti/alcantara#236).
+    if (actor)
+      await this.recordOperatorChange(programId, actor, data, previous, result);
+    return result;
+  }
+
+  /** The settings row before a write, or null when there is none or it cannot be read (the write goes on). */
+  private async previousRadioSettings(
+    programStateId: number,
+  ): Promise<Record<string, unknown> | null> {
+    try {
+      return await this.prisma.radioSettings.findUnique({
+        where: { programStateId },
       });
-    // An operator change is recorded in the same transaction as the change (gaulatti/alcantara#236).
-    // The record carries field names and allowlisted values only, never a URL.
-    if (!actor) return upsertSettings(this.prisma);
-    return this.prisma.$transaction(async (tx) => {
-      const result = await upsertSettings(tx);
-      await tx.operatorChangeRecord.create({
+    } catch (error) {
+      this.logger.warn(
+        `Radio settings before the change could not be read for the operator change record: ${error instanceof Error ? error.message : 'unknown error'}`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Stores who changed on-air radio settings and what changed (field names; before and after only for
+   * allowlisted enum, boolean and number settings, never a URL or key). Never throws.
+   */
+  private async recordOperatorChange(
+    programId: string,
+    actor: NonNullable<ReturnType<typeof ActorContext.current>>,
+    data: RadioSettingsPayload,
+    previous: Record<string, unknown> | null,
+    result: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      await this.prisma.operatorChangeRecord.create({
         data: {
           teamId: null,
           programId,
@@ -385,11 +415,18 @@ export class RadioService {
               : 'radio.update-settings',
           summary: radioSettingsChangeSummary(
             data as unknown as Record<string, unknown>,
+            previous,
+            result,
           ),
         },
       });
-      return result;
-    });
+      this.metrics.recordOperatorChangeRecord('recorded');
+    } catch (error) {
+      this.metrics.recordOperatorChangeRecord('failed');
+      this.logger.warn(
+        `Operator change record for radio settings of ${programId} was not stored; the change stands: ${error instanceof Error ? error.message : 'unknown error'}`,
+      );
+    }
   }
 
   private normalizeSegueMode(value?: string): string | undefined {
