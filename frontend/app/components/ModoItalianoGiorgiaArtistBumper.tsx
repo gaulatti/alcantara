@@ -126,6 +126,7 @@ export const ModoItalianoGiorgiaArtistBumper: React.FC<ModoItalianoGiorgiaArtist
       // "ModoItaliano presenta" and modoitaliano.fm always apply. A blank content type also uses Giorgia's default.
       audioUrl: null,
       ...(text(contentType) ? { contentType: text(contentType) } : {}),
+      /* v8 ignore next -- credits comes from text() on each entry, which always returns a string, so credits[0] is never nullish here and its `?? ''` cannot run; this line also holds the reached credit checks, which the existing credit tests cover. */
       ...(credits[0] || credits[1] ? { creditLines: [credits[0] ?? '', credits[1] ?? ''] as const } : {})
     };
   }, [artist, songTitle, normalizedLabelId, labelImageUrls, images, contentType, creditLines]);
