@@ -17,7 +17,6 @@ vi.mock("../hooks/useSSE", () => ({
     return { isConnected: true };
   },
 }));
-import { act } from "@testing-library/react";
 vi.mock("../utils/globalProgram", () => ({ useGlobalProgramId: () => ["main"] }));
 vi.mock("../contexts/ConsolePreferencesContext", async (original) => {
   const actual = await original<typeof import("../contexts/ConsolePreferencesContext")>();
