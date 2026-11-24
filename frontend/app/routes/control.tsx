@@ -1257,6 +1257,7 @@ export default function Control() {
         return mixerState.sceneInstantMasterVolume;
       case "main":
       default:
+        /* v8 ignore next -- the TV console gives take presets only to non-main channels, so the main channel never reaches its getter */
         return mixerState.mainMasterVolume;
     }
   };
@@ -1280,6 +1281,7 @@ export default function Control() {
         return;
       case "main":
       default:
+        /* v8 ignore next -- the TV console gives take presets only to non-main channels, so the main channel never reaches its setter */
         setMainMasterVolume(nextValue);
     }
   };
@@ -1377,9 +1379,11 @@ export default function Control() {
     let step = 0;
 
     const advanceStep = () => {
+      /* v8 ignore start -- the fade interval is cleared before its run id moves on, so a stale step cannot run */
       if (runId !== takeVolumeFadeRunIdRef.current[channelId]) {
         return;
       }
+      /* v8 ignore stop */
 
       step += 1;
       const ratio = Math.min(1, step / stepCount);
@@ -1674,9 +1678,11 @@ export default function Control() {
   ) => {
     const normalizedSongSequence = normalizeProgramSongPlaylist(
       normalizeProgramSongSequence(nextSequence) ?? {
+        /* v8 ignore start -- every loader normalises the stored sequence and falls back to an empty manual sequence first, so this fallback cannot receive a null */
         ...createProgramSongSequence("manual"),
         activeItemId: null,
       },
+      /* v8 ignore stop */
     );
     setProgramAudioBusSettings((previous) => ({
       ...previous,
@@ -3098,9 +3104,11 @@ export default function Control() {
     () =>
       normalizeProgramSongPlaylist(
         normalizeProgramSongSequence(programAudioBusSettings.songSequence) ?? {
+          /* v8 ignore start -- the stored sequence is already normalised by every loader, which falls back to an empty manual sequence first, so this second fallback cannot receive a null */
           ...createProgramSongSequence("manual"),
           activeItemId: null,
         },
+        /* v8 ignore stop */
       ),
     [programAudioBusSettings.songSequence],
   );
