@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MediaLabel } from '../models/broadcast';
 import {
@@ -257,5 +257,34 @@ describe('ModoItalianoGiorgiaArtistBumperEditorFields', () => {
     expect(show).not.toBeChecked();
     fireEvent.click(show);
     expect(updateProp).toHaveBeenCalledWith(TYPE, 'show', true);
+  });
+});
+
+// gaulatti/alcantara#527 (bumper, untriaged gaps): a label whose images arrive after the bumper has gone, and a
+// label response with no image list.
+describe('ModoItalianoGiorgiaArtistBumper label loading', () => {
+  it('ignores a label response that arrives after the bumper has been removed', async () => {
+    let release!: (value: Response) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>((resolve) => (release = resolve)))
+    );
+    const view = render(<ModoItalianoGiorgiaArtistBumper artist='ROB' songTitle='x' labelId='rob' images={IMAGES} />);
+    view.unmount();
+    release({ ok: true, status: 200, json: async () => ({ id: 'rob', name: 'ROB', images: [] }) } as Response);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(played).toHaveLength(0);
+  });
+
+  it('says a label response without an image list has no images, and plays nothing', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ id: 'rob', name: 'ROB' }) }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<ModoItalianoGiorgiaArtistBumper artist='ROB' songTitle='x' labelId='rob' images={IMAGES} />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(played).toHaveLength(0);
+    expect(screen.queryByTestId('bumper-player')).toBeNull();
   });
 });
