@@ -63,6 +63,19 @@ describe('RadioMetricsService coverage', () => {
     );
   });
 
+  it('counts operator change records by bounded result', () => {
+    metrics.recordOperatorChangeRecord('recorded');
+    metrics.recordOperatorChangeRecord('recorded');
+    metrics.recordOperatorChangeRecord('failed');
+    const text = metrics.render();
+    expect(text).toContain(
+      'alcantara_radio_operator_change_records_total{result="recorded"} 2',
+    );
+    expect(text).toContain(
+      'alcantara_radio_operator_change_records_total{result="failed"} 1',
+    );
+  });
+
   it('tracks connection states, never going below zero and dropping empty entries', () => {
     metrics.recordConnectionState('connected', 1);
     metrics.recordConnectionState('connected', 1);
