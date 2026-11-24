@@ -10,6 +10,7 @@ describe('RecipesController (gaulatti/alcantara#424)', () => {
     expand: jest.fn(async () => 'expanded'),
   };
   const controller = new RecipesController(recipes as any);
+  const request = { user: { authorization: { teamId: 7 } } };
 
   it('hands each route to the service, with an empty body when none is sent', async () => {
     expect(await controller.listRecipes('tv')).toEqual(['list']);
@@ -17,20 +18,23 @@ describe('RecipesController (gaulatti/alcantara#424)', () => {
       'created',
     );
     expect(recipes.create).toHaveBeenCalledWith('tv', { name: 'Song' });
-    expect(await controller.updateRecipe('tv', 7, undefined as any)).toBe(
-      'updated',
-    );
-    expect(recipes.update).toHaveBeenCalledWith('tv', 7, {});
-    expect(await controller.expandRecipe('tv', 7, undefined as any)).toBe(
-      'expanded',
-    );
-    expect(recipes.expand).toHaveBeenCalledWith('tv', 7, {});
+    expect(
+      await controller.updateRecipe('tv', 7, undefined as any, request),
+    ).toBe('updated');
+    expect(recipes.update).toHaveBeenCalledWith('tv', 7, {}, 7);
+    expect(
+      await controller.expandRecipe('tv', 7, undefined as any, request),
+    ).toBe('expanded');
+    expect(recipes.expand).toHaveBeenCalledWith('tv', 7, {}, 7);
     await controller.createRecipe('tv', undefined as any);
     expect(recipes.create).toHaveBeenLastCalledWith('tv', {});
-    await controller.expandRecipe('tv', 7, { params: { songId: 1 } });
-    expect(recipes.expand).toHaveBeenLastCalledWith('tv', 7, {
-      params: { songId: 1 },
-    });
+    await controller.expandRecipe('tv', 7, { params: { songId: 1 } }, request);
+    expect(recipes.expand).toHaveBeenLastCalledWith(
+      'tv',
+      7,
+      { params: { songId: 1 } },
+      7,
+    );
   });
 
   it('reads with flight.read and writes with flight.manage', () => {

@@ -291,13 +291,40 @@ describe('RecipesService (gaulatti/alcantara#424)', () => {
       expect(metrics.recordRecipeExpansion).toHaveBeenCalledWith('ok');
     });
 
-    it('looks the artist up as no team when the program row carries none (gaulatti/alcantara#464)', async () => {
+    it("looks the artist up under the program's team, whoever asked (gaulatti/alcantara#464)", async () => {
+      const { service, lookup } = setup();
+      await service.expand('tv', 7, { params: { songId: 42 } }, 99);
+      expect(lookup.artistLabelFor).toHaveBeenCalledWith(5, 'Fictional Artist');
+    });
+
+    it('falls back to the asking team when the program has no team, and for a program with no Program row (made before #335)', async () => {
+      for (const program of [{ teamId: null }, null]) {
+        const { service, lookup } = setup({ program });
+        await service.expand('tv', 7, { params: { songId: 42 } }, 9);
+        expect(lookup.artistLabelFor).toHaveBeenCalledWith(
+          9,
+          'Fictional Artist',
+        );
+      }
+    });
+
+    it('asks as team 0 when the caller is the deployment itself (test mode)', async () => {
       const { service, lookup } = setup({ program: null });
-      await service.expand('tv', 7, { params: { songId: 42 } });
-      expect(lookup.artistLabelFor).toHaveBeenCalledWith(
-        null,
-        'Fictional Artist',
-      );
+      await service.expand('tv', 7, { params: { songId: 42 } }, 0);
+      expect(lookup.artistLabelFor).toHaveBeenCalledWith(0, 'Fictional Artist');
+    });
+
+    it('finds no label, without asking or failing, when neither the program nor the caller has a team', async () => {
+      for (const program of [{ teamId: null }, null]) {
+        const { service, lookup } = setup({ program });
+        const { issues } = await service.expand('tv', 7, {
+          params: { songId: 42 },
+        });
+        expect(lookup.artistLabelFor).not.toHaveBeenCalled();
+        expect(issues.map((issue) => issue.code)).toContain(
+          'artist_label_missing',
+        );
+      }
     });
 
     it("uses the label given for the use instead of the artist's", async () => {
@@ -409,6 +436,21 @@ describe('RecipesService (gaulatti/alcantara#424)', () => {
         null,
         useId,
       );
+
+    it('looks the artist up for a rebuilt use under the asking team when the program has none (gaulatti/alcantara#464)', async () => {
+      const { service, prisma, lookup } = setup({ program: null });
+      prisma.flightSequence.findMany.mockResolvedValueOnce([
+        {
+          id: 4,
+          items: tagged('use_aaaaaaaaaaaa', 1),
+          isRunning: false,
+          activeItemId: null,
+          revision: 6,
+        },
+      ]);
+      await service.update('tv', 7, { revision: 2 }, 9);
+      expect(lookup.artistLabelFor).toHaveBeenCalledWith(9, 'Fictional Artist');
+    });
 
     it('rebuilds older uses after the cue on air, leaves the one on air, and keeps hand cues', async () => {
       const { service, prisma, flights, metrics } = setup();

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
+import { PompeiiService } from '../../auth/pompeii.service';
 import { FlightService } from '../../program/flight.service';
 import { RecipesService } from '../../program/recipes.service';
 import { McpToolError, McpToolProvider, type McpToolSpec } from '../contract';
@@ -51,6 +52,7 @@ export class RecipeMcpTools {
   constructor(
     private readonly recipes: RecipesService,
     private readonly flights: FlightService,
+    private readonly pompeii: PompeiiService,
   ) {}
 
   specs(): McpToolSpec[] {
@@ -78,14 +80,19 @@ export class RecipeMcpTools {
           label_id: labelIdArg,
         },
         run: (args) =>
-          this.recipes.expand(args.program_id, args.recipe_id, {
-            params: {
-              songId: args.song_id,
-              ...(args.label_id !== undefined
-                ? { labelId: args.label_id }
-                : {}),
+          this.recipes.expand(
+            args.program_id,
+            args.recipe_id,
+            {
+              params: {
+                songId: args.song_id,
+                ...(args.label_id !== undefined
+                  ? { labelId: args.label_id }
+                  : {}),
+              },
             },
-          }),
+            this.pompeii.teamId,
+          ),
       }),
       actionSpec({
         name: 'program_create_recipe_by_id',
@@ -131,10 +138,15 @@ export class RecipeMcpTools {
           recoverable: true,
         }),
         run: (args) =>
-          this.recipes.update(args.program_id, args.recipe_id, {
-            ...toInput(args),
-            revision: args.revision,
-          }),
+          this.recipes.update(
+            args.program_id,
+            args.recipe_id,
+            {
+              ...toInput(args),
+              revision: args.revision,
+            },
+            this.pompeii.teamId,
+          ),
       }),
       actionSpec<
         {
@@ -207,6 +219,7 @@ export class RecipeMcpTools {
                 : {}),
             },
             args.position,
+            this.pompeii.teamId,
           ),
       }),
       this.deleteSpec(),

@@ -153,6 +153,7 @@ export class RecipesService {
     programId: string,
     recipeId: number,
     input: RecipeInput,
+    callerTeam?: number,
   ): Promise<RecipeView & { rebuilt: number }> {
     const state = await this.program(programId, true);
     const existing = await this.recipe(state.id, recipeId);
@@ -197,7 +198,7 @@ export class RecipesService {
       throw this.duplicate(error, fields.name ?? existing.name);
     }
     const recipe = toView(row);
-    const rebuilt = await this.rebuild(programId, state.id, recipe);
+    const rebuilt = await this.rebuild(programId, state.id, recipe, callerTeam);
     // The recipe as saved, plus how many uses followed it (the console reads the recipe fields).
     return { ...recipe, rebuilt };
   }
@@ -210,6 +211,7 @@ export class RecipesService {
     programId: string,
     recipeId: number,
     body: { params?: { songId?: unknown; labelId?: unknown }; useId?: unknown },
+    callerTeam?: number,
   ): Promise<{ items: FlightCue[]; issues: RecipeIssue[] }> {
     try {
       const state = await this.program(programId, true);
@@ -238,6 +240,7 @@ export class RecipesService {
         songId as number,
         labelParam ?? undefined,
         useId,
+        callerTeam,
       );
       this.metrics.recordRecipeExpansion(
         result.issues.length ? 'issues' : 'ok',
@@ -260,15 +263,19 @@ export class RecipesService {
     recipeId: number,
     params: { songId: number; labelId?: string | null },
     position?: number,
+    callerTeam?: number,
   ): Promise<{
     useId: string;
     items: FlightCue[];
     issues: RecipeIssue[];
     revision: number;
   }> {
-    const { items, issues } = await this.expand(programId, recipeId, {
-      params,
-    });
+    const { items, issues } = await this.expand(
+      programId,
+      recipeId,
+      { params },
+      callerTeam,
+    );
     const sequences = await this.flights.listFlightSequences(programId);
     const sequence = sequences.find((candidate) => candidate.id === sequenceId);
     if (!sequence) throw new NotFoundException('flight sequence not found');
@@ -306,6 +313,7 @@ export class RecipesService {
     songId: number,
     labelParam: string | null | undefined,
     useId: string,
+    callerTeam: number | undefined,
   ): Promise<{ items: FlightCue[]; issues: RecipeIssue[] }> {
     const issues: RecipeIssue[] = [];
     const song = await this.prisma.song.findUnique({
@@ -327,10 +335,7 @@ export class RecipesService {
       });
     let labelId: string | null = labelParam ?? null;
     if (labelParam === undefined && song)
-      labelId = await this.artistLabels.artistLabelFor(
-        await this.programTeam(programId),
-        song.artist,
-      );
+      labelId = await this.artistLabel(programId, callerTeam, song.artist);
     if (stepsUsingLabel(recipe.steps)) {
       if (!labelId)
         issues.push({
@@ -368,16 +373,23 @@ export class RecipesService {
    * scenes, so sharing them with another program is reported.
    */
   /**
-   * The team that owns the program the recipe runs in. Artist links are written under the caller's
-   * team and a catalog song carries no team of its own (gaulatti/alcantara#464), so the lookup
-   * resolves under the program's team.
+   * The label attached to the artist. Links are written under the caller's team and a catalog song carries no team of
+   * its own (gaulatti/alcantara#464), so the lookup uses the team that owns the program the recipe runs in, and the
+   * team of whoever asked when the program has none (programs made before #335 have no Program row). With neither,
+   * an automatic rebuild of a program that has no team, there is no team to look under and so no label: never an error.
    */
-  private async programTeam(programId: string): Promise<number | null> {
+  private async artistLabel(
+    programId: string,
+    callerTeam: number | undefined,
+    artist: string,
+  ): Promise<string | null> {
     const program = await this.prisma.program.findUnique({
       where: { programId },
       select: { teamId: true },
     });
-    return program?.teamId ?? null;
+    const team = program?.teamId ?? callerTeam;
+    if (team === undefined) return null;
+    return this.artistLabels.artistLabelFor(team, artist);
   }
 
   private async sceneIssues(
@@ -445,6 +457,7 @@ export class RecipesService {
     programId: string,
     programStateId: number,
     recipe: RecipeView,
+    callerTeam: number | undefined,
   ): Promise<number> {
     const sequences = await this.prisma.flightSequence.findMany({
       where: { programStateId, scheduledAt: null },
@@ -481,6 +494,7 @@ export class RecipesService {
           // A use built without a label looks the artist's label up again: one may have been attached since.
           use.params.labelId ?? undefined,
           use.useId,
+          callerTeam,
         );
         next = [...next.slice(0, use.start), ...cues, ...next.slice(use.end)];
         changed += 1;

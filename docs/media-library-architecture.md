@@ -117,7 +117,7 @@ the artist as last saved for display, and goes with its label (`ON DELETE CASCAD
 - `GET /artist-labels` (`media.read`) answers `[{artistKey, artist, labelId}]` for the caller's team.
 - `PUT /artist-labels` (`media.manage`) takes `{artist, labelId|null}`; `null` removes the link. A label
   that does not exist or belongs to another team is a 400.
-- The backend lookup is `ArtistLabelsService.artistLabelFor(teamId, artist)`. The song recipe calls it with the team that owns the program the recipe runs in (`Program.teamId`, none = 0), never the song's own team: catalog songs carry no team, while links are written under the caller's team (gaulatti/alcantara#464).
+- The backend lookup is `ArtistLabelsService.artistLabelFor(teamId, artist)`. The song recipe calls it with the team that owns the program the recipe runs in (`Program.teamId`), and with the team of whoever asked (console request team, MCP `pompeii.teamId`) when the program has none, as for a program made before #335, which has no `Program` row. With neither (an automatic rebuild of a program with no team) there is no team to look under, so there is no label and no error. It never uses the song's own team: catalog songs carry no team, while links are written under the caller's team (gaulatti/alcantara#464).
 - MCP: `media_list_artist_labels` (R) and `media_set_artist_label` (W), with the same permissions.
 - Console: the Songs page lists each artist's label, with the label's image count and a warning when it
   has none; saving sets the link for every song by that artist.
