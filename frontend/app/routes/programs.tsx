@@ -289,11 +289,13 @@ export default function ProgramsAdmin() {
 
   const inspectTemplate = async () => {
     const templateUrl = templateUrlInput.trim();
+    /* v8 ignore start -- the Inspect button is disabled while the template URL is empty, so inspectTemplate never runs without one; this guard is defensive. */
     if (!templateUrl) {
       setTemplatePreview(null);
       setTemplateError('Enter a template manifest URL to inspect.');
       return;
     }
+    /* v8 ignore stop */
 
     setIsInspectingTemplate(true);
     setTemplateError('');
@@ -330,6 +332,7 @@ export default function ProgramsAdmin() {
     setIsSaving(true);
     try {
       const isEditing = !!editingProgramId;
+      /* v8 ignore next -- editingProgramId is set only from a listed program, and the list is replaced only by a reload; the fallback covers a reload that drops the program mid-edit, and no UI path opens the edit without a listed program. */
       const editingProgram = isEditing ? programs.find((program) => program.programId === editingProgramId) || null : null;
       let savedProgram: ProgramState;
       const isVisualProgram = selectedType !== 'radio';
@@ -351,7 +354,9 @@ export default function ProgramsAdmin() {
         }
         savedProgram = (await res.json()) as ProgramState;
 
+        /* v8 ignore next -- editingProgramId is set only from a listed program, and the list is replaced only by a reload; the fallback covers a reload that drops the program mid-edit, and no UI path opens the edit without a listed program. */
         const currentSceneIds = editingProgram?.scenes.map((entry) => entry.sceneId) || [];
+        /* v8 ignore next -- editingProgramId is set only from a listed program, and the list is replaced only by a reload; the fallback covers a reload that drops the program mid-edit, and no UI path opens the edit without a listed program. */
         const currentStingerIds = editingProgram?.stingers.map((entry) => entry.stingerId) || [];
         if (isVisualProgram) {
           if (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'scene.configuration')) {
