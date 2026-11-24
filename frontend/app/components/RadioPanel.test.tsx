@@ -1492,3 +1492,35 @@ it("says a running rundown that has reached its scheduled start is on air", () =
   expect(screen.getByText(/ON AIR/)).toBeInTheDocument();
   expect(screen.getByText("Rundown automation running")).toBeInTheDocument();
 });
+
+// gaulatti/alcantara#404 (RadioPanel pass): the rotation editor takes a song through the page, and the desk's M key
+// starts and stops the listener monitor.
+it("reports a rotation song the page refuses to take on air", async () => {
+  const p = props();
+  p.fixtureData!.logs = [];
+  p.onTakeSelection = vi.fn().mockRejectedValue(new Error("Palazzo refused the take"));
+  mount(p);
+  const [take] = screen.getAllByRole("button", { name: "Take on air" });
+  fireEvent.click(take);
+  expect(await screen.findByRole("alert")).toHaveTextContent("Palazzo refused the take");
+  expect(p.onTakeSelection).toHaveBeenCalledTimes(1);
+});
+
+it("takes a rotation song on air through the page", async () => {
+  const p = props();
+  p.fixtureData!.logs = [];
+  p.onTakeSelection = vi.fn().mockResolvedValue(undefined);
+  mount(p);
+  const [take] = screen.getAllByRole("button", { name: "Take on air" });
+  fireEvent.click(take);
+  await waitFor(() => expect(p.onTakeSelection).toHaveBeenCalledTimes(1));
+});
+
+it("says a rotation take the page refuses without a reason was not taken", async () => {
+  const p = props();
+  p.fixtureData!.logs = [];
+  p.onTakeSelection = vi.fn().mockRejectedValue("nope");
+  mount(p);
+  fireEvent.click(screen.getAllByRole("button", { name: "Take on air" })[0]);
+  expect(await screen.findByRole("alert")).toHaveTextContent("Rotation command failed");
+});
