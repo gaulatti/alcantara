@@ -3528,6 +3528,7 @@ export default function Control() {
           void saveProgramAudioBusSongSequence(nextSequence);
         }}
         onTakeSelection={async (nextSequence) => {
+          /* v8 ignore next -- the sheet's editor renders in catalog view, where its take-on-air buttons are not rendered (the queue block is hidden), so this callback cannot be invoked from the sheet */
           await takeProgramSongSelection(nextSequence);
         }}
       />
