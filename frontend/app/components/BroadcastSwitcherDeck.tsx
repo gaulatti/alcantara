@@ -89,6 +89,7 @@ function ConsolePreferenceControls({ programId }: { programId: string }) {
   const [scope, setScope] = useState<"program" | "team">("program");
   const [layoutName, setLayoutName] = useState("");
   const teamId = context?.authorization?.teamId;
+  /* v8 ignore next -- the team scope is offered only when the operator has a team, so the empty fallback cannot be reached */
   const scopeId = scope === "program" ? programId : String(teamId ?? "");
 
   const refresh = async () => {
@@ -194,6 +195,7 @@ function ConsolePreferenceControls({ programId }: { programId: string }) {
   return (
     <div className="relative flex items-center gap-2">
       <StatePill
+        /* v8 ignore next -- the sync state is a closed union set by the preferences context, so the fallback tone cannot be reached */
         tone={SYNC_TONE[preferences.syncState] ?? "warn"}
         label={`Preferences ${preferences.syncState}`}
       />
@@ -388,6 +390,7 @@ export function ConfidenceMonitor({
 
   useEffect(() => {
     const monitor = monitorRef.current;
+    /* v8 ignore next -- the observer effect runs after the monitor element is mounted, so the monitor ref is set here */
     if (!monitor) return;
     const update = () => {
       const bounds = monitor.getBoundingClientRect();
@@ -480,6 +483,7 @@ export function ConfidenceMonitor({
         ) : nativeMonitor ? (
           (() => {
             const Monitor = nativeMonitor;
+            /* v8 ignore next -- the native monitor is only chosen when programId is set (see nativeMonitor), so the empty-string fallback cannot be reached */
             return <Monitor programId={programId ?? ""} />;
           })()
         ) : scene ? (
