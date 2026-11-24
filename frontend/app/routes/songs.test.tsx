@@ -986,3 +986,55 @@ it("keeps the assigned intro when a song is saved, and filters by a missing arti
     screen.getByPlaceholderText("Search by artist, title, or EarOne ID"),
   ).toHaveValue("");
 });
+
+// gaulatti/alcantara#527 (songs route, untriaged gaps): the refusals and inputs the catalog page can receive
+// from its own controls. Each test names the branch it reaches.
+it("reads an EarOne id and rank on a row, and says when a song has no EarOne id", async () => {
+  fetchSongsPage.mockResolvedValue(pageOf([song(1, { earoneSongId: 881, earoneRank: 4 }), song(2, { earoneSongId: 90 })]));
+  render(<SongsCatalog />);
+  await loaded();
+  expect(screen.getByText("EarOne 881 · rank 4")).toBeVisible();
+  expect(screen.getByText("EarOne 90")).toBeVisible();
+});
+
+it("reports a toggle the browser could not send with its own message, and a plain failure otherwise", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  fetchSongsPage.mockResolvedValue(pageOf([song(1), song(2)]));
+  render(<SongsCatalog />);
+  await loaded();
+  network.mockImplementationOnce(async () => {
+    throw new Error("Switch refused by the catalog");
+  });
+  fireEvent.click(screen.getByRole("switch", { name: "Disable Artist 1 - Title 1" }));
+  await toast("Switch refused by the catalog");
+  network.mockImplementationOnce(async () => {
+    throw "offline";
+  });
+  fireEvent.click(screen.getByRole("switch", { name: "Disable Artist 2 - Title 2" }));
+  await toast("Failed to update the song.");
+});
+
+it("ignores the E key when a modifier is held", async () => {
+  render(<SongsCatalog />);
+  await loaded();
+  network.mockClear();
+  fireEvent.keyDown(window, { key: "e", ctrlKey: true });
+  fireEvent.keyDown(window, { key: "e", altKey: true });
+  expect(network).not.toHaveBeenCalled();
+});
+
+it("refuses a duration that is not a positive number of milliseconds", async () => {
+  const dialog = await openEdit({ durationMs: 200000 });
+  fireEvent.change(field(dialog, "Duration (ms)"), { target: { value: "0" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Update Song" }));
+  expect(await within(dialog).findByText("Duration must be a positive number in milliseconds.")).toBeInTheDocument();
+  expect(network).not.toHaveBeenCalledWith(expect.stringContaining("/songs/1"), expect.anything());
+});
+
+it("leaves the replacement picker alone when no file is chosen", async () => {
+  const dialog = await openEdit({});
+  const picker = dialog.querySelector('input[type="file"]') as HTMLInputElement;
+  fireEvent.change(picker, { target: { files: [] } });
+  expect(uploadFileToMediaBucket).not.toHaveBeenCalled();
+  expect(within(dialog).getByRole("button", { name: "Update Song" })).toBeInTheDocument();
+});

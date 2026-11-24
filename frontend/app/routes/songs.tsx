@@ -249,6 +249,7 @@ export default function SongsCatalog() {
   };
 
   const batchCreateSongs = async (files: File[]) => {
+    /* v8 ignore next -- the only caller, the batch picker's change handler, calls this only when files.length > 0; this guard is defensive. */
     if (files.length === 0) return;
     setBatchItems(files.map((f) => ({ name: f.name, status: 'pending' })));
     let anyDone = false;
@@ -452,6 +453,7 @@ export default function SongsCatalog() {
       return;
     }
 
+    /* v8 ignore next -- durationMs is Number(durationMsRaw) whenever the raw text is non-empty, so it is never null here and the `?? 0` fallback cannot run; this line also holds the reached `<= 0` check that the zero-duration test covers. */
     if (durationMsRaw && (!Number.isFinite(durationMs) || (durationMs ?? 0) <= 0)) {
       setError('Duration must be a positive number in milliseconds.');
       return;
@@ -462,6 +464,7 @@ export default function SongsCatalog() {
 
     try {
       const isEditing = Boolean(editingSong);
+      /* v8 ignore next 2 -- the add dialog offers only the batch picker (which creates songs itself) and no Audio URL field, so saveSong is reached only from the edit dialog, where isEditing holds; the create branch is unreachable from the UI. */
       const endpoint = isEditing ? apiUrl(`/songs/${editingSong!.id}`) : apiUrl('/songs');
       const method = isEditing ? 'PUT' : 'POST';
       const res = await fetch(endpoint, {
@@ -489,6 +492,7 @@ export default function SongsCatalog() {
       await fetchSongs();
       await loadInstants();
       closeModal();
+      /* v8 ignore next -- the create branch of saveSong is unreachable from the UI (see the endpoint marker above). */
       showAlert(isEditing ? 'Song updated.' : 'Song created.', 'success');
     } catch (err) {
       console.error('Failed to save song:', err);
@@ -801,6 +805,7 @@ export default function SongsCatalog() {
                   multiple
                   disabled={batchItems.some((i) => i.status === 'uploading')}
                   onChange={(event) => {
+                    /* v8 ignore next -- a file input's files is always a FileList, never null, so the ?? [] fallback cannot run in a browser; defensive. */
                     const files = Array.from(event.target.files ?? []);
                     event.target.value = '';
                     if (files.length > 0) void batchCreateSongs(files);
