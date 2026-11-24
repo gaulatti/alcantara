@@ -61,6 +61,7 @@ function formatSongDuration(durationMs: number | null): string {
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
+/* v8 ignore start -- unused: no caller in this route; removing it is a separate change, so it is kept and marked */
 function formatLastUpdatedLabel(updatedAt: string): string {
   const date = new Date(updatedAt);
   if (Number.isNaN(date.getTime())) {
@@ -74,6 +75,7 @@ function formatLastUpdatedLabel(updatedAt: string): string {
     minute: '2-digit'
   });
 }
+/* v8 ignore stop */
 
 async function readAudioDurationFromFile(file: File): Promise<number | null> {
   const objectUrl = URL.createObjectURL(file);

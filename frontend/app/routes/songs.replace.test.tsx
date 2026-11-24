@@ -112,3 +112,37 @@ it("uploads the replacement file picked in the Edit song dialog", async () => {
   );
   expect(within(dialog).getByText("Replace: new-take.mp3")).toBeInTheDocument();
 });
+
+// gaulatti/alcantara#404 (songs route, outside the #404 list): a replacement's metadata fills the edit dialog, and a
+// refused replacement says so.
+async function pickReplacement(name: string) {
+  fireEvent.keyDown(
+    await screen.findByRole("button", { name: "Actions for Artist - Old take" }),
+    { key: "Enter" },
+  );
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Edit" }));
+  const dialog = await screen.findByRole("dialog", { name: "Edit song" });
+  const picker = dialog.querySelector('input[type="file"][accept="audio/*"]') as HTMLInputElement;
+  fireEvent.change(picker, { target: { files: [new File(["audio"], name, { type: "audio/mpeg" })] } });
+  return dialog;
+}
+
+it("fills the edit dialog from a replacement's metadata: artist, cover and length", async () => {
+  uploadFileToMediaBucket.mockResolvedValueOnce({
+    url: "https://media.test/fictional.mp3",
+    metadata: { artist: " Fictional artist ", coverUrl: "https://media.test/c.png", durationMs: 123_000 },
+  });
+  render(<SongsCatalog />);
+  const dialog = await pickReplacement("fictional.mp3");
+  await waitFor(() => expect(within(dialog).getByDisplayValue("Fictional artist")).toBeInTheDocument());
+  expect(within(dialog).getByDisplayValue("https://media.test/c.png")).toBeInTheDocument();
+  expect(within(dialog).getByDisplayValue("123000")).toBeInTheDocument();
+});
+
+it("says a replacement the upload refuses was not uploaded", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  uploadFileToMediaBucket.mockRejectedValueOnce(new Error("too big"));
+  render(<SongsCatalog />);
+  await pickReplacement("fictional.mp3");
+  expect((await screen.findAllByText("Failed to upload song file.")).length).toBeGreaterThan(0);
+});
