@@ -93,6 +93,7 @@ it("saves repeated scene edits and preserves the latest edit after failure", asy
     sceneAttributeRetryDelayMsRef: { current: 800 },
     selectedSceneRef: { current: 80 },
     sceneEditorAutosaveSignatureRef: { current: "" },
+    sceneDrainedIdRef: { current: null },
     sceneEditorRevisionRef: { current: 2 },
     sceneEditorDirtyRef: { current: true },
     setIsSavingSceneAttributes: vi.fn(),
