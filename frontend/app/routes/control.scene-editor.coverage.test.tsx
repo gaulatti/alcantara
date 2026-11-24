@@ -163,6 +163,11 @@ it.each([
   ["fifthbell", {}, (props: any) => expect(Array.isArray(props.weatherCities)).toBe(true)],
   ["fifthbell-marquee", { fifthbell: { tone: "legacy" }, "fifthbell-marquee": { speed: 3 } }, (props: any) => expect(props).toMatchObject({ tone: "legacy", speed: 3 })],
   ["fifthbell-chyron", { "toni-chyron": { a: 1 }, "fifthbell-chyron": { b: 2 } }, (props: any) => expect(props).toMatchObject({ a: 1, b: 2 })],
+  // gaulatti/alcantara#404 (stronger pass, 1901/1903): a chyron scene saved with none of the shared keys, with only
+  // its own key, or with only the other chyron's key.
+  ["toni-chyron", {}, (props: any) => expect(props).toBeTruthy()],
+  ["fifthbell-chyron", { "fifthbell-chyron": { b: 2 } }, (props: any) => expect(props).toMatchObject({ b: 2 })],
+  ["toni-chyron", { "fifthbell-chyron": { b: 2 } }, (props: any) => expect(props).toMatchObject({ b: 2 })],
   ["fifthbell-corner", { fifthbell: { c: 1 }, "toni-clock": { d: 2 }, "fifthbell-corner": { e: 3 } }, (props: any) => expect(props).toMatchObject({ c: 1, d: 2, e: 3 })],
 ])("saves %s with its defaults and the scene's own settings", async (componentType, metadata, check) => {
   const scene = open(metadata as Record<string, unknown>, componentType as string);

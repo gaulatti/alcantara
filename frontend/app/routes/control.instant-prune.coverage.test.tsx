@@ -1,7 +1,17 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { controlServer, stubConsoleBrowser, type ControlServer } from "../../test/controlKit";
+import {
+  controlServer,
+  stubConsoleBrowser,
+  type ControlServer,
+} from "../../test/controlKit";
 
 // gaulatti/alcantara#404 (control.tsx remainder, batch 3): a clip still playing when the cartwall is reloaded without it.
 // Earlier (group A, control.tsx): the control route's lifecycle paths. A cartwall clip that
@@ -15,7 +25,9 @@ let activeProgram = "main";
 vi.mock("../hooks/useSSE", async () => {
   const { useEffect } = await import("react");
   return {
-    useSSE: (options?: { onConnectionStateChange?: (state: string) => void }) => {
+    useSSE: (options?: {
+      onConnectionStateChange?: (state: string) => void;
+    }) => {
       useEffect(() => {
         options?.onConnectionStateChange?.("disconnected");
       }, []);
@@ -43,8 +55,22 @@ import Control from "./control";
 let server: ControlServer;
 
 const clips = [
-  { id: 1, name: "Fictional clip 1", audioUrl: "https://media.example.test/one.mp3", volume: 1, enabled: true, position: 0 },
-  { id: 2, name: "Fictional clip 2", audioUrl: "https://media.example.test/two.mp3", volume: 1, enabled: true, position: 1 },
+  {
+    id: 1,
+    name: "Fictional clip 1",
+    audioUrl: "https://media.example.test/one.mp3",
+    volume: 1,
+    enabled: true,
+    position: 0,
+  },
+  {
+    id: 2,
+    name: "Fictional clip 2",
+    audioUrl: "https://media.example.test/two.mp3",
+    volume: 1,
+    enabled: true,
+    position: 1,
+  },
 ];
 
 // Every clip reports the length the test sets, as soon as its source is assigned.
@@ -80,7 +106,10 @@ function programState(programId: string) {
   };
 }
 
-function open(instantList: unknown[] = clips, extra: Record<string, Response> = {}) {
+function open(
+  instantList: unknown[] = clips,
+  extra: Record<string, Response> = {},
+) {
   server = controlServer({
     ...extra,
     "GET /scenes": Response.json([]),
@@ -120,15 +149,60 @@ it("drops a playing clip when a retried cartwall reload no longer lists it", asy
   // The program switches and its cartwall fails to reload: the pads that loaded stay on screen.
   server.answer("GET /instants", new Response("down", { status: 500 }));
   activeProgram = "alt";
-  view.rerender(<MemoryRouter><Control /></MemoryRouter>);
+  view.rerender(
+    <MemoryRouter>
+      <Control />
+    </MemoryRouter>,
+  );
   await screen.findByRole("button", { name: "Retry cartwall" });
   // The clip goes on air after the switch, so the timers it arms are its own.
   server.answer("POST /instants/1/play?programId=alt", Response.json({}));
   fireEvent.click(screen.getByRole("button", { name: "Fictional clip 1" }));
-  await waitFor(() => expect(server.requests("POST /instants/1/play?programId=alt")).toHaveLength(1));
+  await waitFor(() =>
+    expect(server.requests("POST /instants/1/play?programId=alt")).toHaveLength(
+      1,
+    ),
+  );
   // The retry answers a cartwall that no longer lists the playing clip.
   server.answer("GET /instants", Response.json([clips[1]]));
   fireEvent.click(screen.getByRole("button", { name: "Retry cartwall" }));
-  await waitFor(() => expect(screen.queryByRole("button", { name: "Fictional clip 1" })).toBeNull());
-  expect(await screen.findByRole("button", { name: "Fictional clip 2" })).toBeInTheDocument();
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "Fictional clip 1" }),
+    ).toBeNull(),
+  );
+  expect(
+    await screen.findByRole("button", { name: "Fictional clip 2" }),
+  ).toBeInTheDocument();
+});
+
+// gaulatti/alcantara#404 (stronger pass, line 475): switching program clears the timer of a clip still playing on the
+// program the operator left, so it can never end a clip state on the new program. Driven here directly, without
+// leaning on another test's timing.
+it("clears a playing clip's timer when the operator switches program", async () => {
+  KnownLengthAudio.seconds = 3;
+  const view = open();
+  await screen.findByRole("button", { name: "Fictional clip 1" });
+  // Every clip's length is known once its metadata loads.
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  server.answer("POST /instants/1/play?programId=main", Response.json({}));
+  const armed = vi.spyOn(window, "setTimeout");
+  fireEvent.click(screen.getByRole("button", { name: "Fictional clip 1" }));
+  await waitFor(() =>
+    expect(armed.mock.calls.some(([, delay]) => delay === 3000)).toBe(true),
+  );
+  const index = armed.mock.calls.findIndex(([, delay]) => delay === 3000);
+  const clipTimer = armed.mock.results[index].value as number;
+
+  const cleared = vi.spyOn(window, "clearTimeout");
+  activeProgram = "alt";
+  view.rerender(
+    <MemoryRouter>
+      <Control />
+    </MemoryRouter>,
+  );
+  await waitFor(() =>
+    expect(server.requests("GET /program/alt/state").length).toBeGreaterThan(0),
+  );
+  expect(cleared).toHaveBeenCalledWith(clipTimer);
 });
