@@ -156,3 +156,25 @@ describe('summarizeChange', () => {
     });
   });
 });
+
+describe('OperatorChangeRecorder dependency metadata', () => {
+  it('records Object for the constructor types of dependencies that are not yet defined', () => {
+    jest.isolateModules(() => {
+      jest.doMock('../prisma.service', () => ({ PrismaService: undefined }));
+      jest.doMock('../observability/managed-metrics.service', () => ({
+        ManagedMetricsService: undefined,
+      }));
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const loaded = require('./operator-change-recorder') as {
+        OperatorChangeRecorder: new (...args: never[]) => unknown;
+      };
+      const types = Reflect.getMetadata(
+        'design:paramtypes',
+        loaded.OperatorChangeRecorder,
+      ) as Array<{ name: string }>;
+      expect(types.map((type) => type.name)).toEqual(['Object', 'Object']);
+    });
+    jest.dontMock('../prisma.service');
+    jest.dontMock('../observability/managed-metrics.service');
+  });
+});
