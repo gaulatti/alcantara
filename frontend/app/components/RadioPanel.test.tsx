@@ -1596,3 +1596,11 @@ it("advances the rundown without a take callback supplied", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
   await waitFor(() => expect(flight.goFlight).toHaveBeenCalledWith("radio-demo"));
 });
+
+it("passes the rundown's take callback to the playback bar when one is supplied", async () => {
+  const p = props();
+  p.onTakeSelection = vi.fn(async () => {});
+  mount(p);
+  fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
+  await waitFor(() => expect(flight.goFlight).toHaveBeenCalledWith("radio-demo"));
+});
