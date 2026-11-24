@@ -24,6 +24,7 @@ export async function fetchAllMediaLabels<
     if (
       !Array.isArray(payload.data) ||
       !Number.isInteger(payload.meta?.totalPages) ||
+      /* v8 ignore next -- the `|| payload.meta?.totalPages` check before this line already requires a whole number, so `?? -1` never runs; this line also holds the reached `< 0` check, which the negative-count test covers. */
       (payload.meta?.totalPages ?? -1) < 0
     ) {
       throw new Error("Invalid media labels response");
