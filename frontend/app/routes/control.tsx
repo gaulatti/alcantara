@@ -2541,6 +2541,7 @@ export default function Control() {
 
       // If a new payload was queued while the previous drain promise was
       // still resolving, guarantee we kick off another drain pass.
+      /* v8 ignore start -- the drain loop takes any payload queued while it runs, so this guarantee only applies to a payload queued in the gap between the loop and the settle */
       if (
         pendingSceneAttributeSaveRef.current &&
         !sceneAttributeSaveDrainPromiseRef.current &&
@@ -2550,6 +2551,7 @@ export default function Control() {
           // no-op, retry timer is scheduled by flush
         });
       }
+      /* v8 ignore stop */
     });
 
   }, [persistSceneAttributes]);
@@ -2571,6 +2573,7 @@ export default function Control() {
       if (sceneAttributeFlushKickTimerRef.current === null) {
         sceneAttributeFlushKickTimerRef.current = window.setTimeout(() => {
           sceneAttributeFlushKickTimerRef.current = null;
+          /* v8 ignore start -- a queue starts the drain synchronously, so by the time this zero-millisecond kick fires the drain is running or has taken the payload; the body only covers a missed start */
           if (
             pendingSceneAttributeSaveRef.current &&
             !sceneAttributeSaveDrainPromiseRef.current &&
@@ -2580,6 +2583,7 @@ export default function Control() {
               // no-op, retry timer is scheduled by flush
             });
           }
+          /* v8 ignore stop */
         }, 0);
       }
     },
@@ -2588,9 +2592,11 @@ export default function Control() {
 
   const flushSceneAttributeAutosaveForScene = useCallback(
     async (sceneId: number | null) => {
+      /* v8 ignore start -- every caller of this flush passes a non-null scene: the editor and the page-hide and blur flushes check selection first, and takeSceneInstant returns early for null */
       if (sceneId === null) {
         return;
       }
+      /* v8 ignore stop */
 
       if (sceneEditorAutosaveTimerRef.current !== null) {
         window.clearTimeout(sceneEditorAutosaveTimerRef.current);
