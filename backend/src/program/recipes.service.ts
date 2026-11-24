@@ -232,6 +232,7 @@ export class RecipesService {
         );
       const useId = body?.useId ?? newUseId();
       const result = await this.build(
+        state.programId,
         state.id,
         recipe,
         songId as number,
@@ -299,6 +300,7 @@ export class RecipesService {
   }
 
   private async build(
+    programId: string,
     programStateId: number,
     recipe: RecipeView,
     songId: number,
@@ -314,7 +316,6 @@ export class RecipesService {
         title: true,
         enabled: true,
         audioUrl: true,
-        teamId: true,
       },
     });
     if (!song || !song.enabled || !song.audioUrl?.trim())
@@ -327,7 +328,7 @@ export class RecipesService {
     let labelId: string | null = labelParam ?? null;
     if (labelParam === undefined && song)
       labelId = await this.artistLabels.artistLabelFor(
-        song.teamId,
+        await this.programTeam(programId),
         song.artist,
       );
     if (stepsUsingLabel(recipe.steps)) {
@@ -366,6 +367,19 @@ export class RecipesService {
    * and the bumper scene a component to point at the song (its first one). Each use re-points those two
    * scenes, so sharing them with another program is reported.
    */
+  /**
+   * The team that owns the program the recipe runs in. Artist links are written under the caller's
+   * team and a catalog song carries no team of its own (gaulatti/alcantara#464), so the lookup
+   * resolves under the program's team.
+   */
+  private async programTeam(programId: string): Promise<number | null> {
+    const program = await this.prisma.program.findUnique({
+      where: { programId },
+      select: { teamId: true },
+    });
+    return program?.teamId ?? null;
+  }
+
   private async sceneIssues(
     programStateId: number,
     recipe: RecipeView,
@@ -460,6 +474,7 @@ export class RecipesService {
           continue;
         }
         const { items: cues } = await this.build(
+          programId,
           programStateId,
           recipe,
           use.params.songId,
