@@ -176,3 +176,23 @@ describe('recipe capabilities (gaulatti/alcantara#424)', () => {
     });
   });
 });
+
+describe('RecipeMcpTools dependency metadata (gaulatti/alcantara#464)', () => {
+  it('records Object for the constructor type of a dependency that is not yet defined', () => {
+    jest.isolateModules(() => {
+      jest.doMock('../../auth/pompeii.service', () => ({
+        PompeiiService: undefined,
+      }));
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const loaded = require('./recipes') as {
+        RecipeMcpTools: new (...args: never[]) => unknown;
+      };
+      const types = Reflect.getMetadata(
+        'design:paramtypes',
+        loaded.RecipeMcpTools,
+      ) as Array<{ name: string }>;
+      expect(types[2].name).toBe('Object');
+    });
+    jest.dontMock('../../auth/pompeii.service');
+  });
+});
