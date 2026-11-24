@@ -10,7 +10,9 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import {
   AudioAnalysisError,
+  CUE_RULE_VERSION,
   FfmpegAudioAnalyzer,
+  PREVIOUS_CUE_RULE_VERSION,
   type AudioAnalysis,
 } from './ffmpeg-audio.analyzer';
 import {
@@ -63,6 +65,8 @@ interface Candidate {
   analysisUpdatedAt: Date | null;
   attempts: number | null;
   sourceChanged: boolean;
+  /** The cue rule a re-analysis request asked for (1 = the previous rule); null means the current rule. */
+  requestedRuleVersion?: number | null;
   /** True when the asset is analysed and only lacks a stored length (#296). */
   backfill?: boolean;
   /** Assets that need a first, a repeated or a retried analysis. */
@@ -295,6 +299,7 @@ export class MediaAnalysisService
                a."createdAt" AS "createdAt",
                m."updatedAt" AS "analysisUpdatedAt",
                m."attempts" AS "attempts",
+               m."requestedRuleVersion" AS "requestedRuleVersion",
                (m."assetId" IS NOT NULL AND m."sourceUrl" IS DISTINCT FROM a."sourceUrl") AS "sourceChanged",
                COALESCE(
                  m."assetId" IS NULL
@@ -314,7 +319,7 @@ export class MediaAnalysisService
         LEFT JOIN "MediaAssetAnalysis" m ON m."assetId" = a."id"
         WHERE a."mediaType" = 'AUDIO'
       )
-      SELECT "assetId", "sourceUrl", "analysisUpdatedAt", "attempts", "sourceChanged",
+      SELECT "assetId", "sourceUrl", "analysisUpdatedAt", "attempts", "sourceChanged", "requestedRuleVersion",
              NOT "due" AS "backfill",
              COUNT(*) FILTER (WHERE "due") OVER () AS "remaining",
              COUNT(*) FILTER (WHERE NOT "due") OVER () AS "backfillRemaining"
@@ -365,6 +370,9 @@ export class MediaAnalysisService
       analysis = await this.analyzer.analyze(
         candidate.sourceUrl,
         ANALYSIS_TIMEOUT_MS,
+        candidate.requestedRuleVersion === PREVIOUS_CUE_RULE_VERSION
+          ? PREVIOUS_CUE_RULE_VERSION
+          : CUE_RULE_VERSION,
       );
     } catch (error) {
       const failure =
@@ -407,6 +415,7 @@ export class MediaAnalysisService
         isrc: analysis.isrc,
         musicbrainzRecordingId: analysis.musicbrainzRecordingId,
         ruleVersion: analysis.ruleVersion,
+        requestedRuleVersion: null,
         error: null,
         nextAttemptAt: null,
       },

@@ -204,8 +204,13 @@ so a song that is on air is refused: `409 on_air` (MCP `on_air`, listed per song
 the dry run) for a song a program is playing or has announced to Palazzo as the next
 song, checked again when the songs are queued. None of the batch is queued then.
 Nothing re-analyses the catalogue by itself: a new rule is rolled out in staged,
-paced batches, and `ruleVersion` says which rule each song has. Reverting is
-re-running with the old constants. A stored success always
+paced batches, and `ruleVersion` says which rule each song has. Reverting needs no
+deploy: the request takes an optional `rule` (`C`, the default and current rule, or
+`previous`, the rule before #235: rule 1, the `base` detector alone). `previous` is
+stored on the row as `requestedRuleVersion = 1`, the next analysis of that song runs
+rule 1, records `ruleVersion = 1` and clears the request; a later request with the
+default rule clears an unrun `previous`. An unknown rule is refused `400` before
+anything is queued. A stored success always
 passes the bounds the Palazzo client enforces on a song command
 (`validateSongSegue` and `validateSongLoudness`), with a missing cue checked as
 the file's own edge; anything else is recorded as a failure.

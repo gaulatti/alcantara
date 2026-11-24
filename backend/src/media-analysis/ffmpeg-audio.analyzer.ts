@@ -33,6 +33,8 @@ export const SILENCE_MIN_SECONDS = 0.5;
  * cue rule 1 would give (otherwise rule 1's cue is kept).
  */
 export const CUE_RULE_VERSION = 2;
+/** The rule before #235 (the `base` detector alone), kept selectable per request so a batch can be re-run on it. */
+export const PREVIOUS_CUE_RULE_VERSION = 1;
 export const HEAD_SILENCE_MIN_SECONDS = 0.2;
 export const TAIL_SILENCE_MIN_SECONDS = 0.3;
 export const TAIL_AIR_FLOOR_DB = -45;
@@ -505,22 +507,26 @@ export class FfmpegAudioAnalyzer {
    * that was checked is the address that was read. The file is removed on
    * every path.
    */
-  async analyze(input: string, timeoutMs: number): Promise<AudioAnalysis> {
+  async analyze(
+    input: string,
+    timeoutMs: number,
+    rule: number = CUE_RULE_VERSION,
+  ): Promise<AudioAnalysis> {
     const deadline = Date.now() + timeoutMs;
-    if (!isRemote(input)) return this.measure(input, deadline);
+    if (!isRemote(input)) return this.measure(input, deadline, rule);
     const directory = await mkdtemp(
       join(this.policy.tempRoot ?? tmpdir(), INPUT_DIRECTORY_PREFIX),
     );
     try {
       const file = join(directory, 'input');
       await this.download(input, file, deadline);
-      return await this.measure(file, deadline);
+      return await this.measure(file, deadline, rule);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
   }
 
-  private async measure(input: string, deadline: number) {
+  private async measure(input: string, deadline: number, rule: number) {
     const probe = await this.runTool(
       'ffprobe',
       probeArguments(input),
@@ -536,12 +542,20 @@ export class FfmpegAudioAnalyzer {
     );
     const durationSeconds = parseDecodedDuration(measure.stdout);
     const loudness = parseLoudness(measure.stderr);
+    // Rule 1 is the `base` detector alone (PREVIOUS_CUE_RULE_VERSION): a way back that needs no deploy.
+    const cues =
+      rule === PREVIOUS_CUE_RULE_VERSION
+        ? {
+            ...cuePoints(parseSilence(measure.stderr, 'base'), durationSeconds),
+            cueRule: { head: 'unchanged', tail: 'unchanged' } as CueRuleOutcome,
+          }
+        : ruleCuePoints(measure.stderr, durationSeconds, loudness);
     const analysis: AudioAnalysis = {
       durationSeconds,
-      ...ruleCuePoints(measure.stderr, durationSeconds, loudness),
+      ...cues,
       ...loudness,
       ...identifiers,
-      ruleVersion: CUE_RULE_VERSION,
+      ruleVersion: rule,
     };
     assertPlayable(analysis);
     return analysis;
