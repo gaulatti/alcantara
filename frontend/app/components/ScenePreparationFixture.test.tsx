@@ -74,3 +74,13 @@ it("shows a clock widget saved as Asia/Kolkata in its timezone picker", () => {
     /^Kolkata \(GMT\+5:30\)$/,
   );
 });
+
+// The fixture's default scene is a player alone, named for the show; a clock-widget scene's timezone edit flows back
+// to the widget's picker.
+it("renders a player-only scene named for the show, with no clock tabs", () => {
+  render(<ScenePreparationFixture />);
+  expect(screen.getByRole("tab", { name: "Giorgia player" })).toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: "Slideshow" })).toBeNull();
+  expect(screen.queryByRole("tab", { name: "Modo Italiano Clock" })).toBeNull();
+  expect(screen.getByRole("textbox", { name: "Episode Title" })).toHaveValue("Local rehearsal");
+});
