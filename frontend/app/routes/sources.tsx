@@ -61,6 +61,7 @@ function SourcesManagerContent({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const handleToggleSelect = useCallback((source: ExternalSource) => {
+    /* v8 ignore next -- SourceRow calls onToggleSelect only when canPreview holds, and canPreview requires isPreviewable, which requires a selectable lifecycle; this guard is defensive. */
     if (!isSelectableLifecycle(source.lifecycle)) return;
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -178,6 +179,7 @@ export default function SourcesRoute({ initialSources, room: testRoom }: Sources
       setPreviewAvailability('ready');
       return;
     }
+    /* v8 ignore next -- the route is a client-rendered page (no SSR in react-router.config), so window always exists where this effect runs; defensive. */
     if (typeof window === 'undefined') return;
 
     let cancelled = false;

@@ -247,4 +247,11 @@ describe('SourcesRoute meta', () => {
   it('names the page for the browser', () => {
     expect(meta()).toEqual([{ title: 'External Sources - Alcántara' }]);
   });
+  // gaulatti/alcantara#527 (sources route, untriaged gaps): a failed load with no message of its own uses the plain text.
+  it('shows the error state for a failed load whose error carries no message', async () => {
+    vi.mocked(authFetch).mockRejectedValueOnce(new Error(''));
+    render(<SourcesRoute />);
+    expect(await screen.findByText('External sources could not be loaded')).toBeInTheDocument();
+    expect(screen.queryByTestId('source-list-loading')).toBeNull();
+  });
 });
