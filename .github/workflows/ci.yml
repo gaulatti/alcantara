@@ -69,7 +69,7 @@ jobs:
       CLOUSEAU_ENGINE_SHA: ${{ needs.resolve-clouseau.outputs.sha }}
       CLOUSEAU_ENGINE_DIGEST: ${{ needs.resolve-clouseau.outputs.digest }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     permissions:
       contents: read
     needs: resolve-clouseau
@@ -174,6 +174,13 @@ jobs:
       - name: Build backend
         if: *verify-code
         run: pnpm --dir backend run build
+      - name: Typecheck the frontend and run its tests with the coverage ratchet
+        # gaulatti/alcantara#404 follow-up: the thresholds in frontend/vitest.config.ts fail this
+        # step when a change drops frontend coverage, and the typecheck catches what vitest does not.
+        if: *verify-code
+        run: |
+          pnpm --dir frontend run typecheck
+          pnpm --dir frontend run test:coverage
       - name: Test and build infrastructure
         if: *verify-code
         run: |
