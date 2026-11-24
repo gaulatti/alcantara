@@ -97,7 +97,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it("saves an edit to the staged scene on its own, and at once with Save changes", async () => {
+it("saves an edit to the staged scene on its own, and Save changes adds no second save for it", async () => {
   const scene = open();
   server.answer("PUT /scenes/1", () =>
     Response.json({ ...scene, metadata: JSON.stringify({ header: { show: true } }) }),
@@ -107,7 +107,9 @@ it("saves an edit to the staged scene on its own, and at once with Save changes"
   expect(server.requests("PUT /scenes/1")[0]).toMatchObject({ metadata: { header: { show: true } } });
   const saves = server.requests("PUT /scenes/1").length;
   fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-  await waitFor(() => expect(server.requests("PUT /scenes/1").length).toBe(saves + 1));
+  // One edit, one save (gaulatti/alcantara#476): Save changes drains the edit's own save and sends nothing more.
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  expect(server.requests("PUT /scenes/1").length).toBe(saves);
 });
 
 it("retries a failed autosave until it lands, and shows a refused save on request", async () => {
@@ -122,10 +124,13 @@ it("retries a failed autosave until it lands, and shows a refused save on reques
   expect(await screen.findByText("Scene save failed. Retrying...", {}, { timeout: 4000 })).toBeVisible();
   fail = false;
   await waitFor(() => expect(screen.queryByText("Scene save failed. Retrying...")).toBeNull(), { timeout: 4000 });
-  // Save changes against a refusing server says so.
+  // Nothing is unsaved now, so Save changes sends nothing, even to a server that refuses (gaulatti/alcantara#476).
   fail = true;
+  const saves = server.requests("PUT /scenes/1").length;
   fireEvent.click(await screen.findByRole("button", { name: "Save changes" }));
-  expect(await screen.findByText("Scene save failed. Please try again.")).toBeVisible();
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  expect(server.requests("PUT /scenes/1").length).toBe(saves);
+  expect(screen.queryByText("Scene save failed. Please try again.")).toBeNull();
 });
 
 

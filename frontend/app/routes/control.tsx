@@ -212,6 +212,8 @@ export default function Control() {
   >(null);
   const sceneEditorAutosaveTimerRef = useRef<number | null>(null);
   const sceneEditorAutosaveSignatureRef = useRef<string>("");
+  // The scene whose edits a queued or manual save has already sent, so a manual save does not send them again.
+  const sceneDrainedIdRef = useRef<number | null>(null);
   const sceneEditorDirtyRef = useRef<boolean>(false);
   const sceneEditorRevisionRef = useRef<number>(0);
   const selectedSceneRef = useRef<number | null>(null);
@@ -2087,11 +2089,21 @@ export default function Control() {
     setIsSavingSceneAttributes(true);
     setSceneAttributeSaveError(null);
     try {
-      await persistSceneAttributes(sceneId, nextSceneProps);
-      sceneEditorAutosaveSignatureRef.current = nextSignature;
-      sceneEditorDirtyRef.current = false;
-      if (pendingSceneAttributeSaveRef.current?.sceneId === sceneId) {
-        pendingSceneAttributeSaveRef.current = null;
+      if (
+        pendingSceneAttributeSaveRef.current ||
+        sceneAttributeSaveDrainPromiseRef.current
+      ) {
+        // Every edit is queued as it is made: a manual save drains that queue rather than sending the same
+        // props again, so one edit is one request.
+        await flushQueuedSceneAttributeSaves();
+      } else if (
+        sceneEditorDirtyRef.current ||
+        sceneDrainedIdRef.current !== sceneId
+      ) {
+        await persistSceneAttributes(sceneId, nextSceneProps);
+        sceneEditorAutosaveSignatureRef.current = nextSignature;
+        sceneEditorDirtyRef.current = false;
+        sceneDrainedIdRef.current = sceneId;
       }
     } catch (err) {
       setSceneAttributeSaveError("Scene save failed. Please try again.");
@@ -2500,6 +2512,7 @@ export default function Control() {
             setSceneAttributeSaveError(null);
             if (selectedSceneRef.current === payload.sceneId) {
               sceneEditorAutosaveSignatureRef.current = payload.signature;
+              sceneDrainedIdRef.current = payload.sceneId;
               if (payload.revision >= sceneEditorRevisionRef.current) {
                 sceneEditorDirtyRef.current = false;
               }
