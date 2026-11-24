@@ -9,7 +9,12 @@ const recipes = {
   addUse: jest.fn(async () => ({ useId: 'use_0123456789ab' })),
 };
 const flights = { listFlightSequences: jest.fn() };
-const tools = new RecipeMcpTools(recipes as any, flights as any);
+const pompeii = { teamId: 9 };
+const tools = new RecipeMcpTools(
+  recipes as any,
+  flights as any,
+  pompeii as any,
+);
 const spec = (name: string) =>
   tools.specs().find((candidate) => candidate.name === name)!;
 const ctx = {} as any;
@@ -37,16 +42,22 @@ describe('recipe capabilities (gaulatti/alcantara#424)', () => {
       { program_id: 'tv', recipe_id: 7, song_id: 42 },
       ctx,
     );
-    expect(recipes.expand).toHaveBeenLastCalledWith('tv', 7, {
-      params: { songId: 42 },
-    });
+    expect(recipes.expand).toHaveBeenLastCalledWith(
+      'tv',
+      7,
+      { params: { songId: 42 } },
+      9,
+    );
     await spec('program_expand_recipe_by_id').run(
       { program_id: 'tv', recipe_id: 7, song_id: 42, label_id: null },
       ctx,
     );
-    expect(recipes.expand).toHaveBeenLastCalledWith('tv', 7, {
-      params: { songId: 42, labelId: null },
-    });
+    expect(recipes.expand).toHaveBeenLastCalledWith(
+      'tv',
+      7,
+      { params: { songId: 42, labelId: null } },
+      9,
+    );
   });
 
   it("creates and updates with the console's field names", async () => {
@@ -66,6 +77,7 @@ describe('recipe capabilities (gaulatti/alcantara#424)', () => {
       'tv',
       7,
       expect.objectContaining({ revision: 2, steps: ['song'] }),
+      9,
     );
     const created = await spec('program_create_recipe_by_id').dryRun!(
       { program_id: 'tv', name: 'Song' },
@@ -116,6 +128,7 @@ describe('recipe capabilities (gaulatti/alcantara#424)', () => {
         7,
         { songId: 42 },
         2,
+        9,
       );
       await spec('program_add_recipe_use_by_id').run(
         { ...args, label_id: 'own', position: undefined },
@@ -127,6 +140,7 @@ describe('recipe capabilities (gaulatti/alcantara#424)', () => {
         7,
         { songId: 42, labelId: 'own' },
         undefined,
+        9,
       );
     });
 
@@ -160,5 +174,25 @@ describe('recipe capabilities (gaulatti/alcantara#424)', () => {
         ),
       ).rejects.toMatchObject({ code: 'not_found' });
     });
+  });
+});
+
+describe('RecipeMcpTools dependency metadata (gaulatti/alcantara#464)', () => {
+  it('records Object for the constructor type of a dependency that is not yet defined', () => {
+    jest.isolateModules(() => {
+      jest.doMock('../../auth/pompeii.service', () => ({
+        PompeiiService: undefined,
+      }));
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const loaded = require('./recipes') as {
+        RecipeMcpTools: new (...args: never[]) => unknown;
+      };
+      const types = Reflect.getMetadata(
+        'design:paramtypes',
+        loaded.RecipeMcpTools,
+      ) as Array<{ name: string }>;
+      expect(types[2].name).toBe('Object');
+    });
+    jest.dontMock('../../auth/pompeii.service');
   });
 });

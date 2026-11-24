@@ -9,10 +9,13 @@ import {
   Post,
   Put,
   Query,
+  Req,
 } from '@nestjs/common';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { RequirePermission } from '../auth/require-permission.decorator';
 import { RecipesService, type RecipeInput } from './recipes.service';
+
+type TeamRequest = { user: { authorization: { teamId: number } } };
 
 /** gaulatti/alcantara#424 (#222 R3): a program's rundown recipes (contract C3). */
 @Controller('program')
@@ -40,8 +43,14 @@ export class RecipesController {
     @Param('programId') programId: string,
     @Param('recipeId', ParseIntPipe) recipeId: number,
     @Body() body: RecipeInput,
+    @Req() request: TeamRequest,
   ) {
-    return this.recipes.update(programId, recipeId, body ?? {});
+    return this.recipes.update(
+      programId,
+      recipeId,
+      body ?? {},
+      request.user.authorization.teamId,
+    );
   }
 
   /** A preview: the cues of one use and its issues. Nothing is written. */
@@ -52,8 +61,14 @@ export class RecipesController {
     @Param('recipeId', ParseIntPipe) recipeId: number,
     @Body()
     body: { params?: { songId?: unknown; labelId?: unknown }; useId?: unknown },
+    @Req() request: TeamRequest,
   ) {
-    return this.recipes.expand(programId, recipeId, body ?? {});
+    return this.recipes.expand(
+      programId,
+      recipeId,
+      body ?? {},
+      request.user.authorization.teamId,
+    );
   }
 
   /**

@@ -146,6 +146,29 @@ describe('the song recipe reads artist labels (gaulatti/alcantara#427)', () => {
     await moduleRef.close();
   });
 
+  it('finds the label of a program with no Program row (made before #335) under the asking team, and none without one', async () => {
+    const prisma = prismaWith(null, 5, 5);
+    prisma.program.findUnique.mockResolvedValue(null as never);
+    const moduleRef = await compile(prisma);
+    const service = moduleRef.get(RecipesService);
+    const asked = await service.expand('tv', 7, { params: { songId: 42 } }, 5);
+    expect(asked.issues).toEqual([]);
+    const alone = await service.expand('tv', 7, { params: { songId: 42 } });
+    expect(alone.issues.map((issue) => issue.code)).toContain(
+      'artist_label_missing',
+    );
+    const foreign = await service.expand(
+      'tv',
+      7,
+      { params: { songId: 42 } },
+      9,
+    );
+    expect(foreign.issues.map((issue) => issue.code)).toContain(
+      'artist_label_missing',
+    );
+    await moduleRef.close();
+  });
+
   it("does not use another team's link for the program", async () => {
     const prisma = prismaWith(null, 5, 9);
     const moduleRef = await compile(prisma);

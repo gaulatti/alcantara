@@ -47,15 +47,16 @@ function setup(sequences: Sequence[] = []) {
       ),
     },
     rundownRecipe: {
-      findFirst: jest.fn((): Promise<typeof ROW | null> =>
-        Promise.resolve({ ...ROW }),
+      findFirst: jest.fn(
+        (): Promise<typeof ROW | null> => Promise.resolve({ ...ROW }),
       ),
       deleteMany: jest.fn(async () => ({ count: 1 })),
     },
     flightSequence: {
       findMany: jest.fn(async () => sequences),
-      findFirstOrThrow: jest.fn(async ({ where }: { where: { id: number } }) =>
-        sequences.find((s) => s.id === where.id)!,
+      findFirstOrThrow: jest.fn(
+        async ({ where }: { where: { id: number } }) =>
+          sequences.find((s) => s.id === where.id)!,
       ),
     },
   };
@@ -294,7 +295,7 @@ describe('program_delete_recipe_by_id', () => {
     usesOf: jest.fn(),
     delete: jest.fn(async () => ({ deleted: 7, removedUses: 1 })),
   };
-  const spec = new RecipeMcpTools(recipes as never, {} as never)
+  const spec = new RecipeMcpTools(recipes as never, {} as never, {} as never)
     .specs()
     .find((s) => s.name === 'program_delete_recipe_by_id')!;
   const ctx = {} as never;
