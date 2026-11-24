@@ -718,3 +718,60 @@ it("refuses a name over 100 characters and a stream key over 512", async () => {
   });
   expect(await within(dialog).findByText("A stream key is at most 512 characters.")).toBeInTheDocument();
 });
+
+// gaulatti/alcantara#404 (broadcasts route): a failed retry keeps the error state and reports the failure; a custom
+// destination's catalog row shows its ingest address.
+it("keeps the error state when a retry also fails", async () => {
+  api.get.mockRejectedValue(refusal(500));
+  render(<Broadcasts />);
+  expect(await screen.findByText("Broadcasts could not be loaded")).toBeInTheDocument();
+  const calls = api.get.mock.calls.length;
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  await waitFor(() => expect(api.get.mock.calls.length).toBeGreaterThan(calls));
+  expect(await screen.findByText("Broadcasts could not be loaded")).toBeInTheDocument();
+  expect(screen.queryByText("Executor state")).toBeNull();
+});
+
+it("shows a custom RTMP destination's ingest address in the catalog", async () => {
+  catalog = [
+    ...catalog,
+    {
+      id: "custom",
+      displayName: "Custom platform",
+      position: 3,
+      retired: false,
+      secretId: "broadcast/custom",
+      secretVersionId: "v-4",
+      service: "custom",
+      ingestUrl: "rtmps://ingest.example.test/custom",
+      keyLast4: "a1b2",
+      keySetAt: "2026-11-23T12:00:00.000Z",
+      retiredAt: null,
+    },
+  ];
+  await page();
+  expect(
+    screen.getByText("Custom RTMP(S) · rtmps://ingest.example.test/custom"),
+  ).toBeInTheDocument();
+});
+
+it("labels a custom RTMP destination with no ingest address without inventing one", async () => {
+  catalog = [
+    ...catalog,
+    {
+      id: "custom-bare",
+      displayName: "Bare custom platform",
+      position: 3,
+      retired: false,
+      secretId: "broadcast/custom-bare",
+      secretVersionId: "v-5",
+      service: "custom",
+      ingestUrl: null,
+      keyLast4: null,
+      keySetAt: null,
+      retiredAt: null,
+    },
+  ];
+  await page();
+  expect(screen.getByText(/^Custom RTMP\(S\) ·$/)).toBeInTheDocument();
+});
