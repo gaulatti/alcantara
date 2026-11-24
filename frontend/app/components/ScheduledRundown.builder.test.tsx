@@ -683,3 +683,26 @@ it("keeps an existing rundown byte for byte when its pins are moved and moved ba
   expect(screen.getByRole("button", { name: /Save/ })).toBeDisabled();
   expect(stored.items).toEqual(overrunning().items);
 });
+
+// gaulatti/alcantara#527 (stronger pass, line 760): an event after one with no stored length has no estimated start,
+// so pinning it fixes its start at 00:00, the only start the timing can offer, which the operator then adjusts.
+it("pins an event with no estimated start at 00:00", async () => {
+  stubLibrary();
+  vi.mocked(fetchFlightSequences).mockResolvedValue([
+    block({
+      items: [
+        { id: "open", kind: "playSong", songId: 2, clockOffsetSeconds: 0 },
+        { id: "nolength", kind: "instant", instantId: 9 },
+        { id: "after", kind: "instant", instantId: 9, durationMs: 30_000 },
+        { id: "end", kind: "stopSong", clockOffsetSeconds: 360 },
+      ],
+    }),
+  ]);
+  renderRundown();
+  const table = await openBlock();
+  fireEvent.click(eventRows(table)[2]);
+  expect(fixedStartInput()).toHaveValue(null);
+  fireEvent.click(screen.getByRole("button", { name: "Pin its start here" }));
+  expect(fixedStartInput()).toHaveValue(0);
+  expect(screen.getByText(/Unsaved changes/)).toBeVisible();
+});

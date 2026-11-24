@@ -1,7 +1,7 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import Login, { type LoginFixtureState } from './login';
+import Login, { DESKTOP_RETRY_MS, type LoginFixtureState } from './login';
 
 const { authStatus, signInWithRedirect, checkAppSession, clearAppSession, dispatch } = vi.hoisted(() => ({
   authStatus: { isAuthenticated: false, isLoaded: true },
@@ -71,6 +71,42 @@ describe('Login', () => {
     expect(screen.getByRole('button', { name: /sign in with google/i })).toBeEnabled();
     fireEvent.submit(screen.getByRole('button', { name: /sign in with google/i }).closest('form')!);
     await waitFor(() => expect(auth.signIn).toHaveBeenCalledTimes(2));
+  });
+
+  // gaulatti/alcantara#527 (stronger pass, lines 84-85): when the browser the desktop app opened never reports back,
+  // the button stays busy only for DESKTOP_RETRY_MS, then lets the operator try again.
+  it('lets a desktop sign-in that never reports back be tried again after the retry window', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const auth = {
+        currentSession: vi.fn(),
+        signIn: vi.fn(async () => undefined),
+        signOut: vi.fn(),
+        onChange: vi.fn(() => vi.fn()),
+      };
+      desktop.host = { auth };
+      renderLogin('ready');
+      const button = () => screen.getByRole('button', { name: /sign in with google/i });
+      const busy = () => screen.getByRole('button', { name: /redirecting/i });
+      fireEvent.submit(button().closest('form')!);
+      await act(async () => {});
+      expect(auth.signIn).toHaveBeenCalledTimes(1);
+      expect(busy()).toBeDisabled();
+      act(() => {
+        vi.advanceTimersByTime(DESKTOP_RETRY_MS - 1);
+      });
+      expect(busy()).toBeDisabled();
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(button()).toBeEnabled();
+      expect(screen.queryByText(/Sign-in could not begin/)).toBeNull();
+      fireEvent.submit(button().closest('form')!);
+      await act(async () => {});
+      expect(auth.signIn).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows the sign-in failure when the desktop app refuses to open the browser', async () => {
