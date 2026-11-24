@@ -54,6 +54,7 @@ export function RundownFillers({
     !!rundown.lastStartedAt ||
     rundown.isRunning;
   async function fill() {
+    /* v8 ignore next -- the fill button sits in a fieldset disabled while locked, and locked is true whenever there is no rundown, so fill never runs without one; defensive. */
     if (!rundown) return;
     setBusy(true);
     setError(null);
