@@ -717,9 +717,11 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
   };
 
   const performProgramFullReload = useCallback(() => {
+    /* v8 ignore start -- this full reload runs from a user action in the browser, where a window always exists */
     if (typeof window === 'undefined') {
       return;
     }
+    /* v8 ignore stop */
 
     const reloadWithCacheBust = () => {
       const nextUrl = new URL(window.location.href);
@@ -1124,9 +1126,11 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
   useEffect(() => {
     let cancelled = false;
     const fallbackTimer = window.setTimeout(() => {
+      /* v8 ignore start -- the effect cleanup clears this timer as well as setting cancelled, so the callback cannot run after cleanup */
       if (cancelled) {
         return;
       }
+      /* v8 ignore stop */
 
       fetch(apiUrl(`/program/${encodeURIComponent(programId)}/state`))
         .then(readSnapshot)
@@ -1423,9 +1427,11 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
     let reconnectTimer: number | null = null;
 
     const connect = () => {
+      /* v8 ignore start -- connect is called synchronously by its effect, and the cleanup clears the reconnect timer, so disposed is false on entry */
       if (disposed) {
         return;
       }
+      /* v8 ignore stop */
 
       let socket: WebSocket;
       try {
