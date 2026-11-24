@@ -13,6 +13,14 @@ describe('recipe metrics (gaulatti/alcantara#424)', () => {
       metrics.recordRecipeExpansion(result);
     for (const result of ['rebuilt', 'skipped', 'conflict', 'use_0123456789ab'])
       metrics.recordRecipeRebuild(result);
+    for (const result of [
+      'deleted',
+      'refused_on_air',
+      'refused_has_uses',
+      'conflict',
+      'e2e-222-check',
+    ])
+      metrics.recordRecipeDelete(result);
     const output = await metrics.render('');
     const samples = output
       .split('\n')
@@ -34,5 +42,18 @@ describe('recipe metrics (gaulatti/alcantara#424)', () => {
       '# TYPE alcantara_recipe_expansions_total counter',
     );
     expect(output).not.toContain('Fictional Song');
+    expect(
+      output
+        .split('\n')
+        .filter((line) => line.startsWith('alcantara_recipe_deletes_total{'))
+        .sort(),
+    ).toEqual([
+      'alcantara_recipe_deletes_total{result="conflict"} 1',
+      'alcantara_recipe_deletes_total{result="deleted"} 1',
+      'alcantara_recipe_deletes_total{result="refused_has_uses"} 1',
+      'alcantara_recipe_deletes_total{result="refused_on_air"} 1',
+      'alcantara_recipe_deletes_total{result="unknown"} 1',
+    ]);
+    expect(output).not.toContain('e2e-222-check');
   });
 });

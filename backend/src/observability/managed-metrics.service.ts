@@ -188,6 +188,13 @@ const ARTIST_LABEL_WRITE_RESULTS = ['set', 'cleared', 'rejected'] as const;
 const RECIPE_EXPANSION_RESULTS = new Set(['ok', 'issues', 'rejected']);
 /** gaulatti/alcantara#424: a use rebuilt after its recipe changed, left on air, or lost to a concurrent edit. */
 const RECIPE_REBUILD_RESULTS = new Set(['rebuilt', 'skipped', 'conflict']);
+/** gaulatti/alcantara#465: a recipe delete, or why it was refused. */
+const RECIPE_DELETE_RESULTS = new Set([
+  'deleted',
+  'refused_on_air',
+  'refused_has_uses',
+  'conflict',
+]);
 const SCENE_HANDOFF_RESULTS = new Set(['success', 'failure']);
 const PREFERENCE_ACTIONS = new Set([
   'read',
@@ -307,6 +314,7 @@ export class ManagedMetricsService {
   private readonly artistLabelWrites: Counter<string>;
   private readonly recipeExpansions: Counter<string>;
   private readonly recipeRebuilds: Counter<string>;
+  private readonly recipeDeletes: Counter<string>;
   private readonly sceneHandoffs: Counter<string>;
   private readonly jobLastSuccess: Gauge<string>;
   private readonly preferenceOperations: Counter<string>;
@@ -412,6 +420,12 @@ export class ManagedMetricsService {
     this.recipeRebuilds = new Counter({
       name: 'alcantara_recipe_rebuilds_total',
       help: 'Recipe uses rebuilt after their recipe changed, by result.',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    this.recipeDeletes = new Counter({
+      name: 'alcantara_recipe_deletes_total',
+      help: 'Rundown recipe deletes by result: deleted, or refused (on air, has uses, conflict).',
       labelNames: ['result'],
       registers: [this.registry],
     });
@@ -649,6 +663,10 @@ export class ManagedMetricsService {
     this.recipeExpansions.inc({
       result: bounded(result, RECIPE_EXPANSION_RESULTS),
     });
+  }
+
+  recordRecipeDelete(result: string): void {
+    this.recipeDeletes.inc({ result: bounded(result, RECIPE_DELETE_RESULTS) });
   }
 
   recordRecipeRebuild(result: string): void {

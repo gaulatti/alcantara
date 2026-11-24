@@ -22,6 +22,7 @@ export * from '@gaulatti/bleecker/components/nav-menu';
 export * from '@gaulatti/bleecker/components/page-header';
 export * from '@gaulatti/bleecker/components/pagination';
 export * from '@gaulatti/bleecker/components/panel';
+export * from '@gaulatti/bleecker/components/row-actions';
 export * from '@gaulatti/bleecker/components/search-input';
 export * from '@gaulatti/bleecker/components/section-header';
 export * from '@gaulatti/bleecker/components/skeleton';

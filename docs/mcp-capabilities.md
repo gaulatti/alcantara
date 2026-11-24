@@ -284,6 +284,7 @@ optional on `update` (a clocked log needs it).
 | `program_create_recipe_by_id` | Creates a rundown recipe on a program with a television leg. Nothing airs until a use of it is added to a rundown that runs. Recoverable: change it. |
 | `program_update_recipe_by_id` | Changes a recipe with the revision read (stale is a conflict), then rebuilds its uses not yet on air in the program's operator rundowns; cues on air or played are never touched. The answer counts the rebuilt uses. |
 | `program_add_recipe_use_by_id` | Adds one use of a recipe for a song (the song recipe: bumper, hold, song, slideshow for the song, back) to an operator rundown at a position or at the end, through the rundown's normal update. Refused (`on_air`) at or before the cue on air. Recoverable: remove the cues in the rundown. |
+| `program_delete_recipe_by_id` | Tier D: deletes a recipe read at `revision` (stale is a conflict). The dry run lists its uses per rundown. Refused `on_air` while a use is in a running rundown; with uses left it is refused unless `remove_uses` is true, which removes those use cues from their rundowns first. Not recoverable (gaulatti/alcantara#465). |
 | `program_publish_flight_sequence_by_id` | Publishes a clocked log: the console then starts it by itself at its scheduled time, with nobody present, and its start cannot move. There is no unpublish (the way back is a delete, refused while it is queued, or editing its cues). Not recoverable. |
 
 ### On-air capabilities (`flight.operate`)
