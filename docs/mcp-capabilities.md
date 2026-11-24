@@ -715,7 +715,7 @@ no URL, key or token reaches the table.
 The record is written after the settings write and never blocks it: if the record cannot be stored, the change
 stands, a warning is logged and `alcantara_radio_operator_change_records_total{result="failed"}` is counted
 (`recorded` counts the stored ones). Read it with `SELECT * FROM "OperatorChangeRecord" WHERE "programId" = ... ORDER BY "createdAt" DESC`.
-Scenes, layouts, rundowns and programs record the same way (next section); the library capabilities (instants, stingers, songs, media) are slice 3 of #236 and still write no record.
+Scenes, layouts, rundowns and programs record the same way (next section), and so do the library capabilities (instants, stingers, songs, media; the section after it).
 
 ## Operator change records for scenes, layouts, rundowns and programs (#236)
 
@@ -732,8 +732,8 @@ free text reaches the table. An automatic change (no actor) writes nothing.
 
 The record never blocks the change: if it cannot be stored, the change stands, a warning is logged and
 `alcantara_operator_change_records_total{target="scene|layout|flight_sequence|program",result="recorded|failed"}` is
-counted. The `programId` column must be nullable for scene and layout records (a separate migration); until it is, those
-two records fail to store and are counted as `failed`.
+counted. A scene or layout record is stored with `programId` NULL (`20261124010000_operator_change_library` made the
+column nullable; `docs/operator-change-records.md` says how to read those rows).
 
 ## Operator change records for library changes (#236 slice 3)
 
