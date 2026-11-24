@@ -2,7 +2,7 @@ import React from 'react';
 import '@testing-library/jest-dom/vitest';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
-import SourcesRoute from './sources';
+import SourcesRoute, { meta } from './sources';
 import { authFetch } from '../services/api';
 import type {
   ExternalSource,
@@ -238,5 +238,13 @@ describe('SourcesRoute (/sources)', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Retry loading sources' }));
     expect(await screen.findByText('Retried Source')).toBeInTheDocument();
+  });
+});
+
+
+// gaulatti/alcantara#404 (sources route, outside the #404 list): the page's browser title.
+describe('SourcesRoute meta', () => {
+  it('names the page for the browser', () => {
+    expect(meta()).toEqual([{ title: 'External Sources - Alcántara' }]);
   });
 });
