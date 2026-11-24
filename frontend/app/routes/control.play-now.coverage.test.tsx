@@ -1,15 +1,29 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { controlServer, stubConsoleBrowser, type ControlServer } from "../../test/controlKit";
+import {
+  controlServer,
+  stubConsoleBrowser,
+  type ControlServer,
+} from "../../test/controlKit";
 
 // gaulatti/alcantara#404 (group A, control.tsx): a library song taken on air now from the radio desk. The
 // dialog hands the chosen song to the route, which posts it to the program's radio.
 
 vi.mock("../hooks/useSSE", () => ({ useSSE: () => ({ isConnected: false }) }));
-vi.mock("../utils/globalProgram", () => ({ useGlobalProgramId: () => ["main"] }));
+vi.mock("../utils/globalProgram", () => ({
+  useGlobalProgramId: () => ["main"],
+}));
 vi.mock("../contexts/ConsolePreferencesContext", async (original) => {
-  const actual = await original<typeof import("../contexts/ConsolePreferencesContext")>();
+  const actual =
+    await original<typeof import("../contexts/ConsolePreferencesContext")>();
   return {
     ...actual,
     useConsolePreferences: () => ({
@@ -78,15 +92,52 @@ it("takes a library song on air now, and posts it to the program's radio once co
   fireEvent.keyDown(window, { key: "/" });
   const dialog = await screen.findByRole("dialog", { name: "Play a song now" });
   fireEvent.change(
-    within(dialog).getByRole("textbox", { name: "Search the rotation and the library" }),
+    within(dialog).getByRole("textbox", {
+      name: "Search the rotation and the library",
+    }),
     { target: { value: "harbor" } },
   );
-  fireEvent.click(within(dialog).getByRole("button", { name: "Take now Harbor Library Cut" }));
-  fireEvent.click(within(dialog).getByRole("button", { name: "Confirm Harbor Library Cut" }));
-  await waitFor(() => expect(server.requests("POST /radio/main/song")).toHaveLength(1));
+  fireEvent.click(
+    within(dialog).getByRole("button", { name: "Take now Harbor Library Cut" }),
+  );
+  fireEvent.click(
+    within(dialog).getByRole("button", { name: "Confirm Harbor Library Cut" }),
+  );
+  await waitFor(() =>
+    expect(server.requests("POST /radio/main/song")).toHaveLength(1),
+  );
   expect(server.requests("POST /radio/main/song")[0]).toMatchObject({
     songId: 77,
     title: "Harbor Library Cut",
     artist: "Fictional artist",
   });
+});
+
+// gaulatti/alcantara#404 (control.tsx stronger pass): a play the radio refuses is shown in the dialog with the
+// radio's own reason.
+it("shows why the radio refused a library song taken on air now", async () => {
+  open(() =>
+    Response.json({ message: "Palazzo is not ready" }, { status: 409 }),
+  );
+  await waitFor(() =>
+    expect(screen.queryByText(/Loading main control surface/)).toBeNull(),
+  );
+  fireEvent.keyDown(window, { key: "/" });
+  const dialog = await screen.findByRole("dialog", { name: "Play a song now" });
+  fireEvent.change(
+    within(dialog).getByRole("textbox", {
+      name: "Search the rotation and the library",
+    }),
+    { target: { value: "harbor" } },
+  );
+  fireEvent.click(
+    within(dialog).getByRole("button", { name: "Take now Harbor Library Cut" }),
+  );
+  fireEvent.click(
+    within(dialog).getByRole("button", { name: "Confirm Harbor Library Cut" }),
+  );
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+    "Palazzo is not ready",
+  );
+  expect(server.requests("POST /radio/main/song")).toHaveLength(1);
 });
