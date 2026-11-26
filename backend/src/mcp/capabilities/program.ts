@@ -733,6 +733,7 @@ export class ProgramMcpTools {
                 value,
               ]),
             ),
+            this.pompeii.teamId,
           ),
       }),
       this.onProgram({

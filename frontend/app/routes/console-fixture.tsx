@@ -183,7 +183,7 @@ export default function ConsoleFixture() {
     main: { volume: 0.9, peak: fixture === "radio-empty" ? 0 : 0.4 },
   });
   const [audioFadeMs, setAudioFadeMs] = useState(5000);
-  const [audioChannels, setAudioChannels] = useState<TvAudioChannel[]>(
+  const [audioChannels, setAudioChannels] = useState<Omit<TvAudioChannel, "onVolumeChange">[]>(
     (["song", "stream", "instants", "sceneInstant", "main"] as const).map(
       (id, index) => ({
         id,
@@ -203,7 +203,6 @@ export default function ConsoleFixture() {
               },
             }),
         ...(id === "main" ? {} : { presets: { aDb: -15, bDb: -30 } }),
-        onVolumeChange: () => {},
       }),
     ),
   );
