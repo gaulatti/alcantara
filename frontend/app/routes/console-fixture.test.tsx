@@ -72,6 +72,7 @@ vi.mock("../components/RadioPanel", () => ({
         sampleAgeMs: Date.now() - Date.parse(p.fixtureData.output.lastSampleAt),
         stream: p.fixtureData.stream.running,
         palazzo: p.fixtureData.palazzo.connection,
+        playout: p.fixtureData.palazzo.playout,
         output: p.fixtureData.output.state,
         expected: p.fixtureData.output.expectedAudio,
         rms: p.fixtureData.output.outputRms,
@@ -524,6 +525,7 @@ it("hands the radio desk its fixture data for every radio state", () => {
       { stream: false, palazzo: "unavailable", output: "unavailable" },
     ],
     ["?state=radio-not-configured", { palazzo: "unavailable" }],
+    ["?state=radio-playout-down", { palazzo: "connected", playout: "down" }],
     ["?state=radio-continuous", { logs: [] }],
     [
       "?state=radio-skipped",

@@ -643,6 +643,44 @@ it("reads Checking engine, never Engine unavailable, until the first engine stat
   expect(within(strip).queryByText("Checking engine")).toBeNull();
 });
 
+// The #734 follow-up: Palazzo answering with its playout (Liquidsoap) down is its own engine state, never Ready.
+it("shows Playout down on the strip and names the action, over the dead-air advice", async () => {
+  radioApi({
+    "/status": json({ running: false, uptime: null }),
+    "/palazzo-status": json({ ...props().fixtureData!.palazzo, playout: "down" }),
+    "/output-confidence": json({
+      state: "silent",
+      expectedAudio: true,
+      outputRms: 0,
+      lastSampleAt: new Date().toISOString(),
+      quietForMs: 12_000,
+    }),
+    "/recovery": json({ preparedVersion: "v3", automation: null, connection: "connected" }),
+  });
+  vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+  mount(liveProps());
+  const strip = screen.getByRole("region", { name: "On air" });
+  const chip = await within(strip).findByText("Playout down");
+  expect(chip.closest("[data-tone]")).toHaveAttribute("data-tone", "bad");
+  expect(within(strip).queryByText("Engine ready")).toBeNull();
+  expect(screen.getByRole("alert", { name: "Playout down" })).toHaveTextContent(
+    "Restart playout on the Palazzo host or call engineering.",
+  );
+  // The dead-air advice (Start with fallback) cannot help while playout is down.
+  expect(screen.queryByRole("alert", { name: "Dead air" })).toBeNull();
+});
+
+it("reads Engine ready when Palazzo reports its playout up", async () => {
+  radioApi({
+    "/palazzo-status": json({ ...props().fixtureData!.palazzo, playout: "up" }),
+  });
+  vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+  mount(liveProps());
+  const strip = screen.getByRole("region", { name: "On air" });
+  expect(await within(strip).findByText("Engine ready")).toBeVisible();
+  expect(screen.queryByRole("alert", { name: "Playout down" })).toBeNull();
+});
+
 // gaulatti/alcantara#706: six seconds without a fresh output sample turn audible output into Output unverified and
 // dim the on-air clock; a fresh sample restores both. Display only.
 describe("output unverified after six seconds without a sample", () => {

@@ -763,3 +763,10 @@ When no fresh output level has arrived for 6 seconds (`OUTPUT_SAMPLE_UNVERIFIED_
 strip shows **Unverified** with its clock dimmed. The desk re-reads freshness every second. This is display only: no
 alarm and no automation change. Status delayed (a stale sample after 15 s) and dead air (silence for 10 s) keep their
 own thresholds. The console fixture `state=radio-unverified` shows it.
+
+## Playout down
+
+Palazzo can answer while its playout (Liquidsoap) is down. `GET /radio/:programId/palazzo-status` carries
+`playout: "up" | "down" | null`. It comes from Palazzo's own state (`liquidsoap.connected`, in every snapshot or
+polled state) and its `telemetry.connected` / `telemetry.disconnected` events, and is null until Palazzo has said.
+The desk shows **Playout down** for it; automation is unchanged and still follows `connection`.

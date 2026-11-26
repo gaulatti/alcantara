@@ -92,6 +92,7 @@ export class PalazzoProgramClient {
   private lastEventAt: number | null = null;
   private lastSnapshotAt: number | null = null;
   private connection: PalazzoConnectionState = 'connecting';
+  private playout: 'up' | 'down' | null = null;
   private detail: string | null = null;
   private sseLoopRunning = false;
   private pollInFlight = false;
@@ -122,6 +123,7 @@ export class PalazzoProgramClient {
       lastSnapshotAt: isoOrNull(this.lastSnapshotAt),
       degraded: this.isDegraded(),
       detail: this.detail,
+      playout: this.playout,
     };
   }
 
@@ -403,6 +405,8 @@ export class PalazzoProgramClient {
 
     this.lastSequence = event.sequence;
     this.touch(event);
+    if (event.type === 'telemetry.disconnected') this.setPlayout('down');
+    else if (event.type === 'telemetry.connected') this.setPlayout('up');
     if (isEnginePlaybackEvent(event.type)) {
       this.options.callbacks.onEvent(this.options.programId, event);
     }
@@ -496,6 +500,7 @@ export class PalazzoProgramClient {
   /** Keeps the last accepted status for a later unknown one, then forwards. */
   private emitSnapshot(state: PalazzoPlaybackState): void {
     this.lastStatus = state.status;
+    this.setPlayout(state.liquidsoap.connected ? 'up' : 'down');
     this.options.callbacks.onSnapshot(this.options.programId, state);
   }
 
@@ -649,6 +654,13 @@ export class PalazzoProgramClient {
       return Date.now() - this.lastEventAt > this.stalenessMs;
     }
     return false;
+  }
+
+  /** Playout up or down is reported, not acted on: the engine still follows `connection` alone. */
+  private setPlayout(next: 'up' | 'down'): void {
+    if (this.playout === next) return;
+    this.playout = next;
+    this.options.callbacks.onStatus(this.options.programId, this.getStatus());
   }
 
   private setConnection(
