@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { PompeiiService } from '../auth/pompeii.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { REQUIRED_PERMISSION_KEY } from '../auth/require-permission.decorator';
@@ -8,6 +9,8 @@ import { PrismaService } from '../prisma.service';
 import { MediaController } from './media.controller';
 import { MediaModule } from './media.module';
 import { MediaService } from './media.service';
+
+const request = { user: { authorization: { teamId: 7 } } };
 
 function build() {
   const media = {
@@ -23,21 +26,31 @@ function build() {
 describe('MediaController (coverage)', () => {
   it('uses default pagination when page and limit are absent', async () => {
     const { controller, media } = build();
-    await expect(controller.findAll()).resolves.toBe('all');
-    expect(media.findAll).toHaveBeenCalledWith({
-      search: undefined,
-      sortBy: undefined,
-      sortOrder: undefined,
-      page: 1,
-      limit: 50,
-    });
+    await expect(controller.findAll(request)).resolves.toBe('all');
+    expect(media.findAll).toHaveBeenCalledWith(
+      {
+        search: undefined,
+        sortBy: undefined,
+        sortOrder: undefined,
+        page: 1,
+        limit: 50,
+      },
+      7,
+    );
   });
 
   it('passes filters through and clamps page and limit', async () => {
     const { controller, media } = build();
-    await controller.findAll('q', 'name', 'asc', '0', '999');
-    await controller.findAll('q', 'name', 'asc', '4', '0');
-    await controller.findAll(undefined, undefined, undefined, '2', '25');
+    await controller.findAll(request, 'q', 'name', 'asc', '0', '999');
+    await controller.findAll(request, 'q', 'name', 'asc', '4', '0');
+    await controller.findAll(
+      request,
+      undefined,
+      undefined,
+      undefined,
+      '2',
+      '25',
+    );
     expect(media.findAll.mock.calls.map((c) => c[0])).toEqual([
       { search: 'q', sortBy: 'name', sortOrder: 'asc', page: 1, limit: 200 },
       { search: 'q', sortBy: 'name', sortOrder: 'asc', page: 4, limit: 1 },
@@ -53,18 +66,18 @@ describe('MediaController (coverage)', () => {
 
   it('delegates single-record operations with numeric ids', async () => {
     const { controller, media } = build();
-    await expect(controller.findOne('4')).resolves.toBe('one');
-    await expect(controller.create({ name: 'n', imageUrl: 'u' })).resolves.toBe(
-      'created',
-    );
-    await expect(controller.update('4', { name: 'm' })).resolves.toBe(
+    await expect(controller.findOne('4', request)).resolves.toBe('one');
+    await expect(
+      controller.create({ name: 'n', imageUrl: 'u' }, request),
+    ).resolves.toBe('created');
+    await expect(controller.update('4', { name: 'm' }, request)).resolves.toBe(
       'updated',
     );
-    await expect(controller.remove('4')).resolves.toBe('removed');
-    expect(media.findOne).toHaveBeenCalledWith(4);
-    expect(media.create).toHaveBeenCalledWith({ name: 'n', imageUrl: 'u' });
-    expect(media.update).toHaveBeenCalledWith(4, { name: 'm' });
-    expect(media.remove).toHaveBeenCalledWith(4);
+    await expect(controller.remove('4', request)).resolves.toBe('removed');
+    expect(media.findOne).toHaveBeenCalledWith(4, 7);
+    expect(media.create).toHaveBeenCalledWith({ name: 'n', imageUrl: 'u' }, 7);
+    expect(media.update).toHaveBeenCalledWith(4, { name: 'm' }, 7);
+    expect(media.remove).toHaveBeenCalledWith(4, 7);
   });
 
   it('requires read on the controller and manage on mutations', () => {
@@ -111,8 +124,11 @@ describe('MediaService metadata (coverage)', () => {
 // this module asks for its service.
 @Global()
 @Module({
-  providers: [{ provide: ProgramService, useValue: {} }],
-  exports: [ProgramService],
+  providers: [
+    { provide: ProgramService, useValue: {} },
+    { provide: PompeiiService, useValue: { teamId: 0 } },
+  ],
+  exports: [ProgramService, PompeiiService],
 })
 class ProgramStubModule {}
 
