@@ -11,7 +11,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { DiscoveryModule } from '@nestjs/core';
+import { APP_INTERCEPTOR, DiscoveryModule } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import {
   FastifyAdapter,
@@ -28,6 +28,8 @@ import { ObservabilityModule } from '../observability/observability.module';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { PrismaService } from '../prisma.service';
 import { ProgramService } from '../program/program.service';
+import { ProgramTeamAccess } from './program-team-access';
+import { ProgramTeamInterceptor } from './program-team.interceptor';
 
 // CI's coverage step runs without DATABASE_URL and starts this database; a local run sets DATABASE_URL to its own
 // disposable one. Without a database the suite fails rather than passing unrun.
@@ -79,6 +81,12 @@ class RoutesController {
     return { ok: true };
   }
 
+  @Post('radio/:programId/song/stop')
+  @RequirePermission(permission)
+  stopSong() {
+    return { ok: true };
+  }
+
   @Get('open/:programId')
   @Public()
   open() {
@@ -114,6 +122,9 @@ class ProbeTools {
   ],
   controllers: [RoutesController],
   providers: [
+    PrismaService,
+    ProgramTeamAccess,
+    { provide: APP_INTERCEPTOR, useClass: ProgramTeamInterceptor },
     McpRegistry,
     ProbeTools,
     { provide: ProgramService, useValue: {} },
@@ -121,7 +132,7 @@ class ProbeTools {
 })
 class RoutesModule {}
 
-// gaulatti/alcantara#122: through the real guards, HTTP stack and Postgres.
+// gaulatti/alcantara#122: through the real guard, HTTP stack and Postgres.
 describe("programs of the caller's team", () => {
   const environment = { ...process.env };
   let app: NestFastifyApplication;
@@ -214,11 +225,13 @@ describe("programs of the caller's team", () => {
       create: { programId: 'main', teamId: team + 1 },
       update: { teamId: team + 1 },
     });
+    app.get(ProgramTeamAccess).invalidate('main');
     await expect(call('POST', '/program/off-air')).resolves.toBe(404);
     await prisma.program.update({
       where: { programId: 'main' },
       data: { teamId: team },
     });
+    app.get(ProgramTeamAccess).invalidate('main');
     await expect(call('POST', '/program/off-air')).resolves.toBe(201);
     if (ownedMain) {
       await prisma.program.update({
@@ -251,6 +264,25 @@ describe("programs of the caller's team", () => {
       );
     await expect(run(mine)).resolves.toEqual({ ok: true });
     await expect(run(other)).resolves.toMatchObject({ error: 'not_found' });
+  });
+
+  it('lets an on-air command through when the team cannot be read, and counts it', async () => {
+    const access = app.get(ProgramTeamAccess);
+    const lookup = jest
+      .spyOn(
+        (access as unknown as { prisma: PrismaService }).prisma.program,
+        'findUnique',
+      )
+      .mockRejectedValue(new Error('database unavailable'));
+    const unread = `${prefix}-unread`;
+    await expect(call('POST', `/radio/${unread}/song/stop`)).resolves.toBe(201);
+    expect(lookup).toHaveBeenCalled();
+    lookup.mockRestore();
+    await expect(
+      app.get(ManagedMetricsService).registry.metrics(),
+    ).resolves.toContain(
+      'alcantara_program_team_checks_total{result="lookup-failed"} 1',
+    );
   });
 
   it('counts refused and unowned', async () => {

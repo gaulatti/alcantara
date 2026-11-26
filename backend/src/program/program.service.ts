@@ -21,6 +21,7 @@ import {
 } from '../operator-change/operator-change-recorder';
 import { INSTANT_CHANGE_FIELDS } from '../operator-change/library-change-fields';
 import { PrismaService } from '../prisma.service';
+import { ProgramTeamAccess } from '../tenancy/program-team-access';
 import { PlayoutSongScope } from '../radio/playout-song-scope';
 import { forTeam } from '../tenancy/scoped-prisma';
 import {
@@ -238,6 +239,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     private readonly outputConfidence?: RadioOutputConfidenceService,
     @Optional() private readonly recorder?: OperatorChangeRecorder,
     @Optional() private readonly songScope?: PlayoutSongScope,
+    @Optional() private readonly programTeams?: ProgramTeamAccess,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -1534,6 +1536,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         },
       }),
     ]);
+    this.programTeams?.invalidate(normalized);
     return this.getProgramStateWithScenes(normalized);
   }
 
@@ -1604,6 +1607,8 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       where: { id: existingSource.id },
       data: updateData,
     });
+    this.programTeams?.invalidate(current);
+    this.programTeams?.invalidate(next);
     await recorder.record({
       actor,
       target: 'program',
@@ -1672,6 +1677,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.programState.delete({
       where: { id: existing.id },
     });
+    this.programTeams?.invalidate(normalized);
 
     const subject = this.eventSubjects.get(normalized);
     if (subject) {

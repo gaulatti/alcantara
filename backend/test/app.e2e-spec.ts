@@ -12,6 +12,7 @@ import {
 import request from 'supertest';
 import { listenOnLoopback } from './loopback-supertest';
 import { AppModule } from './../src/app.module';
+import { PrismaService } from './../src/prisma.service';
 import { ProgramService } from './../src/program/program.service';
 import { NowPlayingPublisherService } from './../src/radio/now-playing-publisher.service';
 import { PlayoutSongScope } from './../src/radio/playout-song-scope';
@@ -60,5 +61,48 @@ describe('AppController (e2e)', () => {
       .get('/')
       .expect(200)
       .expect('Hello World!');
+  });
+});
+
+// gaulatti/alcantara#122: the program team guard must run after authentication, which sets the caller's team. Booted
+// through the real application, so a change of module or guard order fails here.
+describe('program routes and the caller team (e2e)', () => {
+  const environment = { ...process.env };
+  const programId = `app-e2e-${process.pid}`;
+  const team = 920_000 + (process.pid % 10_000);
+  let app: NestFastifyApplication;
+
+  beforeAll(async () => {
+    process.env.AUTH_MODE = 'test';
+    process.env.TEST_AUTH_SECRET = 'test-secret-test-secret-test-secret-00';
+    process.env.POMPEII_TEAM_ID = String(team);
+    const moduleFixture = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+    app = moduleFixture.createNestApplication<NestFastifyApplication>(
+      new FastifyAdapter(),
+    );
+    await app.init();
+    await app.getHttpAdapter().getInstance().ready();
+    await app.get(PrismaService).program.create({
+      data: { programId, teamId: team + 1 },
+    });
+  });
+
+  afterAll(async () => {
+    await app?.get(PrismaService).program.deleteMany({ where: { programId } });
+    await app?.close();
+    process.env = environment;
+  });
+
+  it("answers 404 for another team's program", async () => {
+    const session = await app.inject({ method: 'GET', url: '/__test/session' });
+    const { accessToken } = session.json<{ accessToken: string }>();
+    const answer = await app.inject({
+      method: 'GET',
+      url: `/program/${programId}/stage`,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    expect(answer.statusCode).toBe(404);
   });
 });

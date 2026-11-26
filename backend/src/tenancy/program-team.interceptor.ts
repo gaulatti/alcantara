@@ -1,9 +1,11 @@
 import {
-  CanActivate,
+  CallHandler,
   ExecutionContext,
   Injectable,
+  NestInterceptor,
   NotFoundException,
 } from '@nestjs/common';
+import type { Observable } from 'rxjs';
 import { ProgramTeamAccess } from './program-team-access';
 
 type ProgramRequest = {
@@ -51,23 +53,27 @@ export function programIdsOf(request: ProgramRequest): string[] {
 }
 
 /**
- * Program routes act only on the caller's team's programs (gaulatti/alcantara#122). It runs after authentication:
- * a request with no authenticated team (a public or ticket route) is not checked here.
+ * Program routes act only on the caller's team's programs (gaulatti/alcantara#122). An interceptor, so it runs after
+ * every guard, whatever the module order, and so after authentication has set the caller's team. A request with no
+ * authenticated team (a public or ticket route) is not checked here.
  */
 @Injectable()
-export class ProgramTeamGuard implements CanActivate {
+export class ProgramTeamInterceptor implements NestInterceptor {
   constructor(private readonly access: ProgramTeamAccess) {}
 
-  async canActivate(context: ExecutionContext): Promise<boolean> {
-    if (context.getType() !== 'http') return true;
+  async intercept(
+    context: ExecutionContext,
+    next: CallHandler,
+  ): Promise<Observable<unknown>> {
+    if (context.getType() !== 'http') return next.handle();
     const request = context.switchToHttp().getRequest<ProgramRequest>();
     const teamId = request.user?.authorization?.teamId;
-    if (typeof teamId !== 'number') return true;
+    if (typeof teamId !== 'number') return next.handle();
     for (const programId of programIdsOf(request)) {
       if (!(await this.access.allows(programId, teamId))) {
         throw new NotFoundException('Program not found');
       }
     }
-    return true;
+    return next.handle();
   }
 }

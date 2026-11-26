@@ -213,8 +213,12 @@ const RECIPE_DELETE_RESULTS = new Set([
   'conflict',
 ]);
 const SCENE_HANDOFF_RESULTS = new Set(['success', 'failure']);
-/** gaulatti/alcantara#122: a program another team owns, or one nobody owns. */
-const PROGRAM_TEAM_CHECK_RESULTS = new Set(['refused', 'unowned']);
+/** gaulatti/alcantara#122: a program another team owns, one nobody owns, or a team that could not be read. */
+const PROGRAM_TEAM_CHECK_RESULTS = new Set([
+  'refused',
+  'unowned',
+  'lookup-failed',
+]);
 const PREFERENCE_ACTIONS = new Set([
   'read',
   'write',
@@ -476,7 +480,7 @@ export class ManagedMetricsService {
     });
     this.programTeamChecks = new Counter({
       name: 'alcantara_program_team_checks_total',
-      help: 'Requests naming a program of another team (refused) or of no team (unowned). Exposed from 0.',
+      help: 'Requests naming a program of another team (refused) or of no team (unowned), and team lookups that failed (lookup-failed). Exposed from 0.',
       labelNames: ['result'],
       registers: [this.registry],
     });
@@ -773,7 +777,9 @@ export class ManagedMetricsService {
     });
   }
 
-  recordProgramTeamCheck(result: 'refused' | 'unowned'): void {
+  recordProgramTeamCheck(
+    result: 'refused' | 'unowned' | 'lookup-failed',
+  ): void {
     this.programTeamChecks.inc({
       result: bounded(result, PROGRAM_TEAM_CHECK_RESULTS),
     });

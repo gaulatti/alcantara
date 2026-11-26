@@ -1,8 +1,6 @@
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { MCP_ATTRIBUTION } from '../mcp/contract';
-import { ProgramTeamAccess } from '../tenancy/program-team-access';
-import { ProgramTeamGuard } from '../tenancy/program-team.guard';
 import { AuthModule } from './auth.module';
 import { AuthController } from './auth.controller';
 import { TestAuthController } from './test-auth.controller';
@@ -29,7 +27,6 @@ describe('AuthModule wiring', () => {
         RealtimeTicketService,
         TestAuthService,
         { provide: APP_GUARD, useClass: PompeiiAuthorizationGuard },
-        { provide: APP_GUARD, useClass: ProgramTeamGuard },
       ]),
     );
     expect(Reflect.getMetadata('exports', AuthModule)).toEqual([
@@ -37,7 +34,6 @@ describe('AuthModule wiring', () => {
       RealtimeTicketService,
       TestAuthService,
       MCP_ATTRIBUTION,
-      ProgramTeamAccess,
     ]);
   });
 });

@@ -40,4 +40,9 @@ The owner assigns the team of each listed program by hand. Until then, readers t
 A request or MCP tool that names a program acts only on a program of the caller's team (gaulatti/alcantara#122): the
 path, query or body `programId`, `main` for the routes that name none, and an MCP `program_id`. Another team's program
 answers 404 `Program not found` (MCP `not_found`). A program with no team stays usable. Station team `0` (local and
-test) is not checked. `alcantara_program_team_checks_total{result}` counts `refused` and `unowned`, both exported at 0.
+test) is not checked.
+
+A program's team is remembered for 30 seconds and forgotten when the program is created, renamed or deleted. A team
+lookup that fails, or takes more than a second, never blocks the request (Stop must work during a database blip); the
+last team read for the program still applies. `alcantara_program_team_checks_total{result}` counts `refused`, `unowned`
+and `lookup-failed`, all exported at 0.
