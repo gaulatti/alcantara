@@ -89,6 +89,18 @@ URL when `DATABASE_URL` is unset. Locally, start a disposable PostgreSQL, run
 missing database. It refuses any host other than localhost and any database other
 than `alcantara_ci`.
 
+The PostgreSQL integration and migration specs skip unless they can reach a database
+(gaulatti/alcantara#82). `DATABASE_URL` enables `library-change.integration`,
+`operator-change-recorder.integration`, `radio-settings.operator-change.integration`,
+`program-team-backfill.migration` and `radio-settings-new-row-defaults`.
+`ALCANTARA_MIGRATION_TEST_DATABASE_URL` names a server where the two migration specs
+(`operator-change-migration`, `operator-change-library-migration`) may create scratch
+databases; the CI user can, so CI points it at the same `alcantara_ci` server.
+`media-analysis/ffmpeg-audio.fixtures.spec.ts` runs the real `ffmpeg` and `ffprobe`
+and skips where they are not installed. CI sets both URLs on the coverage step and
+installs ffmpeg, so none of these skip there. Locally, use the `pgvector/pgvector:pg17`
+image CI uses (a migration needs the `vector` extension), migrate it, and export both URLs.
+
 ## Deployment
 
 Production uses committed Prisma migrations. The deployment workflow runs
