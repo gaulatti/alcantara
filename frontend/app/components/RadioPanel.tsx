@@ -899,7 +899,16 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     }}
                     onTakeSelection={
                       onTakeSelection
-                        ? (next) => runRotation(() => onTakeSelection(next))
+                        ? (next) =>
+                            runRotation(() => {
+                              // A row's Take on air refuses while playout is down, as the transport's Take
+                              // does: it would be accepted and not air (the airing walk's W4).
+                              if (playoutDown)
+                                throw new Error(
+                                  `${PLAYOUT_DOWN_REASON}. Nothing was taken.`,
+                                );
+                              return onTakeSelection(next);
+                            })
                         : undefined
                     }
                     onQueueItem={(itemId) => {

@@ -124,15 +124,25 @@ export type IntroTransitionResult =
 
 /**
  * Why a song start was refused before anything was saved (gaulatti/alcantara#609): an operator's
- * take or start (`engine_unavailable`), or a rundown's song (`automation_engine_unavailable`).
+ * take or start (`engine_unavailable`), or a rundown's song (`automation_engine_unavailable`), or an operator's take
+ * while Palazzo freshly reports its playout down (`playout_down`, the airing walk's D4).
  */
 export type StartRefusalReason =
   | 'engine_unavailable'
-  | 'automation_engine_unavailable';
+  | 'automation_engine_unavailable'
+  | 'playout_down';
 const START_REFUSAL_REASONS: StartRefusalReason[] = [
   'engine_unavailable',
   'automation_engine_unavailable',
+  'playout_down',
 ];
+
+/**
+ * A take let through although the last playout report was down (D4): the report is older than its freshness window
+ * (`stale`), or the engine's client has no playout report yet (`unknown`). A wrong refusal is dead air too.
+ */
+export type PlayoutUnconfirmedTake = 'stale' | 'unknown';
+const PLAYOUT_UNCONFIRMED_TAKES: PlayoutUnconfirmedTake[] = ['stale', 'unknown'];
 
 export type SongQueueActionResult =
   | 'enqueued'
@@ -558,6 +568,7 @@ export class RadioMetricsService {
   private readonly songRequestFailures = new Map<string, number>();
   private readonly songQueueActions = new Map<string, number>();
   private readonly startRefusals = new Map<string, number>();
+  private readonly playoutUnconfirmedTakes = new Map<string, number>();
   private songQueueDepth = 0;
   private readonly highRotationActions = new Map<string, number>();
   private readonly similarityActions = new Map<string, number>();
@@ -673,6 +684,14 @@ export class RadioMetricsService {
   recordStartRefused(reason: StartRefusalReason): void {
     if (!START_REFUSAL_REASONS.includes(reason)) return;
     this.startRefusals.set(reason, (this.startRefusals.get(reason) ?? 0) + 1);
+  }
+
+  recordPlayoutUnconfirmedTake(report: PlayoutUnconfirmedTake): void {
+    if (!PLAYOUT_UNCONFIRMED_TAKES.includes(report)) return;
+    this.playoutUnconfirmedTakes.set(
+      report,
+      (this.playoutUnconfirmedTakes.get(report) ?? 0) + 1,
+    );
   }
 
   recordSongQueueAction(result: SongQueueActionResult): void {
@@ -1031,6 +1050,15 @@ export class RadioMetricsService {
     for (const reason of START_REFUSAL_REASONS) {
       lines.push(
         `alcantara_radio_start_refused_total{reason="${reason}"} ${this.startRefusals.get(reason) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_take_playout_unconfirmed_total Operator takes on a radio engine let through without a fresh playout report: the last report was down but stale, or there was no report yet.',
+      '# TYPE alcantara_radio_take_playout_unconfirmed_total counter',
+    );
+    for (const report of PLAYOUT_UNCONFIRMED_TAKES) {
+      lines.push(
+        `alcantara_radio_take_playout_unconfirmed_total{report="${report}"} ${this.playoutUnconfirmedTakes.get(report) ?? 0}`,
       );
     }
     lines.push(
