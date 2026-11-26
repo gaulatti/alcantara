@@ -704,14 +704,19 @@ export function AudioLibrary<T extends AudioLibraryAsset>({
                         className={`cursor-pointer border-t border-sand/15 outline-none transition focus-visible:ring-1 focus-visible:ring-sea ${isCurrent ? "bg-sea/10" : "hover:bg-sand/10"}`}
                       >
                         <td className="px-2 py-2">
-                          <Checkbox
-                            aria-label={`Select ${asset.name}`}
-                            checked={selectedIds.has(asset.id)}
+                          <label
+                            className="inline-flex items-center justify-center max-sm:-m-3 max-sm:min-h-11 max-sm:min-w-11"
                             onClick={(event) => event.stopPropagation()}
-                            onChange={(event) =>
-                              onToggleSelected(asset.id, event.target.checked)
-                            }
-                          />
+                          >
+                            <Checkbox
+                              aria-label={`Select ${asset.name}`}
+                              checked={selectedIds.has(asset.id)}
+                              onClick={(event) => event.stopPropagation()}
+                              onChange={(event) =>
+                                onToggleSelected(asset.id, event.target.checked)
+                              }
+                            />
+                          </label>
                         </td>
                         <td className="px-2 py-2">
                           <IconButton
