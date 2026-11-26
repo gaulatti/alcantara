@@ -329,9 +329,12 @@ it("presents stale timing explicitly and never turns unavailable output into hea
   p.fixtureData!.stream.running = false;
   p.fixtureData!.palazzo.connection = "unavailable";
   mount(p);
-  // With the engine unavailable nothing can confirm the song (#609): not confirmed, no clock.
-  expect(screen.getByText("Not confirmed")).toBeVisible();
-  expect(screen.getByText("No engine confirmation")).toBeVisible();
+  // With the engine unavailable nothing can confirm the song (#609): not confirmed, no clock, in
+  // the on-air strip and in the rundown's playback bar alike.
+  expect(screen.getAllByText("Not confirmed").length).toBeGreaterThanOrEqual(2);
+  expect(screen.getAllByText("No engine confirmation").length).toBeGreaterThanOrEqual(2);
+  expect(screen.getByText("—:—")).toBeVisible();
+  expect(screen.queryByText("Remaining")).not.toBeInTheDocument();
   expect(screen.queryByText("On air")).not.toBeInTheDocument();
   expect(screen.getByText("Output unavailable")).toBeVisible();
   expect(screen.getByText("Stream offline")).toBeVisible();
