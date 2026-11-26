@@ -20,6 +20,7 @@ import {
 } from '../operator-change/operator-change-recorder';
 import { INSTANT_CHANGE_FIELDS } from '../operator-change/library-change-fields';
 import { PrismaService } from '../prisma.service';
+import { forTeam } from '../tenancy/scoped-prisma';
 import {
   OUTBOUND_REFUSAL_MESSAGES,
   OutboundRefusal,
@@ -810,8 +811,13 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     instantSolo?: boolean;
     streamSolo?: boolean;
     sceneInstantSolo?: boolean;
-  }) {
+  }, teamId = 0) {
     const currentRaw = await this.ensureBroadcastSettings();
+    // One row for the whole installation (gaulatti/alcantara#122): only its own team may change it. `0` means no team
+    // is configured, which production refuses.
+    if (teamId > 0 && currentRaw.teamId !== teamId) {
+      throw new NotFoundException('Broadcast settings not found');
+    }
     const current = this.withResolvedBroadcastMixerChannels(currentRaw as any);
     const hasEnabledUpdate = typeof data.enabled === 'boolean';
     const hasStartTimeUpdate = Object.prototype.hasOwnProperty.call(
@@ -1052,7 +1058,11 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     const instantSolo = instants.solo;
     const streamSolo = stream.solo;
 
-    const settings = await this.prisma.broadcastSettings.upsert({
+    const client =
+      teamId > 0
+        ? (forTeam(this.prisma, teamId) as unknown as PrismaService)
+        : this.prisma;
+    const settings = await client.broadcastSettings.upsert({
       where: { id: ProgramService.BROADCAST_SETTINGS_ID },
       update: {
         timeOverrideEnabled: enabled,

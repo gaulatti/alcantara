@@ -19,6 +19,7 @@ import { FlightService } from './flight.service';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { Public } from '../auth/public.decorator';
 import { RequirePermission } from '../auth/require-permission.decorator';
+import { callerTeam, type TeamRequest } from '../tenancy/caller-team';
 import {
   ProgramTemplateService,
   type ProgramTemplateRegistration,
@@ -126,10 +127,14 @@ export class ProgramController {
       streamSolo?: boolean;
       sceneInstantSolo?: boolean;
     },
+    @Req() request: TeamRequest,
   ) {
     // The service currently exposes a legacy loosely typed settings payload.
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-    return this.programService.updateBroadcastSettings(data);
+    return this.programService.updateBroadcastSettings(
+      data,
+      callerTeam(request),
+    );
   }
 
   @Get(':programId/state')
