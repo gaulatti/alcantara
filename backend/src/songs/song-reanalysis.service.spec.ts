@@ -40,7 +40,9 @@ describe('SongReanalysisService', () => {
     const { service, prisma, programs } = build({
       analysed: ['song:1', 'song:3'],
     });
-    await expect(service.request([1, 2, 3], undefined, NOW)).resolves.toEqual({
+    await expect(
+      service.request([1, 2, 3], 0, undefined, NOW),
+    ).resolves.toEqual({
       requested: 2,
       skipped: [2],
     });
@@ -78,7 +80,7 @@ describe('SongReanalysisService', () => {
       rule: string | undefined,
       version: number | null,
     ) => {
-      await service.request([1], rule, NOW);
+      await service.request([1], 0, rule, NOW);
       expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith({
         where: {
           assetId: { in: ['song:1'] },
@@ -103,7 +105,7 @@ describe('SongReanalysisService', () => {
   it('refuses a rule it does not know before queueing anything', async () => {
     const { service, prisma } = build({ analysed: ['song:1'] });
     for (const bad of ['B', 2, null, '']) {
-      await expect(service.request([1], bad, NOW)).rejects.toBeInstanceOf(
+      await expect(service.request([1], 0, bad, NOW)).rejects.toBeInstanceOf(
         BadRequestException,
       );
     }
@@ -116,7 +118,7 @@ describe('SongReanalysisService', () => {
       holding: { 2: ['radio-1'], 3: ['radio-1', 'tv'] },
     });
     const error = await service
-      .request([1, 2, 3], undefined, NOW)
+      .request([1, 2, 3], 0, undefined, NOW)
       .catch((e) => e);
     expect(error).toBeInstanceOf(ConflictException);
     expect(error.getStatus()).toBe(409);
@@ -131,20 +133,20 @@ describe('SongReanalysisService', () => {
 
   it('checks again at queue time: a song that went on air after the plan is refused', async () => {
     const { service, programs, prisma } = build({ analysed: ['song:1'] });
-    await service.request([1], undefined, NOW);
+    await service.request([1], 0, undefined, NOW);
     expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenCalledTimes(1);
     programs.programsHoldingSongs.mockResolvedValueOnce(
       new Map([[1, ['radio-1']]]),
     );
-    await expect(service.request([1], undefined, NOW)).rejects.toBeInstanceOf(
-      ConflictException,
-    );
+    await expect(
+      service.request([1], 0, undefined, NOW),
+    ).rejects.toBeInstanceOf(ConflictException);
     expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenCalledTimes(1);
   });
 
   it('reads which programs hold the named songs, without queuing', async () => {
     const { service, prisma } = build({ holding: { 4: ['radio-1'] } });
-    await expect(service.onAir([4, 5])).resolves.toEqual(
+    await expect(service.onAir([4, 5], 0)).resolves.toEqual(
       new Map([
         [4, ['radio-1']],
         [5, []],
@@ -155,7 +157,7 @@ describe('SongReanalysisService', () => {
 
   it('queues nothing when no named song has a finished analysis', async () => {
     const { service } = build();
-    await expect(service.request([5])).resolves.toEqual({
+    await expect(service.request([5], 0)).resolves.toEqual({
       requested: 0,
       skipped: [5],
     });
@@ -164,7 +166,9 @@ describe('SongReanalysisService', () => {
   it('accepts exactly 25 songs and refuses 26, none, duplicates and anything that is not a song id', async () => {
     const { service, prisma } = build();
     const ids = Array.from({ length: 25 }, (_, index) => index + 1);
-    await expect(service.request(ids)).resolves.toMatchObject({ requested: 0 });
+    await expect(service.request(ids, 0)).resolves.toMatchObject({
+      requested: 0,
+    });
     for (const bad of [
       [...ids, 26],
       [],
@@ -177,10 +181,10 @@ describe('SongReanalysisService', () => {
       undefined,
       null,
     ]) {
-      await expect(service.request(bad)).rejects.toBeInstanceOf(
+      await expect(service.request(bad, 0)).rejects.toBeInstanceOf(
         BadRequestException,
       );
-      await expect(service.onAir(bad)).rejects.toBeInstanceOf(
+      await expect(service.onAir(bad, 0)).rejects.toBeInstanceOf(
         BadRequestException,
       );
     }
