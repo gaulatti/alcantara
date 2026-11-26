@@ -319,4 +319,16 @@ describe('PalazzoRadioTelemetryService playout reports', () => {
     ).clients.set('radio-1', { playoutReport: () => 'down' });
     expect(telemetry.playoutReport('radio-1')).toBe('down');
   });
+
+  it('starts without a radio service to bind, as in a module that has none', async () => {
+    process.env[DEPLOY_CANDIDATE_ENV] = '1';
+    const telemetry = new PalazzoRadioTelemetryService(
+      {} as never,
+      { setPalazzoTelemetry: jest.fn() } as never,
+      new RadioMetricsService(),
+      {} as never,
+      {} as never,
+    );
+    await expect(telemetry.onModuleInit()).resolves.toBeUndefined();
+  });
 });
