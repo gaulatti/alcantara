@@ -6,6 +6,7 @@ import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
 import { ManagedMetricsService } from '../../observability/managed-metrics.service';
 import { ProgramService } from '../../program/program.service';
 import { RadioService } from '../../radio/radio.service';
+import { PompeiiService } from '../../auth/pompeii.service';
 import { StingersService } from '../../stingers/stingers.service';
 import { MCP_ACTION_EXECUTOR } from '../contract';
 import { McpActionExecutor } from '../mcp-action.executor';
@@ -59,6 +60,7 @@ async function connect(principal: ReturnType<typeof principalWith>) {
       { provide: ProgramService, useValue: fakes.programs },
       { provide: RadioService, useValue: fakes.radio },
       { provide: StingersService, useValue: fakes.stingers },
+      { provide: PompeiiService, useValue: { teamId: 7 } },
       InstantsMcpTools,
       StingersMcpTools,
     ],

@@ -406,13 +406,16 @@ const ROWS: Row[] = [
       },
     ],
     rest: (c, a) =>
-      c.scenes.create({
-        name: a.name as string,
-        layoutId: 2,
-        chyronText: a.chyron_text as string,
-        metadata: a.metadata,
-        externalSourceId: a.external_source_id as string,
-      }),
+      c.scenes.create(
+        {
+          name: a.name as string,
+          layoutId: 2,
+          chyronText: a.chyron_text as string,
+          metadata: a.metadata,
+          externalSourceId: a.external_source_id as string,
+        },
+        SCENE_TEAM,
+      ),
     service: (f) => f.scenes.create,
   },
   {
@@ -433,13 +436,17 @@ const ROWS: Row[] = [
       },
     ],
     rest: (c, a) =>
-      c.scenes.update('3', {
-        name: a.name as string,
-        layoutId: a.layout_id as number,
-        chyronText: a.chyron_text as string,
-        metadata: a.metadata,
-        externalSourceId: a.external_source_id as null,
-      }),
+      c.scenes.update(
+        '3',
+        {
+          name: a.name as string,
+          layoutId: a.layout_id as number,
+          chyronText: a.chyron_text as string,
+          metadata: a.metadata,
+          externalSourceId: a.external_source_id as null,
+        },
+        SCENE_TEAM,
+      ),
     service: (f) => f.scenes.update,
   },
   {
@@ -452,7 +459,8 @@ const ROWS: Row[] = [
           f.programs.getProgramIdsByActiveScene.mockResolvedValue(['main']),
       },
     ],
-    rest: (c) => c.scenes.updateChyron('3', { chyronText: 'Breaking' }),
+    rest: (c) =>
+      c.scenes.updateChyron('3', { chyronText: 'Breaking' }, SCENE_TEAM),
     service: (f) => f.scenes.updateChyron,
     confirm: ['3', scene.name],
   },
@@ -465,10 +473,14 @@ const ROWS: Row[] = [
       },
     ],
     rest: (c, a) =>
-      c.scenes.drawModoItalianoBracket('3', {
-        componentType: a.component_type as string,
-        seed: a.seed as number,
-      }),
+      c.scenes.drawModoItalianoBracket(
+        '3',
+        {
+          componentType: a.component_type as string,
+          seed: a.seed as number,
+        },
+        SCENE_TEAM,
+      ),
     service: (f) => f.scenes.drawModoItalianoBracket,
     confirm: ['3', scene.name],
   },
@@ -487,12 +499,16 @@ const ROWS: Row[] = [
       },
     ],
     rest: (c, a) =>
-      c.scenes.voteModoItalianoBracket('3', {
-        componentType: a.component_type as string,
-        matchId: a.match_id as number,
-        voterId: a.voter_id as string,
-        songId: a.song_id as number | null,
-      }),
+      c.scenes.voteModoItalianoBracket(
+        '3',
+        {
+          componentType: a.component_type as string,
+          matchId: a.match_id as number,
+          voterId: a.voter_id as string,
+          songId: a.song_id as number | null,
+        },
+        SCENE_TEAM,
+      ),
     service: (f) => f.scenes.voteModoItalianoBracket,
     confirm: ['3', scene.name],
   },
@@ -500,17 +516,21 @@ const ROWS: Row[] = [
     name: 'scene_open_modo_italiano_bracket_voting',
     cases: [{ args: { scene_id: 3, match_id: 1 } }],
     rest: (c) =>
-      c.scenes.openModoItalianoBracketVoting('3', {
-        componentType: undefined,
-        matchId: 1,
-      }),
+      c.scenes.openModoItalianoBracketVoting(
+        '3',
+        {
+          componentType: undefined,
+          matchId: 1,
+        },
+        SCENE_TEAM,
+      ),
     service: (f) => f.scenes.openModoItalianoBracketVoting,
     confirm: ['3', scene.name],
   },
   {
     name: 'scene_remove',
     cases: [{ args: { scene_id: 3 } }],
-    rest: (c) => c.scenes.remove('3'),
+    rest: (c) => c.scenes.remove('3', SCENE_TEAM),
     service: (f) => f.scenes.remove,
     confirm: ['3', scene.name],
   },
@@ -521,11 +541,10 @@ const ROWS: Row[] = [
       { args: { name: 'L', component_type: 'grid', settings: { a: 1 } } },
     ],
     rest: (c, a) =>
-      c.layouts.create({
-        name: 'L',
-        componentType: 'grid',
-        settings: a.settings,
-      }),
+      c.layouts.create(
+        { name: 'L', componentType: 'grid', settings: a.settings },
+        TEAM_REQUEST,
+      ),
     service: (f) => f.layouts.create,
   },
   {
@@ -547,17 +566,21 @@ const ROWS: Row[] = [
       },
     ],
     rest: (c, a) =>
-      c.layouts.update('2', {
-        name: a.name as string,
-        componentType: a.component_type as string,
-        settings: a.settings,
-      }),
+      c.layouts.update(
+        '2',
+        {
+          name: a.name as string,
+          componentType: a.component_type as string,
+          settings: a.settings,
+        },
+        TEAM_REQUEST,
+      ),
     service: (f) => f.layouts.update,
   },
   {
     name: 'layout_remove',
     cases: [{ args: { layout_id: 2 } }],
-    rest: (c) => c.layouts.remove('2'),
+    rest: (c) => c.layouts.remove('2', TEAM_REQUEST),
     service: (f) => f.layouts.remove,
     confirm: ['2', layout.name],
   },
@@ -612,6 +635,9 @@ const ROWS: Row[] = [
   },
 ];
 
+const SCENE_TEAM = { user: { authorization: { teamId: 7 } } };
+const TEAM_REQUEST = { user: { authorization: { teamId: 7 } } };
+
 function build() {
   const f = fakeServices();
   const controllers: Controllers = {
@@ -630,8 +656,16 @@ function build() {
       f.templates as never,
       { teamId: 7 } as never,
     ).specs(),
-    ...new ScenesMcpTools(f.scenes as never, f.programs as never).specs(),
-    ...new LayoutsMcpTools(f.layouts as never, f.programs as never).specs(),
+    ...new ScenesMcpTools(
+      f.scenes as never,
+      f.programs as never,
+      { teamId: 7 } as never,
+    ).specs(),
+    ...new LayoutsMcpTools(
+      f.layouts as never,
+      f.programs as never,
+      { teamId: 7 } as never,
+    ).specs(),
     ...new MediaGroupsMcpTools(f.groups as never, f.programs as never).specs(),
   ];
   return { f, controllers, specs };

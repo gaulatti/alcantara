@@ -17,43 +17,54 @@ describe('ScenesController', () => {
   };
   const controller = new ScenesController(service as never);
 
+  const request = { user: { authorization: { teamId: 7 } } };
+
   it('delegates CRUD routes with numeric ids', async () => {
-    await expect(controller.findAll()).resolves.toBe('all');
-    await expect(controller.findOne('3')).resolves.toBe('one');
-    expect(service.findOne).toHaveBeenCalledWith(3);
+    await expect(controller.findAll(request)).resolves.toBe('all');
+    await expect(controller.findOne('3', request)).resolves.toBe('one');
+    expect(service.findAll).toHaveBeenCalledWith(7);
+    expect(service.findOne).toHaveBeenCalledWith(3, 7);
     const body = { name: 'n', layoutId: 1 };
-    await expect(controller.create(body)).resolves.toBe('created');
-    expect(service.create).toHaveBeenCalledWith(body);
-    await expect(controller.update('4', { name: 'x' })).resolves.toBe(
+    await expect(controller.create(body, request)).resolves.toBe('created');
+    expect(service.create).toHaveBeenCalledWith(body, 7);
+    await expect(controller.update('4', { name: 'x' }, request)).resolves.toBe(
       'updated',
     );
-    expect(service.update).toHaveBeenCalledWith(4, { name: 'x' });
-    await expect(controller.remove('5')).resolves.toBe('removed');
-    expect(service.remove).toHaveBeenCalledWith(5);
+    expect(service.update).toHaveBeenCalledWith(4, { name: 'x' }, 7);
+    await expect(controller.remove('5', request)).resolves.toBe('removed');
+    expect(service.remove).toHaveBeenCalledWith(5, 7);
   });
 
   it('delegates chyron and bracket operations', async () => {
     await expect(
-      controller.updateChyron('6', { chyronText: 'hi' }),
+      controller.updateChyron('6', { chyronText: 'hi' }, request),
     ).resolves.toBe('chyron');
-    expect(service.updateChyron).toHaveBeenCalledWith(6, 'hi');
+    expect(service.updateChyron).toHaveBeenCalledWith(6, 'hi', 7);
     await expect(
-      controller.drawModoItalianoBracket('7', { seed: 1 }),
+      controller.drawModoItalianoBracket('7', { seed: 1 }, request),
     ).resolves.toBe('draw');
-    expect(service.drawModoItalianoBracket).toHaveBeenCalledWith(7, {
-      seed: 1,
-    });
-    const vote = { matchId: 1, voterId: 'v', songId: null };
-    await expect(controller.voteModoItalianoBracket('8', vote)).resolves.toBe(
-      'vote',
+    expect(service.drawModoItalianoBracket).toHaveBeenCalledWith(
+      7,
+      {
+        seed: 1,
+      },
+      7,
     );
-    expect(service.voteModoItalianoBracket).toHaveBeenCalledWith(8, vote);
+    const vote = { matchId: 1, voterId: 'v', songId: null };
     await expect(
-      controller.openModoItalianoBracketVoting('9', { matchId: 2 }),
+      controller.voteModoItalianoBracket('8', vote, request),
+    ).resolves.toBe('vote');
+    expect(service.voteModoItalianoBracket).toHaveBeenCalledWith(8, vote, 7);
+    await expect(
+      controller.openModoItalianoBracketVoting('9', { matchId: 2 }, request),
     ).resolves.toBe('open');
-    expect(service.openModoItalianoBracketVoting).toHaveBeenCalledWith(9, {
-      matchId: 2,
-    });
+    expect(service.openModoItalianoBracketVoting).toHaveBeenCalledWith(
+      9,
+      {
+        matchId: 2,
+      },
+      7,
+    );
   });
 
   it('requires read at class level and stricter permissions on mutations', () => {

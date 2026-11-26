@@ -30,7 +30,8 @@ import {
   SlidersHorizontal,
   Tv,
   Volume2,
-  X
+  X,
+  Video
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
@@ -83,6 +84,7 @@ const NAVIGATION_ICONS: Record<string, ReactNode> = {
   'radio-workflow-fixture': <RadioTower size={17} />,
   'radio-continuous-fixture': <RadioTower size={17} />,
   calls: <PhoneCall size={17} />,
+  sources: <Video size={17} />,
   destinations: <RadioTower size={17} />,
   scenes: <Clapperboard size={17} />,
   'scene-templates': <LayoutTemplate size={17} />,
@@ -534,6 +536,14 @@ function ConsoleShell() {
         icon: <PhoneCall size={16} />,
         onSelect: () => navigate('/calls')
       },
+      {
+        id: 'nav-sources',
+        title: 'Go to External Sources',
+        description: 'See the external video sources and preview one',
+        group: 'Navigation',
+        icon: <Video size={16} />,
+        onSelect: () => navigate('/sources')
+      },
       ...(hasPermission('broadcast.view')
         ? [
             {
@@ -740,7 +750,7 @@ function ConsoleShell() {
         }
       }));
 
-    const televisionOnlyActions = new Set(['nav-media', 'nav-calls', 'nav-broadcasts', 'nav-scenes', 'nav-layouts', 'nav-preview', 'open-transition-settings']);
+    const televisionOnlyActions = new Set(['nav-media', 'nav-calls', 'nav-sources', 'nav-broadcasts', 'nav-scenes', 'nav-layouts', 'nav-preview', 'open-transition-settings']);
     const visibleBaseActions = baseActions.filter((action) => {
       if (action.id === 'open-selected-program' && !resolvedSelectedProgram) return false;
       if (selectedProgramType === 'radio' && televisionOnlyActions.has(action.id)) return false;

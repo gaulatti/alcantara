@@ -65,6 +65,8 @@ describe('SongReanalysisService', () => {
         nextAttemptAt: NOW,
         attempts: 0,
         error: null,
+        claimedAt: null,
+        interruptions: 0,
         requestedRuleVersion: null,
       },
     });
@@ -86,6 +88,8 @@ describe('SongReanalysisService', () => {
           nextAttemptAt: NOW,
           attempts: 0,
           error: null,
+          claimedAt: null,
+          interruptions: 0,
           requestedRuleVersion: version,
         },
       });

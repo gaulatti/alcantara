@@ -10,8 +10,10 @@ monitor or transport control cannot cover navigation.
 
 Navigation is grouped by operator intent rather than database model:
 
-- **Live** contains the mode-specific desk, one Rundown workspace, Guest calls, and TV
-  destinations where applicable.
+- **Live** contains the mode-specific desk, one Rundown workspace, Guest calls,
+  External sources (the managed video sources of the show, with a preview that never
+  reaches Program; #45) and TV destinations where applicable. Guest calls and
+  External sources appear only for a show with a television leg.
 - **Library** contains Scenes and Scene templates for visual shows plus one
   Media destination for every show type. TV and Simulcast Media is organized by
   Images, Audio, Video, and Labels; Radio exposes only Audio and Labels. Audio
