@@ -67,6 +67,7 @@ function build() {
     ...new MediaAssetsMcpTools(
       services.assets as never,
       programs as never,
+      { teamId: 7 } as never,
     ).specs(),
     ...new SimilarityMcpTools(services.similarity as never).specs(),
   ];

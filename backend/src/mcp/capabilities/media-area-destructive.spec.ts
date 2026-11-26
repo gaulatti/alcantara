@@ -64,6 +64,7 @@ function build() {
     ...new MediaAssetsMcpTools(
       services.assets as never,
       programs as never,
+      { teamId: 7 } as never,
     ).specs(),
   ];
   const live = (overrides: Record<string, unknown>) =>

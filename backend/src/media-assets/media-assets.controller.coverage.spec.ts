@@ -11,7 +11,7 @@ import { MediaAssetsModule } from './media-assets.module';
 import { MediaAssetsReconciliationService } from './media-assets-reconciliation.service';
 import { MediaAssetsService } from './media-assets.service';
 
-const authorization = { permissions: ['*'] };
+const authorization = { permissions: ['*'], teamId: 7 };
 const request = { user: { authorization } };
 
 function build() {
