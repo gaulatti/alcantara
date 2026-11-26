@@ -32,6 +32,22 @@ Radio settings created from now on have segue-aware and loudness-normalized play
 
 Use **Voice** on a song row to record a link with the browser microphone. Preview the take alone or over the chosen song, set duck and fade values, then **Use this take**. The recording uploads as a managed audio clip and is attached to that exact cue by `voiceTrackInstantId`; changing another play of the same song does not change this cue. Palazzo receives the voice clip with the song command and applies the saved duck/fades. Browser preview approximates the mix. A missing or disabled clip fails preflight; if it disappears between preflight and playout, the Radio desk shows intro degradation.
 
+## Take and start while the engine is off
+
+A radio-only program plays only through its playout engine (gaulatti/alcantara#609). While
+that engine is disabled in radio settings, or the program has no radio settings, an operator's
+take or start is refused before anything is saved:
+
+- `POST /radio/:programId/song` (Take, play now);
+- `PUT /program/:programId/audio-bus` when the write would start a song (a different song
+  becomes active, or an idle manual rotation switches to Autoplay or Shuffle).
+
+Both answer `409` with `{"statusCode":409,"error":"Conflict","reason":"engine_unavailable",
+"message":"The radio engine is off (disabled in settings), so nothing was taken."}`. Rotation
+edits that start nothing, and stopping, still save. TV and simulcast programs are not affected:
+their program output plays songs itself. Scheduled rundown automation does not go through these
+operator routes.
+
 ## Output confidence and recovery
 
 The Radio desk separates **Stream verified** (Liquidsoap and Icecast transport) from output confidence. It shows fresh sampled output as detected, checking, silent after ten seconds below 0.001 RMS while song playback is expected, idle, unavailable, or unverified. A sample older than fifteen seconds cannot prove audio. This is a level check, not a listener-side measurement.

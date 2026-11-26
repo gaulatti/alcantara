@@ -18,6 +18,7 @@ function build() {
     'getProgramAudioBus',
     'getProgramAudioMeter',
     'updateProgramAudioMeter',
+    'refuseOperatorStartWhileEngineUnavailable',
     'getProgramSceneInstantPlayback',
     'takeProgramSceneInstant',
     'stopProgramSceneInstant',
