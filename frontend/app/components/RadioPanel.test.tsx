@@ -329,13 +329,22 @@ it("presents stale timing explicitly and never turns unavailable output into hea
   p.fixtureData!.stream.running = false;
   p.fixtureData!.palazzo.connection = "unavailable";
   mount(p);
-  // A stale report is called delayed, with no frozen clock.
-  expect(screen.getByText("Status delayed")).toBeVisible();
-  expect(screen.getByText("No live clock")).toBeVisible();
+  // With the engine unavailable nothing can confirm the song (#609): not confirmed, no clock.
+  expect(screen.getByText("Not confirmed")).toBeVisible();
+  expect(screen.getByText("No engine confirmation")).toBeVisible();
+  expect(screen.queryByText("On air")).not.toBeInTheDocument();
   expect(screen.getByText("Output unavailable")).toBeVisible();
   expect(screen.getByText("Stream offline")).toBeVisible();
   expect(screen.getByText("Engine unavailable")).toBeVisible();
   expect(screen.queryByText("Engine audio detected")).not.toBeInTheDocument();
+});
+
+it("calls a stale report from a connected engine delayed, with no frozen clock", () => {
+  const p = props();
+  p.programSongPlayback = { ...p.programSongPlayback!, telemetryStale: true };
+  mount(p);
+  expect(screen.getByText("Status delayed")).toBeVisible();
+  expect(screen.getByText("No live clock")).toBeVisible();
 });
 
 it("shows explicit empty states without hiding transport or inventing a countdown", () => {
@@ -1603,4 +1612,20 @@ it("passes the rundown's take callback to the playback bar when one is supplied"
   mount(p);
   fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
   await waitFor(() => expect(flight.goFlight).toHaveBeenCalledWith("radio-demo"));
+});
+
+it("says On air only for an engine-confirmed song, and refuses Take while the engine is off (#609)", () => {
+  const ready = props();
+  ready.fixtureData!.logs = [];
+  const { unmount } = mount(ready);
+  expect(screen.getAllByText("On air").length).toBeGreaterThan(0);
+  expect(screen.queryByText(/Take is unavailable until the engine is back/)).not.toBeInTheDocument();
+  unmount();
+  const down = props();
+  down.fixtureData!.logs = [];
+  down.fixtureData!.palazzo.connection = "unavailable";
+  mount(down);
+  expect(screen.queryByText("On air")).not.toBeInTheDocument();
+  expect(screen.getByText("Not confirmed")).toBeVisible();
+  expect(screen.getByText(/Take is unavailable until the engine is back/)).toBeVisible();
 });
