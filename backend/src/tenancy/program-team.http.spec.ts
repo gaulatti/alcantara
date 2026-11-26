@@ -153,9 +153,16 @@ describe("programs of the caller's team", () => {
     process.env.POMPEII_TEAM_ID = String(team);
     prisma = new PrismaService();
     await prisma.$connect();
+    // The shared database may hold a `main` another spec or the seed left with an owner. This spec states its own
+    // starting point, unowned, and puts back what it found afterwards, so the result never depends on run order.
     ownedMain = await prisma.program.findUnique({
       where: { programId: 'main' },
       select: { teamId: true },
+    });
+    await prisma.program.upsert({
+      where: { programId: 'main' },
+      create: { programId: 'main', teamId: null },
+      update: { teamId: null },
     });
     for (const [programId, teamId] of [
       [mine, team],
@@ -181,7 +188,12 @@ describe("programs of the caller's team", () => {
     await prisma?.program.deleteMany({
       where: { programId: { in: [mine, other, nobody] } },
     });
-    if (!ownedMain) {
+    if (ownedMain) {
+      await prisma?.program.update({
+        where: { programId: 'main' },
+        data: { teamId: ownedMain.teamId },
+      });
+    } else {
       await prisma?.program.deleteMany({ where: { programId: 'main' } });
     }
     await prisma?.$disconnect();
