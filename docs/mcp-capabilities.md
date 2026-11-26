@@ -481,7 +481,10 @@ guest). A guest link is created and replaced in the console only. The four
   field was given, reconnect telemetry when the Palazzo address or `enabled`
   changed). Its dry run is live for every field except `listener_url`.
 - `radio_start_recovery` and `radio_stop_recovery` confirm against Palazzo's
-  automation state; the manual song and instant routes
+  automation state and refuse what the desk's recovery buttons disable (#788):
+  Start while Palazzo reports its playout down, with no prepared playlist, when
+  Palazzo is not connected or while a session runs; Stop when none runs. Their
+  dry run says `REFUSED (on_air)` first; the manual song and instant routes
   (`radio_play_song`, `radio_stop_song`, `radio_play_instant`,
   `radio_stop_all_instants`) confirm against the program's live stamp, like
   the program actions. `radio_play_instant` accepts `instant_id` as the
@@ -844,9 +847,9 @@ records, the change is never blocked: a record that cannot be stored is logged a
 | `radio_prepare_recovery` | `alcantara:radio:manage` | W | Prepares one to 100 distinct catalog songs as the recovery (fallback) playlist: Palazzo downloads and verifies them, and the version is saved only after it reports ready. |
 | `radio_replace_now_playing_consumers` | `alcantara:radio:manage` | W | Replaces the whole list of endpoints that are told what is playing: any consumer not in the list is deleted. |
 | `radio_similarity_upload` | `alcantara:radio:manage` | W | Stores embeddings computed outside the console for up to 25 songs: {schema: 1, model: {name, version, license}, windowSeconds, songs: [{songId, audioSha256, opening, closing}]}. |
-| `radio_start_recovery` | `alcantara:radio:operate` | A | Starts the recovery (fallback) session of a radio program, bound to the program radio filler version (or, without one, the prepared recovery playlist): when the live song queue runs dry, Palazzo plays the local playlist. |
+| `radio_start_recovery` | `alcantara:radio:operate` | A | Starts the recovery (fallback) session of a radio program, bound to the program radio filler version (or, without one, the prepared recovery playlist): when the live song queue runs dry, Palazzo plays the local playlist. Refused with on_air, as the desk's Start with fallback is disabled, while Palazzo reports its playout down, with no prepared playlist, when Palazzo is not connected, or while a session runs. |
 | `radio_stop_all_instants` | `alcantara:radio:operate` | A | Cuts every instant playing over a radio program. |
-| `radio_stop_recovery` | `alcantara:radio:operate` | A | Stops the recovery session of a radio program: the program audio is cleared and the binding to the playlist is dropped. |
+| `radio_stop_recovery` | `alcantara:radio:operate` | A | Stops the recovery session of a radio program: the program audio is cleared and the binding to the playlist is dropped. Refused with on_air, as the desk's Hold · stop session is disabled, when no session runs. |
 | `radio_stop_song` | `alcantara:radio:operate` | A | Stops the song that is playing on a radio program and tells the engine to stop. |
 | `radio_update_settings` | `alcantara:radio:manage` | W | Changes the radio settings of a program (Palazzo address, listener address, bumpers, segue, similarity, enabled). |
 | `recording_start` | `alcantara:program:operate` | A | Starts recording the program output on the executor: it writes segments to its disk, up to the quota, until stopped. |

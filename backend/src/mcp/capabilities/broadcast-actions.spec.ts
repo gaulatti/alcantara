@@ -547,6 +547,14 @@ describe('radio writes', () => {
       () => b.controllers.radio.prepareRecovery('main', { songIds: [3, 4] }),
       [r.prepareRecoveryPlaylist],
     );
+    // Start is offered as the desk offers it: no session running (#788).
+    r.getRecoveryStatus.mockResolvedValueOnce({
+      ...recovery,
+      automation: {
+        ...recovery.automation,
+        filler: { activeVersion: null, ready: false },
+      },
+    });
     await parity(
       b,
       'radio_start_recovery',

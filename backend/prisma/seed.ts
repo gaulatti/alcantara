@@ -13,17 +13,31 @@ import {
   syncTransitionAsset,
 } from '../src/media-assets/media-asset-sync';
 
-const prisma = new PrismaClient({
-  adapter: createPostgresAdapter(process.env.DATABASE_URL),
-});
+type SeedEnvironment = Readonly<Record<string, string | undefined>>;
+type DemoAudioSender = Parameters<typeof seedDemoAudio>[1];
 
-async function main() {
+/**
+ * The local stack's seed. Exported so a test can run it against a disposable database with a fake media store; run
+ * directly (pnpm seed in Compose) it uses this process's environment and the local media store.
+ */
+export async function seedLocalDatabase(
+  prisma: PrismaClient,
+  environment: SeedEnvironment = process.env,
+  audio: DemoAudioSender = demoAudioClient(environment),
+): Promise<void> {
   console.log('Seeding database...');
+
+  // gaulatti/alcantara#122 and the airing walk's W2: song, media and scene reads go through the caller's team, and the
+  // local backend runs with POMPEII_TEAM_ID set, so every seeded library row belongs to that team (none when the
+  // variable is unset, the no-tenancy installation). Updates write it too, so a reseed repairs an older local stack.
+  const seedTeamId = Number(environment.POMPEII_TEAM_ID) || null;
+  const team = { teamId: seedTeamId };
 
   await prisma.broadcastSettings.upsert({
     where: { id: 1 },
-    update: {},
+    update: { ...team },
     create: {
+      ...team,
       id: 1,
       timeOverrideEnabled: false,
     },
@@ -63,9 +77,22 @@ async function main() {
     ],
   };
 
+  // Compose re-runs this seed on every backend start. What an operator changed (rotations, show type, mixer, the
+  // on-air scene, the log pointer) is written only when the show is created by this run, never on a re-run: a
+  // show taken off air must not come back with a scene on air (Yakko's #800 review).
+  const existingShows = new Set(
+    (
+      await prisma.programState.findMany({
+        where: { programId: { in: ['main', 'tv-demo', 'radio-demo'] } },
+        select: { programId: true },
+      })
+    ).map((row) => row.programId),
+  );
+  const isNewShow = (programId: string) => !existingShows.has(programId);
+
   const mainProgram = await prisma.programState.upsert({
     where: { programId: 'main' },
-    update: { type: 'both', audioMixer: defaultAudioMixer as any },
+    update: {},
     create: {
       programId: 'main',
       type: 'both',
@@ -76,7 +103,7 @@ async function main() {
 
   const tvProgram = await prisma.programState.upsert({
     where: { programId: 'tv-demo' },
-    update: { type: 'tv', audioMixer: defaultAudioMixer as any },
+    update: {},
     create: {
       programId: 'tv-demo',
       type: 'tv',
@@ -86,13 +113,23 @@ async function main() {
 
   const radioProgram = await prisma.programState.upsert({
     where: { programId: 'radio-demo' },
-    update: { type: 'radio', audioMixer: defaultAudioMixer as any },
+    update: {},
     create: {
       programId: 'radio-demo',
       type: 'radio',
       audioMixer: defaultAudioMixer as any,
     },
   });
+
+  // Each seeded show is registered with the local team, as a show created in the Shows admin is: the program's
+  // song reads (Check, logs, recipes) resolve the team from this row, and a show without one reads no songs.
+  for (const programId of ['main', 'tv-demo', 'radio-demo']) {
+    await prisma.program.upsert({
+      where: { programId },
+      update: { ...team },
+      create: { programId, ...team },
+    });
+  }
 
   const localDestinations = [
     {
@@ -113,14 +150,15 @@ async function main() {
   for (const destination of localDestinations) {
     await prisma.broadcastDestination.upsert({
       where: { id: destination.id },
-      update: {},
-      create: destination,
+      update: { ...team },
+      create: { ...destination, ...team },
     });
   }
 
   const assignedIntro = await prisma.instant.upsert({
     where: { id: 9001 },
     update: {
+      ...team,
       name: 'Local demo song intro',
       audioUrl: '/fifthbell/audio/pipes.ogg',
       volume: 0.72,
@@ -128,6 +166,7 @@ async function main() {
       position: 9001,
     },
     create: {
+      ...team,
       id: 9001,
       name: 'Local demo song intro',
       audioUrl: '/fifthbell/audio/pipes.ogg',
@@ -139,6 +178,7 @@ async function main() {
   const availableIntro = await prisma.instant.upsert({
     where: { id: 9002 },
     update: {
+      ...team,
       name: 'Local available voice recording',
       audioUrl: '/fifthbell/audio/pipes.ogg',
       volume: 0.9,
@@ -146,6 +186,7 @@ async function main() {
       position: 9002,
     },
     create: {
+      ...team,
       id: 9002,
       name: 'Local available voice recording',
       audioUrl: '/fifthbell/audio/pipes.ogg',
@@ -158,12 +199,14 @@ async function main() {
   const assignedSong = await prisma.song.upsert({
     where: { id: 9001 },
     update: {
+      ...team,
       artist: 'Seed Artist',
       title: 'Song with recorded intro',
       audioUrl: '/fifthbell/audio/pipes.ogg',
       enabled: true,
     },
     create: {
+      ...team,
       id: 9001,
       artist: 'Seed Artist',
       title: 'Song with recorded intro',
@@ -174,12 +217,14 @@ async function main() {
   const availableSong = await prisma.song.upsert({
     where: { id: 9002 },
     update: {
+      ...team,
       artist: 'Seed Artist',
       title: 'Song without intro',
       audioUrl: '/fifthbell/audio/pipes.ogg',
       enabled: true,
     },
     create: {
+      ...team,
       id: 9002,
       artist: 'Seed Artist',
       title: 'Song without intro',
@@ -190,7 +235,7 @@ async function main() {
   // Local demo songs for a recovery playlist and a filler (gaulatti/alcantara#206): each has its own fictional tone
   // uploaded to the Compose localstack, so each download comes from the local media store under its own URL. The seeded
   // songs above keep their existing audio.
-  const demoAudioUrls = await seedDemoAudio(process.env, demoAudioClient(process.env));
+  const demoAudioUrls = await seedDemoAudio(environment, audio);
   const demoAudioUrlFor = (id: number): string => {
     const url = demoAudioUrls.get(id);
     if (!url) throw new Error(`no uploaded demo audio for song ${id}`);
@@ -205,8 +250,8 @@ async function main() {
     };
     const song = await prisma.song.upsert({
       where: { id },
-      update: demoSong,
-      create: { id, ...demoSong },
+      update: { ...demoSong, ...team },
+      create: { ...team, id, ...demoSong },
     });
     await syncSongAsset(prisma, song);
   }
@@ -223,8 +268,9 @@ async function main() {
   // Fictional tags exercise the normal Library -> generated log path offline.
   const demoMusicTag = await prisma.mediaLabel.upsert({
     where: { name: 'Demo music' },
-    update: {},
+    update: { ...team },
     create: {
+      ...team,
       id: 'seed:demo-music',
       name: 'Demo music',
       description: 'Fictional local radio pool',
@@ -254,7 +300,6 @@ async function main() {
 
   // One fictional artist linked to a seeded label, to exercise the artist label picker offline. The
   // link belongs to the team the local stack is configured for (none when the variable is unset).
-  const seedTeamId = Number(process.env.POMPEII_TEAM_ID) || null;
   if (
     !(await prisma.artistLabel.findFirst({
       where: { artistKey: 'seed artist', teamId: seedTeamId },
@@ -316,22 +361,28 @@ async function main() {
     loop: false,
     startedAt: 0,
   };
-  await prisma.programState.update({
-    where: { id: mainProgram.id },
-    data: { songSequence: songSequence as any },
-  });
-  await prisma.programState.update({
-    where: { id: radioProgram.id },
-    data: { songSequence: radioSongSequence as any },
-  });
+  if (isNewShow('main')) {
+    await prisma.programState.update({
+      where: { id: mainProgram.id },
+      data: { songSequence: songSequence as any },
+    });
+  }
+  if (isNewShow('radio-demo')) {
+    await prisma.programState.update({
+      where: { id: radioProgram.id },
+      data: { songSequence: radioSongSequence as any },
+    });
+  }
 
   const demoLayout = await prisma.layout.upsert({
     where: { name: 'Local operator demo' },
     update: {
+      ...team,
       componentType: 'full-screen',
       settings: '{}',
     },
     create: {
+      ...team,
       id: 9001,
       name: 'Local operator demo',
       componentType: 'full-screen',
@@ -341,6 +392,7 @@ async function main() {
   const previewScene = await prisma.scene.upsert({
     where: { id: 9001 },
     update: {
+      ...team,
       name: 'Local preview headlines',
       layoutId: demoLayout.id,
       metadata: JSON.stringify({
@@ -348,6 +400,7 @@ async function main() {
       }),
     },
     create: {
+      ...team,
       id: 9001,
       name: 'Local preview headlines',
       layoutId: demoLayout.id,
@@ -359,6 +412,7 @@ async function main() {
   const programScene = await prisma.scene.upsert({
     where: { id: 9002 },
     update: {
+      ...team,
       name: 'Local program desk',
       layoutId: demoLayout.id,
       metadata: JSON.stringify({
@@ -366,6 +420,7 @@ async function main() {
       }),
     },
     create: {
+      ...team,
       id: 9002,
       name: 'Local program desk',
       layoutId: demoLayout.id,
@@ -374,7 +429,8 @@ async function main() {
       }),
     },
   });
-  for (const programStateId of [mainProgram.id, tvProgram.id]) {
+  for (const program of [mainProgram, tvProgram]) {
+    const programStateId = program.id;
     await prisma.programScene.upsert({
       where: {
         programStateId_sceneId: {
@@ -382,7 +438,7 @@ async function main() {
           sceneId: previewScene.id,
         },
       },
-      update: { position: 9001 },
+      update: {},
       create: { programStateId, sceneId: previewScene.id, position: 9001 },
     });
     await prisma.programScene.upsert({
@@ -392,26 +448,30 @@ async function main() {
           sceneId: programScene.id,
         },
       },
-      update: { position: 9002 },
+      update: {},
       create: { programStateId, sceneId: programScene.id, position: 9002 },
     });
-    await prisma.programState.update({
-      where: { id: programStateId },
-      data: {
-        activeSceneId: programScene.id,
-        stagedSceneId: previewScene.id,
-        fadeToBlack: false,
-      },
-    });
+    if (isNewShow(program.programId)) {
+      await prisma.programState.update({
+        where: { id: programStateId },
+        data: {
+          activeSceneId: programScene.id,
+          stagedSceneId: previewScene.id,
+          fadeToBlack: false,
+        },
+      });
+    }
   }
 
   const localMedia = await prisma.media.upsert({
     where: { id: 9001 },
     update: {
+      ...team,
       name: 'Local New York still',
       imageUrl: '/fifthbell/images/nyc.jpg',
     },
     create: {
+      ...team,
       id: 9001,
       name: 'Local New York still',
       imageUrl: '/fifthbell/images/nyc.jpg',
@@ -419,8 +479,9 @@ async function main() {
   });
   const localMediaGroup = await prisma.mediaGroup.upsert({
     where: { name: 'Local city stills' },
-    update: { description: 'Fictional assets for local UI verification.' },
+    update: { ...team, description: 'Fictional assets for local UI verification.' },
     create: {
+      ...team,
       id: 9001,
       name: 'Local city stills',
       description: 'Fictional assets for local UI verification.',
@@ -460,12 +521,14 @@ async function main() {
   const localTransition = await prisma.stinger.upsert({
     where: { id: 9001 },
     update: {
+      ...team,
       name: 'Local rehearsal transition',
       videoUrl: '/fifthbell/video/local-transition.webm',
       cutPointMs: 700,
       enabled: false,
     },
     create: {
+      ...team,
       id: 9001,
       name: 'Local rehearsal transition',
       videoUrl: '/fifthbell/video/local-transition.webm',
@@ -491,16 +554,11 @@ async function main() {
   }
 
   for (const programState of [mainProgram, radioProgram]) {
+    // Created when missing, never reset: an operator's local radio settings (automation turned on, the Palazzo
+    // address) survive the re-seed that runs on every backend start (the recovery walk).
     await prisma.radioSettings.upsert({
       where: { programStateId: programState.id },
-      update: {
-        palazzoUrl: 'http://palazzo:3100',
-        bumperEnabled: true,
-        bumperInterval: 3,
-        bumperInstantIds: [9002],
-        bumperMode: 'sequential',
-        enabled: false,
-      },
+      update: {},
       create: {
         programStateId: programState.id,
         palazzoUrl: 'http://palazzo:3100',
@@ -578,7 +636,7 @@ async function main() {
           name: definition.name,
         },
       },
-      update: { items: definition.items as any, loop: false },
+      update: {},
       create: {
         programStateId: definition.program.id,
         name: definition.name,
@@ -586,10 +644,12 @@ async function main() {
         loop: false,
       },
     });
-    await prisma.programState.update({
-      where: { id: definition.program.id },
-      data: { activeFlightSequenceId: sequence.id },
-    });
+    if (isNewShow(definition.program.programId)) {
+      await prisma.programState.update({
+        where: { id: definition.program.id },
+        data: { activeFlightSequenceId: sequence.id },
+      });
+    }
   }
 
   const seededProfiles = [
@@ -617,7 +677,8 @@ async function main() {
     };
     await prisma.operatorPreference.upsert({
       where: { subject_deviceClass: { subject, deviceClass } },
-      update: { version: 1, profile },
+      // Created when missing, never reset: a re-seed must not move the operator to another show (the recovery walk).
+      update: {},
       create: {
         subject,
         deviceClass,
@@ -700,13 +761,14 @@ async function main() {
   for (const [id, name, componentType, metadata] of recipeScenes) {
     const layout = await prisma.layout.upsert({
       where: { name },
-      update: { componentType, settings: '{}' },
-      create: { id, name, componentType, settings: '{}' },
+      update: { ...team, componentType, settings: '{}' },
+      create: { ...team, id, name, componentType, settings: '{}' },
     });
     await prisma.scene.upsert({
       where: { id },
-      update: { name, layoutId: layout.id, metadata: JSON.stringify(metadata) },
+      update: { ...team, name, layoutId: layout.id, metadata: JSON.stringify(metadata) },
       create: {
+        ...team,
         id,
         name,
         layoutId: layout.id,
@@ -759,11 +821,16 @@ async function main() {
   console.log('Seeding complete!');
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
+if (require.main === module) {
+  const prisma = new PrismaClient({
+    adapter: createPostgresAdapter(process.env.DATABASE_URL),
   });
+  seedLocalDatabase(prisma)
+    .catch((e) => {
+      console.error(e);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}

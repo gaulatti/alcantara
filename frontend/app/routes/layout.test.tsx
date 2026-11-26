@@ -523,10 +523,18 @@ it("keeps a show it cannot find, and logs catalogs that fail to load", async () 
   expect(
     within(collapsed).getByRole("link", { name: "TV control" }),
   ).toHaveAttribute("aria-current", "page");
-  // A native tooltip shows the same label on hover, so the icon-only rail is readable without a visible name.
+  // #688: each rail link is a tooltip trigger for its label (opened in layout.rail-tooltip.test.tsx);
+  // the brand link, which shows its name, is not.
   expect(
     within(collapsed).getByRole("link", { name: "TV control" }),
-  ).toHaveAttribute("title", "TV control");
+  ).toHaveAttribute("data-state", "closed");
+  // The tooltip replaces #692's native title on the rail, so the label never shows twice.
+  expect(
+    within(collapsed).getByRole("link", { name: "TV control" }),
+  ).not.toHaveAttribute("title");
+  expect(
+    within(collapsed).getByRole("link", { name: "Alcántara live control" }),
+  ).not.toHaveAttribute("data-state");
 
   const dialog = await openCommands();
   expect(
