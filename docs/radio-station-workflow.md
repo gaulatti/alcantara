@@ -137,6 +137,10 @@ the snapshot carries none. The `started` row stores `inferred = true` and no
 `reviewFlag`; the play's end is then no longer flagged `no-start`. If the real
 `track.started` also arrives, the unique key keeps one row.
 
+The same applies to a song the engine commanded itself whose start event was
+missed, for example one started while the event stream was reconnecting
+(gaulatti/alcantara#716): the playing snapshot that names it is its start.
+
 **Plays whose end never arrived (#241).** A song that ends while the backend
 is down never delivers its `track.ended`. A restarted backend has no event
 cursor, so it does not replay it, and the play would stay open forever. Once a
