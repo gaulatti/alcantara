@@ -9,6 +9,7 @@ import {
   syncSongAsset,
   syncTransitionAsset,
 } from './media-asset-sync';
+import { fillMediaAssetTeams } from './media-asset-team-fill';
 import {
   legacyMediaGroupLabelId,
   syncLegacyMediaGroupLabel,
@@ -58,6 +59,9 @@ export class MediaAssetsReconciliationService implements OnApplicationBootstrap 
     }
     try {
       const result = await this.reconcile();
+      // Outside the reconciliation transaction, so each batch commits on its own.
+      const filled = await fillMediaAssetTeams(this.prisma);
+      this.logger.log(`Media asset teams filled: ${filled}`);
       this.metrics.recordJob('media-asset-reconciliation', 'success');
       this.logger.log(
         `Media assets reconciled: ${result.images} images, ${result.audioClips} instant-capable audio assets, ${result.backgroundAudio} background-capable audio assets, ${result.songs} song-capable audio assets, ${result.transitions} transition-capable videos, ${result.labels} labels, ${result.removedOrphans} orphaned registry rows removed`,

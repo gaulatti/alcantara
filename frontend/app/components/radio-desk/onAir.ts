@@ -17,7 +17,7 @@ export type OnAirState =
   | "unverified";
 
 export interface OnAirChip {
-  id: "stream" | "engine" | "monitor";
+  id: "output" | "stream" | "engine" | "monitor";
   tone: StatePillTone;
   label: string;
   title?: string;
@@ -63,6 +63,8 @@ export interface OnAirInput {
     detail?: string | null;
   };
   monitor: "stopped" | "buffering" | "playing" | "unavailable";
+  /** Output confidence reads silent: a song is expected to play, but the output is quiet (#694). */
+  outputSilent?: boolean;
 }
 
 const MODE_LABELS = {
@@ -115,6 +117,19 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
       : elapsed;
 
   const chips: OnAirChip[] = [
+    // Dead air leads the chips, so the strip never reads as all good while the output is silent
+    // (gaulatti/alcantara#694).
+    ...(input.outputSilent
+      ? [
+          {
+            id: "output" as const,
+            tone: "bad" as const,
+            label: "Dead air",
+            title:
+              "Expected audio is silent: a song is playing but the output is quiet.",
+          },
+        ]
+      : []),
     input.streamRunning === null
       ? { id: "stream", tone: "warn", label: "Stream unverified" }
       : input.streamRunning

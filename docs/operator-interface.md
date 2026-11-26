@@ -384,6 +384,7 @@ full clocked log, output confidence, Cartwall, and Mixer without commanding
 Palazzo. Queue changes, cart triggers/search, mute/fader controls, and Stop are
 interactive in this fixture. `state=radio-empty`, `state=radio-offline`, and
 `state=radio-stale` cover the corresponding explicit states;
+`state=radio-dead-air` shows dead air with a prepared, unbound recovery playlist;
 `state=radio-not-configured` shows the engine badge with its reason.
 `state=radio-external` keeps the reported playing track visible when it is absent
 from the playlist. These fixtures are
@@ -463,7 +464,7 @@ The timeline draws the block as a span of time with the numbers `rundownTiming()
 
 A cue built from a recipe carries its `recipeUse` tag (`useId`, `recipeId`, `recipeRevision`, `step`, `params`): it is kept through save, load and start, so the console can group the cues of one use. A malformed tag is dropped and its cue kept. The resolver and the executor ignore the tag (gaulatti/alcantara#422). Emptying a field removes the parameter. It also shows the cue exactly as stored; `metadataPatch` and `mixerChange` are read only there. The saved flight JSON keeps the shape the forms wrote: the same `FlightCue` fields and nothing new.
 
-**Check & publish** (⌘↵, or Ctrl+Enter) saves unsaved edits, runs Check on that revision and publishes only if Check passes. A failed Check lists its issues and publishes nothing. Publishing a block that overruns a fixed start, with either Publish or Check & publish, first asks: the dialog names how much content is cut, and **Keep editing** publishes nothing.
+**Check & publish** (⌘↵, or Ctrl+Enter) saves unsaved edits, runs Check on that revision and publishes only if Check passes. A failed Check lists its issues and publishes nothing. Check also lists warnings under **Times are estimates** (a song whose duration is unknown); they never block Check or publishing. Publishing a block that overruns a fixed start, with either Publish or Check & publish, first asks: the dialog names how much content is cut, and **Keep editing** publishes nothing.
 
 The block selector and New block action sit above the builder and a compact event log. Start, type, event, length, and timing share aligned columns. Fixed starts have a clock marker; other starts are estimates calculated from catalog or declared clip duration, not promises that a track has aired. Unknown durations remain visible. Timing labels describe whether an event fits its boundary; **Check** and **Publish** independently validate audio availability.
 

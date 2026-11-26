@@ -252,7 +252,7 @@ export class FlightMcpTools {
         name: 'program_preflight_flight_sequence_by_id',
         title: 'Check that a clocked log can air',
         description:
-          'Checks that every song and clip of a clocked log (a sequence with a scheduled start) is available to play; answers `ready` and the `issues` found. A sequence with no scheduled start is refused as invalid.',
+          'Checks that every song and clip of a clocked log (a sequence with a scheduled start) is available to play; answers `ready`, the `issues` found, and `warnings` that never block a start (a song whose duration is unknown, so later times in the log are estimates). A sequence with no scheduled start is refused as invalid.',
         permission: permissions.read,
         shape: { program_id: programIdArg, sequence_id: rowIdArg },
         run: (args) =>
