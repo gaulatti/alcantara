@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Sheet } from '@gaulatti/bleecker';
 import type { ProgramSongPlaybackState } from '../../models/broadcast';
 import type { SongCatalogItem } from '../../models/broadcast';
@@ -5,6 +6,8 @@ import type { ProgramSongSequence } from '../../utils/programSequence';
 import { ProgramSongSequenceEditor } from '../editors';
 
 interface PlaylistSheetPanelProps {
+  /** Shown above the editor (the rotation-not-loaded notice); the editor is inert while it is set. */
+  notice?: ReactNode;
   isOpen: boolean;
   onClose: () => void;
   sequence: ProgramSongSequence;
@@ -22,6 +25,7 @@ export function PlaylistSheetPanel({
   songCatalog,
   programSongPlayback,
   isSaving,
+  notice,
   onChange,
   onTakeSelection,
 }: PlaylistSheetPanelProps) {
@@ -37,6 +41,8 @@ export function PlaylistSheetPanel({
         <div className='mb-2 text-xs text-text-secondary dark:text-text-secondary'>
           {isSaving ? 'Saving…' : ''}
         </div>
+        {notice ? <div className='mb-2'>{notice}</div> : null}
+        <div inert={notice ? true : undefined}>
         <ProgramSongSequenceEditor
           sequence={sequence}
           songCatalog={songCatalog}
@@ -45,6 +51,7 @@ export function PlaylistSheetPanel({
           onChange={(nextSequence) => onChange(nextSequence)}
           onTakeSelection={onTakeSelection}
         />
+        </div>
       </div>
     </Sheet>
   );

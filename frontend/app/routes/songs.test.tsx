@@ -1038,3 +1038,21 @@ it("leaves the replacement picker alone when no file is chosen", async () => {
   expect(uploadFileToMediaBucket).not.toHaveBeenCalled();
   expect(within(dialog).getByRole("button", { name: "Update Song" })).toBeInTheDocument();
 });
+
+it("keeps the loaded song in the transport when its row is selected again, and opens the edit dialog from a phone card", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  fetchSongsPage.mockResolvedValue(pageOf([song(1), song(2)]));
+  render(<SongsCatalog />);
+  await loaded();
+  const transport = within(screen.getByRole("group", { name: "Preview transport" }));
+  fireEvent.click(document.querySelectorAll("[role=row]")[0]);
+  expect(transport.getByText("Artist 1 - Title 1")).toBeInTheDocument();
+  const created = TestAudio.created.length;
+  // Selecting the song that is already loaded keeps its audio and does not load it again.
+  fireEvent.click(document.querySelectorAll("[role=row]")[0]);
+  expect(TestAudio.created.length).toBe(created);
+  expect(transport.getByText("Artist 1 - Title 1")).toBeInTheDocument();
+
+  fireEvent.click(within(document.querySelector("article")!).getByRole("button", { name: "Edit" }));
+  expect(await screen.findByRole("dialog", { name: "Edit song" })).toBeInTheDocument();
+});
