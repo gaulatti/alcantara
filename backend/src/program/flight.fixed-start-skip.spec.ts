@@ -89,7 +89,7 @@ describe('cues a fixed start passes over (W3)', () => {
     h.internals.armNextHardCue(h.runtime);
     jest.advanceTimersByTime(FIXED_S * 1000);
     await settle();
-    expect(h.executeCueAtIndex).toHaveBeenCalledWith('radio-1', 3, 2);
+    expect(h.executeCueAtIndex).toHaveBeenCalledWith('radio-1', 3, 2, 'fixed_start');
     expect(h.prisma.asRunRecord.create).toHaveBeenCalledTimes(1);
     expect(h.prisma.asRunRecord.create).toHaveBeenCalledWith(
       notAired(4, 'second'),
@@ -114,7 +114,8 @@ describe('cues a fixed start passes over (W3)', () => {
     h.internals.armNextHardCue(h.runtime);
     jest.advanceTimersByTime(FIXED_S * 1000);
     await settle();
-    expect(h.executeCueAtIndex).toHaveBeenCalledWith('radio-1', 1, 2);
+    // The song on air is still cut by the fixed start.
+    expect(h.executeCueAtIndex).toHaveBeenCalledWith('radio-1', 1, 2, 'fixed_start');
     expect(h.prisma.asRunRecord.create).not.toHaveBeenCalled();
     expect(h.program.broadcastUpdate).not.toHaveBeenCalled();
   });
@@ -131,7 +132,7 @@ describe('cues a fixed start passes over (W3)', () => {
     h.internals.armTimedClip(h.runtime);
     jest.advanceTimersByTime(FIXED_S * 1000);
     await settle();
-    expect(h.executeCueAtIndex).toHaveBeenCalledWith('radio-1', 2, 1);
+    expect(h.executeCueAtIndex).toHaveBeenCalledWith('radio-1', 2, 1, 'fixed_start');
     expect(h.prisma.asRunRecord.create).toHaveBeenCalledWith(
       notAired(4, 'second'),
     );
@@ -148,7 +149,7 @@ describe('cues a fixed start passes over (W3)', () => {
     h.internals.armNextHardCue(h.runtime);
     jest.advanceTimersByTime(FIXED_S * 1000);
     await settle();
-    expect(h.executeCueAtIndex).toHaveBeenCalledWith('radio-1', 3, 2);
+    expect(h.executeCueAtIndex).toHaveBeenCalledWith('radio-1', 3, 2, 'fixed_start');
     expect(h.logError).toHaveBeenCalledWith(
       'Could not log a cue passed over by a fixed start as not aired for radio-1',
       expect.any(Error),
@@ -157,5 +158,54 @@ describe('cues a fixed start passes over (W3)', () => {
     expect(h.prisma.asRunRecord.create).toHaveBeenLastCalledWith(
       notAired(6, 'third'),
     );
+  });
+});
+
+describe("a fixed start's cut is the song's end reason", () => {
+  function playout(cutOrNot?: 'fixed_start') {
+    const program = {
+      broadcastUpdate: jest.fn(),
+      stopProgramSongForTimedBlock: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new FlightService(
+      { flightSequence: { update: jest.fn() } } as any,
+      program as any,
+      new RadioMetricsService(),
+      noRecorder(),
+      { teamId: 0 } as never,
+    );
+    const internals = service as any;
+    jest.spyOn(internals, 'persistRuntimeState').mockResolvedValue(undefined);
+    jest.spyOn(internals, 'broadcastFlightUpdate').mockResolvedValue(undefined);
+    jest.spyOn(internals, 'executeCue').mockResolvedValue(undefined);
+    jest.spyOn(internals, 'armNextHardCue').mockReturnValue(undefined);
+    internals.runtimes.set('radio-1', {
+      sequenceId: 7,
+      programId: 'radio-1',
+      items: [
+        { id: 'opener', kind: 'playSong', songId: 3, clockOffsetSeconds: 0 },
+        { id: 'top', kind: 'playSong', songId: 5 },
+      ],
+      loop: false,
+      activeIndex: 0,
+      isRunning: true,
+      generation: 1,
+      timer: null,
+      waitingForSongEnd: true,
+      scheduledAtMs: Date.now() - 1_000,
+    });
+    return { program, run: () => internals.executeCueAtIndex('radio-1', 1, 1, cutOrNot) };
+  }
+
+  it('stops the song for the timed block with fixed_start when a fixed start cuts it', async () => {
+    const h = playout('fixed_start');
+    await h.run();
+    expect(h.program.stopProgramSongForTimedBlock).toHaveBeenCalledWith('radio-1', 'fixed_start');
+  });
+
+  it('stops it as before for an ordinary next cue', async () => {
+    const h = playout();
+    await h.run();
+    expect(h.program.stopProgramSongForTimedBlock).toHaveBeenCalledWith('radio-1');
   });
 });

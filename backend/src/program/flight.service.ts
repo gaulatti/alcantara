@@ -1564,9 +1564,11 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     programId: string,
     index: number,
     generation: number,
+    /** Why the song on air is cut for this cue: a fixed start it reached (W3), logged as the song's end reason. */
+    cut?: 'fixed_start',
   ): Promise<void> {
     return this.serializeCueOperation(programId, () =>
-      this.executeCueAtIndexUnlocked(programId, index, generation),
+      this.executeCueAtIndexUnlocked(programId, index, generation, cut),
     );
   }
 
@@ -1574,6 +1576,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     programId: string,
     index: number,
     generation: number,
+    cut?: 'fixed_start',
   ): Promise<void> {
     const runtime = this.runtimes.get(programId);
     if (!runtime || runtime.generation !== generation || !runtime.isRunning) {
@@ -1616,7 +1619,9 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         runtime.scheduledAtMs !== null &&
         (cue.kind === 'playSong' || (cue.kind === 'instant' && cue.durationMs))
       )
-        await this.programService.stopProgramSongForTimedBlock(programId);
+        await (cut
+          ? this.programService.stopProgramSongForTimedBlock(programId, cut)
+          : this.programService.stopProgramSongForTimedBlock(programId));
       await this.executeCue(programId, cue);
     } catch (err) {
       if (err instanceof AutomationEngineUnavailableError) {
@@ -1832,7 +1837,12 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
           return;
         }
         const skipped = this.cuesPassedOver(current, index);
-        void this.executeCueAtIndex(runtime.programId, index, generation);
+        void this.executeCueAtIndex(
+          runtime.programId,
+          index,
+          generation,
+          due <= target ? 'fixed_start' : undefined,
+        );
         void this.logCuesSkippedByFixedStart(current, skipped);
       },
       Math.min(2_147_483_647, Math.max(0, Math.min(target, due) - Date.now())),
@@ -1908,10 +1918,12 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         current.waitingForSongEnd = false;
         current.generation += 1;
         const skipped = this.cuesPassedOver(current, index);
+        // The song on air is still playing: the fixed start cuts it.
         void this.executeCueAtIndex(
           current.programId,
           index,
           current.generation,
+          'fixed_start',
         );
         void this.logCuesSkippedByFixedStart(current, skipped);
       },

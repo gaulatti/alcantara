@@ -3430,14 +3430,16 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  stopProgramSongForTimedBlock(programId: string) {
-    return this.stopProgramSong(programId, true);
+  /** `fixed_start`: the stop cuts the song for a fixed start, and its as-run end says so (the airing walk). */
+  stopProgramSongForTimedBlock(programId: string, cut?: 'fixed_start') {
+    return this.stopProgramSong(programId, true, false, cut);
   }
 
   private async stopProgramSong(
     programId: string,
     preserveRotation: boolean,
     flightDriven = false,
+    cut?: 'fixed_start',
   ) {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const updatedAt = new Date().toISOString();
@@ -3528,6 +3530,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     if (preserveRotation)
       this.songExecutionEngine.handleStopSong(normalizedProgramId, {
         keepSequence: true,
+        ...(cut ? { endReason: cut } : {}),
       });
     else if (flightDriven)
       this.songExecutionEngine.handleStopSong(normalizedProgramId, {

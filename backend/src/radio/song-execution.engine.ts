@@ -459,7 +459,8 @@ export type SongEngineEndReason =
   | 'stopped'
   | 'replaced'
   | 'superseded'
-  | 'preempted';
+  | 'preempted'
+  | 'fixed_start';
 
 /**
  * Drives radio automation from authoritative Palazzo playback state.
@@ -1278,7 +1279,12 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
    */
   handleStopSong(
     programId: string,
-    options: { keepSequence?: boolean; keepMode?: boolean } = {},
+    options: {
+      keepSequence?: boolean;
+      keepMode?: boolean;
+      /** A timed block's fixed start cut the song, not an operator's stop. */
+      endReason?: 'fixed_start';
+    } = {},
   ): void {
     const actor = ActorContext.current();
     const state = this.states.get(programId);
@@ -1313,7 +1319,12 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     }
     const stoppedQueueEntryId = state.activeSong?.queueEntryId ?? null;
     if (state.activeSong) {
-      this.closePlayForAsRun(programId, state.activeSong, 'stopped', actor);
+      this.closePlayForAsRun(
+        programId,
+        state.activeSong,
+        options.endReason ?? 'stopped',
+        actor,
+      );
     }
     // Palazzo's song stop flushes the announced song as well.
     this.forgetAnnouncement(programId, state, 'stopped', actor);

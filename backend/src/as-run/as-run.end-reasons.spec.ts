@@ -385,6 +385,34 @@ describe('as-run records for plays the engine ends itself', () => {
     expect(s.urlOf(ended[0].songId)).toBe(command.url);
   });
 
+  // The airing walk: a timed block's fixed start cut the song, which the as-run called an operator stop.
+  it('closes a song a fixed start cuts with end reason fixed_start, once', async () => {
+    const s = session();
+    const command = await onAir(s);
+    const cutAt = new Date(Date.now());
+
+    s.engine.handleStopSong('radio-1', {
+      keepSequence: true,
+      endReason: 'fixed_start',
+    });
+    await settle();
+    s.ended(command);
+    await settle();
+
+    expect(
+      s.store.rows.filter(
+        (row) =>
+          row.state === 'ended' && row.playbackRequestId === command.requestId,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        at: cutAt,
+        endReason: 'fixed_start',
+        inferred: false,
+      }),
+    ]);
+  });
+
   it('closes a song a manual pick cuts with end reason replaced, and the manual song gets its own record', async () => {
     const s = session();
     const cut = await onAir(s);
