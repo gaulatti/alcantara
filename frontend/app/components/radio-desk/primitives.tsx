@@ -28,16 +28,19 @@ export function StatePill({
   label,
   pulse = false,
   title,
+  live = false,
 }: {
   tone: StatePillTone;
   label: string;
   pulse?: boolean;
   title?: string;
+  live?: boolean;
 }) {
   return (
     <span
       data-tone={tone}
       title={title}
+      role={live ? "status" : undefined}
       className={`inline-flex h-[22px] items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 text-[11px] font-semibold ${PILL_TONES[tone]}`}
     >
       <i

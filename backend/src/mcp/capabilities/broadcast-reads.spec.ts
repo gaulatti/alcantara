@@ -95,6 +95,7 @@ const specs = [
   ...new BroadcastDestinationsMcpTools(
     s.destinations as never,
     { teamId: 0 } as never,
+    {} as never,
   ).specs(),
   ...new FillerMcpTools(s.fillers as never).specs(),
   ...new RecordingMcpTools(s.recording as never).specs(),

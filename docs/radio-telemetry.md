@@ -644,6 +644,17 @@ Contract: gaulatti/palazzo#40 §5.
 Every series is exported at 0 from start-up, and no label carries a song, URL,
 program or request ID.
 
+## Command failures shown to the operator
+
+A song stop, a radio mixer update or an instant stop that Palazzo did not carry out answers `502`. Its message
+says what happened, so an outage is not shown as a refusal:
+- **Unreachable** (or no answer): "Palazzo could not be reached; the song stop was not confirmed".
+- **An answer Alcántara could not read:** "Palazzo's answer to the song stop could not be read".
+- **A refusal** (rejected, unauthorized or another program's engine): "Palazzo rejected the song stop".
+
+The same wording applies to the mixer update and the instant stop. The failure is counted in
+`alcantara_palazzo_machine_requests_total` with its result, as before.
+
 ## Two sources on the program bus (#242)
 
 Alcántara does not hold or delay a command while a spot is on air (decided on #242). Instead it detects, read-only,

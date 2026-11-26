@@ -649,6 +649,7 @@ Every W capability, and whether it changes what is on air or queued:
 | `destination_rename_destination` | `backend/src/mcp/capabilities/destinations.ts:155` | No | - | Display name only; a running stream keeps the selection it started with. |
 | `destination_retire_destination` | `backend/src/mcp/capabilities/destinations.ts:` | No | - | Blocks future selection; a stream already out is not touched. A key this backend wrote is scheduled for deletion after 30 days (#384). |
 | `destination_restore_destination` | `backend/src/mcp/capabilities/destinations.ts:` | No | - | Re-enables selection for a later start. Cancels the key's scheduled deletion first, and is refused (503) if that fails (#384). |
+| `destination_test_destination` | `backend/src/mcp/capabilities/destinations.ts:` | No | - | Opens a connection to the destination's ingest with the stored key; no media is sent (#384). |
 | `filler_prepare_television` | `backend/src/mcp/capabilities/filler.ts:36` | No | - | Its description: it does not change what is on air; the version is pending for the next session. |
 | `filler_prepare_radio` | `backend/src/mcp/capabilities/filler.ts:60` | No | - | Same: pending for the next recovery start, a running session keeps its version. |
 | `instant_create_instant` | `backend/src/mcp/capabilities/instants.ts:138` | No | - | A new library row; nothing names it yet. |
@@ -769,6 +770,7 @@ records, the change is never blocked: a record that cannot be stored is logged a
 | `destination_rename_destination` | `broadcast.manage` | W | Changes the display name of a destination. Its stream key and Secrets Manager reference are not touched; adding a destination and replacing a key are console-only because they carry a credential. |
 | `destination_reorder_destinations` | `broadcast.manage` | W | Sets the catalog order. |
 | `destination_restore_destination` | `broadcast.manage` | W | Restores a retired destination so it can be selected again. |
+| `destination_test_destination` | `broadcast.manage` | A | Asks a saved destination's ingest whether it takes its address and key (RTMP publish handshake, no media): accepted, refused or unreachable, never the key. One test per destination per 15 seconds, shared with the console button. |
 | `destination_retire_destination` | `broadcast.manage` | W | Retires a destination: it can no longer be selected for a start (a replay of an older selection that includes it is refused too). |
 | `destination_start` | `broadcast.operate` | A | Starts the television broadcast of a program to the selected destinations: the stream goes out live to every one of them. |
 | `destination_stop` | `broadcast.operate` | A | Stops the television broadcast of a program: the stream ends for every destination. |
