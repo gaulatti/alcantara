@@ -33,7 +33,7 @@ import {
   X,
   Video
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { apiUrl, getApiBaseUrl } from '../utils/apiBaseUrl';
 import { useGlobalProgramId } from '../utils/globalProgram';
@@ -190,26 +190,33 @@ function ConsoleShell() {
     }
   }, []);
 
-  useEffect(() => {
-    const loadPrograms = async () => {
-      try {
-        const res = await fetch(apiUrl('/program'));
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-
-        const payload = await res.json();
-        if (Array.isArray(payload)) {
-          setKnownPrograms(payload);
-        }
-      } catch (err) {
-        console.error('Failed to fetch programs for site header selector:', err);
+  /** Loads the show list; true when it answered. */
+  const loadPrograms = useCallback(async (): Promise<boolean> => {
+    try {
+      const res = await fetch(apiUrl('/program'));
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
       }
-    };
 
-    void loadPrograms();
+      const payload = await res.json();
+      if (Array.isArray(payload)) {
+        setKnownPrograms(payload);
+        return true;
+      }
+    } catch (err) {
+      console.error('Failed to fetch programs for site header selector:', err);
+    }
+    return false;
   }, []);
 
+  useEffect(() => {
+    void loadPrograms();
+  }, [loadPrograms]);
+
+  // The show the operator selects may be newer than the list loaded with the page: one created on the Shows
+  // page, or selected there. Reload the list once for it before deciding it is gone, so a new show is not
+  // silently swapped for the first one.
+  const recheckedProgramId = useRef<string | null>(null);
   useEffect(() => {
     if (knownPrograms.length === 0) {
       return;
@@ -220,8 +227,17 @@ function ConsoleShell() {
       return;
     }
 
+    if (recheckedProgramId.current !== selectedProgramId) {
+      recheckedProgramId.current = selectedProgramId;
+      const fallback = knownPrograms[0].programId;
+      void loadPrograms().then((answered) => {
+        if (!answered) setSelectedProgramId(fallback);
+      });
+      return;
+    }
+
     setSelectedProgramId(knownPrograms[0].programId);
-  }, [knownPrograms, selectedProgramId, setSelectedProgramId]);
+  }, [knownPrograms, loadPrograms, selectedProgramId, setSelectedProgramId]);
 
   useEffect(() => {
     const loadScenes = async () => {
