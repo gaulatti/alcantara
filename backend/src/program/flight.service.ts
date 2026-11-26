@@ -746,7 +746,11 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     return items;
   }
 
-  private async preflightClockItems(programId: string, items: FlightCue[]) {
+  private async preflightClockItems(
+    programId: string,
+    items: FlightCue[],
+    timing?: { scheduledAt: Date; rotationMode: string | null; hasFollowingBlock: boolean },
+  ) {
     this.validateClockItems(items);
     const songIds = [
       ...new Set(items.flatMap((cue) => (cue.songId ? [cue.songId] : []))),
@@ -806,6 +810,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
           issues.push(`Item ${index + 1}: audio clip unavailable`);
       }
     }
+    if (timing) warnings.push(...this.clockTimingWarnings(items, playableSongs, timing));
     // A block whose show's radio is not set up, or is off, would air nothing: say so, without blocking, since the
     // engine may be set up before the block starts (the rundown-building walk; GM's decision D1).
     if (engine === 'not-configured')
@@ -819,6 +824,48 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     return { programId, ready: issues.length === 0, issues, warnings, engine };
   }
 
+  /**
+   * Timing warnings for a clocked block, from the times its items name. D5: a block with nothing scheduled after it,
+   * on a Manual rotation, goes silent at its end. D6: an unknown-length song before a fixed start may be cut by it.
+   * A warning is only given where the times are known: an unknown song length makes the block's end unknown.
+   */
+  private clockTimingWarnings(
+    items: FlightCue[],
+    playableSongs: Map<number, { durationMs: number | null }>,
+    timing: { scheduledAt: Date; rotationMode: string | null; hasFollowingBlock: boolean },
+  ): string[] {
+    const clock = (seconds: number) =>
+      new Date(timing.scheduledAt.getTime() + seconds * 1000).toISOString().slice(11, 16);
+    const warnings: string[] = [];
+    let cursor = 0;
+    let endKnown = true;
+    const unknownBefore: boolean[] = [];
+    for (const cue of items) {
+      const start = cue.clockOffsetSeconds ?? cursor;
+      if (cue.clockOffsetSeconds !== undefined && unknownBefore.some(Boolean)) {
+        warnings.push(`May be cut by the fixed start at ${clock(cue.clockOffsetSeconds)}.`);
+      }
+      let duration: number | null = 0;
+      if (cue.songId) {
+        const song = playableSongs.get(cue.songId);
+        if (song && song.durationMs == null) {
+          unknownBefore.push(true);
+          duration = null;
+        } else {
+          duration = song?.durationMs != null ? song.durationMs / 1000 : 0;
+        }
+      }
+      if (duration === null) endKnown = false;
+      cursor = start + (duration ?? 0);
+    }
+    if (endKnown && timing.rotationMode === 'manual' && !timing.hasFollowingBlock) {
+      warnings.push(
+        `After this block nothing is scheduled and the rotation is Manual: the station goes silent at ${clock(cursor)}.`,
+      );
+    }
+    return warnings;
+  }
+
   async preflightFlightSequence(programId: string, sequenceId: number) {
     const state = await this.getProgramStateRecord(programId);
     const sequence = await this.prisma.flightSequence.findFirst({
@@ -827,9 +874,29 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     if (!sequence) throw new NotFoundException('flight sequence not found');
     if (!sequence.scheduledAt)
       throw new BadRequestException('not a clocked log');
+    const [rotation, following] = await Promise.all([
+      this.prisma.programState.findUnique({
+        where: { programId },
+        select: { songSequence: true },
+      }),
+      this.prisma.flightSequence.findMany({
+        where: { programStateId: state.id, scheduledAt: { gt: sequence.scheduledAt } },
+        select: { id: true },
+        take: 1,
+      }),
+    ]);
+    const rotationMode =
+      rotation?.songSequence && typeof (rotation.songSequence as { mode?: unknown }).mode === 'string'
+        ? ((rotation.songSequence as { mode: string }).mode)
+        : null;
     return this.preflightClockItems(
       programId,
       normalizeFlightItems(sequence.items),
+      {
+        scheduledAt: sequence.scheduledAt,
+        rotationMode,
+        hasFollowingBlock: following.length > 0,
+      },
     );
   }
 

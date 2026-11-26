@@ -732,6 +732,73 @@ describe('FlightService clocked preflight', () => {
   });
 });
 
+describe('FlightService clocked preflight timing warnings (D5, D6)', () => {
+  // 18:00 UTC is the block's start; the warnings name the clock time in UTC.
+  const timing = (rotationMode: string | null, hasFollowingBlock = false) => ({
+    scheduledAt: new Date('2026-11-26T18:00:00Z'),
+    rotationMode,
+    hasFollowingBlock,
+  });
+  const song = (songId: number, extra: Record<string, unknown> = {}) => ({
+    id: `s${songId}-${Math.random()}`,
+    kind: 'playSong',
+    songId,
+    ...extra,
+  });
+
+  it('warns that the station goes silent at a known block end with nothing after it on a Manual rotation (D5)', async () => {
+    const { internals, prisma } = harness();
+    prisma.song.findMany.mockResolvedValue([{ ...playable, durationMs: 180_000 }]);
+    const result = await internals.preflightClockItems(
+      'radio-1',
+      [song(1, { clockOffsetSeconds: 0 })],
+      timing('manual'),
+    );
+    expect(result.warnings).toEqual([
+      'After this block nothing is scheduled and the rotation is Manual: the station goes silent at 18:03.',
+    ]);
+    expect(result.ready).toBe(true);
+  });
+
+  it('gives no D5 warning when a block follows, when the rotation is not Manual, or when the end is unknown', async () => {
+    const { internals, prisma } = harness();
+    prisma.song.findMany.mockResolvedValue([{ ...playable, durationMs: 180_000 }]);
+    const block = [song(1, { clockOffsetSeconds: 0 })];
+    expect((await internals.preflightClockItems('radio-1', block, timing('manual', true))).warnings).toEqual([]);
+    expect((await internals.preflightClockItems('radio-1', block, timing('autoplay'))).warnings).toEqual([]);
+    expect((await internals.preflightClockItems('radio-1', block, timing(null))).warnings).toEqual([]);
+    prisma.song.findMany.mockResolvedValue([{ ...playable, durationMs: null }]);
+    const unknown = await internals.preflightClockItems('radio-1', block, timing('manual'));
+    expect(unknown.warnings).toEqual(['Item 1: song duration unknown']);
+  });
+
+  it('warns that a fixed start may cut an unknown-length song before it (D6)', async () => {
+    const { internals, prisma } = harness();
+    prisma.song.findMany.mockResolvedValue([{ ...playable, durationMs: null }]);
+    const result = await internals.preflightClockItems(
+      'radio-1',
+      [song(1), song(1, { clockOffsetSeconds: 300 })],
+      timing(null),
+    );
+    expect(result.warnings).toEqual([
+      'Item 1: song duration unknown',
+      'May be cut by the fixed start at 18:05.',
+    ]);
+    expect(result.ready).toBe(true);
+  });
+
+  it('gives no D6 warning when the songs before a fixed start all have known lengths', async () => {
+    const { internals, prisma } = harness();
+    prisma.song.findMany.mockResolvedValue([{ ...playable, durationMs: 60_000 }]);
+    const result = await internals.preflightClockItems(
+      'radio-1',
+      [song(1), song(1, { clockOffsetSeconds: 300 })],
+      timing(null),
+    );
+    expect(result.warnings).toEqual([]);
+  });
+});
+
 describe('FlightService tagged log generation', () => {
   const future = () => new Date(Date.now() + 3_600_000);
   const draft = (extra: Record<string, unknown> = {}) => ({

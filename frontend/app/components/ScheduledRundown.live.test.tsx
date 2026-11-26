@@ -980,3 +980,42 @@ it("closes the record and new-block dialogs with Escape", async () => {
   fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   await waitFor(() => expect(start).not.toBeInTheDocument());
 });
+
+it("warns that the station goes silent after a block with nothing after it on a Manual rotation (D5)", async () => {
+  stubLibrary();
+  vi.mocked(preflightFlightSequence).mockResolvedValueOnce({
+    ready: true,
+    issues: [],
+    warnings: ["After this block nothing is scheduled and the rotation is Manual: the station goes silent at 19:20."],
+  });
+  renderRundown();
+  await openBlock();
+  fireEvent.click(screen.getByRole("button", { name: "Check" }));
+  expect(
+    await screen.findByRole("list", { name: "Preflight warnings" }),
+  ).toHaveTextContent("the station goes silent at 19:20.");
+});
+
+it("warns that an unknown-length song before a fixed start may be cut by it (D6)", async () => {
+  stubLibrary();
+  vi.mocked(preflightFlightSequence).mockResolvedValueOnce({
+    ready: true,
+    issues: [],
+    warnings: ["Item 2: song duration unknown", "May be cut by the fixed start at 19:05."],
+  });
+  renderRundown();
+  await openBlock();
+  fireEvent.click(screen.getByRole("button", { name: "Check" }));
+  expect(
+    await screen.findByRole("list", { name: "Preflight warnings" }),
+  ).toHaveTextContent("May be cut by the fixed start at 19:05.");
+});
+
+it("says the block returns to what was playing before, not to continuous fillers", async () => {
+  stubLibrary();
+  renderRundown();
+  await openBlock();
+  fireEvent.click(screen.getByRole("button", { name: /New block/ }));
+  expect(await screen.findByText(/returns to what was playing before/)).toBeVisible();
+  expect(screen.queryByText(/returns to continuous fillers/)).toBeNull();
+});

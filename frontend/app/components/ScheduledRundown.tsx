@@ -887,7 +887,7 @@ export default function ScheduledRundown({
         </label>
         <p className="my-3 text-xs text-text-secondary">
           Choose any start minute. The block goes on air after publishing and
-          returns to continuous fillers when its events finish.
+          returns to what was playing before when its events finish.
         </p>
         <Button disabled={busy} onClick={() => void create()}>
           Create rundown
