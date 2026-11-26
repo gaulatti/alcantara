@@ -34,6 +34,8 @@ export function useHoldToConfirm({
     startedAt.current = start;
     // Each frame measures from this hold's own start, so a frame can never read a hold that has ended.
     const step = (now: number) => {
+      // A frame from a hold that has ended or been replaced must never confirm.
+      if (startedAt.current !== start) return;
       const ratio = Math.min(1, (now - start) / holdMs);
       setProgress(ratio);
       if (ratio >= 1) {

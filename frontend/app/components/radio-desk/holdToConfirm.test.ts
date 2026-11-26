@@ -69,3 +69,16 @@ it("confirms once when the hold runs its full length", () => {
   expect(onConfirm).toHaveBeenCalledTimes(1);
   expect(result.current.holding).toBe(false);
 });
+
+it("never confirms from a frame that fires after the hold was released", () => {
+  const onConfirm = vi.fn();
+  const onTap = vi.fn();
+  const { result } = renderHook(() => useHoldToConfirm({ holdMs: 1000, onConfirm, onTap }));
+  act(() => result.current.begin());
+  const [[, stale]] = [...frames.entries()];
+  act(() => result.current.end());
+  // The frame that was already scheduled fires anyway, past the full hold length.
+  act(() => stale(5000));
+  expect(onConfirm).not.toHaveBeenCalled();
+  expect(onTap).toHaveBeenCalledTimes(1);
+});
