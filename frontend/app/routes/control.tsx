@@ -3499,7 +3499,8 @@ export default function Control() {
             songCatalog,
             programSongPlayback: programSongPlaybackState,
             onChange: (next) => {
-              void saveProgramAudioBusSongSequence(next);
+              // A refused save is shown on screen and the stored rotation is loaded again.
+              void saveProgramAudioBusSongSequence(next).catch(() => {});
             },
             onTakeSelection: takeProgramSongSelection,
             onAddSongs: () => setIsPlaylistSheetOpen(true),
@@ -3599,6 +3600,11 @@ export default function Control() {
           </div>
         </>
       )}
+      {songSequenceSaveError && !isPlaylistSheetOpen ? (
+        <p role="alert" className="px-3 pt-2 text-sm text-terracotta">
+          {songSequenceSaveError}
+        </p>
+      ) : null}
       {consoleWorkspace === "audio" && rotationLoadFailed ? (
         <div className="px-3 pt-2">
           <RotationLoadNotice onRetry={() => void fetchProgramAudioBusSettings(activeProgramId)} />
@@ -3610,7 +3616,8 @@ export default function Control() {
             sequence={programAudioBusSongSequence}
             programSongPlayback={programSongPlaybackState}
             onChange={(nextSequence) => {
-              void saveProgramAudioBusSongSequence(nextSequence);
+              // A refused save is shown on screen and the stored rotation is loaded again.
+              void saveProgramAudioBusSongSequence(nextSequence).catch(() => {});
             }}
             onTakeSelection={async (nextSequence) => {
               await takeProgramSongSelection(nextSequence);
@@ -3634,7 +3641,8 @@ export default function Control() {
         isSaving={isSavingProgramAudioBus}
         error={songSequenceSaveError}
         onChange={(nextSequence) => {
-          void saveProgramAudioBusSongSequence(nextSequence);
+          // A refused save is shown on screen and the stored rotation is loaded again.
+              void saveProgramAudioBusSongSequence(nextSequence).catch(() => {});
         }}
         /* v8 ignore start -- the sheet renders its editor in catalog view, where the take-on-air buttons are not rendered, so this callback cannot be invoked from the sheet */
         onTakeSelection={async (nextSequence) => {

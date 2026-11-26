@@ -32,7 +32,7 @@ permission again at call time.
 | Tool | Permission | Service it reads (same as the console) | Result |
 |---|---|---|---|
 | `get_on_air` | `radio.read` | `SongExecutionEngine.getPlaybackState` and `getOnAirView`, `PalazzoRadioTelemetryService.getStatus`, `RadioOutputConfidenceService.get` | `song` (playback request id, song id, start, remaining seconds, queue entry, intro status), `next` (announced), `mode`, `frozen`, `palazzo.connection`, `output_confidence` |
-| `get_queue` | `radio.read` | `ProgramService.getProgramAudioBus` (the console's queue source) | ordered `entries` (`entry_id`, `item_id`, `song_id`, `playing`, `enqueued_at`) |
+| `get_queue` | `radio.read` | `ProgramService.getProgramAudioBus` (the console's queue source) | `sequence_version` and ordered `entries` (`entry_id`, `item_id`, `song_id`, `playing`, `enqueued_at`) |
 | `get_rundown` | `flight.read` | `FlightService.listFlightSequences`, `getActiveFlightSequence`, `preflightFlightSequence` | `active_sequence_id` and `sequences` (counts of cues, schedule, revision, and `preflight {ready, issue_count, warning_count}` for unstarted clocked logs, at most 10) |
 | `wait_for_change` | `radio.read` | the program event stream (see below) | the first change, `{timeout: true}` or `{reset: true}` |
 | `get_as_run` | `radio.read` | `AsRunService.listRecords` (the rows of the console's export) | rows with `state`, `at`, `inferred`, `review_flag`, `end_reason`, actor |

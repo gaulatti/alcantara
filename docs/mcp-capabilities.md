@@ -536,8 +536,9 @@ An A capability with `program.operate`, taking `program_id`, `leaf_ids` (1 to 20
 and optional `keep_rotation` and `dry_run`. It has no route of its own: the console
 removes a leaf by sending the whole edited playlist, and
 `program_update_program_audio_bus_by_id` does the same with a whole `songSequence`,
-cursor (`activeItemId`, `startedAt`) included. That cursor changes with every song, so a
-whole-playlist write races the rotation.
+cursor (`activeItemId`, `startedAt`) included, and must send the `sequence_version` that
+`get_queue` gave. The cursor changes with every song and is not part of the version, so a
+whole-playlist write still races the rotation's cursor.
 
 - **What it writes.** Under the engine's queue-mutation lock it reads the row, takes the
   sequence the engine holds when that differs from the stored one only by the cursor

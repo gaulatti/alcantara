@@ -134,6 +134,26 @@ An explicit operator Stop takes audio off air and sets the base rotation to Manu
 
 On backend restart, scheduled blocks whose in-memory timers were lost are marked interrupted (`isRunning:false`) without resetting `lastStartedAt` or rewriting the rotation. They are not replayed automatically. The continuous engine retains its normal authoritative Palazzo snapshot reconciliation before sending a new selection. The bounded `interrupted` metric counts startup batches containing such blocks.
 
+## Saving the rotation
+
+`PUT /program/:programId/audio-bus` with a `songSequence` replaces the whole stored rotation, so a save names the
+rotation it was made from. `GET /program/:programId/audio-bus`, the save's answer and the `audio_bus_update` and
+snapshot messages carry `sequenceVersion`: a hash of the playlist and mode. The cursor is left out, so a song ending
+does not change it. The save sends it back as `sequenceVersion`.
+
+| The save sends | Console HTTP | MCP |
+| --- | --- | --- |
+| the current version | written | written |
+| another version, or `null` (its load failed) | 409 | 409 |
+| no version | written, unless it would cut 3 or more songs to 1 or none: 409 | 409 |
+
+The refusal is "The rotation changed or didn't load: reload before saving". Over MCP, `get_queue` gives
+`sequence_version`. A save of the mixer alone, scheduled rundown automation, leaf removal and Play Next need none.
+
+`alcantara_song_sequence_saves_total{result}` counts operator saves: `versioned`, `unversioned`, `refused_missing`,
+`refused_stale` and `refused_emptying`. The console accepts a save with no version only because the installed pilot
+sends none; once the pilot is re-synced and `unversioned` stays flat, those saves will be refused too.
+
 ## As-run log and royalty export
 
 The as-run store subscribes to the song engine's `trackEvents$` and writes one
