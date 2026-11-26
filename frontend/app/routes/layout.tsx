@@ -1,4 +1,5 @@
 import { getDesktopHost } from '../platform/desktopHost';
+import { Tooltip } from '@gaulatti/bleecker/components/tooltip';
 import { BrandLockup, IconButton, CommandSpotlight, HeaderSelect, Input, Button, Modal, Sidebar, type CommandSpotlightAction, type SidebarItem } from '@gaulatti/bleecker';
 import {
   Blend,
@@ -111,7 +112,8 @@ interface ShellLinkProps {
   onClick?: () => void;
 }
 
-function renderAppLink({ children, className, item, onClick }: ShellLinkProps) {
+/** An app link; `nativeTitle` is #692's hover label, which the rail's tooltip replaces (#688). */
+function appLink({ children, className, item, onClick }: ShellLinkProps, nativeTitle: boolean) {
   /* v8 ignore start -- no navigation item sets external, so the external link branch cannot be reached from this shell */
   if (item.external) {
     return (
@@ -123,9 +125,29 @@ function renderAppLink({ children, className, item, onClick }: ShellLinkProps) {
   /* v8 ignore stop */
 
   return (
-    <Link to={item.href} className={className} onClick={onClick} title={item.label} aria-label={item.label} aria-current={item.active ? 'page' : undefined}>
+    <Link to={item.href} className={className} onClick={onClick} title={nativeTitle ? item.label : undefined} aria-label={item.label} aria-current={item.active ? 'page' : undefined}>
       {children}
     </Link>
+  );
+}
+
+/**
+ * A link in the collapsed, icon-only rail (gaulatti/alcantara#688): its label also shows as a
+ * tooltip beside it on hover and on keyboard focus, since the rail shows no visible name. The
+ * accessible name stays the link's own aria-label.
+ */
+function renderAppLink(props: ShellLinkProps) {
+  return appLink(props, true);
+}
+
+export function renderRailLink(props: ShellLinkProps) {
+  const link = appLink(props, false);
+  return props.item.label ? (
+    <Tooltip content={props.item.label} side='right'>
+      {link}
+    </Tooltip>
+  ) : (
+    link
   );
 }
 
@@ -867,7 +889,7 @@ function ConsoleShell() {
           header={sidebarHeader}
           items={isViewportConstrainedRoute ? flatSidebarItems : groupedSidebarItems}
           footer={sidebarFooter}
-          renderLink={renderAppLink}
+          renderLink={isViewportConstrainedRoute ? renderRailLink : renderAppLink}
         />
 
         <div className='flex min-w-0 flex-1 flex-col'>

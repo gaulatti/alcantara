@@ -4,7 +4,9 @@ Alcántara uses a broadcast-specific variant of the Bleecker application shell.
 The shell has one navigation model at every viewport: a persistent sidebar on
 desktop, a compact icon rail beside the live console, and a full-height drawer
 on phone and tablet. The mobile drawer is above all console surfaces, so a live
-monitor or transport control cannot cover navigation.
+monitor or transport control cannot cover navigation. The icon rail shows no
+names, so each rail link's label opens as a tooltip beside it on hover and on
+keyboard focus (#688); its accessible name is the same label.
 
 ## Information architecture
 
