@@ -151,6 +151,11 @@ interface PalazzoStatus {
    * an older backend, null until Palazzo has said.
    */
   playout?: "up" | "down" | null;
+  /**
+   * Palazzo's live RTMP input (gaulatti/palazzo#48), present only while its snapshot is fresh: the backend leaves it
+   * out when the reading is stale or the Palazzo does not report it, and that reads as unknown here.
+   */
+  live?: { onAir: boolean };
 }
 
 interface OutputConfidence {
@@ -583,15 +588,19 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     monitor: monitor ? monitor.state : "unavailable",
     outputSilent: output?.state === "silent",
     outputAudible: output?.state === "audible",
-    // D7: the desk knows of an instant airing and of a log block on air. Live input and scene audio are not reported
-    // to it, so it can never rule them out: it says "active" or "unknown", never "none".
-    otherAudio:
-      timedBlockOnAir ||
+    // D7: other audio the desk can see. A log block or an instant on air is "active". Palazzo's live input is "active"
+    // when on, and "none" when off for a radio-only program, which has no scene audio. Anything else is "unknown":
+    // a simulcast program's scenes can air audio the desk does not see, and a stale or missing live reading says
+    // nothing. "none" is never claimed without a fresh live-off reading on a radio-only program.
+    otherAudio: timedBlockOnAir ||
       Object.values(instantPlayback).some(
         (instant) => instant.endsAtMs === null || instant.endsAtMs > Date.now(),
-      )
+      ) ||
+      palazzo?.live?.onAir === true
         ? "active"
-        : "unknown",
+        : palazzo?.live?.onAir === false && palazzo.programType === "radio"
+          ? "none"
+          : "unknown",
     playoutDown,
   };
   const recoveryControlsRef = useRef<HTMLDetailsElement>(null);

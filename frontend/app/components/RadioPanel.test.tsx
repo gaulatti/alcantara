@@ -2402,3 +2402,48 @@ it("keeps Stop the song on air working while the rotation-load error is shown", 
   await hold(screen.getByRole("button", { name: "Stop the song on air" }));
   await waitFor(() => expect(p.onTakeOffAir).toHaveBeenCalledOnce());
 });
+
+// D7, the live input: Palazzo's live RTMP input, when its snapshot is fresh, decides whether the fallback playlist can
+// be named. A radio-only program with live off has no other audio to be, so the fallback is named; a simulcast program
+// keeps "unknown", its scenes may air audio the desk does not see; a live input on, or a reading the backend left out
+// (stale or unreported), never names the fallback.
+describe("the fallback label and the live input", () => {
+  const strip = () => screen.getByRole("region", { name: "On air" });
+
+  function withLive(programType: string, live?: { onAir: boolean }) {
+    const p = props();
+    p.programSongPlayback = null;
+    p.fixtureData!.logs = [];
+    p.fixtureData!.palazzo = {
+      ...p.fixtureData!.palazzo,
+      programType,
+      ...(live === undefined ? {} : { live }),
+    } as NonNullable<typeof p.fixtureData>["palazzo"];
+    mount(p);
+    return strip();
+  }
+
+  it("names the fallback playlist for a radio-only program with live input off and nothing commanded", () => {
+    const region = withLive("radio", { onAir: false });
+    expect(region).toHaveAttribute("data-state", "fallback");
+    expect(within(region).getByRole("status")).toHaveTextContent("Fallback playlist on air");
+  });
+
+  it("does not name the fallback while live input is on", () => {
+    const region = withLive("radio", { onAir: true });
+    expect(region).not.toHaveAttribute("data-state", "fallback");
+    expect(within(region).queryByText("Fallback playlist on air")).toBeNull();
+  });
+
+  it("keeps the fallback unnamed for a simulcast program, whose scenes may air audio the desk cannot see", () => {
+    const region = withLive("both", { onAir: false });
+    expect(region).not.toHaveAttribute("data-state", "fallback");
+    expect(within(region).queryByText("Fallback playlist on air")).toBeNull();
+  });
+
+  it("never names the fallback from a reading the backend left out", () => {
+    const region = withLive("radio", undefined);
+    expect(region).not.toHaveAttribute("data-state", "fallback");
+    expect(within(region).queryByText("Fallback playlist on air")).toBeNull();
+  });
+});
