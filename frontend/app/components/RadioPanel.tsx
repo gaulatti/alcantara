@@ -531,7 +531,9 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
             }
           >
             <div className="console-log-summary flex flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0 flex-1">
+              {/* A 12rem basis lets the playout modes wrap below on a phone instead of squeezing this text
+                  into a one-word column. */}
+              <div className="min-w-0 flex-[1_1_12rem]">
                 {timedBlockOnAir && activeLog ? (
                   <>
                     <strong>{activeLog.name}</strong>
