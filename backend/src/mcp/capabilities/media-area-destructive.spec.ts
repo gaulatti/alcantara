@@ -60,7 +60,11 @@ function build() {
   };
   const specs = [
     ...new SongsMcpTools(services.songs as never, programs as never).specs(),
-    ...new MediaMcpTools(services.media as never, programs as never).specs(),
+    ...new MediaMcpTools(
+      services.media as never,
+      programs as never,
+      { teamId: 7 } as never,
+    ).specs(),
     ...new MediaAssetsMcpTools(
       services.assets as never,
       programs as never,
@@ -235,7 +239,7 @@ describe('media_remove', () => {
     await expect(spec('media_remove').run(args, ctx)).resolves.toMatchObject({
       result: { deletedMediaId: 11 },
     });
-    expect(services.media.remove).toHaveBeenCalledWith(11);
+    expect(services.media.remove).toHaveBeenCalledWith(11, 7);
   });
 });
 
