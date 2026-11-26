@@ -31,6 +31,7 @@ export function OnAirStrip({
         }
         label={view.label}
         pulse={view.state === "on-air"}
+        live
       />
       <div className="min-w-0 flex-1 basis-64">
         {on ? (
@@ -93,7 +94,8 @@ export function OnAirStrip({
           <p className="text-text-secondary">Nothing cued</p>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-1.5">
+      {/* On a phone the chips share one row that scrolls sideways (#610); wider screens wrap them. */}
+      <div className="flex w-full min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto md:w-auto md:flex-wrap md:overflow-visible [&>*]:shrink-0">
         {view.chips.map((chip) => (
           <StatePill
             key={chip.id}
