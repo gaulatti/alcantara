@@ -235,6 +235,7 @@ export function fakeServices() {
         programId: 'main',
         triggeredAt: '2026-11-19T10:00:00.000Z',
       }),
+      refuseOperatorStartWhileEngineUnavailable: answers(undefined),
       updateProgramAudioBus: answers({
         songSequence: {
           mode: 'autoplay',

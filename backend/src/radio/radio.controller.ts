@@ -189,6 +189,7 @@ export class RadioController {
     if (!data.audioUrl) {
       throw new BadRequestException('audioUrl is required');
     }
+    await this.radioService.refuseStartWhileEngineUnavailable(programId);
     this.songExecutionEngine.handleManualSong(
       programId,
       data.audioUrl,

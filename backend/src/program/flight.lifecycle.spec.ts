@@ -13,6 +13,8 @@ function fixture() {
     id: 1,
     programId: 'news',
     type: 'radio',
+    // A working station: its playout engine is enabled (#609).
+    radioSettings: { enabled: true },
     activeFlightSequenceId: 7,
   };
   let sequence: any = {

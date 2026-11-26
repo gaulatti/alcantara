@@ -53,7 +53,7 @@ const services = {
 };
 
 const grants = ['alcantara:access', 'alcantara:media:manage'];
-const authorization = { permissions: grants };
+const authorization = { permissions: grants, teamId: 7 };
 const request = { user: { authorization } };
 const ctx = {
   principal: principalWith(...(grants as never[])),
@@ -79,7 +79,11 @@ const specs = [
     {} as never,
     { teamId: 7 } as never,
   ).specs(),
-  ...new MediaAssetsMcpTools(services.assets as never, {} as never).specs(),
+  ...new MediaAssetsMcpTools(
+    services.assets as never,
+    {} as never,
+    { teamId: 7 } as never,
+  ).specs(),
   ...new SimilarityMcpTools(services.similarity as never).specs(),
 ];
 const run = async (name: string, args: Record<string, unknown>) =>

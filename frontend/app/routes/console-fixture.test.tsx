@@ -69,6 +69,7 @@ vi.mock("../components/RadioPanel", () => ({
     <Box
       name="radio"
       data={{
+        sampleAgeMs: Date.now() - Date.parse(p.fixtureData.output.lastSampleAt),
         stream: p.fixtureData.stream.running,
         palazzo: p.fixtureData.palazzo.connection,
         output: p.fixtureData.output.state,
@@ -463,6 +464,17 @@ it("drives the playback bar fixture on and off air", () => {
   cleanup();
   open("?state=playback-stale");
   expect(data("playback")).toMatchObject({ stale: true });
+});
+
+// gaulatti/alcantara#706: the unverified fixture hands the desk audible output whose last sample is 10 s old.
+it("hands the radio desk audible output with a stale sample for the unverified state", () => {
+  open("?state=radio-unverified");
+  const unverified = data("radio");
+  expect(unverified.output).toBe("audible");
+  expect(unverified.sampleAgeMs).toBeGreaterThanOrEqual(10_000);
+  cleanup();
+  open("?state=radio-live");
+  expect(data("radio").sampleAgeMs).toBeLessThan(6_000);
 });
 
 it("hands the radio desk its fixture data for every radio state", () => {

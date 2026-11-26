@@ -518,6 +518,10 @@ started, ended, failed, and mismatched intro lifecycle events,
 not load (`timeout`, `other`; both exposed from 0),
 `alcantara_radio_song_queue_actions_total{result}` for enqueue, claim, release, remove,
 reorder, consume, cursor persistence, rejection, and persistence failure,
+`alcantara_radio_start_refused_total{reason}` for a song start refused before anything was
+saved while a radio-only program's engine is disabled or has no settings (gaulatti/alcantara#609):
+`engine_unavailable` for an operator's take or start, `automation_engine_unavailable` for a
+rundown song that was skipped and logged as not aired (both exposed from 0),
 `alcantara_radio_cursor_writes_total{result}` for the write of the playlist cursor
 after it advanced (`succeeded`, `failed`: the database refused or timed out and
 the next song is not delayed, `conflict`: the stored sequence was edited
@@ -649,13 +653,32 @@ program or request ID.
 ## Command failures shown to the operator
 
 A song stop, a radio mixer update or an instant stop that Palazzo did not carry out answers `502`. Its message
-says what happened, so an outage is not shown as a refusal:
-- **Unreachable** (or no answer): "Palazzo could not be reached; the song stop was not confirmed".
-- **An answer Alcántara could not read:** "Palazzo's answer to the song stop could not be read".
-- **A refusal** (rejected, unauthorized or another program's engine): "Palazzo rejected the song stop".
+says what happened, so only a refusal reads as one (here for the song stop):
 
-The same wording applies to the mixer update and the instant stop. The failure is counted in
+- **Not sent**, because Alcántara refused it (the address is not approved or the program ID is invalid):
+  "The song stop was not sent to Palazzo: Alcántara refused it".
+- **No answer**: "Palazzo did not answer; the song stop was not confirmed".
+- **A server or gateway error** (`5xx`): "Palazzo answered the song stop with an error; it was not confirmed".
+- **An answer that does not confirm the command**: "Palazzo's answer to the song stop did not confirm it".
+- **A refusal** (another `4xx`, unauthorized, or another program's engine): "Palazzo rejected the song stop".
+
+A program with no Palazzo address answers "Palazzo URL is not configured". The same wording applies to the mixer
+update and the instant stop. A command that reached the client is counted in
 `alcantara_palazzo_machine_requests_total` with its result, as before.
+
+## Palazzo command timeout (#717)
+
+Every Palazzo machine command (song, stop, next, instant, mixer, filler and automation requests, and state reads)
+is bounded at `PALAZZO_COMMAND_TIMEOUT_MS` (10 s) per attempt. A frozen engine, one that accepts connections but
+answers nothing, then fails the command as `unavailable`, counted in `alcantara_palazzo_machine_requests_total`,
+instead of holding the operator's request until it answers. A retryable command retries as before, each attempt
+with its own bound, except after a timeout: a timed-out attempt may still reach Palazzo late, so only a read, a PUT
+of the whole state, or a command with an idempotency key is sent again then. A song stop, an instant stop and a next
+withdrawal carry no key, and Palazzo cannot scope them to one playback, so a late first stop plus its retry could
+stop the song that followed. They fail after the first timeout instead, so a frozen engine answers an operator's
+stop in about 10 s. They still retry a server error (429 or 5xx) or a refused connection, which Palazzo answered or
+never received. The event stream is long-lived and output-monitor has its own 10 s bound, so neither uses this
+one. A caller's own cancellation still wins.
 
 ## Two sources on the program bus (#242)
 
@@ -695,3 +718,11 @@ is back.
 
 Labels are bounded: no program, song or request id. The alert rule lives with the Prometheus configuration in the
 observability repository, for example `increase(alcantara_program_bus_overlaps_total[5m]) > 0`.
+
+## Output unverified on the Radio desk (#706)
+
+When no fresh output level has arrived for 6 seconds (`OUTPUT_SAMPLE_UNVERIFIED_MS` in
+`frontend/app/components/radio-desk/outputFreshness.ts`), audible output reads **Output unverified** and the on-air
+strip shows **Unverified** with its clock dimmed. The desk re-reads freshness every second. This is display only: no
+alarm and no automation change. Status delayed (a stale sample after 15 s) and dead air (silence for 10 s) keep their
+own thresholds. The console fixture `state=radio-unverified` shows it.
