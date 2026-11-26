@@ -20,6 +20,7 @@ describe('renaming a program that is on air', () => {
           ),
         ),
         update: jest.fn().mockResolvedValue({}),
+        delete: jest.fn().mockResolvedValue({}),
       },
       program: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -39,6 +40,7 @@ describe('renaming a program that is on air', () => {
         playbackRequestId: null,
       })),
       renameProgram: jest.fn(),
+      removeProgram: jest.fn(),
     };
     const service = new ProgramService(
       prisma as never,
@@ -125,4 +127,35 @@ describe('renaming a program that is on air', () => {
     await service.renameProgram('show', 'show', 'both');
     expect(engine.renameProgram).not.toHaveBeenCalled();
   });
+
+  const onAir = 'This show is on air. Take it off air before deleting it.';
+
+  it.each([
+    [{ activeSceneId: 3 }],
+    [{ fadeToBlack: true }],
+    [{ activeFlightSequenceId: 4 }],
+  ])('refuses to delete with %p and removes nothing', async (state) => {
+    const { service, prisma, engine } = build(state);
+    await expect(service.deleteProgram('show')).rejects.toThrow(onAir);
+    expect(prisma.programState.delete).not.toHaveBeenCalled();
+    expect(engine.removeProgram).not.toHaveBeenCalled();
+  });
+
+  it('refuses to delete while a song plays, or when it went on air during the delete', async () => {
+    const playing = build();
+    playing.engine.getOnAirView.mockReturnValue({ playbackRequestId: 'p' });
+    await expect(playing.service.deleteProgram('show')).rejects.toThrow(onAir);
+
+    const { service, prisma, engine } = build();
+    prisma.programState.delete.mockRejectedValueOnce(
+      Object.assign(new Error('no row'), { code: 'P2025' }),
+    );
+    await expect(service.deleteProgram('show')).rejects.toThrow(onAir);
+    prisma.programState.delete.mockRejectedValueOnce(new Error('database'));
+    await expect(service.deleteProgram('show')).rejects.toThrow('database');
+    expect(engine.removeProgram).not.toHaveBeenCalled();
+    await service.deleteProgram('show');
+    expect(engine.removeProgram).toHaveBeenCalledWith('show');
+  });
+
 });

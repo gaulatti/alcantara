@@ -1160,3 +1160,21 @@ describe('FlightService clocked-log ownership and song end', () => {
     expect(second.finish).toHaveBeenCalledWith(ending);
   });
 });
+
+describe('a deleted program', () => {
+  it('has its armed rundown timer cleared and its runtime dropped', () => {
+    jest.useFakeTimers();
+    const h = harness();
+    const fired = jest.fn();
+    h.internals.runtimes.set(
+      'radio-1',
+      runtimeState({ timer: setTimeout(fired, 1000) }),
+    );
+    h.service.removeProgram('radio-1');
+    h.service.removeProgram('unknown');
+    jest.advanceTimersByTime(2000);
+    expect(fired).not.toHaveBeenCalled();
+    expect(h.internals.runtimes.has('radio-1')).toBe(false);
+    jest.useRealTimers();
+  });
+});

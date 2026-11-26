@@ -78,6 +78,7 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       handleQueueUpdated: jest.fn(),
       getOnAirView: jest.fn(() => ({ playbackRequestId: null })),
       renameProgram: jest.fn().mockResolvedValue(undefined),
+      removeProgram: jest.fn(),
     };
     const recorder = noRecorder();
     const service = new ProgramService(
@@ -356,7 +357,7 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
     });
 
     it('deletes and completes subjects / clears maps', async () => {
-      const { service, prisma, put } = build();
+      const { service, prisma, put, engine } = build();
       put('a', { id: 4 });
       const internals = service as any;
       const subject = { complete: jest.fn() };
@@ -368,9 +369,10 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
         deletedProgramId: 'a',
       });
       expect(prisma.programState.delete).toHaveBeenCalledWith({
-        where: { id: 4 },
+        where: expect.objectContaining({ id: 4, activeSceneId: null }),
       });
       expect(subject.complete).toHaveBeenCalled();
+      expect(engine.removeProgram).toHaveBeenCalledWith('a');
       expect(internals.eventSubjects.has('a')).toBe(false);
       expect(internals.programAudioMeterByProgramId.has('a')).toBe(false);
     });
