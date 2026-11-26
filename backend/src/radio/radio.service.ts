@@ -68,6 +68,29 @@ export interface RadioMixerPayload {
  * restart), so a caller can retry that one case and never one whose outcome is
  * unknown (a timeout or a network error carries no answer).
  */
+/**
+ * What a failed Palazzo command tells the operator. An engine that could not be reached did not
+ * reject anything, so the message says which happened: unreachable, an answer that could not be read,
+ * or a refusal (found in the engine-outage walk, where a song stop during an outage read
+ * "Palazzo rejected the song stop").
+ */
+export function palazzoCommandFailure(
+  action: string,
+  error: unknown,
+): BadGatewayException {
+  const reason =
+    error instanceof PalazzoMachineError ? error.reason : 'unavailable';
+  if (reason === 'unavailable')
+    return new BadGatewayException(
+      `Palazzo could not be reached; the ${action} was not confirmed`,
+    );
+  if (reason === 'malformed')
+    return new BadGatewayException(
+      `Palazzo's answer to the ${action} could not be read`,
+    );
+  return new BadGatewayException(`Palazzo rejected the ${action}`);
+}
+
 export class PalazzoInstantRefusedException extends BadGatewayException {
   constructor(readonly retryable: boolean) {
     super('Palazzo rejected the instant');
@@ -874,7 +897,7 @@ export class RadioService {
       await this.palazzo.stopSong(this.palazzoUrl(settings), programId);
     } catch (error) {
       this.logMachineFailure('stopSong', programId, error);
-      throw new BadGatewayException('Palazzo rejected the song stop');
+      throw palazzoCommandFailure('song stop', error);
     }
   }
 
@@ -915,7 +938,7 @@ export class RadioService {
       );
     } catch (error) {
       this.logMachineFailure('updateMixer', programId, error);
-      throw new BadGatewayException('Palazzo rejected the radio mixer update');
+      throw palazzoCommandFailure('radio mixer update', error);
     }
   }
 
@@ -938,7 +961,7 @@ export class RadioService {
       await this.palazzo.stopInstants(this.palazzoUrl(settings), programId);
     } catch (error) {
       this.logMachineFailure('stopAllInstants', programId, error);
-      throw new BadGatewayException('Palazzo rejected the instant stop');
+      throw palazzoCommandFailure('instant stop', error);
     }
   }
 
