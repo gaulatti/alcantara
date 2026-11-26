@@ -116,21 +116,16 @@ export class SongsService {
   }
 
   /** The row just written; findUniqueOrThrow is refused on the team-scoped client. */
-  private async readBack(
-    tx: Prisma.TransactionClient,
-    id: number,
-    teamId: number,
-  ) {
-    const query = {
+  private async readBack(tx: Prisma.TransactionClient, id: number) {
+    const song = await tx.song.findUnique({
       where: { id },
       include: { intro: { include: { instant: true } } },
-    };
-    return teamId > 0
-      ? (await tx.song.findUnique(query))!
-      : tx.song.findUniqueOrThrow(query);
+    });
+    if (!song) throw new NotFoundException('Song not found');
+    return song;
   }
 
-  async findAll(params: FindAllParams, teamId = 0) {
+  async findAll(params: FindAllParams, teamId: number) {
     const { search, enabled, sortBy, sortOrder, page, limit } = params;
     const programId = this.normalizeProgramId(params.programId);
 
@@ -203,7 +198,11 @@ export class SongsService {
     };
   }
 
-  async findOne(id: number, requestedProgramId?: string, teamId = 0) {
+  async findOne(
+    id: number,
+    requestedProgramId: string | undefined,
+    teamId: number,
+  ) {
     const programId = this.normalizeProgramId(requestedProgramId);
     const song = await this.db(teamId).song.findUnique({
       where: { id },
@@ -228,7 +227,7 @@ export class SongsService {
     return new Map<string, SongAnalysis>(rows.map((row) => [row.assetId, row]));
   }
 
-  async create(data: SongInput, teamId = 0) {
+  async create(data: SongInput, teamId: number) {
     const artist = this.toTrimmedString(data.artist);
     const title = this.toTrimmedString(data.title);
     const audioUrl = this.toRequiredTrimmedString(data.audioUrl, 'audioUrl');
@@ -272,7 +271,7 @@ export class SongsService {
         if (data.introInstantId !== undefined) {
           await this.setIntro(tx, song.id, data.programId, data.introInstantId);
         }
-        const saved = await this.readBack(tx, song.id, teamId);
+        const saved = await this.readBack(tx, song.id);
         return this.withGenericChartFields(
           this.scopeIntro(saved, this.normalizeProgramId(data.programId)),
         );
@@ -282,7 +281,7 @@ export class SongsService {
     }
   }
 
-  async update(id: number, data: SongInput, teamId = 0) {
+  async update(id: number, data: SongInput, teamId: number) {
     const actor = this.recorder.actor();
     const existing = await this.db(teamId).song.findUnique({ where: { id } });
     if (!existing) {
@@ -360,7 +359,7 @@ export class SongsService {
         if (data.introInstantId !== undefined) {
           await this.setIntro(tx, id, data.programId, data.introInstantId);
         }
-        const saved = await this.readBack(tx, id, teamId);
+        const saved = await this.readBack(tx, id);
         return this.withGenericChartFields(
           this.scopeIntro(saved, this.normalizeProgramId(data.programId)),
         );
@@ -400,7 +399,7 @@ export class SongsService {
     return given;
   }
 
-  async remove(id: number, teamId = 0) {
+  async remove(id: number, teamId: number) {
     const existing = await this.db(teamId).song.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException('Song not found');

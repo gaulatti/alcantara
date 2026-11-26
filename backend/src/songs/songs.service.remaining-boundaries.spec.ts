@@ -24,7 +24,7 @@ describe('song creation intro and optional metadata boundaries', () => {
           return Promise.resolve(saved);
         }),
         update: jest.fn(),
-        findUniqueOrThrow: jest.fn(() => Promise.resolve(saved)),
+        findUnique: jest.fn(() => Promise.resolve(saved)),
       },
       mediaAsset: {
         upsert: jest.fn().mockResolvedValue(undefined),
@@ -57,12 +57,15 @@ describe('song creation intro and optional metadata boundaries', () => {
     const { service, tx } = fixture();
     tx.programState.findUnique.mockResolvedValue(null);
     await expect(
-      service.create({
-        artist: 'Artist',
-        audioUrl: 'https://media.invalid/song',
-        introInstantId: 12,
-        programId: 'missing',
-      }),
+      service.create(
+        {
+          artist: 'Artist',
+          audioUrl: 'https://media.invalid/song',
+          introInstantId: 12,
+          programId: 'missing',
+        },
+        0,
+      ),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(tx.songIntro.findUnique).not.toHaveBeenCalled();
     expect(tx.songIntro.upsert).not.toHaveBeenCalled();
@@ -71,12 +74,15 @@ describe('song creation intro and optional metadata boundaries', () => {
   it('treats explicit intro removal as a no-op when no assignment exists during creation', async () => {
     const { service, tx } = fixture();
     await expect(
-      service.create({
-        artist: 'Artist',
-        audioUrl: 'https://media.invalid/song',
-        introInstantId: null,
-        programId: 'radio',
-      }),
+      service.create(
+        {
+          artist: 'Artist',
+          audioUrl: 'https://media.invalid/song',
+          introInstantId: null,
+          programId: 'radio',
+        },
+        0,
+      ),
     ).resolves.toMatchObject({ intro: null });
     expect(tx.songIntro.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { songId: 7 } }),
@@ -88,11 +94,14 @@ describe('song creation intro and optional metadata boundaries', () => {
   it('normalizes blank optional cover metadata to null without creating an empty cover asset', async () => {
     const { service, tx } = fixture();
     await expect(
-      service.create({
-        artist: 'Artist',
-        audioUrl: 'https://media.invalid/song',
-        coverUrl: '   ',
-      }),
+      service.create(
+        {
+          artist: 'Artist',
+          audioUrl: 'https://media.invalid/song',
+          coverUrl: '   ',
+        },
+        0,
+      ),
     ).resolves.toMatchObject({ coverUrl: null });
     expect(tx.song.create.mock.calls[0][0].data.coverUrl).toBeNull();
     expect(tx.mediaAsset.upsert).toHaveBeenCalledTimes(1);

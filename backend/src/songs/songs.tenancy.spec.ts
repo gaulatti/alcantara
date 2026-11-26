@@ -46,7 +46,7 @@ describe('songs scoped to a team, against Postgres', () => {
       prisma.mediaAsset.findUnique({ where: { id: mine.assetId! } }),
     ).resolves.toMatchObject({ teamId: team });
 
-    const unscoped = (await service().findAll(page)).data.filter(
+    const unscoped = (await service().findAll(page, 0)).data.filter(
       (row) => row.teamId === team,
     );
     const scoped = await service().findAll(page, team);
@@ -58,7 +58,7 @@ describe('songs scoped to a team, against Postgres', () => {
       catalogTotalDurationMs: 1000,
     });
     await expect(service().findOne(mine.id, undefined, team)).resolves.toEqual(
-      await service().findOne(mine.id),
+      await service().findOne(mine.id, undefined, 0),
     );
     await expect(
       service().update(mine.id, { title: 'renamed' }, team),

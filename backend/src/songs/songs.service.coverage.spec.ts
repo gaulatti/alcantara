@@ -25,7 +25,7 @@ function build() {
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
-      findUniqueOrThrow: jest.fn(),
+      findUnique: jest.fn(),
     },
     programState: { findUnique: jest.fn() },
     instant: { findUnique: jest.fn() },
@@ -80,14 +80,17 @@ describe('SongsService.findAll', () => {
 
   it('applies filters, sorting, pagination and scopes intros to the program', async () => {
     const { service, prisma } = setup();
-    const result = await service.findAll({
-      search: '  rock ',
-      enabled: false,
-      sortBy: 'title',
-      sortOrder: 'asc',
-      page: 3,
-      limit: 5,
-    });
+    const result = await service.findAll(
+      {
+        search: '  rock ',
+        enabled: false,
+        sortBy: 'title',
+        sortOrder: 'asc',
+        page: 3,
+        limit: 5,
+      },
+      0,
+    );
 
     const where = {
       enabled: false,
@@ -128,13 +131,16 @@ describe('SongsService.findAll', () => {
 
   it('uses default sorting, no filters, a requested program and unlimited paging', async () => {
     const { service, prisma } = setup(null);
-    const result = await service.findAll({
-      sortBy: 'bogus',
-      sortOrder: 'sideways',
-      page: 1,
-      limit: 0,
-      programId: ' radio ',
-    });
+    const result = await service.findAll(
+      {
+        sortBy: 'bogus',
+        sortOrder: 'sideways',
+        page: 1,
+        limit: 0,
+        programId: ' radio ',
+      },
+      0,
+    );
     expect(prisma.song.findMany).toHaveBeenCalledWith({
       where: {},
       orderBy: [{ artist: 'desc' }, { id: 'desc' }],
@@ -147,15 +153,15 @@ describe('SongsService.findAll', () => {
 
   it('ignores blank searches and rejects an invalid programId', async () => {
     const { service, prisma } = setup();
-    await service.findAll({ search: '   ', page: 1, limit: 10 });
+    await service.findAll({ search: '   ', page: 1, limit: 10 }, 0);
     expect(prisma.song.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: {} }),
     );
     await expect(
-      service.findAll({ page: 1, limit: 10, programId: '   ' }),
+      service.findAll({ page: 1, limit: 10, programId: '   ' }, 0),
     ).rejects.toThrow('programId must be a non-empty bounded string');
     await expect(
-      service.findAll({ page: 1, limit: 10, programId: 'x'.repeat(101) }),
+      service.findAll({ page: 1, limit: 10, programId: 'x'.repeat(101) }, 0),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
@@ -167,7 +173,7 @@ describe('SongsService.findOne', () => {
       ...base,
       intro: { programId: 'main' },
     });
-    await expect(service.findOne(7)).resolves.toEqual({
+    await expect(service.findOne(7, undefined, 0)).resolves.toEqual({
       ...base,
       intro: { programId: 'main' },
       // The generic chart fields are always present and mirror the earone ones.
@@ -188,11 +194,11 @@ describe('SongsService.findOne', () => {
       ...base,
       intro: { programId: 'radio' },
     });
-    await expect(service.findOne(7, 'main')).resolves.toMatchObject({
+    await expect(service.findOne(7, 'main', 0)).resolves.toMatchObject({
       intro: null,
     });
     prisma.song.findUnique.mockResolvedValueOnce(null);
-    await expect(service.findOne(1)).rejects.toThrow(
+    await expect(service.findOne(1, undefined, 0)).rejects.toThrow(
       new NotFoundException('Song not found'),
     );
   });
@@ -202,19 +208,22 @@ describe('SongsService.create', () => {
   it('normalizes every field and skips the intro when not requested', async () => {
     const { service, tx } = build();
     tx.song.create.mockResolvedValue(base);
-    tx.song.findUniqueOrThrow.mockResolvedValue({ ...base, intro: null });
+    tx.song.findUnique.mockResolvedValue({ ...base, intro: null });
     await expect(
-      service.create({
-        artist: ' A ',
-        title: ' T ',
-        audioUrl: ' https://a/b.mp3 ',
-        coverUrl: ' https://a/c.png ',
-        durationMs: '1500.4' as never,
-        earoneSongId: 12,
-        earoneRank: ' 3 ',
-        earoneSpins: Number.NaN,
-        enabled: false,
-      }),
+      service.create(
+        {
+          artist: ' A ',
+          title: ' T ',
+          audioUrl: ' https://a/b.mp3 ',
+          coverUrl: ' https://a/c.png ',
+          durationMs: '1500.4' as never,
+          earoneSongId: 12,
+          earoneRank: ' 3 ',
+          earoneSpins: Number.NaN,
+          enabled: false,
+        },
+        0,
+      ),
     ).resolves.toMatchObject({ id: 7, intro: null });
     expect(tx.song.create).toHaveBeenCalledWith({
       data: {
@@ -236,15 +245,18 @@ describe('SongsService.create', () => {
   it('defaults enabled to true and optional values to null', async () => {
     const { service, tx } = build();
     tx.song.create.mockResolvedValue(base);
-    tx.song.findUniqueOrThrow.mockResolvedValue({ ...base, intro: null });
-    await service.create({
-      title: 'Only title',
-      audioUrl: 'u',
-      coverUrl: '  ',
-      durationMs: '' as never,
-      earoneSongId: '   ',
-      earoneRank: null,
-    });
+    tx.song.findUnique.mockResolvedValue({ ...base, intro: null });
+    await service.create(
+      {
+        title: 'Only title',
+        audioUrl: 'u',
+        coverUrl: '  ',
+        durationMs: '' as never,
+        earoneSongId: '   ',
+        earoneRank: null,
+      },
+      0,
+    );
     expect(tx.song.create).toHaveBeenCalledWith({
       data: {
         artist: '',
@@ -272,16 +284,19 @@ describe('SongsService.create', () => {
       enabled: true,
       audioUrl: 'u',
     });
-    tx.song.findUniqueOrThrow.mockResolvedValue({
+    tx.song.findUnique.mockResolvedValue({
       ...base,
       intro: { programId: 'radio', instantId: 2 },
     });
-    const result = await service.create({
-      artist: 'A',
-      audioUrl: 'u',
-      programId: 'radio',
-      introInstantId: 2,
-    });
+    const result = await service.create(
+      {
+        artist: 'A',
+        audioUrl: 'u',
+        programId: 'radio',
+        introInstantId: 2,
+      },
+      0,
+    );
     expect(tx.songIntro.upsert).toHaveBeenCalledWith({
       where: { songId: 7 },
       create: { songId: 7, instantId: 2, programId: 'radio' },
@@ -292,10 +307,10 @@ describe('SongsService.create', () => {
 
   it('validates required fields', async () => {
     const { service, prisma } = build();
-    await expect(service.create({ audioUrl: 'u' })).rejects.toThrow(
+    await expect(service.create({ audioUrl: 'u' }, 0)).rejects.toThrow(
       'artist or title is required',
     );
-    await expect(service.create({ artist: 'A' })).rejects.toThrow(
+    await expect(service.create({ artist: 'A' }, 0)).rejects.toThrow(
       'audioUrl is required',
     );
     expect(prisma.$transaction).not.toHaveBeenCalled();
@@ -304,22 +319,25 @@ describe('SongsService.create', () => {
   it('rejects non-positive and non-numeric durations', async () => {
     const { service } = build();
     await expect(
-      service.create({ artist: 'A', audioUrl: 'u', durationMs: -1 }),
+      service.create({ artist: 'A', audioUrl: 'u', durationMs: -1 }, 0),
     ).rejects.toThrow('durationMs must be a positive number');
     await expect(
-      service.create({
-        artist: 'A',
-        audioUrl: 'u',
-        durationMs: 'abc' as never,
-      }),
+      service.create(
+        {
+          artist: 'A',
+          audioUrl: 'u',
+          durationMs: 'abc' as never,
+        },
+        0,
+      ),
     ).rejects.toThrow('durationMs must be a positive number');
   });
 
   it('rounds tiny durations up to one millisecond', async () => {
     const { service, tx } = build();
     tx.song.create.mockResolvedValue(base);
-    tx.song.findUniqueOrThrow.mockResolvedValue({ ...base, intro: null });
-    await service.create({ artist: 'A', audioUrl: 'u', durationMs: 0.2 });
+    tx.song.findUnique.mockResolvedValue({ ...base, intro: null });
+    await service.create({ artist: 'A', audioUrl: 'u', durationMs: 0.2 }, 0);
     expect(tx.song.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ durationMs: 1 }),
     });
@@ -329,13 +347,13 @@ describe('SongsService.create', () => {
     const { service, tx } = build();
     tx.song.create.mockRejectedValueOnce(p2002());
     await expect(
-      service.create({ artist: 'A', audioUrl: 'u' }),
+      service.create({ artist: 'A', audioUrl: 'u' }, 0),
     ).rejects.toThrow('Song or Instant already has an active intro assignment');
     const boom = new Error('boom');
     tx.song.create.mockRejectedValueOnce(boom);
-    await expect(service.create({ artist: 'A', audioUrl: 'u' })).rejects.toBe(
-      boom,
-    );
+    await expect(
+      service.create({ artist: 'A', audioUrl: 'u' }, 0),
+    ).rejects.toBe(boom);
     tx.song.create.mockRejectedValueOnce(
       new Prisma.PrismaClientKnownRequestError('other', {
         code: 'P2025',
@@ -343,7 +361,7 @@ describe('SongsService.create', () => {
       }),
     );
     await expect(
-      service.create({ artist: 'A', audioUrl: 'u' }),
+      service.create({ artist: 'A', audioUrl: 'u' }, 0),
     ).rejects.toMatchObject({ code: 'P2025' });
   });
 });
@@ -353,8 +371,8 @@ describe('SongsService.update', () => {
     const { service, prisma, tx } = build();
     prisma.song.findUnique.mockResolvedValue(base);
     tx.song.update.mockResolvedValue(base);
-    tx.song.findUniqueOrThrow.mockResolvedValue({ ...base, intro: null });
-    await service.update(7, { enabled: false });
+    tx.song.findUnique.mockResolvedValue({ ...base, intro: null });
+    await service.update(7, { enabled: false }, 0);
     expect(tx.song.update).toHaveBeenCalledWith({
       where: { id: 7 },
       data: { artist: 'Artist', title: 'Song', enabled: false },
@@ -366,18 +384,22 @@ describe('SongsService.update', () => {
     const { service, prisma, tx } = build();
     prisma.song.findUnique.mockResolvedValue(base);
     tx.song.update.mockResolvedValue(base);
-    tx.song.findUniqueOrThrow.mockResolvedValue({ ...base, intro: null });
-    await service.update(7, {
-      artist: ' X ',
-      title: ' Y ',
-      audioUrl: ' u2 ',
-      coverUrl: null,
-      durationMs: 2000,
-      earoneSongId: 5,
-      earoneRank: '2',
-      earoneSpins: null,
-      enabled: true,
-    });
+    tx.song.findUnique.mockResolvedValue({ ...base, intro: null });
+    await service.update(
+      7,
+      {
+        artist: ' X ',
+        title: ' Y ',
+        audioUrl: ' u2 ',
+        coverUrl: null,
+        durationMs: 2000,
+        earoneSongId: 5,
+        earoneRank: '2',
+        earoneSpins: null,
+        enabled: true,
+      },
+      0,
+    );
     expect(tx.song.update).toHaveBeenCalledWith({
       where: { id: 7 },
       data: {
@@ -397,14 +419,14 @@ describe('SongsService.update', () => {
   it('rejects unknown songs, emptied names and blank audio', async () => {
     const { service, prisma } = build();
     prisma.song.findUnique.mockResolvedValueOnce(null);
-    await expect(service.update(1, {})).rejects.toThrow(
+    await expect(service.update(1, {}, 0)).rejects.toThrow(
       new NotFoundException('Song not found'),
     );
     prisma.song.findUnique.mockResolvedValue(base);
-    await expect(service.update(7, { artist: '', title: '' })).rejects.toThrow(
-      'artist or title is required',
-    );
-    await expect(service.update(7, { audioUrl: ' ' })).rejects.toThrow(
+    await expect(
+      service.update(7, { artist: '', title: '' }, 0),
+    ).rejects.toThrow('artist or title is required');
+    await expect(service.update(7, { audioUrl: ' ' }, 0)).rejects.toThrow(
       'audioUrl is required',
     );
   });
@@ -415,8 +437,8 @@ describe('SongsService.update', () => {
     tx.song.update.mockResolvedValue(base);
     tx.programState.findUnique.mockResolvedValue({ programId: 'main' });
     tx.songIntro.findUnique.mockResolvedValue(null);
-    tx.song.findUniqueOrThrow.mockResolvedValue({ ...base, intro: null });
-    await service.update(7, { introInstantId: null });
+    tx.song.findUnique.mockResolvedValue({ ...base, intro: null });
+    await service.update(7, { introInstantId: null }, 0);
     expect(tx.songIntro.delete).not.toHaveBeenCalled();
     expect(tx.songIntro.upsert).not.toHaveBeenCalled();
   });
@@ -427,7 +449,7 @@ describe('SongsService.update', () => {
     tx.song.update.mockResolvedValue(base);
     tx.programState.findUnique.mockResolvedValue(null);
     await expect(
-      service.update(7, { introInstantId: 3, programId: 'ghost' }),
+      service.update(7, { introInstantId: 3, programId: 'ghost' }, 0),
     ).rejects.toThrow(new BadRequestException('Program not found'));
   });
 
@@ -437,7 +459,7 @@ describe('SongsService.update', () => {
     tx.song.update.mockResolvedValue(base);
     tx.programState.findUnique.mockResolvedValue({ programId: 'main' });
     tx.songIntro.findUnique.mockResolvedValue(null);
-    await expect(service.update(7, { introInstantId: 1.5 })).rejects.toThrow(
+    await expect(service.update(7, { introInstantId: 1.5 }, 0)).rejects.toThrow(
       'introInstantId must identify an Instant',
     );
     tx.instant.findUnique.mockResolvedValue({
@@ -445,7 +467,7 @@ describe('SongsService.update', () => {
       enabled: true,
       audioUrl: '   ',
     });
-    await expect(service.update(7, { introInstantId: 3 })).rejects.toThrow(
+    await expect(service.update(7, { introInstantId: 3 }, 0)).rejects.toThrow(
       'Song intro Instant is missing or unavailable',
     );
   });
@@ -463,8 +485,8 @@ describe('SongsService.update', () => {
     tx.songIntro.findUnique
       .mockResolvedValueOnce({ id: 1, programId: 'main', instantId: 3 })
       .mockResolvedValueOnce({ songId: 7, programId: 'main' });
-    tx.song.findUniqueOrThrow.mockResolvedValue({ ...base, intro: null });
-    await service.update(7, { introInstantId: 3 });
+    tx.song.findUnique.mockResolvedValue({ ...base, intro: null });
+    await service.update(7, { introInstantId: 3 }, 0);
     expect(tx.songIntro.upsert).toHaveBeenCalledWith({
       where: { songId: 7 },
       create: { songId: 7, instantId: 3, programId: 'main' },
@@ -476,9 +498,9 @@ describe('SongsService.update', () => {
     const { service, prisma, tx } = build();
     prisma.song.findUnique.mockResolvedValue(base);
     tx.song.update.mockRejectedValue(p2002());
-    await expect(service.update(7, { enabled: true })).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      service.update(7, { enabled: true }, 0),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
 
@@ -486,7 +508,7 @@ describe('SongsService.remove', () => {
   it('deletes the song and its media assets', async () => {
     const { service, prisma, tx } = build();
     prisma.song.findUnique.mockResolvedValue(base);
-    await expect(service.remove(7)).resolves.toEqual({ deletedSongId: 7 });
+    await expect(service.remove(7, 0)).resolves.toEqual({ deletedSongId: 7 });
     expect(tx.song.delete).toHaveBeenCalledWith({ where: { id: 7 } });
     expect(tx.mediaAsset.deleteMany).toHaveBeenNthCalledWith(1, {
       where: { id: 'song:7' },
@@ -499,7 +521,7 @@ describe('SongsService.remove', () => {
   it('throws NotFoundException for an unknown song', async () => {
     const { service, prisma } = build();
     prisma.song.findUnique.mockResolvedValue(null);
-    await expect(service.remove(7)).rejects.toThrow('Song not found');
+    await expect(service.remove(7, 0)).rejects.toThrow('Song not found');
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });
@@ -525,11 +547,14 @@ describe('SongsService generic chart fields and identity', () => {
       _count: { durationMs: 1 },
     });
 
-    const listResult = await service.findAll({
-      page: 1,
-      limit: 10,
-      programId: 'custom',
-    });
+    const listResult = await service.findAll(
+      {
+        page: 1,
+        limit: 10,
+        programId: 'custom',
+      },
+      0,
+    );
     expect(listResult.data[0]).toMatchObject({
       earoneSongId: '101',
       earoneRank: '3',
@@ -547,7 +572,7 @@ describe('SongsService generic chart fields and identity', () => {
       earoneSpins: '45',
       intro: null,
     });
-    const itemResult = await service.findOne(7, 'custom');
+    const itemResult = await service.findOne(7, 'custom', 0);
     expect(itemResult).toMatchObject({
       earoneSongId: '101',
       earoneRank: '3',
@@ -569,7 +594,7 @@ describe('SongsService generic chart fields and identity', () => {
       earoneRank: '1',
       earoneSpins: '90',
     });
-    tx.song.findUniqueOrThrow.mockResolvedValue({
+    tx.song.findUnique.mockResolvedValue({
       ...base,
       id: 99,
       earoneSongId: '202',
@@ -578,16 +603,19 @@ describe('SongsService generic chart fields and identity', () => {
       intro: null,
     });
 
-    const result = await service.create({
-      artist: 'Artist',
-      title: 'Track',
-      audioUrl: 'https://test/audio.mp3',
-      externalChartId: '202',
-      externalChartRank: '1',
-      externalChartSpins: '90',
-      externalChartProvider: 'billboard',
-      programId: 'main',
-    });
+    const result = await service.create(
+      {
+        artist: 'Artist',
+        title: 'Track',
+        audioUrl: 'https://test/audio.mp3',
+        externalChartId: '202',
+        externalChartRank: '1',
+        externalChartSpins: '90',
+        externalChartProvider: 'billboard',
+        programId: 'main',
+      },
+      0,
+    );
 
     expect(tx.song.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -636,7 +664,7 @@ describe('SongsService generic chart fields and identity', () => {
       earoneRank: '5',
       earoneSpins: '12',
     });
-    tx.song.findUniqueOrThrow.mockResolvedValue({
+    tx.song.findUnique.mockResolvedValue({
       ...base,
       earoneSongId: '303',
       earoneRank: '5',
@@ -644,12 +672,16 @@ describe('SongsService generic chart fields and identity', () => {
       intro: null,
     });
 
-    const result = await service.update(7, {
-      externalChartSongId: '303',
-      externalChartRank: '5',
-      externalChartSpins: '12',
-      programId: 'main',
-    });
+    const result = await service.update(
+      7,
+      {
+        externalChartSongId: '303',
+        externalChartRank: '5',
+        externalChartSpins: '12',
+        programId: 'main',
+      },
+      0,
+    );
 
     expect(tx.song.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -684,11 +716,15 @@ describe('SongsService generic chart fields and identity', () => {
     });
 
     // Test update with externalChartId and externalChartProvider
-    await service.update(7, {
-      externalChartId: '404',
-      externalChartProvider: 'custom-provider',
-      programId: 'main',
-    });
+    await service.update(
+      7,
+      {
+        externalChartId: '404',
+        externalChartProvider: 'custom-provider',
+        programId: 'main',
+      },
+      0,
+    );
     expect((tx as any).songChartIdentity.upsert).toHaveBeenLastCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({ provider: 'custom-provider' }),
@@ -697,11 +733,15 @@ describe('SongsService generic chart fields and identity', () => {
     );
 
     // A blank provider counts as none: the update keeps the stored provider.
-    await service.update(7, {
-      externalChartId: '405',
-      externalChartProvider: '   ',
-      programId: 'main',
-    });
+    await service.update(
+      7,
+      {
+        externalChartId: '405',
+        externalChartProvider: '   ',
+        programId: 'main',
+      },
+      0,
+    );
     expect(
       (tx as any).songChartIdentity.upsert.mock.calls.at(-1)[0].update,
     ).not.toHaveProperty('provider');
@@ -716,17 +756,21 @@ describe('SongsService generic chart fields and identity', () => {
       earoneRank: '2',
       earoneSpins: null,
     });
-    tx.song.findUniqueOrThrow.mockResolvedValueOnce({
+    tx.song.findUnique.mockResolvedValueOnce({
       ...base,
       earoneSongId: null,
       earoneRank: '2',
       earoneSpins: null,
       intro: null,
     });
-    await service.update(7, {
-      externalChartRank: '2',
-      programId: 'main',
-    });
+    await service.update(
+      7,
+      {
+        externalChartRank: '2',
+        programId: 'main',
+      },
+      0,
+    );
 
     // Test update with only spins
     tx.song.update.mockResolvedValueOnce({
@@ -735,17 +779,21 @@ describe('SongsService generic chart fields and identity', () => {
       earoneRank: null,
       earoneSpins: '50',
     });
-    tx.song.findUniqueOrThrow.mockResolvedValueOnce({
+    tx.song.findUnique.mockResolvedValueOnce({
       ...base,
       earoneSongId: null,
       earoneRank: null,
       earoneSpins: '50',
       intro: null,
     });
-    await service.update(7, {
-      externalChartSpins: '50',
-      programId: 'main',
-    });
+    await service.update(
+      7,
+      {
+        externalChartSpins: '50',
+        programId: 'main',
+      },
+      0,
+    );
 
     // Test create with only rank
     tx.song.create.mockResolvedValueOnce({
@@ -755,7 +803,7 @@ describe('SongsService generic chart fields and identity', () => {
       earoneRank: '1',
       earoneSpins: null,
     });
-    tx.song.findUniqueOrThrow.mockResolvedValueOnce({
+    tx.song.findUnique.mockResolvedValueOnce({
       ...base,
       id: 104,
       earoneSongId: null,
@@ -763,13 +811,16 @@ describe('SongsService generic chart fields and identity', () => {
       earoneSpins: null,
       intro: null,
     });
-    await service.create({
-      artist: 'RankOnly',
-      title: 'Track',
-      audioUrl: 'https://test/rankonly.mp3',
-      externalChartRank: '1',
-      programId: 'main',
-    });
+    await service.create(
+      {
+        artist: 'RankOnly',
+        title: 'Track',
+        audioUrl: 'https://test/rankonly.mp3',
+        externalChartRank: '1',
+        programId: 'main',
+      },
+      0,
+    );
 
     // Test create with only spins
     tx.song.create.mockResolvedValueOnce({
@@ -779,7 +830,7 @@ describe('SongsService generic chart fields and identity', () => {
       earoneRank: null,
       earoneSpins: '25',
     });
-    tx.song.findUniqueOrThrow.mockResolvedValueOnce({
+    tx.song.findUnique.mockResolvedValueOnce({
       ...base,
       id: 106,
       earoneSongId: null,
@@ -787,13 +838,16 @@ describe('SongsService generic chart fields and identity', () => {
       earoneSpins: '25',
       intro: null,
     });
-    await service.create({
-      artist: 'SpinsOnly',
-      title: 'Track',
-      audioUrl: 'https://test/spinsonly.mp3',
-      externalChartSpins: '25',
-      programId: 'main',
-    });
+    await service.create(
+      {
+        artist: 'SpinsOnly',
+        title: 'Track',
+        audioUrl: 'https://test/spinsonly.mp3',
+        externalChartSpins: '25',
+        programId: 'main',
+      },
+      0,
+    );
 
     // Test create with no chart fields at all
     tx.song.create.mockResolvedValueOnce({
@@ -803,7 +857,7 @@ describe('SongsService generic chart fields and identity', () => {
       earoneRank: null,
       earoneSpins: null,
     });
-    tx.song.findUniqueOrThrow.mockResolvedValueOnce({
+    tx.song.findUnique.mockResolvedValueOnce({
       ...base,
       id: 105,
       earoneSongId: null,
@@ -812,12 +866,15 @@ describe('SongsService generic chart fields and identity', () => {
       intro: null,
     });
     (tx as any).songChartIdentity.upsert.mockClear();
-    const createdNoChart = await service.create({
-      artist: 'NoChart',
-      title: 'Track',
-      audioUrl: 'https://test/nochart.mp3',
-      programId: 'main',
-    });
+    const createdNoChart = await service.create(
+      {
+        artist: 'NoChart',
+        title: 'Track',
+        audioUrl: 'https://test/nochart.mp3',
+        programId: 'main',
+      },
+      0,
+    );
     expect((tx as any).songChartIdentity.upsert).not.toHaveBeenCalled();
     expect(createdNoChart.externalChartId).toBeNull();
   });
@@ -840,7 +897,7 @@ describe('SongsService generic chart fields and identity', () => {
       earoneRank: null,
       earoneSpins: null,
     });
-    tx.song.findUniqueOrThrow.mockResolvedValue({
+    tx.song.findUnique.mockResolvedValue({
       ...base,
       earoneSongId: null,
       earoneRank: null,
@@ -848,12 +905,16 @@ describe('SongsService generic chart fields and identity', () => {
       intro: null,
     });
 
-    const result = await service.update(7, {
-      earoneSongId: null,
-      earoneRank: null,
-      earoneSpins: null,
-      programId: 'main',
-    });
+    const result = await service.update(
+      7,
+      {
+        earoneSongId: null,
+        earoneRank: null,
+        earoneSpins: null,
+        programId: 'main',
+      },
+      0,
+    );
 
     expect((tx as any).songChartIdentity.deleteMany).toHaveBeenCalledWith({
       where: { songId: 7 },
@@ -864,5 +925,19 @@ describe('SongsService generic chart fields and identity', () => {
       externalChartRank: null,
       externalChartSpins: null,
     });
+  });
+});
+
+describe('SongsService read-back', () => {
+  it('reports a row that cannot be read back as not found', async () => {
+    const { service, tx } = build();
+    tx.song.create.mockResolvedValue({ ...base });
+    tx.song.findUnique.mockResolvedValue(null);
+    await expect(
+      service.create(
+        { artist: 'A', title: 'T', audioUrl: 'https://media.test/a.mp3' },
+        0,
+      ),
+    ).rejects.toThrow('Song not found');
   });
 });
