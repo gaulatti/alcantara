@@ -804,3 +804,33 @@ it("shows the loop help in a readable tooltip when the loop toggle is focused", 
   view.unmount();
   vi.unstubAllGlobals();
 });
+
+it("holds its clock and says Not confirmed while the engine cannot confirm playback (#609)", () => {
+  const playback = {
+    token: "song-2:https://example.test/song-2.mp3",
+    audioUrl: "https://example.test/song-2.mp3",
+    progress: 0.5,
+    currentTimeMs: 30_000,
+    durationMs: 60_000,
+    isPlaying: true,
+    updatedAt: "2026-09-11T12:00:30.000Z",
+    telemetryStale: false,
+  };
+  const { rerender } = render(
+    <PlaybackBar sequence={sequence} programSongPlayback={playback} onChange={vi.fn()} engineUnconfirmed />,
+  );
+  expect(screen.getAllByText("Not confirmed")).toHaveLength(2);
+  expect(screen.getByText("—:—")).toBeInTheDocument();
+  expect(screen.getByText("No engine confirmation")).toBeInTheDocument();
+  expect(screen.queryByRole("progressbar", { name: "Track progress" })).not.toBeInTheDocument();
+  expect(screen.queryByText("Feedback live")).not.toBeInTheDocument();
+  expect(screen.queryByText("Remaining")).not.toBeInTheDocument();
+
+  // Confirmed (the default): the clock runs as before.
+  rerender(<PlaybackBar sequence={sequence} programSongPlayback={playback} onChange={vi.fn()} />);
+  expect(screen.getByText("Remaining")).toBeInTheDocument();
+  expect(screen.getByText("00:30")).toBeInTheDocument();
+  expect(screen.getByText("00:30 elapsed")).toBeInTheDocument();
+  expect(screen.getByRole("progressbar", { name: "Track progress" })).toBeInTheDocument();
+  expect(screen.getByText("Feedback live")).toBeInTheDocument();
+});
