@@ -1,5 +1,5 @@
 import { TooltipButton } from "./BleeckerButtons";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Select } from "@gaulatti/bleecker";
 import { apiUrl } from "../utils/apiBaseUrl";
 import {
@@ -479,7 +479,15 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
       detail: palazzo?.detail ?? null,
     },
     monitor: monitor ? monitor.state : "unavailable",
+    outputSilent: output?.state === "silent",
   });
+  const recoveryControlsRef = useRef<HTMLDetailsElement>(null);
+  const openRecoveryControls = () => {
+    const controls = recoveryControlsRef.current;
+    if (!controls) return;
+    controls.open = true;
+    controls.scrollIntoView?.({ block: "nearest" });
+  };
   const takeRotationSong = async (itemId: string) => {
     const selection = { ...rotation, activeItemId: itemId, startedAt: Date.now() };
     if (onTakeSelection) await onTakeSelection(selection);
@@ -878,6 +886,48 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
               >
                 {outputLabel}
               </span>
+              {output?.state === "silent" ? (
+                // Dead air names the action that cures it (gaulatti/alcantara#694). Palazzo's
+                // recovery playlist plays when the live queue runs dry, so the silent song comes off
+                // air first.
+                <div
+                  role="alert"
+                  aria-label="Dead air"
+                  className="mt-2 flex flex-col items-start gap-1.5 text-xs text-terracotta"
+                >
+                  {recovery?.automation?.filler.ready ? (
+                    <p>
+                      Hold Stop to take the silent song off air. The recovery
+                      playlist is bound and plays once the queue runs dry.
+                    </p>
+                  ) : recovery?.preparedVersion ? (
+                    <>
+                      <p>
+                        Hold Stop to take the silent song off air, then Start
+                        with fallback.
+                      </p>
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="secondary"
+                        onClick={openRecoveryControls}
+                      >
+                        Go to recovery
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <p>
+                        Hold Stop to take the silent song off air. No recovery
+                        playlist is prepared.
+                      </p>
+                      <Link to="/radio-settings">
+                        Prepare a recovery playlist
+                      </Link>
+                    </>
+                  )}
+                </div>
+              ) : null}
               <p className="mt-2 text-xs text-text-secondary">
                 Palazzo mix level before Icecast.
               </p>
@@ -985,6 +1035,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
               )}
             </ConsolePanel>
             <details
+              ref={recoveryControlsRef}
               className="console-panel console-recovery"
               aria-label="Recovery controls"
             >

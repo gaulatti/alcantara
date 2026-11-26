@@ -7,7 +7,7 @@ import {
   within,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 import type { ComponentProps } from "react";
 import { readFileSync } from "node:fs";
@@ -1631,4 +1631,69 @@ it("says On air only for an engine-confirmed song, and refuses Take while the en
   expect(screen.queryByText("On air")).not.toBeInTheDocument();
   expect(screen.getByText("Not confirmed")).toBeVisible();
   expect(screen.getByText(/Take is unavailable until the engine is back/)).toBeVisible();
+});
+
+// gaulatti/alcantara#694: dead air shows in the on-air strip, and the alarm names the action that cures it for
+// the recovery state the desk knows.
+describe("dead air", () => {
+  const deadAir = (
+    recovery: NonNullable<ReturnType<typeof props>["fixtureData"]>["recovery"],
+  ) => {
+    const p = props();
+    p.fixtureData!.output.state = "silent" as never;
+    p.fixtureData!.recovery = recovery;
+    return p;
+  };
+
+  it("leads the on-air strip with a dead-air chip", () => {
+    mount(deadAir({ preparedVersion: null, automation: null, connection: "connected" }));
+    expect(
+      within(screen.getByRole("region", { name: "On air" })).getByText("Dead air"),
+    ).toBeVisible();
+  });
+
+  it("says to take the silent song off air and prepare a playlist when none is prepared", () => {
+    mount(deadAir({ preparedVersion: null, automation: null, connection: "connected" }));
+    const alarm = screen.getByRole("alert", { name: "Dead air" });
+    expect(alarm).toHaveTextContent(
+      "Hold Stop to take the silent song off air. No recovery playlist is prepared.",
+    );
+    expect(within(alarm).getByRole("link", { name: "Prepare a recovery playlist" })).toHaveAttribute(
+      "href",
+      "/radio-settings",
+    );
+  });
+
+  it("says to take the silent song off air, then start the prepared fallback, and opens recovery", () => {
+    mount(deadAir({ preparedVersion: "v4", automation: null, connection: "connected" }));
+    const alarm = screen.getByRole("alert", { name: "Dead air" });
+    expect(alarm).toHaveTextContent(
+      "Hold Stop to take the silent song off air, then Start with fallback.",
+    );
+    const controls = screen.getByLabelText("Recovery controls") as HTMLDetailsElement;
+    expect(controls.open).toBe(false);
+    fireEvent.click(within(alarm).getByRole("button", { name: "Go to recovery" }));
+    expect(controls.open).toBe(true);
+  });
+
+  it("says the bound playlist plays once the silent song is off air", () => {
+    mount(
+      deadAir({
+        preparedVersion: "v4",
+        automation: { actualState: "running", filler: { activeVersion: "v4", ready: true } },
+        connection: "connected",
+      } as never),
+    );
+    expect(screen.getByRole("alert", { name: "Dead air" })).toHaveTextContent(
+      "Hold Stop to take the silent song off air. The recovery playlist is bound and plays once the queue runs dry.",
+    );
+  });
+
+  it("shows no dead-air alarm while the output is audible", () => {
+    mount(props());
+    expect(screen.queryByRole("alert", { name: "Dead air" })).toBeNull();
+    expect(
+      within(screen.getByRole("region", { name: "On air" })).queryByText("Dead air"),
+    ).toBeNull();
+  });
 });

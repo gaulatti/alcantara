@@ -379,6 +379,7 @@ full clocked log, output confidence, Cartwall, and Mixer without commanding
 Palazzo. Queue changes, cart triggers/search, mute/fader controls, and Stop are
 interactive in this fixture. `state=radio-empty`, `state=radio-offline`, and
 `state=radio-stale` cover the corresponding explicit states;
+`state=radio-dead-air` shows dead air with a prepared, unbound recovery playlist;
 `state=radio-not-configured` shows the engine badge with its reason.
 `state=radio-external` keeps the reported playing track visible when it is absent
 from the playlist. These fixtures are

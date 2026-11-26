@@ -74,6 +74,10 @@ vi.mock("../components/RadioPanel", () => ({
         output: p.fixtureData.output.state,
         expected: p.fixtureData.output.expectedAudio,
         rms: p.fixtureData.output.outputRms,
+        recovery: {
+          prepared: p.fixtureData.recovery.preparedVersion,
+          bound: p.fixtureData.recovery.automation?.filler.ready === true,
+        },
         logs: p.fixtureData.logs.map((log: any) =>
           log.items
             .map(
@@ -717,4 +721,22 @@ it("opens the audio workspace's loading, error and empty states", () => {
   open();
   press("deck: audio workspace");
   expect(data("audio").songs).toBe(2);
+});
+
+// gaulatti/alcantara#694: the dead-air fixture hands the desk a silent output with a song expected, and a recovery
+// playlist prepared but not bound, so the strip's dead-air chip and the "then Start with fallback" action show.
+it("hands the radio desk a dead-air output with a prepared, unbound recovery playlist", () => {
+  open("?state=radio-dead-air");
+  expect(data("radio")).toMatchObject({
+    output: "silent",
+    expected: true,
+    rms: 0,
+    recovery: { prepared: "fixture-filler", bound: false },
+  });
+  cleanup();
+  open("?state=radio-live");
+  expect(data("radio")).toMatchObject({
+    output: "audible",
+    recovery: { prepared: "fixture-filler", bound: true },
+  });
 });
