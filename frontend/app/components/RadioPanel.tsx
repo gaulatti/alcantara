@@ -895,12 +895,20 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   aria-label="Dead air"
                   className="mt-2 flex flex-col items-start gap-1.5 text-xs text-terracotta"
                 >
-                  {recovery?.automation?.filler.ready ? (
+                  {!recovery || recovery.connection !== "connected" ? (
+                    // The desk cannot say what recovery is ready, so it claims nothing about a playlist
+                    // (gaulatti/alcantara#694 review).
+                    <p>
+                      Hold Stop to take the silent song off air. The recovery
+                      status is unavailable: check the engine before relying on
+                      the fallback.
+                    </p>
+                  ) : recovery.automation?.filler.ready ? (
                     <p>
                       Hold Stop to take the silent song off air. The recovery
                       playlist is bound and plays once the queue runs dry.
                     </p>
-                  ) : recovery?.preparedVersion ? (
+                  ) : recovery.preparedVersion ? (
                     <>
                       <p>
                         Hold Stop to take the silent song off air, then Start

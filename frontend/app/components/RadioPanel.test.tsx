@@ -1693,6 +1693,54 @@ describe("dead air", () => {
     );
   });
 
+  it("claims nothing about a playlist while the recovery status is unknown or the engine unavailable", () => {
+    for (const recovery of [
+      null,
+      { preparedVersion: "v4", automation: null, connection: "unavailable" },
+      { preparedVersion: null, automation: null, connection: "unavailable" },
+    ]) {
+      const view = mount(deadAir(recovery as never));
+      const alarm = screen.getByRole("alert", { name: "Dead air" });
+      expect(alarm).toHaveTextContent(
+        "Hold Stop to take the silent song off air. The recovery status is unavailable: check the engine before relying on the fallback.",
+      );
+      expect(alarm).not.toHaveTextContent(/prepared|Start with fallback/);
+      expect(within(alarm).queryByRole("button", { name: "Go to recovery" })).toBeNull();
+      expect(within(alarm).queryByRole("link")).toBeNull();
+      view.unmount();
+    }
+  });
+
+  it("clears the chip and the alarm on the same desk when audio returns", async () => {
+    let state = "silent";
+    radioApi({
+      "/status": () => json({ running: true, uptime: 60_000 }),
+      "/palazzo-status": () => json(props().fixtureData!.palazzo),
+      "/output-confidence": () =>
+        json({
+          state,
+          expectedAudio: true,
+          outputRms: state === "silent" ? 0 : 0.2,
+          lastSampleAt: new Date().toISOString(),
+          quietForMs: state === "silent" ? 12_000 : null,
+        }),
+      "/recovery": () =>
+        json({ preparedVersion: "v4", automation: null, connection: "connected" }),
+    });
+    vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+    mount(liveProps());
+    const strip = screen.getByRole("region", { name: "On air" });
+    expect(await within(strip).findByText("Dead air")).toBeVisible();
+    expect(screen.getByRole("alert", { name: "Dead air" })).toBeVisible();
+    // The next air-plan poll reads audible output.
+    state = "audible";
+    await waitFor(() => expect(within(strip).queryByText("Dead air")).toBeNull(), {
+      timeout: 4_000,
+    });
+    expect(screen.queryByRole("alert", { name: "Dead air" })).toBeNull();
+    expect(screen.getByText("Engine audio detected")).toBeVisible();
+  });
+
   it("shows no dead-air alarm while the output is audible", () => {
     mount(props());
     expect(screen.queryByRole("alert", { name: "Dead air" })).toBeNull();

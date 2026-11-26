@@ -40,7 +40,9 @@ The Radio desk separates **Stream verified** (Liquidsoap and Icecast transport) 
 Output confidence alarm names the next step. Because Palazzo's local playlist plays only when the live song queue
 runs dry, the silent song comes off air first: hold Stop, then **Start with fallback** when a recovery playlist is
 prepared (**Go to recovery** opens Recovery & session), or **Prepare a recovery playlist** when none is. When one
-is already bound, it plays once the queue runs dry. The `state=radio-dead-air` fixture shows this state.
+is already bound, it plays once the queue runs dry. While the recovery status is unknown or the engine is
+unavailable, the alarm says to take the silent song off air and check the engine, and claims nothing about a
+playlist. The `state=radio-dead-air` fixture shows this state.
 
 **Engine audio detected** measures Palazzo's post-master mix before Icecast.
 **Listen** returns Icecast audio through Palazzo and Alcántara's
