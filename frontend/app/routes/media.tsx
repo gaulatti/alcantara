@@ -889,17 +889,19 @@ export default function MediaRoute() {
                   className="rounded-[var(--radius-card)] border border-sand/25 bg-white/80 p-4 dark:border-white/10 dark:bg-dark-sand/60"
                 >
                   <div className="flex items-start gap-3">
-                    <Checkbox
-                      checked={selectedAssetIds.has(asset.id)}
-                      onChange={(event) =>
-                        setSelectedAssetIds((current) => {
-                          const next = new Set(current);
-                          if (event.target.checked) next.add(asset.id);
-                          else next.delete(asset.id);
-                          return next;
-                        })
-                      }
-                    />
+                    <label className="inline-flex items-center justify-center max-sm:-m-3 max-sm:min-h-11 max-sm:min-w-11">
+                      <Checkbox
+                        checked={selectedAssetIds.has(asset.id)}
+                        onChange={(event) =>
+                          setSelectedAssetIds((current) => {
+                            const next = new Set(current);
+                            if (event.target.checked) next.add(asset.id);
+                            else next.delete(asset.id);
+                            return next;
+                          })
+                        }
+                      />
+                    </label>
                     {asset.mediaType === "IMAGE" ? (
                       <img
                         src={asset.sourceUrl}

@@ -442,9 +442,17 @@ describe("media library view rules", () => {
 });
 
 it("clears the search with its clear button", async () => {
-  renderMedia("radio", "/media?type=AUDIO");
-  const search = await screen.findByPlaceholderText("Search audio media…");
+  renderMedia("tv", "/media?type=VIDEO");
+  const search = await screen.findByPlaceholderText("Search video media…");
   fireEvent.change(search, { target: { value: "harbor" } });
-  fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Clear search" }));
   expect(search).toHaveValue("");
 });
+
+it("closes the add-background dialog with Escape", async () => {
+  renderMedia("radio", "/media?type=AUDIO");
+  fireEvent.click(await screen.findByRole("button", { name: "Add background audio" }));
+  const dialog = await screen.findByRole("dialog", { name: "Add background audio" });
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add background audio" })).toBeNull());
+}, 15000);
