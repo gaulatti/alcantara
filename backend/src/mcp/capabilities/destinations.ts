@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
 import { PompeiiService } from '../../auth/pompeii.service';
 import { BroadcastDestinationsService } from '../../broadcast-destinations/broadcast-destinations.service';
+import { DestinationTestService } from '../../broadcast-destinations/destination-test.service';
 import { z } from 'zod';
 import { McpToolError, McpToolProvider, type McpToolSpec } from '../contract';
 import { actionSpec, programIdArg, readSpec } from './support';
@@ -53,10 +54,16 @@ export class BroadcastDestinationsMcpTools {
   constructor(
     private readonly destinations: BroadcastDestinationsService,
     private readonly pompeii: PompeiiService,
+    private readonly testing: DestinationTestService,
   ) {}
 
   specs(): McpToolSpec[] {
-    return [...this.reads(), ...this.catalogWrites(), ...this.commands()];
+    return [
+      ...this.reads(),
+      ...this.catalogWrites(),
+      this.test(),
+      ...this.commands(),
+    ];
   }
 
   private reads(): McpToolSpec[] {
@@ -192,6 +199,43 @@ export class BroadcastDestinationsMcpTools {
         }),
       ),
     ];
+  }
+
+  /**
+   * The console's Test button (gaulatti/alcantara#384). The same service runs it, so the key is read and audited the
+   * same way and the two share one test per destination per 15 seconds. The key is never part of the answer.
+   */
+  private test(): McpToolSpec {
+    return actionSpec({
+      name: 'destination_test_destination',
+      title: 'Test a saved broadcast destination',
+      description:
+        "Asks the ingest of a saved destination whether it takes its address and key: an RTMP publish handshake with no audio or video, closed as soon as the server answers. Returns accepted, refused (with the server's words, key removed) or unreachable; never the key. One test per destination per 15 seconds. An accepted test does not prove a broadcast will be good.",
+      permission: permissions.manage,
+      tier: 'A',
+      untrusted: ['message'],
+      shape: { destination_id: destinationIdArg },
+      load: (args) => this.catalogRow(args.destination_id),
+      id: (args) => args.destination_id,
+      label: (_args, row) => row.displayName,
+      plan: (args, row) => ({
+        summary: `Opens a connection to the ingest of destination ${args.destination_id}${row.retiredAt ? ' (retired: the test is refused)' : ''} with its stored key and makes a publish handshake. No media is sent.`,
+        affects: [
+          {
+            kind: 'destination',
+            id: args.destination_id,
+            name: row.displayName,
+          },
+        ],
+        recoverable: true,
+      }),
+      run: (args, _row, ctx) =>
+        this.testing.test(
+          args.destination_id,
+          ctx.principal.subject,
+          this.pompeii.teamId,
+        ),
+    });
   }
 
   /**
