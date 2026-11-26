@@ -3505,6 +3505,7 @@ export default function Control() {
             error: mixerSaveError,
           }}
           music={{
+            programId: activeProgramId,
             sequence: programAudioBusSongSequence,
             songCatalog,
             programSongPlayback: programSongPlaybackState,
@@ -3642,6 +3643,7 @@ export default function Control() {
         </div>
       )}
       <PlaylistSheetPanel
+        programId={activeProgramId}
         isOpen={isPlaylistSheetOpen}
         notice={rotationLoadFailed ? <RotationLoadNotice onRetry={() => void fetchProgramAudioBusSettings(activeProgramId)} /> : null}
         onClose={() => setIsPlaylistSheetOpen(false)}

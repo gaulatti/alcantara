@@ -46,6 +46,7 @@ describe("ProgramSongSequenceEditor Play Next action", () => {
     const onQueueItem = vi.fn();
     render(
       <ProgramSongSequenceEditor
+        undoScope="test-program"
         sequence={{
           mode: "shuffle",
           loop: true,
@@ -77,6 +78,7 @@ describe("ProgramSongSequenceEditor Play Next action", () => {
     const onChange = vi.fn();
     render(
       <ProgramSongSequenceEditor
+        undoScope="test-program"
         sequence={{
           mode: "shuffle",
           loop: true,
@@ -112,6 +114,7 @@ describe("ProgramSongSequenceEditor Play Next action", () => {
     const onChange = vi.fn();
     render(
       <ProgramSongSequenceEditor
+        undoScope="test-program"
         sequence={{
           mode: "shuffle",
           loop: true,
@@ -178,7 +181,7 @@ const preset = (id: string, extra: Record<string, unknown> = {}) => ({
 function editor(props: Record<string, any>) {
   const onChange = vi.fn();
   const view = render(
-    <ProgramSongSequenceEditor onChange={onChange} {...(props as any)} />,
+    <ProgramSongSequenceEditor undoScope="test-program" onChange={onChange} {...(props as any)} />,
   );
   return { onChange, ...view };
 }
@@ -288,6 +291,7 @@ describe("ProgramSongSequenceEditor queue", () => {
     expect(screen.getByText("1 song")).toBeInTheDocument();
     rerender(
       <ProgramSongSequenceEditor
+        undoScope="test-program"
         sequence={{ items: [preset("a"), preset("b")] } as any}
         onChange={onChange}
         depth={1}
@@ -353,6 +357,7 @@ describe("ProgramSongSequenceEditor queue", () => {
     const show = (programSongPlayback: any) =>
       rerender(
         <ProgramSongSequenceEditor
+        undoScope="test-program"
           sequence={sequence as any}
           view="queue"
           onChange={onChange}
@@ -486,6 +491,7 @@ describe("ProgramSongSequenceEditor remove", () => {
     expect(onChange.mock.lastCall![0]).toMatchObject({ activeItemId: "b" });
     rerender(
       <ProgramSongSequenceEditor
+        undoScope="test-program"
         sequence={
           { mode: "manual", activeItemId: "a", items: [preset("a")] } as any
         }
@@ -931,6 +937,7 @@ describe("ProgramSongSequenceEditor catalog", () => {
     swapOf(1);
     rerender(
       <ProgramSongSequenceEditor
+        undoScope="test-program"
         sequence={
           { mode: "manual", activeItemId: "a", items: [preset("a")] } as any
         }
@@ -1030,6 +1037,7 @@ describe("ProgramSongSequenceEditor remove undo", () => {
     expect(ids(view.onChange.mock.lastCall![0])).toEqual(["a", "c"]);
     view.rerender(
       <ProgramSongSequenceEditor
+        undoScope="test-program"
         onChange={view.onChange}
         sequence={view.onChange.mock.lastCall![0]}
         view="queue"
@@ -1079,5 +1087,49 @@ describe("ProgramSongSequenceEditor remove undo", () => {
     });
     editor({ sequence: saved, view: "queue" });
     expect(screen.queryByRole("status")).toBeNull();
+  });
+});
+
+describe("ProgramSongSequenceEditor undo per program", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    window.sessionStorage.clear();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    window.sessionStorage.clear();
+  });
+
+  it("never applies program A's Undo to program B when the editor switches within the window", () => {
+    const aSeq = { mode: "manual", activeItemId: "a", items: [preset("a"), preset("b"), preset("c")] };
+    const bSeq = { mode: "manual", activeItemId: "x", items: [preset("x"), preset("y")] };
+    const view = editor({ sequence: aSeq, view: "queue", undoScope: "program-a" });
+    fireEvent.click(within(rows()[1]).getByRole("button", { name: "Remove" }));
+    const aSaved = view.onChange.mock.lastCall![0];
+    expect(aSaved.items.map((i: any) => i.id)).toEqual(["a", "c"]);
+
+    // The same editor now shows program B, with the same rotation label.
+    view.rerender(
+      <ProgramSongSequenceEditor
+        undoScope="program-b"
+        onChange={view.onChange}
+        sequence={bSeq as any}
+        view="queue"
+      />,
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(window.sessionStorage.getItem("alcantara.rotationUndo.program-b.Playlist")).toBeNull();
+
+    // Back in program A within the window, its own Undo is offered again and restores b there.
+    view.rerender(
+      <ProgramSongSequenceEditor
+        undoScope="program-a"
+        onChange={view.onChange}
+        sequence={aSaved}
+        view="queue"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(view.onChange.mock.lastCall![0].items.map((i: any) => i.id)).toEqual(["a", "b", "c"]);
   });
 });

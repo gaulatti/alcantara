@@ -84,6 +84,7 @@ export function ProgramSongSequenceEditor({
   depth = 0,
   view = 'full',
   rotationLabel = 'Playlist',
+  undoScope,
   liveItemId = null,
   nextItemId = null
 }: {
@@ -96,6 +97,8 @@ export function ProgramSongSequenceEditor({
   depth?: number;
   view?: 'full' | 'catalog' | 'queue';
   rotationLabel?: string;
+  /** The program the rotation belongs to. A pending Undo is kept per program, so it never lands in another one. */
+  undoScope: string;
   /** The rotation song that is on air, and the one Cue next would cue: marked in the list (#298). */
   liveItemId?: string | null;
   nextItemId?: string | null;
@@ -108,8 +111,12 @@ export function ProgramSongSequenceEditor({
 
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
-  const undoKey = `alcantara.rotationUndo.${rotationLabel}`;
+  const undoKey = `alcantara.rotationUndo.${undoScope}.${rotationLabel}`;
   const [pendingUndo, setPendingUndo] = useState<PendingUndo | null>(() => readPendingUndo(undoKey));
+  // A different program (or rotation) is a different Undo: take up its own pending offer, never the last one's.
+  useEffect(() => {
+    setPendingUndo(readPendingUndo(undoKey));
+  }, [undoKey]);
 
   useEffect(() => {
     if (!pendingUndo) return;
