@@ -167,6 +167,7 @@ function build(leg: Parameters<typeof store>[0], lifecycle: any, started: any) {
     alana as never,
     metrics,
     binding,
+    {} as never,
   );
   const bindings = async () =>
     (await metrics.render(''))

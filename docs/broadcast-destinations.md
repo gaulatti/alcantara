@@ -82,8 +82,8 @@ name and entering the stream key; they never type a Secrets Manager name or vers
   `replaced`, time) is written in the same transaction as the change; never the key.
   Metrics: `alcantara_broadcast_destination_operations_total{action="create"|"replace_key"}`.
 - IAM: the backend role needs `secretsmanager:CreateSecret`, `PutSecretValue`, `GetSecretValue`
-  and `DeleteSecret` on `arn:aws:secretsmanager:*:*:secret:alcantara/destinations/*` only.
-  Retiring a destination does not delete its secret (a retired destination can be restored).
+  `DeleteSecret` and `RestoreSecret` on `arn:aws:secretsmanager:*:*:secret:alcantara/destinations/*` only (declared in `infra/aws`, gaulatti/alcantara#384).
+  Retiring a destination schedules the deletion of the secret Alcántara wrote for it, with a 30-day recovery window (never a forced delete), unless another active destination uses it; a secret under any other name is never touched. A refused schedule leaves the retire in place and is counted as `retire_secret`/`failed`. Restoring cancels the deletion first (`RestoreSecret`); after the window the restore is refused with 409 (add the destination again).
 
 ## Ingest credential for the desktop studio
 

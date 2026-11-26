@@ -109,6 +109,7 @@ function makeHarness(programType = 'both') {
       count: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      findUnique: jest.fn(),
     },
     broadcastDestinationSelection: {
       create: jest.fn().mockResolvedValue(selection),
@@ -158,6 +159,7 @@ function makeHarness(programType = 'both') {
       metrics as unknown as ManagedMetricsService,
       // No program filler configured: Start is unchanged (gaulatti/alcantara#126).
       { televisionStartBinding: jest.fn().mockResolvedValue(null) } as never,
+      {} as never,
     ),
     prisma,
     alana,
