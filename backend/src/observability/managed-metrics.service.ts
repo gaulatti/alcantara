@@ -248,13 +248,16 @@ export type FillerPreparationResult =
   | 'ready'
   | 'failed'
   | 'unavailable'
-  | 'profile-unavailable';
+  | 'profile-unavailable'
+  // The program has no team, so no media asset may be used (gaulatti/alcantara#122).
+  | 'no-team';
 const FILLER_LEGS = ['television', 'radio'] as const;
 const FILLER_PREPARATION_RESULTS: readonly FillerPreparationResult[] = [
   'ready',
   'failed',
   'unavailable',
   'profile-unavailable',
+  'no-team',
 ];
 /** What a television Start did with the program filler (gaulatti/alcantara#126). */
 export type FillerStartBindingResult =
