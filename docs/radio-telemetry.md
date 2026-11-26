@@ -640,12 +640,17 @@ program or request ID.
 ## Command failures shown to the operator
 
 A song stop, a radio mixer update or an instant stop that Palazzo did not carry out answers `502`. Its message
-says what happened, so an outage is not shown as a refusal:
-- **Unreachable** (or no answer): "Palazzo could not be reached; the song stop was not confirmed".
-- **An answer Alcántara could not read:** "Palazzo's answer to the song stop could not be read".
-- **A refusal** (rejected, unauthorized or another program's engine): "Palazzo rejected the song stop".
+says what happened, so only a refusal reads as one (here for the song stop):
 
-The same wording applies to the mixer update and the instant stop. The failure is counted in
+- **Not sent**, because Alcántara refused it (the address is not approved or the program ID is invalid):
+  "The song stop was not sent to Palazzo: Alcántara refused it".
+- **No answer**: "Palazzo did not answer; the song stop was not confirmed".
+- **A server or gateway error** (`5xx`): "Palazzo answered the song stop with an error; it was not confirmed".
+- **An answer that does not confirm the command**: "Palazzo's answer to the song stop did not confirm it".
+- **A refusal** (another `4xx`, unauthorized, or another program's engine): "Palazzo rejected the song stop".
+
+A program with no Palazzo address answers "Palazzo URL is not configured". The same wording applies to the mixer
+update and the instant stop. A command that reached the client is counted in
 `alcantara_palazzo_machine_requests_total` with its result, as before.
 
 ## Two sources on the program bus (#242)
