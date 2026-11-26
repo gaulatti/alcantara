@@ -115,8 +115,17 @@ the lockfile is out of step with a `package.json`; run `pnpm install` at the roo
 commit the lockfile. In the image the backend lives at `/app/backend`, which is the
 working directory, and the RDS bundle stays at `/app/certs`.
 `backend/test/backend-image-lockfile.test.js` (`test:deployment`) fails if the image or
-the deploy workflow goes back to a floating install. The development image
-(`Dockerfile.dev`, used by Compose) still installs without the lockfile.
+the deploy workflow goes back to a floating install.
+
+The development image (`backend/Dockerfile.dev`, used by Compose for `backend`,
+`alana-recording-fixture` and the access fake) installs the same lockfile the same way
+(gaulatti/alcantara#590). Compose builds it from the repository root
+(`context: .`, `dockerfile: backend/Dockerfile.dev`), with
+`backend/Dockerfile.dev.dockerignore` limiting the context. In that image too the
+backend lives at `/app/backend`, so Compose mounts `backend/src`, `backend/prisma`,
+`tsconfig.json` and `nest-cli.json` there. A change to `backend/package.json` or
+`pnpm-lock.yaml` rebuilds it under `docker compose watch`; a lockfile out of step fails
+`docker compose build backend`.
 
 Production uses committed Prisma migrations. The deployment workflow runs
 `pnpm run db:migrate:deploy` in a one-shot container before replacing the live

@@ -14,6 +14,7 @@ import {
   deleteLegacyMediaGroupLabel,
   syncLegacyMediaGroupLabel,
 } from '../media-assets/media-label-sync';
+import { forTeam } from '../tenancy/scoped-prisma';
 
 interface MediaGroupInput {
   name?: string;
@@ -47,7 +48,17 @@ export class MediaGroupsService {
     private readonly recorder: OperatorChangeRecorder,
   ) {}
 
-  async findAll(params: FindAllParams) {
+  /**
+   * The rows of one team (gaulatti/alcantara#122): groups, the media they may hold and their labels. `0` means no
+   * team is configured, which production refuses, and sees every row. Nested relations are not scoped.
+   */
+  private db(teamId: number): PrismaService {
+    return teamId > 0
+      ? (forTeam(this.prisma, teamId) as unknown as PrismaService)
+      : this.prisma;
+  }
+
+  async findAll(params: FindAllParams, teamId = 0) {
     const { search, sortBy, sortOrder, page, limit } = params;
 
     const where: Prisma.MediaGroupWhereInput = {};
@@ -75,7 +86,7 @@ export class MediaGroupsService {
     const skip = limit > 0 ? (page - 1) * limit : 0;
 
     const [groups, total] = await Promise.all([
-      this.prisma.mediaGroup.findMany({
+      this.db(teamId).mediaGroup.findMany({
         where,
         include: {
           mediaItems: {
@@ -86,7 +97,7 @@ export class MediaGroupsService {
         orderBy,
         ...(limit > 0 ? { skip, take: limit } : {}),
       }),
-      this.prisma.mediaGroup.count({ where }),
+      this.db(teamId).mediaGroup.count({ where }),
     ]);
 
     return {
@@ -100,8 +111,8 @@ export class MediaGroupsService {
     };
   }
 
-  async findOne(id: number) {
-    const group = await this.prisma.mediaGroup.findUnique({
+  async findOne(id: number, teamId = 0) {
+    const group = await this.db(teamId).mediaGroup.findUnique({
       where: { id },
       include: {
         mediaItems: {
@@ -118,16 +129,16 @@ export class MediaGroupsService {
     return this.mapGroup(group);
   }
 
-  async create(data: MediaGroupInput) {
+  async create(data: MediaGroupInput, teamId = 0) {
     const name = this.toRequiredTrimmedString(data.name, 'name');
     const description = this.toOptionalTrimmedString(data.description);
     const mediaIds = this.normalizeMediaIds(data.mediaIds, false);
 
-    await this.assertMediaIdsExist(mediaIds);
+    await this.assertMediaIdsExist(mediaIds, teamId);
 
     let group: MediaGroupRecord | null = null;
     try {
-      group = await this.prisma.$transaction(async (tx) => {
+      group = await this.db(teamId).$transaction(async (tx) => {
         const created = await tx.mediaGroup.create({
           data: {
             name,
@@ -177,9 +188,9 @@ export class MediaGroupsService {
     return this.mapGroup(group);
   }
 
-  async update(id: number, data: MediaGroupInput) {
+  async update(id: number, data: MediaGroupInput, teamId = 0) {
     const actor = this.recorder.actor();
-    await this.ensureMediaGroupExists(id);
+    await this.ensureMediaGroupExists(id, teamId);
 
     const updateData: Prisma.MediaGroupUpdateInput = {};
 
@@ -195,7 +206,7 @@ export class MediaGroupsService {
     const mediaIds = this.normalizeMediaIds(data.mediaIds, hasMediaIds);
 
     if (hasMediaIds) {
-      await this.assertMediaIdsExist(mediaIds);
+      await this.assertMediaIdsExist(mediaIds, teamId);
     }
 
     // The size of the list before it is replaced, for the change record; never in the way of the change.
@@ -208,7 +219,7 @@ export class MediaGroupsService {
 
     let group: MediaGroupRecord | null = null;
     try {
-      group = await this.prisma.$transaction(async (tx) => {
+      group = await this.db(teamId).$transaction(async (tx) => {
         if (Object.keys(updateData).length > 0) {
           await tx.mediaGroup.update({
             where: { id },
@@ -275,17 +286,20 @@ export class MediaGroupsService {
     return this.mapGroup(group);
   }
 
-  async remove(id: number) {
-    await this.ensureMediaGroupExists(id);
-    await this.prisma.$transaction(async (tx) => {
+  async remove(id: number, teamId = 0) {
+    await this.ensureMediaGroupExists(id, teamId);
+    await this.db(teamId).$transaction(async (tx) => {
       await tx.mediaGroup.delete({ where: { id } });
       await deleteLegacyMediaGroupLabel(tx, id);
     });
     return { deletedMediaGroupId: id };
   }
 
-  private async ensureMediaGroupExists(id: number): Promise<void> {
-    const group = await this.prisma.mediaGroup.findUnique({
+  private async ensureMediaGroupExists(
+    id: number,
+    teamId: number,
+  ): Promise<void> {
+    const group = await this.db(teamId).mediaGroup.findUnique({
       where: { id },
       select: { id: true },
     });
@@ -295,12 +309,15 @@ export class MediaGroupsService {
     }
   }
 
-  private async assertMediaIdsExist(mediaIds: number[]): Promise<void> {
+  private async assertMediaIdsExist(
+    mediaIds: number[],
+    teamId: number,
+  ): Promise<void> {
     if (mediaIds.length === 0) {
       return;
     }
 
-    const rows = await this.prisma.media.findMany({
+    const rows = await this.db(teamId).media.findMany({
       where: { id: { in: mediaIds } },
       select: { id: true },
     });

@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { PompeiiService } from '../auth/pompeii.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { ProgramService } from '../program/program.service';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
@@ -14,8 +15,11 @@ import { MediaGroupsService } from './media-groups.service';
 // this module asks for its service.
 @Global()
 @Module({
-  providers: [{ provide: ProgramService, useValue: {} }],
-  exports: [ProgramService],
+  providers: [
+    { provide: ProgramService, useValue: {} },
+    { provide: PompeiiService, useValue: { teamId: 0 } },
+  ],
+  exports: [ProgramService, PompeiiService],
 })
 class ProgramStubModule {}
 
@@ -26,6 +30,8 @@ class ProgramStubModule {}
   exports: [ManagedMetricsService],
 })
 class MetricsStubModule {}
+
+const request = { user: { authorization: { teamId: 7 } } };
 
 function build() {
   const groups = {
@@ -41,20 +47,30 @@ function build() {
 describe('MediaGroupsController (coverage)', () => {
   it('uses default pagination when page and limit are absent', async () => {
     const { controller, groups } = build();
-    await expect(controller.findAll()).resolves.toBe('all');
-    expect(groups.findAll).toHaveBeenCalledWith({
-      search: undefined,
-      sortBy: undefined,
-      sortOrder: undefined,
-      page: 1,
-      limit: 20,
-    });
+    await expect(controller.findAll(request)).resolves.toBe('all');
+    expect(groups.findAll).toHaveBeenCalledWith(
+      {
+        search: undefined,
+        sortBy: undefined,
+        sortOrder: undefined,
+        page: 1,
+        limit: 20,
+      },
+      7,
+    );
   });
 
   it('passes filters through and clamps page and (non-negative) limit', async () => {
     const { controller, groups } = build();
-    await controller.findAll('q', 'name', 'asc', '0', '-5');
-    await controller.findAll(undefined, undefined, undefined, '3', '500');
+    await controller.findAll(request, 'q', 'name', 'asc', '0', '-5');
+    await controller.findAll(
+      request,
+      undefined,
+      undefined,
+      undefined,
+      '3',
+      '500',
+    );
     expect(groups.findAll.mock.calls.map((c) => c[0])).toEqual([
       { search: 'q', sortBy: 'name', sortOrder: 'asc', page: 1, limit: 0 },
       {
@@ -71,20 +87,26 @@ describe('MediaGroupsController (coverage)', () => {
     const { controller, groups } = build();
     await expect(controller.findOne('4')).resolves.toBe('one');
     await expect(
-      controller.create({ name: 'n', description: null, mediaIds: [1] }),
+      controller.create(
+        { name: 'n', description: null, mediaIds: [1] },
+        request,
+      ),
     ).resolves.toBe('created');
-    await expect(controller.update('4', { name: 'm' })).resolves.toBe(
+    await expect(controller.update('4', { name: 'm' }, request)).resolves.toBe(
       'updated',
     );
-    await expect(controller.remove('4')).resolves.toBe('removed');
+    await expect(controller.remove('4', request)).resolves.toBe('removed');
     expect(groups.findOne).toHaveBeenCalledWith(4);
-    expect(groups.create).toHaveBeenCalledWith({
-      name: 'n',
-      description: null,
-      mediaIds: [1],
-    });
-    expect(groups.update).toHaveBeenCalledWith(4, { name: 'm' });
-    expect(groups.remove).toHaveBeenCalledWith(4);
+    expect(groups.create).toHaveBeenCalledWith(
+      {
+        name: 'n',
+        description: null,
+        mediaIds: [1],
+      },
+      7,
+    );
+    expect(groups.update).toHaveBeenCalledWith(4, { name: 'm' }, 7);
+    expect(groups.remove).toHaveBeenCalledWith(4, 7);
   });
 
   it('keeps findOne public and mutations behind manage', () => {

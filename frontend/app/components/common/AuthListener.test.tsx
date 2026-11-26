@@ -163,3 +163,27 @@ describe('AuthListener', () => {
     expect(dispatch).toHaveBeenCalledWith({ type: 'LOGOUT' });
   });
 });
+
+describe('AuthListener desktop sign-in failure', () => {
+  it('logs a desktop sign-in that reports an error', () => {
+    const listeners: Array<(change: { signedIn: boolean; error: string | null }) => void> = [];
+    desktop.host = {
+      auth: {
+        currentSession: vi.fn(),
+        signIn: vi.fn(async () => undefined),
+        signOut: vi.fn(),
+        onChange: vi.fn((listener: (change: { signedIn: boolean; error: string | null }) => void) => {
+          listeners.push(listener);
+          return vi.fn();
+        }),
+      },
+    };
+    authStatus.isLoaded = true;
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    render(<AuthListener />);
+    act(() => listeners[0]({ signedIn: false, error: 'The sign-in return did not match' }));
+    expect(errors).toHaveBeenCalledWith('Desktop sign-in:', 'The sign-in return did not match');
+    errors.mockRestore();
+    desktop.host = null;
+  });
+});

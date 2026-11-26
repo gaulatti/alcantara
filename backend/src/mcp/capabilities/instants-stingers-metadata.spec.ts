@@ -4,13 +4,13 @@ describe('instant and stinger provider decorator metadata under unresolved circu
     jest.isolateModules(() => {
       jest.doMock('../../program/program.service', () => ({}));
       jest.doMock('../../radio/radio.service', () => ({}));
-      jest.doMock('../../stingers/stingers.service', () => ({}));
       jest.doMock('../../auth/pompeii.service', () => ({}));
+      jest.doMock('../../stingers/stingers.service', () => ({}));
       const { InstantsMcpTools } = require('./instants');
       const { StingersMcpTools } = require('./stingers');
       expect(
         Reflect.getMetadata('design:paramtypes', InstantsMcpTools),
-      ).toEqual([Object, Object]);
+      ).toEqual([Object, Object, Object]);
       expect(
         Reflect.getMetadata('design:paramtypes', StingersMcpTools),
       ).toEqual([Object, Object, Object]);
