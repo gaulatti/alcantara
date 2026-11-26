@@ -798,3 +798,22 @@ it("asks for the guest-call state again every three seconds", async () => {
     vi.useRealTimers();
   }
 });
+
+it("refreshes the guest list every 3 seconds, and a failed background refresh stays quiet", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    const calls = serve();
+    render(<CallsRoute />);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await screen.findByText("Ada", { selector: "h3" })).toBeVisible();
+    const before = calls.length;
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(calls.length).toBeGreaterThan(before);
+
+    serve({ "GET /webrtc/config": () => new Response("down", { status: 500 }) });
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(screen.queryByText("Guest calls could not be refreshed.")).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
