@@ -367,7 +367,8 @@ describe("RecordingPanel status failures", () => {
     vi.mocked(sendRecordingCommand).mockRejectedValue(
       new RecordingApiError(409, "Already finalizing."),
     );
-    vi.mocked(newRecordingCommandKey).mockReturnValue("recording-command-1");
+    // Earlier tests queue "Once" keys that this one must not inherit.
+    vi.mocked(newRecordingCommandKey).mockReset().mockReturnValue("recording-command-1");
     vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<RecordingPanel programId="modoitaliano" />);
     fireEvent.click(
