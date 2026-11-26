@@ -89,10 +89,11 @@ vi.mock("@gaulatti/bleecker", async (original) => {
     const link = (item: any) =>
       p.renderLink({
         item,
+        // Like bleecker's SidebarLink, a collapsed rail shows the icon only.
         children: (
           <>
             {item.icon}
-            {item.label}
+            {p.collapsed ? null : item.label}
           </>
         ),
         className: "item",
