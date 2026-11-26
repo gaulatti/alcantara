@@ -33,6 +33,7 @@ const upload = {
   songs: [{ songId: 7 }, { songId: 8 }],
 };
 
+const SONG_TEAM = { user: { authorization: { teamId: 7 } } };
 const MEDIA_TEAM = { user: { authorization: { teamId: 7 } } };
 
 function build() {
@@ -64,7 +65,11 @@ function build() {
     },
   };
   const specs = [
-    ...new SongsMcpTools(services.songs as never, programs as never).specs(),
+    ...new SongsMcpTools(
+      services.songs as never,
+      programs as never,
+      { teamId: 7 } as never,
+    ).specs(),
     ...new MediaMcpTools(
       services.media as never,
       programs as never,
@@ -114,7 +119,7 @@ describe('song writes', () => {
       programId: 'news',
       introInstantId: 8,
     };
-    const expected = asRest(await controllers.songs.create(body));
+    const expected = asRest(await controllers.songs.create(body, SONG_TEAM));
     const result = await run('song_create', {
       artist: 'A',
       title: 'T',
@@ -141,7 +146,11 @@ describe('song writes', () => {
 
   it('song_update leaves out what was not given, and flags a song that is playing', async () => {
     const { services, controllers, run, plan, programs } = build();
-    await controllers.songs.update('7', { title: 'New', introInstantId: null });
+    await controllers.songs.update(
+      '7',
+      { title: 'New', introInstantId: null },
+      SONG_TEAM,
+    );
     const result = await run('song_update', {
       song_id: 7,
       title: 'New',

@@ -163,7 +163,11 @@ describeWithDatabase(
       });
       created.push({ model: 'song', id: song.id });
       await ActorContext.run(mcp, () =>
-        songs.update(song.id, { enabled: false, title: 'Fictional retitle' }),
+        songs.update(
+          song.id,
+          { enabled: false, title: 'Fictional retitle' },
+          0,
+        ),
       );
       expect(await latest()).toMatchObject({
         programId: null,
