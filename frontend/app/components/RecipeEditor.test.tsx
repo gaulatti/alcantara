@@ -413,3 +413,14 @@ it("picks the slideshow scene by id, and saves it", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Confirm save" }));
   await screen.findByText("Recipe saved. No upcoming use needed a rebuild.");
 });
+
+it("renames the recipe and picks its return scene, then saves both", async () => {
+  stubApi({ sequences: [], rebuilt: 0 });
+  await open();
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Renamed song" } });
+  expect(screen.getByLabelText("Name")).toHaveValue("Renamed song");
+  fireEvent.change(screen.getByLabelText("Return scene"), { target: { value: "30" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save recipe" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirm save" }));
+  await screen.findByText("Recipe saved. No upcoming use needed a rebuild.");
+});
