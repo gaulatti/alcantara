@@ -439,6 +439,46 @@ it("reloads the program from the header and reports a refused reload in the cons
   );
 });
 
+// The rundown-building walk: a show created on the Shows page was not in the list the header loaded with the page,
+// so selecting it snapped back to the first show. The list is reloaded once before the selection is judged gone.
+it("keeps a newly created show selected by reloading the show list before falling back", async () => {
+  let listed = 0;
+  routes["GET /program"] = () => {
+    listed += 1;
+    return json(listed === 1 ? programs : [...programs, { programId: "fresh" }]);
+  };
+  shell.program = "fresh";
+  open("/");
+  await waitFor(() => expect(listed).toBe(2));
+  await waitFor(() => expect(programSelects()[0]).toHaveValue("fresh"));
+  expect(shell.program).toBe("fresh");
+});
+
+it("falls back to the first show once the reloaded list still lacks the selected one", async () => {
+  let listed = 0;
+  routes["GET /program"] = () => {
+    listed += 1;
+    return json(programs);
+  };
+  shell.program = "gone";
+  open("/");
+  await waitFor(() => expect(shell.program).toBe(programs[0].programId));
+  expect(listed).toBe(2);
+});
+
+it("falls back to the first show when the reload of the list fails", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  let listed = 0;
+  routes["GET /program"] = () => {
+    listed += 1;
+    return listed === 1 ? json(programs) : json({}, 500);
+  };
+  shell.program = "gone";
+  open("/");
+  await waitFor(() => expect(shell.program).toBe(programs[0].programId));
+  expect(listed).toBe(2);
+});
+
 it("keeps a show it cannot find, and logs catalogs that fail to load", async () => {
   const errors = vi.spyOn(console, "error").mockImplementation(() => {});
   routes["GET /program"] = () => json({}, 500);
