@@ -1,7 +1,11 @@
 import { BadGatewayException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
-import { isLocalMediaUrl, localMediaEnvironment } from '../config/local-media';
+import {
+  describeAcceptedMediaUrl,
+  isLocalMediaUrl,
+  localMediaEnvironment,
+} from '../config/local-media';
 
 const MAX_BYTES = 512 * 1024 * 1024;
 
@@ -25,7 +29,9 @@ export async function readManagedMediaDigest(
   try {
     url = new URL(sourceUrl);
   } catch {
-    throw new BadRequestException(`${label} source has an invalid URL`);
+    throw new BadRequestException(
+      `${label} source has no absolute URL; it needs ${describeAcceptedMediaUrl(localMediaEnvironment(config))}`,
+    );
   }
   const isManagedBucketUrl =
     url.protocol === 'https:' &&
@@ -43,7 +49,7 @@ export async function readManagedMediaDigest(
     !isLocalMediaUrl(url, localMediaEnvironment(config))
   ) {
     throw new BadRequestException(
-      `${label} source must use the managed media bucket`,
+      `${label} source must be ${describeAcceptedMediaUrl(localMediaEnvironment(config))}`,
     );
   }
   const response = await fetch(sourceUrl, {
