@@ -156,6 +156,8 @@ export type SongQueueActionResult =
   | 'removed'
   | 'reordered'
   | 'consumed'
+  | 'preempted'
+  | 'stale-claim-dropped'
   | 'cursor-persisted'
   | 'rejected'
   | 'persistence-failed';
@@ -432,6 +434,8 @@ const SONG_QUEUE_ACTION_RESULTS: SongQueueActionResult[] = [
   'removed',
   'reordered',
   'consumed',
+  'preempted',
+  'stale-claim-dropped',
   'cursor-persisted',
   'rejected',
   'persistence-failed',
