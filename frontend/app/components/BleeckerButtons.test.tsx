@@ -1,4 +1,4 @@
-import { createRef, type ReactNode } from "react";
+import { createPortal } from "react-dom"; import { createRef, type ReactNode } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { Button, IconButton } from "@gaulatti/bleecker";
@@ -127,4 +127,15 @@ it("adds no help when a control has no name, title or label of its own", () => {
   );
   expect(Tooltip).not.toHaveBeenCalled();
   expect(container.querySelectorAll("button")).toHaveLength(3);
+});
+
+it("labels a button from its text when a child is a portal, not an element", () => {
+  render(
+    <TooltipButton>
+      {createPortal(<i>hidden</i>, document.body)}
+      Go
+    </TooltipButton>,
+  );
+  expect(help()).toBe("Go");
+  expect(screen.getByRole("button", { name: "Go" })).toBeInTheDocument();
 });

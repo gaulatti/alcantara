@@ -99,6 +99,11 @@ services:
       PORT: ${BACKEND_PORT:-3000}
       ALLOWED_ORIGINS: http://localhost:${VITE_PORT:-5173}
       CHOKIDAR_USEPOLLING: "true"
+      # nest start --watch uses TypeScript's watcher, which CHOKIDAR_USEPOLLING does not reach. On
+      # Colima a host edit arrives through the bind mount without a file event, so the watcher polls
+      # here (gaulatti/alcantara#600). Local Compose only: the production image never sets these.
+      TSC_WATCHFILE: DynamicPriorityPolling
+      TSC_WATCHDIRECTORY: RecursiveDirectoryUsingDynamicPriorityPolling
       LIVEKIT_WS_URL: ws://localhost:7880
       LIVEKIT_API_URL: http://livekit:7880
       LIVEKIT_API_KEY: devkey

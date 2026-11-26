@@ -1133,11 +1133,14 @@ export default function Control() {
   };
 
   const persistMixerLevels = async (nextMixerLevels: BroadcastSettings) => {
+    // The levels belong to the program they were set on, and so does the answer: one that arrives after the
+    // operator switched program is not applied to the program now on screen (gaulatti/alcantara#682).
+    const targetProgramId = activeProgramId;
     setIsSavingMixerLevels(true);
     setMixerSaveError(null);
     try {
       const res = await fetch(
-        apiUrl(`/program/${encodeURIComponent(activeProgramId)}/audio-bus`),
+        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/audio-bus`),
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -1154,6 +1157,7 @@ export default function Control() {
       }
 
       const payload = (await res.json()) as ProgramAudioBusSettings | null;
+      if (targetProgramId !== activeProgramIdRef.current) return;
       if (!shouldApplyControlUpdatePayload(payload, "audioBus")) {
         return;
       }
@@ -1164,6 +1168,7 @@ export default function Control() {
       setMixerLevels(persistedMixerLevels);
     } catch (err) {
       console.error("Failed to save mixer levels:", err);
+      if (targetProgramId !== activeProgramIdRef.current) return;
       setMixerSaveError("Mixer change was not applied to Palazzo. Try again.");
     } finally {
       setIsSavingMixerLevels(false);
@@ -1682,6 +1687,8 @@ export default function Control() {
   const saveProgramAudioBusSongSequence = async (
     nextSequence: ProgramSongSequence,
   ) => {
+    // Like the mixer levels, the answer belongs to the program the sequence was saved for (gaulatti/alcantara#682).
+    const targetProgramId = activeProgramId;
     const normalizedSongSequence = normalizeProgramSongPlaylist(
       normalizeProgramSongSequence(nextSequence) ?? {
         /* v8 ignore start -- every loader normalises the stored sequence and falls back to an empty manual sequence first, so this fallback cannot receive a null */
@@ -1698,7 +1705,7 @@ export default function Control() {
 
     try {
       const res = await fetch(
-        apiUrl(`/program/${encodeURIComponent(activeProgramId)}/audio-bus`),
+        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/audio-bus`),
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -1713,6 +1720,7 @@ export default function Control() {
 
       const payload =
         (await res.json()) as Partial<ProgramAudioBusSettings> | null;
+      if (targetProgramId !== activeProgramIdRef.current) return;
       if (!shouldApplyControlUpdatePayload(payload, "audioBus")) {
         return;
       }
@@ -1740,7 +1748,8 @@ export default function Control() {
       }));
     } catch (err) {
       console.error("Failed to save program audio bus settings:", err);
-      await fetchProgramAudioBusSettings(activeProgramId, false);
+      if (targetProgramId !== activeProgramIdRef.current) return;
+      await fetchProgramAudioBusSettings(targetProgramId, false);
       throw err;
     } finally {
       setIsSavingProgramAudioBus(false);
