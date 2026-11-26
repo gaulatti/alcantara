@@ -51,10 +51,15 @@ import {
 } from '../radio/song-queue.utils';
 import {
   collectHighRotationProgramSongLeaves,
+  collectProgramSongLeaves,
   countProgramSongLeavesBySong,
   normalizeProgramSongSequence,
   type ProgramSongSequence,
 } from '../radio/song-sequence.utils';
+import {
+  programSongSequenceVersion,
+  ROTATION_CHANGED_MESSAGE,
+} from '../radio/song-sequence-version';
 import { MAX_HIGH_ROTATION_SONGS } from '../radio/song-rotation.utils';
 import {
   projectProgramTemplateSignal,
@@ -174,6 +179,17 @@ export const LEFTOVER_PROGRAM_ID_MESSAGE =
 
 /** How the refusal to rename a program that is on air begins; the Shows dialog shows such a refusal as it is. */
 export const ON_AIR_RENAME_MESSAGE_START = 'This show is on air';
+
+/** How often a checked save is read and checked again when the row changes under it. */
+const AUDIO_BUS_SAVE_ATTEMPTS = 3;
+
+export interface ProgramAudioBusSaved {
+  songSequence: unknown;
+  sequenceVersion: string;
+  songQueue: ReturnType<typeof normalizeProgramSongQueue>;
+  mixerSettings: ProgramAudioMixerSettings;
+  version: number;
+}
 
 @Injectable()
 export class ProgramService implements OnModuleInit, OnModuleDestroy {
@@ -1958,6 +1974,36 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /**
+   * An operator's save replaces the whole stored rotation, so it must be made from the rotation now stored. A desk
+   * whose load failed holds an empty one, which would otherwise be written over the real rotation.
+   */
+  private checkSongSequenceSave(
+    data: { songSequence?: unknown; sequenceVersion?: unknown },
+    stored: unknown,
+    client: 'console' | 'mcp',
+  ): 'versioned' | 'unversioned' {
+    const sent = data.sequenceVersion;
+    const refuse = (result: 'missing' | 'stale' | 'emptying'): never => {
+      this.metrics?.recordSongSequenceSave(`refused_${result}`);
+      throw new ConflictException(ROTATION_CHANGED_MESSAGE);
+    };
+    if (sent === undefined) {
+      // MCP callers read the tool's description each time, so they are held to the version at once.
+      if (client === 'mcp') return refuse('missing');
+      // A console or pilot built before the version sends none. It still saves, except to empty a rotation, or
+      // leave it one song, which is what a desk that never loaded it does.
+      const count = (value: unknown) =>
+        collectProgramSongLeaves(normalizeProgramSongSequence(value)).length;
+      if (count(stored) > 2 && count(data.songSequence) < 2)
+        return refuse('emptying');
+      return 'unversioned';
+    }
+    if (typeof sent !== 'string') return refuse('missing');
+    if (sent !== programSongSequenceVersion(stored)) return refuse('stale');
+    return 'versioned';
+  }
+
   async getProgramAudioBus(
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
   ) {
@@ -1976,6 +2022,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
 
     return {
       songSequence: state.songSequence ?? null,
+      sequenceVersion: programSongSequenceVersion(state.songSequence),
       songQueue: normalizeProgramSongQueue(state.songQueue),
       mixerSettings,
       version: this.getProgramTopicVersion(normalizedProgramId, 'audioBus'),
@@ -2022,7 +2069,10 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       | null
       | undefined,
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
-  ) {
+    // Given for a save by an operator, who must have made it from the stored rotation. Automation gives none.
+    client?: 'console' | 'mcp',
+    attempt = 1,
+  ): Promise<ProgramAudioBusSaved> {
     const normalizedProgramId = this.normalizeProgramId(programId);
     if (
       data !== null &&
@@ -2039,6 +2089,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         songQueue: true,
         audioMixer: true,
         type: true,
+        updatedAt: true,
       },
     });
     if (!currentState) {
@@ -2058,11 +2109,21 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     if (!hasSongSequenceUpdate && !hasMixerSettingsUpdate) {
       return {
         songSequence: currentState.songSequence ?? null,
+        sequenceVersion: programSongSequenceVersion(currentState.songSequence),
         songQueue: normalizeProgramSongQueue(currentState.songQueue),
         mixerSettings: currentMixerSettings,
         version: this.getProgramTopicVersion(normalizedProgramId, 'audioBus'),
       };
     }
+
+    const save =
+      client && hasSongSequenceUpdate
+        ? this.checkSongSequenceSave(
+            data as { songSequence?: unknown; sequenceVersion?: unknown },
+            currentState.songSequence,
+            client,
+          )
+        : null;
 
     const nextSongSequence = hasSongSequenceUpdate
       ? ((data as { songSequence?: unknown }).songSequence ?? null)
@@ -2107,8 +2168,13 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         )
       : currentMixerSettings;
 
-    const updatedState = await this.prisma.programState.update({
-      where: { programId: normalizedProgramId },
+    // A checked save writes only the row it was checked against. When the row changed in between (the engine moving
+    // the cursor, or another save) it is read and checked again.
+    const write = this.prisma.programState.update({
+      where: {
+        programId: normalizedProgramId,
+        ...(save ? { updatedAt: currentState.updatedAt } : {}),
+      },
       data: {
         // A mixer-only change must not write the song sequence back. It was
         // read a moment earlier, so writing it could undo a song that ended in
@@ -2123,9 +2189,22 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       },
       select: { songSequence: true, songQueue: true, audioMixer: true },
     });
+    let updatedState: Awaited<typeof write>;
+    try {
+      updatedState = await write;
+    } catch (error) {
+      if (!save || (error as { code?: string }).code !== 'P2025') throw error;
+      if (attempt >= AUDIO_BUS_SAVE_ATTEMPTS) {
+        this.metrics?.recordSongSequenceSave('refused_stale');
+        throw new ConflictException(ROTATION_CHANGED_MESSAGE);
+      }
+      return this.updateProgramAudioBus(data, programId, client, attempt + 1);
+    }
+    if (save) this.metrics?.recordSongSequenceSave(save);
 
     const nextSettings = {
       songSequence: updatedState.songSequence ?? null,
+      sequenceVersion: programSongSequenceVersion(updatedState.songSequence),
       songQueue: normalizeProgramSongQueue(updatedState.songQueue),
       mixerSettings: this.withResolvedProgramAudioMixerSettings(
         updatedState.audioMixer,
@@ -2208,6 +2287,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       programId: normalizedProgramId,
       settings: {
         songSequence: outcome.songSequence,
+        sequenceVersion: programSongSequenceVersion(outcome.songSequence),
         songQueue: outcome.songQueue,
         mixerSettings: this.withResolvedProgramAudioMixerSettings(
           state?.audioMixer,
@@ -3649,6 +3729,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         programId: normalizedProgramId,
         settings: {
           songSequence: updatedSequence,
+          sequenceVersion: programSongSequenceVersion(updatedSequence),
           mixerSettings: currentMixerSettings,
         },
         updatedAt,
@@ -4200,8 +4281,13 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
           type: 'song_queue_update',
           programId: normalizedProgramId,
           songQueue: event.songQueue,
+          // The engine writes the stored mode as well as the cursor (a Stop leaves it manual), so the sequence it
+          // sends carries its version, or the console's next save would be refused as stale.
           ...(event.songSequence !== undefined
-            ? { songSequence: event.songSequence }
+            ? {
+                songSequence: event.songSequence,
+                sequenceVersion: programSongSequenceVersion(event.songSequence),
+              }
             : {}),
         });
         break;

@@ -248,7 +248,7 @@ export class McpRadioReadTools implements McpToolProviderShape {
     return tool({
       name: 'get_queue',
       title: 'Play Next queue',
-      description: `Lists the Play Next queue in order, with each entry's id (entry_id), song id and whether it is the one playing. ${UNTRUSTED_NOTE}`,
+      description: `Lists the Play Next queue in order, with each entry's id (entry_id), song id and whether it is the one playing, and the version of the rotation (sequence_version), which a save of the rotation must send. ${UNTRUSTED_NOTE}`,
       permission: ALCANTARA_PERMISSIONS.radio.read,
       tier: 'R',
       firstClass: true,
@@ -275,7 +275,11 @@ export class McpRadioReadTools implements McpToolProviderShape {
             };
           });
           return {
-            result: { program_id: program, entries },
+            result: {
+              program_id: program,
+              sequence_version: bus.sequenceVersion,
+              entries,
+            },
             audit: { target: program, count: entries.length },
           };
         }),
