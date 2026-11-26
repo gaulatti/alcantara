@@ -559,7 +559,13 @@ export default function ProgramsAdmin() {
 
                       </div>
                       <div className='flex items-start gap-2'>
-                        <Button size='sm' variant={isSelected ? 'secondary' : 'ghost'} onClick={() => setSelectedProgramId(program.programId)} className='px-3'>
+                        <Button
+                          size='sm'
+                          variant={isSelected ? 'secondary' : 'ghost'}
+                          onClick={() => setSelectedProgramId(program.programId)}
+                          className='px-3'
+                          aria-label={`Select ${program.programId}`}
+                        >
                           Select
                         </Button>
                         <IconButton
@@ -616,8 +622,9 @@ export default function ProgramsAdmin() {
         <Modal isOpen={showModal} onClose={closeModal} title={editingProgramId ? 'Edit show' : 'Create show'} className='mt-[8vh] mb-auto'>
           <div className='space-y-5'>
             <div>
-              <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Program ID</label>
+              <label htmlFor='show-id' className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Show ID</label>
               <Input
+                id='show-id'
                 value={programIdInput}
                 onChange={(e) => {
                   setProgramIdInput(e.target.value);
@@ -625,15 +632,16 @@ export default function ProgramsAdmin() {
                     setError('');
                   }
                 }}
-                placeholder='main'
+                // Not "main": an example, not a value, and never the name of an existing show (the rundown-building walk).
+                placeholder='morning-show'
                 error={!!error}
                 autoFocus
               />
             </div>
 
             <div>
-              <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Program Type</label>
-              <div className='flex gap-2'>
+              <p id='show-type-label' className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Show type</p>
+              <div role='group' aria-labelledby='show-type-label' className='flex gap-2'>
                 {(['tv', 'radio', 'both'] as const).map((type) => (
                   <TooltipButton
                     key={type}
@@ -659,9 +667,10 @@ export default function ProgramsAdmin() {
             </div>
 
             {selectedType !== 'radio' ? <div>
-              <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Template URL</label>
+              <label htmlFor='show-template-url' className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Template URL</label>
               <div className='flex items-start gap-2'>
                 <Input
+                  id='show-template-url'
                   type='url'
                   value={templateUrlInput}
                   onChange={(event) => {
