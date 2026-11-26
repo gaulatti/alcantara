@@ -38,8 +38,9 @@ export function songCoverAssetId(songId: number): string {
 }
 
 /**
- * An asset belongs to the team of the row it mirrors (gaulatti/alcantara#122), whichever client writes it: the
- * start-up reconciliation and a station with no team write unscoped. A row with no team leaves the asset's as it is.
+ * A new asset belongs to the team of the row it mirrors (gaulatti/alcantara#122), whichever client creates it: the
+ * start-up reconciliation and a station with no team write unscoped. Existing assets with no team are filled by
+ * `fillMediaAssetTeams`, in bounded batches.
  */
 const teamOf = (teamId: number | null | undefined) =>
   teamId && teamId > 0 ? { teamId } : {};
@@ -56,7 +57,6 @@ async function upsertMediaAsset(
     name: source.name,
     sourceUrl: source.sourceUrl,
     enabled: source.enabled,
-    ...teamOf(source.teamId),
   };
   const createTimestamps = {
     ...(source.createdAt ? { createdAt: source.createdAt } : {}),
@@ -68,7 +68,12 @@ async function upsertMediaAsset(
 
   await tx.mediaAsset.upsert({
     where: { id: assetId },
-    create: { id: assetId, ...asset, ...createTimestamps },
+    create: {
+      id: assetId,
+      ...asset,
+      ...teamOf(source.teamId),
+      ...createTimestamps,
+    },
     update: { ...asset, ...updateTimestamp },
   });
 
@@ -188,7 +193,6 @@ export async function syncSongAsset(
         name: `${song.artist.trim()} ${song.title.trim()}`.trim() + ' cover',
         sourceUrl: normalizedCoverUrl,
         enabled: song.enabled,
-        ...teamOf(song.teamId),
         ...(song.updatedAt ? { updatedAt: song.updatedAt } : {}),
       },
     });

@@ -7,6 +7,7 @@ import {
   syncSongAsset,
   syncTransitionAsset,
 } from './media-asset-sync';
+import { fillMediaAssetTeams } from './media-asset-team-fill';
 
 // CI's coverage step runs without DATABASE_URL and starts this database; a local run sets DATABASE_URL to its own
 // disposable one. Without a database the suite fails rather than passing unrun.
@@ -104,7 +105,7 @@ describe('media assets take the team of the row they mirror, against Postgres', 
     ).rejects.toBe(rollback);
   });
 
-  it('fills the team of an asset that has none when its row is synced again', async () => {
+  it('leaves the team of an existing asset to the fill', async () => {
     const rollback = new Error('rollback');
     await expect(
       prisma.$transaction(async (tx) => {
@@ -112,14 +113,62 @@ describe('media assets take the team of the row they mirror, against Postgres', 
           data: { name: name(), imageUrl: url() },
         });
         const id = await syncImageAsset(tx, row);
-        await expect(teams(tx, [id])).resolves.toEqual([null]);
         await syncImageAsset(tx, { ...row, assetId: id, teamId: 7 });
-        await expect(teams(tx, [id])).resolves.toEqual([7]);
-        // A row without a team never clears an asset's.
-        await syncImageAsset(tx, { ...row, assetId: id, teamId: null });
-        await expect(teams(tx, [id])).resolves.toEqual([7]);
+        await expect(teams(tx, [id])).resolves.toEqual([null]);
         throw rollback;
       }),
     ).rejects.toBe(rollback);
+  });
+
+  it('fills assets with no team from every kind of row, and never changes one that has a team', async () => {
+    const rollback = new Error('rollback');
+    await expect(
+      prisma.$transaction(async (tx) => {
+        const mirrored: string[] = [];
+        for (const [, write] of writers) mirrored.push(...(await write(tx, 7)));
+        await tx.mediaAsset.updateMany({
+          where: { id: { in: mirrored } },
+          data: { teamId: null },
+        });
+        const [kept, orphaned] = [
+          await writers[0][1](tx, 7),
+          await writers[0][1](tx, null),
+        ];
+        await tx.media.updateMany({
+          where: { assetId: kept[0] },
+          data: { teamId: 8 },
+        });
+
+        // A batch of one: every statement fills one row and the fill still finishes.
+        await expect(
+          fillMediaAssetTeams(tx, 1),
+        ).resolves.toBeGreaterThanOrEqual(mirrored.length);
+        await expect(teams(tx, mirrored)).resolves.toEqual(
+          mirrored.map(() => 7),
+        );
+        await expect(teams(tx, kept)).resolves.toEqual([7]);
+        await expect(teams(tx, orphaned)).resolves.toEqual([null]);
+        await expect(fillMediaAssetTeams(tx)).resolves.toBe(0);
+        throw rollback;
+      }),
+    ).rejects.toBe(rollback);
+  });
+
+  it('asks again until a statement fills nothing, with the batch of 500 by default', async () => {
+    const statements: Prisma.Sql[] = [];
+    const counts = [500, 12, 0];
+    const total = await fillMediaAssetTeams({
+      $executeRaw: (async (sql: Prisma.Sql) => {
+        statements.push(sql);
+        return counts.shift() ?? 0;
+      }) as never,
+    });
+    expect(total).toBe(512);
+    // Three statements for the first table, then one for each of the other four.
+    expect(statements).toHaveLength(7);
+    for (const statement of statements) {
+      expect(statement.sql).toContain('LIMIT ?');
+      expect(statement.values).toEqual([500]);
+    }
   });
 });
