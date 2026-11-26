@@ -700,3 +700,11 @@ is back.
 
 Labels are bounded: no program, song or request id. The alert rule lives with the Prometheus configuration in the
 observability repository, for example `increase(alcantara_program_bus_overlaps_total[5m]) > 0`.
+
+## Output unverified on the Radio desk (#706)
+
+When no fresh output level has arrived for 6 seconds (`OUTPUT_SAMPLE_UNVERIFIED_MS` in
+`frontend/app/components/radio-desk/outputFreshness.ts`), audible output reads **Output unverified** and the on-air
+strip shows **Unverified** with its clock dimmed. The desk re-reads freshness every second. This is display only: no
+alarm and no automation change. Status delayed (a stale sample after 15 s) and dead air (silence for 10 s) keep their
+own thresholds. The console fixture `state=radio-unverified` shows it.

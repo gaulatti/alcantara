@@ -7,7 +7,7 @@ import {
   within,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 import type { ComponentProps } from "react";
 import { readFileSync } from "node:fs";
@@ -614,6 +614,59 @@ it("treats every unreachable or refused status endpoint as unverified", async ()
     ).toBe(true),
   );
   expect(screen.getByText("Engine unavailable")).toBeVisible();
+});
+
+// gaulatti/alcantara#706: six seconds without a fresh output sample turn audible output into Output unverified and
+// dim the on-air clock; a fresh sample restores both. Display only.
+describe("output unverified after six seconds without a sample", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("moves from detected to unverified as time passes, and back with a fresh sample, on the same desk", async () => {
+    const start = Date.parse("2026-11-26T12:00:00Z");
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime(start);
+    let sampledAt = start - 5_000;
+    radioApi({
+      "/status": () => json({ running: true, uptime: 60_000 }),
+      "/palazzo-status": () => json(props().fixtureData!.palazzo),
+      "/output-confidence": () =>
+        json({
+          state: "audible",
+          expectedAudio: true,
+          outputRms: 0.2,
+          lastSampleAt: new Date(sampledAt).toISOString(),
+          quietForMs: null,
+        }),
+      "/recovery": () =>
+        json({ preparedVersion: null, automation: null, connection: "connected" }),
+    });
+    vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+    const p = liveProps();
+    mount(p);
+    expect(await screen.findByText("Engine audio detected")).toBeVisible();
+    const strip = screen.getByRole("region", { name: "On air" });
+    expect(within(strip).getByText("On air")).toBeVisible();
+    expect(within(strip).getByTestId("on-air-clock")).not.toHaveAttribute("data-dimmed");
+
+    // The desk re-reads freshness every second: at 2 s the last sample is 7 s old (a poll at 2 s still answers
+    // that old sample), so the output reads unverified with no fresh answer.
+    await act(async () => {
+      vi.advanceTimersByTime(2_100);
+    });
+    expect(screen.getByText("Output unverified")).toBeVisible();
+    expect(screen.queryByText("Engine audio detected")).toBeNull();
+    expect(within(strip).getByText("Unverified")).toBeVisible();
+    expect(within(strip).getByTestId("on-air-clock")).toHaveAttribute("data-dimmed", "true");
+
+    // The next air-plan poll brings a fresh sample.
+    sampledAt = Date.now();
+    await act(async () => {
+      vi.advanceTimersByTime(2_000);
+    });
+    expect(await screen.findByText("Engine audio detected")).toBeVisible();
+    expect(within(strip).getByText("On air")).toBeVisible();
+    expect(within(strip).getByTestId("on-air-clock")).not.toHaveAttribute("data-dimmed");
+  });
 });
 
 it("names every output confidence state", () => {
