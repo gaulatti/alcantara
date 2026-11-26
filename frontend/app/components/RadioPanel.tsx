@@ -166,6 +166,13 @@ interface RecoveryStatus {
 /** The command failures the Radio desk keeps for this session, newest first (gaulatti/alcantara#707). */
 const SESSION_LOG_LIMIT = 20;
 
+/** Why a rundown cue was not aired, as the as-run logged it (gaulatti/alcantara#726). */
+function notAiredReason(reason: string | null): string {
+  if (reason === "engine_unavailable")
+    return "not aired, the engine was unavailable";
+  return reason ? `not aired (${reason})` : "not aired";
+}
+
 export const RadioPanel: React.FC<RadioPanelProps> = ({
   fixtureData,
   programId,
@@ -707,12 +714,18 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     const successor = activeLog.items[index + 1];
                     const movable =
                       !locked && cue.clockOffsetSeconds === undefined;
+                    // gaulatti/alcantara#726: a cue the as-run logged as not aired is skipped, never played.
+                    const notAired = activeLog.cueOutcomes?.find(
+                      (outcome) => outcome.cueId === cue.id,
+                    );
+                    const played = index < currentLogIndex && !notAired;
                     return (
                       <li
                         key={cue.id}
                         className="console-log-row"
                         data-active={active}
-                        data-played={index < currentLogIndex}
+                        data-played={played}
+                        data-skipped={!!notAired}
                       >
                         <time>
                           {cue.clockOffsetSeconds === undefined
@@ -742,15 +755,25 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                         <span className="tabular-nums text-xs text-text-secondary">
                           {song?.durationMs ? formatTime(song.durationMs) : "—"}
                         </span>
-                        <span className="console-eyebrow">
-                          {active
-                            ? "NOW"
-                            : next
-                              ? "NEXT"
-                              : index < currentLogIndex
-                                ? "PLAYED"
-                                : String(index + 1).padStart(2, "0")}
-                        </span>
+                        {notAired && !active && !next ? (
+                          <span
+                            className="console-eyebrow"
+                            title={notAiredReason(notAired.reason)}
+                            aria-label={`Skipped: ${notAiredReason(notAired.reason)}`}
+                          >
+                            SKIPPED
+                          </span>
+                        ) : (
+                          <span className="console-eyebrow">
+                            {active
+                              ? "NOW"
+                              : next
+                                ? "NEXT"
+                                : played
+                                  ? "PLAYED"
+                                  : String(index + 1).padStart(2, "0")}
+                          </span>
+                        )}
                         <div className="console-log-actions">
                           <Button
                             type="button"

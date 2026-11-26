@@ -833,6 +833,12 @@
 .console-log-row[data-played="true"] {
   opacity: 0.55;
 }
+.console-log-row[data-skipped="true"] {
+  opacity: 0.55;
+}
+.console-log-row[data-skipped="true"] .console-eyebrow {
+  color: var(--console-preview);
+}
 @media (max-width: 900px) {
   .radio-rundown .console-log-row {
     grid-template-columns: 4.5rem minmax(0, 1fr) 3rem 3rem;

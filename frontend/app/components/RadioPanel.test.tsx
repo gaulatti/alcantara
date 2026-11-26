@@ -751,6 +751,83 @@ it("describes each event of the on-air rundown and its timing", () => {
   expect(screen.getByText(/ON AIR · Revision 1/)).toBeVisible();
 });
 
+// gaulatti/alcantara#726: a cue the as-run logged as not aired shows as skipped, never played.
+it("shows a not-aired cue as skipped with its reason, and keeps aired cues played", () => {
+  const p = props();
+  const log = onAirLog(p);
+  log.scheduledAt = new Date(Date.now() - 120_000).toISOString();
+  log.activeItemId = "cue-4";
+  log.items = [
+    { id: "cue-1", kind: "playSong", songId: 1, clockOffsetSeconds: 0 },
+    { id: "cue-2", kind: "playSong", songId: 1, clockOffsetSeconds: 60 },
+    { id: "cue-3", kind: "playSong", songId: 1 },
+    { id: "cue-4", kind: "playSong", songId: 1 },
+    { id: "cue-5", kind: "playSong", songId: 1 },
+  ];
+  log.cueOutcomes = [
+    { cueId: "cue-2", state: "not-aired", reason: "engine_unavailable" },
+    { cueId: "cue-3", state: "not-aired", reason: null },
+  ];
+  mount(p);
+  const rows = within(
+    screen.getByRole("list", { name: "On-air rundown" }),
+  ).getAllByRole("listitem");
+  expect(rows[0]).toHaveTextContent("PLAYED");
+  expect(rows[0]).toHaveAttribute("data-skipped", "false");
+  expect(rows[1]).toHaveTextContent("SKIPPED");
+  expect(rows[1]).not.toHaveTextContent("PLAYED");
+  expect(rows[1]).toHaveAttribute("data-skipped", "true");
+  expect(rows[1]).toHaveAttribute("data-played", "false");
+  const reason = within(rows[1]).getByLabelText(
+    "Skipped: not aired, the engine was unavailable",
+  );
+  expect(reason).toHaveAttribute(
+    "title",
+    "not aired, the engine was unavailable",
+  );
+  expect(within(rows[2]).getByLabelText("Skipped: not aired")).toHaveTextContent(
+    "SKIPPED",
+  );
+  expect(rows[3]).toHaveTextContent("NOW");
+  expect(rows[4]).toHaveTextContent("NEXT");
+});
+
+it("names an unknown not-aired reason as the as-run logged it", () => {
+  const p = props();
+  const log = onAirLog(p);
+  log.scheduledAt = new Date(Date.now() - 60_000).toISOString();
+  log.activeItemId = "cue-2";
+  log.items = [
+    { id: "cue-1", kind: "playSong", songId: 1, clockOffsetSeconds: 0 },
+    { id: "cue-2", kind: "playSong", songId: 1 },
+  ];
+  log.cueOutcomes = [
+    { cueId: "cue-1", state: "not-aired", reason: "audio_missing" },
+  ];
+  mount(p);
+  expect(
+    screen.getByLabelText("Skipped: not aired (audio_missing)"),
+  ).toBeVisible();
+});
+
+it("marks rows by position when the backend sends no cue outcomes", () => {
+  const p = props();
+  const log = onAirLog(p);
+  log.scheduledAt = new Date(Date.now() - 60_000).toISOString();
+  log.activeItemId = "cue-2";
+  log.items = [
+    { id: "cue-1", kind: "playSong", songId: 1, clockOffsetSeconds: 0 },
+    { id: "cue-2", kind: "playSong", songId: 1 },
+  ];
+  delete log.cueOutcomes;
+  mount(p);
+  const rows = within(
+    screen.getByRole("list", { name: "On-air rundown" }),
+  ).getAllByRole("listitem");
+  expect(rows[0]).toHaveTextContent("PLAYED");
+  expect(screen.queryByText("SKIPPED")).toBeNull();
+});
+
 it("reorders and removes events in the persisted log, and reloads it after a refused change", async () => {
   const p = props();
   const log = onAirLog(p);

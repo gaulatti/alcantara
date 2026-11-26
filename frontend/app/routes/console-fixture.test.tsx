@@ -75,6 +75,10 @@ vi.mock("../components/RadioPanel", () => ({
         output: p.fixtureData.output.state,
         expected: p.fixtureData.output.expectedAudio,
         rms: p.fixtureData.output.outputRms,
+        skipped: p.fixtureData.logs.flatMap((log: any) =>
+          (log.cueOutcomes ?? []).map((outcome: any) => outcome.cueId),
+        ),
+        active: p.fixtureData.logs.map((log: any) => log.activeItemId),
         logs: p.fixtureData.logs.map((log: any) =>
           log.items
             .map(
@@ -517,6 +521,10 @@ it("hands the radio desk its fixture data for every radio state", () => {
     ],
     ["?state=radio-not-configured", { palazzo: "unavailable" }],
     ["?state=radio-continuous", { logs: [] }],
+    [
+      "?state=radio-skipped",
+      { skipped: ["fixture-cue-2"], active: ["fixture-cue-3"] },
+    ],
     [
       "?state=radio-stale",
       {
