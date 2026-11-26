@@ -1214,7 +1214,9 @@ describe('RadioService coverage', () => {
       const { service, palazzo } = build();
       palazzo.stopSong.mockRejectedValue(new Error('x'));
       await expect(service.stopSong('p')).rejects.toThrow(
-        new BadGatewayException('Palazzo rejected the song stop'),
+        new BadGatewayException(
+          'Palazzo could not be reached; the song stop was not confirmed',
+        ),
       );
       expect(service['logger'].error).toHaveBeenCalledWith({
         event: 'palazzo.machine.failed',
@@ -1222,6 +1224,32 @@ describe('RadioService coverage', () => {
         programId: 'p',
         reason: 'unavailable',
       });
+    });
+
+    it('says whether Palazzo was unreachable, unreadable or refused a command', async () => {
+      const { service, palazzo } = build();
+      const cases: Array<[unknown, string]> = [
+        [new PalazzoMachineError('unavailable'), 'Palazzo could not be reached; the song stop was not confirmed'],
+        [new Error('socket hang up'), 'Palazzo could not be reached; the song stop was not confirmed'],
+        [new PalazzoMachineError('malformed'), "Palazzo's answer to the song stop could not be read"],
+        [new PalazzoMachineError('rejected', 409), 'Palazzo rejected the song stop'],
+        [new PalazzoMachineError('unauthorized', 401), 'Palazzo rejected the song stop'],
+        [new PalazzoMachineError('cross-program'), 'Palazzo rejected the song stop'],
+      ];
+      for (const [error, message] of cases) {
+        palazzo.stopSong.mockRejectedValueOnce(error);
+        await expect(service.stopSong('main')).rejects.toThrow(
+          new BadGatewayException(message),
+        );
+      }
+      palazzo.updateMixer.mockRejectedValueOnce(new PalazzoMachineError('rejected', 400));
+      await expect(service.updateMixer('main', {} as never)).rejects.toThrow(
+        'Palazzo rejected the radio mixer update',
+      );
+      palazzo.stopInstants.mockRejectedValueOnce(new PalazzoMachineError('malformed'));
+      await expect(service.stopAllInstants('main')).rejects.toThrow(
+        "Palazzo's answer to the instant stop could not be read",
+      );
     });
 
     it('plays an instant with a supplied or generated request id', async () => {
@@ -1286,7 +1314,9 @@ describe('RadioService coverage', () => {
       );
       palazzo.updateMixer.mockRejectedValue(new Error('x'));
       await expect(service.updateMixer('p', mixer)).rejects.toThrow(
-        new BadGatewayException('Palazzo rejected the radio mixer update'),
+        new BadGatewayException(
+          'Palazzo could not be reached; the radio mixer update was not confirmed',
+        ),
       );
     });
 
@@ -1309,7 +1339,9 @@ describe('RadioService coverage', () => {
       );
       palazzo.stopInstants.mockRejectedValue(new Error('x'));
       await expect(service.stopAllInstants('p')).rejects.toThrow(
-        new BadGatewayException('Palazzo rejected the instant stop'),
+        new BadGatewayException(
+          'Palazzo could not be reached; the instant stop was not confirmed',
+        ),
       );
     });
   });
