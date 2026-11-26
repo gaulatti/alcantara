@@ -2,6 +2,11 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { createPostgresAdapter } from '../src/prisma-adapter';
 import {
+  DEMO_SONG_IDS,
+  demoAudioClient,
+  seedDemoAudio,
+} from '../src/seed/demo-audio';
+import {
   syncAudioClipAsset,
   syncImageAsset,
   syncSongAsset,
@@ -182,6 +187,24 @@ async function main() {
       enabled: true,
     },
   });
+  // Local demo songs for a recovery playlist and a filler (gaulatti/alcantara#206): their audio is one fictional tone
+  // uploaded to the Compose localstack, so each download comes from the local media store. The seeded songs above keep
+  // their existing audio.
+  const demoAudioUrl = await seedDemoAudio(process.env, demoAudioClient(process.env));
+  for (const [index, id] of DEMO_SONG_IDS.entries()) {
+    const demoSong = {
+      artist: 'Seed Artist',
+      title: `Local demo tone ${index + 1}`,
+      audioUrl: demoAudioUrl,
+      enabled: true,
+    };
+    const song = await prisma.song.upsert({
+      where: { id },
+      update: demoSong,
+      create: { id, ...demoSong },
+    });
+    await syncSongAsset(prisma, song);
+  }
   await prisma.songIntro.upsert({
     where: { songId: assignedSong.id },
     update: { instantId: assignedIntro.id, programId: 'main' },
