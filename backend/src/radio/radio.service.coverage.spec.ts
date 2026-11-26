@@ -240,6 +240,9 @@ describe('RadioService coverage', () => {
   });
 
   describe('prepareRecoveryPlaylist audio sources', () => {
+    // The refusal says what the audio must be, naming the variable, never the bucket itself.
+    const ACCEPTED =
+      'an https URL on the managed media bucket (MEDIA_S3_BUCKET), with no port or credentials';
     const withSong = (audioUrl: string) => {
       const ctx = build();
       ctx.prisma.song.findMany.mockResolvedValue([
@@ -251,7 +254,7 @@ describe('RadioService coverage', () => {
     it('rejects an unparsable URL', async () => {
       const { service } = withSong('not a url');
       await expect(service.prepareRecoveryPlaylist('p', [1])).rejects.toThrow(
-        'recovery song has an invalid URL',
+        `recovery song 1 has no absolute audio URL; it needs ${ACCEPTED}`,
       );
     });
 
@@ -265,7 +268,7 @@ describe('RadioService coverage', () => {
       const { service } = withSong(url);
       const fetchSpy = jest.spyOn(global, 'fetch');
       await expect(service.prepareRecoveryPlaylist('p', [1])).rejects.toThrow(
-        'recovery audio must use the managed media bucket',
+        `recovery song 1 audio must be ${ACCEPTED}`,
       );
       expect(fetchSpy).not.toHaveBeenCalled();
     });
@@ -1211,7 +1214,9 @@ describe('RadioService coverage', () => {
       const { service, palazzo } = build();
       palazzo.stopSong.mockRejectedValue(new Error('x'));
       await expect(service.stopSong('p')).rejects.toThrow(
-        new BadGatewayException('Palazzo rejected the song stop'),
+        new BadGatewayException(
+          'Palazzo could not be reached; the song stop was not confirmed',
+        ),
       );
       expect(service['logger'].error).toHaveBeenCalledWith({
         event: 'palazzo.machine.failed',
@@ -1219,6 +1224,32 @@ describe('RadioService coverage', () => {
         programId: 'p',
         reason: 'unavailable',
       });
+    });
+
+    it('says whether Palazzo was unreachable, unreadable or refused a command', async () => {
+      const { service, palazzo } = build();
+      const cases: Array<[unknown, string]> = [
+        [new PalazzoMachineError('unavailable'), 'Palazzo could not be reached; the song stop was not confirmed'],
+        [new Error('socket hang up'), 'Palazzo could not be reached; the song stop was not confirmed'],
+        [new PalazzoMachineError('malformed'), "Palazzo's answer to the song stop could not be read"],
+        [new PalazzoMachineError('rejected', 409), 'Palazzo rejected the song stop'],
+        [new PalazzoMachineError('unauthorized', 401), 'Palazzo rejected the song stop'],
+        [new PalazzoMachineError('cross-program'), 'Palazzo rejected the song stop'],
+      ];
+      for (const [error, message] of cases) {
+        palazzo.stopSong.mockRejectedValueOnce(error);
+        await expect(service.stopSong('main')).rejects.toThrow(
+          new BadGatewayException(message),
+        );
+      }
+      palazzo.updateMixer.mockRejectedValueOnce(new PalazzoMachineError('rejected', 400));
+      await expect(service.updateMixer('main', {} as never)).rejects.toThrow(
+        'Palazzo rejected the radio mixer update',
+      );
+      palazzo.stopInstants.mockRejectedValueOnce(new PalazzoMachineError('malformed'));
+      await expect(service.stopAllInstants('main')).rejects.toThrow(
+        "Palazzo's answer to the instant stop could not be read",
+      );
     });
 
     it('plays an instant with a supplied or generated request id', async () => {
@@ -1283,7 +1314,9 @@ describe('RadioService coverage', () => {
       );
       palazzo.updateMixer.mockRejectedValue(new Error('x'));
       await expect(service.updateMixer('p', mixer)).rejects.toThrow(
-        new BadGatewayException('Palazzo rejected the radio mixer update'),
+        new BadGatewayException(
+          'Palazzo could not be reached; the radio mixer update was not confirmed',
+        ),
       );
     });
 
@@ -1306,7 +1339,9 @@ describe('RadioService coverage', () => {
       );
       palazzo.stopInstants.mockRejectedValue(new Error('x'));
       await expect(service.stopAllInstants('p')).rejects.toThrow(
-        new BadGatewayException('Palazzo rejected the instant stop'),
+        new BadGatewayException(
+          'Palazzo could not be reached; the instant stop was not confirmed',
+        ),
       );
     });
   });
