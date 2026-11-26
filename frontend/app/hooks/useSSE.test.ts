@@ -138,15 +138,19 @@ describe("useSSE", () => {
 });
 
 describe("useSSE after unmount", () => {
-  it("ignores late open and error events from a connection that was closed", () => {
+  it("opens no new connection and schedules no reconnect when a closed source fires error or open", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const onConnectionChange = vi.fn();
     const { unmount } = renderHook(() => useSSE({ url: "/e", onConnectionChange }));
     const source = last();
     unmount();
+    const timers = vi.getTimerCount();
     const calls = onConnectionChange.mock.calls.length;
-    act(() => source.onopen!());
     act(() => source.onerror!());
-    expect(onConnectionChange.mock.calls.length).toBe(calls);
+    act(() => source.onopen!());
+    expect(vi.getTimerCount()).toBe(timers);
+    vi.advanceTimersByTime(60_000);
     expect(FakeEventSource.instances).toHaveLength(1);
+    expect(onConnectionChange.mock.calls.length).toBe(calls);
   });
 });

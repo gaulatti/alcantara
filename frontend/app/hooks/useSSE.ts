@@ -46,8 +46,11 @@ export function useSSE({ url, onMessage, onConnectionChange, onConnectionStateCh
     onConnectionChangeRef.current?.(false);
     onConnectionStateChangeRef.current?.('connecting');
 
-    // connect runs once on mount and again only from a timer that cleanup clears, so it never runs after cleanup.
     const connect = () => {
+      if (disposed) {
+        return;
+      }
+
       try {
         eventSource = new EventSource(url);
 
@@ -80,14 +83,19 @@ export function useSSE({ url, onMessage, onConnectionChange, onConnectionStateCh
           setError(new Error('SSE connection error'));
           eventSource?.close();
           eventSource = null;
-          reconnectTimer = window.setTimeout(connect, reconnectInterval);
+
+          if (!disposed) {
+            reconnectTimer = window.setTimeout(connect, reconnectInterval);
+          }
         };
       } catch (err) {
         setIsConnected(false);
         onConnectionChangeRef.current?.(false);
         onConnectionStateChangeRef.current?.('disconnected');
         setError(err as Error);
-        reconnectTimer = window.setTimeout(connect, reconnectInterval);
+        if (!disposed) {
+          reconnectTimer = window.setTimeout(connect, reconnectInterval);
+        }
       }
     };
 
