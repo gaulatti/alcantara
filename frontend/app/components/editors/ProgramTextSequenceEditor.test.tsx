@@ -361,3 +361,8 @@ it("saves no marquee on a wrapped chyron when marquee is not available", () => {
   });
   expect((last().items[0] as any).sequence.items[0].useMarquee).toBeUndefined();
 });
+
+it("shows the default interval for an autoplay sequence that has none stored", () => {
+  editor({ ...root([leaf("a", "One")]), mode: "autoplay", intervalMs: undefined });
+  expect(screen.getByRole("spinbutton")).toHaveValue(4000);
+});

@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { PompeiiService } from '../auth/pompeii.service';
 import { OperatorChangeRecorder } from '../operator-change/operator-change-recorder';
 import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 import { PrismaService } from '../prisma.service';
@@ -13,8 +14,11 @@ const programService = { getProgramIdsByAssignedScene: jest.fn() };
 
 @Global()
 @Module({
-  providers: [{ provide: ProgramService, useValue: programService }],
-  exports: [ProgramService],
+  providers: [
+    { provide: ProgramService, useValue: programService },
+    { provide: PompeiiService, useValue: { teamId: 0 } },
+  ],
+  exports: [ProgramService, PompeiiService],
 })
 class FakeProgramModule {}
 
@@ -35,9 +39,11 @@ describe('ScenesModule', () => {
       .compile();
 
     expect(moduleRef.get(ScenesService)).toBeInstanceOf(ScenesService);
-    await expect(moduleRef.get(ScenesController).findAll()).resolves.toEqual([
-      { id: 1 },
-    ]);
+    await expect(
+      moduleRef
+        .get(ScenesController)
+        .findAll({ user: { authorization: { teamId: 0 } } }),
+    ).resolves.toEqual([{ id: 1 }]);
     expect(prisma.scene.findMany).toHaveBeenCalledWith({
       include: { layout: true },
       orderBy: { createdAt: 'desc' },

@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { PompeiiService } from '../auth/pompeii.service';
 import { ProgramService } from '../program/program.service';
 import { OperatorChangeRecorder } from '../operator-change/operator-change-recorder';
 import { noRecorder } from '../operator-change/operator-change-recorder.testing';
@@ -12,8 +13,11 @@ import { LayoutsService } from './layouts.service';
 // this module asks for its service.
 @Global()
 @Module({
-  providers: [{ provide: ProgramService, useValue: {} }],
-  exports: [ProgramService],
+  providers: [
+    { provide: ProgramService, useValue: {} },
+    { provide: PompeiiService, useValue: { teamId: 0 } },
+  ],
+  exports: [ProgramService, PompeiiService],
 })
 class ProgramStubModule {}
 
@@ -31,7 +35,9 @@ describe('LayoutsModule', () => {
 
     const controller = moduleRef.get(LayoutsController);
     expect(moduleRef.get(LayoutsService)).toBeInstanceOf(LayoutsService);
-    await expect(controller.findAll()).resolves.toEqual([1]);
+    await expect(
+      controller.findAll({ user: { authorization: { teamId: 0 } } }),
+    ).resolves.toEqual([1]);
     expect(prisma.layout.findMany).toHaveBeenCalled();
     await moduleRef.close();
   });

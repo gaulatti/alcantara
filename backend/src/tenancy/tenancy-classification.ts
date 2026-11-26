@@ -88,28 +88,6 @@ export const TENANCY_CLASSIFICATION: Readonly<Record<string, TenancyClass>> = {
   SharedConsoleLayout: principal,
 };
 
-/**
- * The eleven shared-library models that are `tenant` before their `teamId`
- * column exists (#148 adds it). Only these may be `tenant` without a `teamId`;
- * they may also already have one. Removing this list is a separate closer,
- * gated on #148 being in production.
- */
-export const PENDING_TEAM_ID: readonly string[] = [
-  'Layout',
-  'Scene',
-  'MediaAsset',
-  'MediaLabel',
-  'Media',
-  'MediaGroup',
-  'Song',
-  'Instant',
-  'Stinger',
-  'BroadcastDestination',
-  'BroadcastSettings',
-];
-
-const PENDING_TEAM_ID_LIMIT = 11;
-
 /** A Prisma model as the classification needs it: its fields and their base types. */
 export interface SchemaModel {
   name: string;
@@ -133,13 +111,13 @@ export function readSchemaModels(schema: string): SchemaModel[] {
 
 /**
  * Every way a classification disagrees with the schema's models; empty when it is
- * complete and true. The ratchet calls it with TENANCY_CLASSIFICATION and
- * PENDING_TEAM_ID.
+ * complete and true. The ratchet calls it with TENANCY_CLASSIFICATION. Every
+ * model classified `tenant` must have a `teamId` field: the allowance for the
+ * eleven shared libraries ended once #148 gave them one (#548).
  */
 export function tenancyClassificationProblems(
   models: readonly SchemaModel[],
   classification: Readonly<Record<string, TenancyClass>>,
-  pendingTeamId: readonly string[],
 ): string[] {
   const problems: string[] = [];
   const byName = new Map(models.map((model) => [model.name, model]));
@@ -152,11 +130,7 @@ export function tenancyClassificationProblems(
       problems.push(`Model ${model.name} has no tenancy classification.`);
       continue;
     }
-    if (
-      tenancy.kind === 'tenant' &&
-      !model.fields.has('teamId') &&
-      !pendingTeamId.includes(model.name)
-    ) {
+    if (tenancy.kind === 'tenant' && !model.fields.has('teamId')) {
       problems.push(
         `Model ${model.name} is classified tenant but has no teamId field.`,
       );
@@ -183,23 +157,6 @@ export function tenancyClassificationProblems(
     if (!byName.has(name)) {
       problems.push(
         `Classification names ${name}, which is not a model in the schema.`,
-      );
-    }
-  }
-
-  if (pendingTeamId.length > PENDING_TEAM_ID_LIMIT) {
-    problems.push(
-      `PENDING_TEAM_ID lists ${pendingTeamId.length} models; it may list at most ${PENDING_TEAM_ID_LIMIT}.`,
-    );
-  }
-  for (const name of pendingTeamId) {
-    if (!byName.has(name)) {
-      problems.push(
-        `PENDING_TEAM_ID names ${name}, which is not a model in the schema.`,
-      );
-    } else if (classOf(name)?.kind !== 'tenant') {
-      problems.push(
-        `PENDING_TEAM_ID names ${name}, which is not classified tenant.`,
       );
     }
   }

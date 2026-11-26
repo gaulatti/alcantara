@@ -42,6 +42,7 @@ export function getAppNavigationSections({
         ...(hasTelevision
           ? [
               { id: "calls", href: "/calls", label: "Guest calls" },
+              { id: "sources", href: "/sources", label: "External sources" },
               ...(canViewBroadcasts
                 ? [
                     {

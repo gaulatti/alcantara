@@ -39,6 +39,11 @@ The Alcantara runtime secret identifier is code-owned; its value is not a
 GitHub secret or variable. Deploy this stack's least-privilege role update
 before enabling the pre-build deployment gate.
 
+The Cumulus role may create, write, read, describe, delete and restore secrets
+only under `alcantara/destinations/*` (the broadcast destination keys the backend
+writes). After this stack applies, the hand-made inline policy with the same grant
+can be removed.
+
 Application logging is intentionally absent from this stack. Production
 containers retain bounded host-local logs, so the Cumulus role needs no
 CloudWatch Logs writer actions and Alcantara does not look up or create an

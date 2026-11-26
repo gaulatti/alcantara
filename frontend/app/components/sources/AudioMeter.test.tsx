@@ -1,6 +1,6 @@
 import React from 'react';
 import '@testing-library/jest-dom/vitest';
-import { describe, expect, it, afterEach } from 'vitest';
+import { describe, expect, it, afterEach, vi } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import { AudioMeter } from './AudioMeter';
 
@@ -39,5 +39,54 @@ describe('AudioMeter', () => {
     expect(screen.getByTestId('meter-bar-7')).toHaveClass('bg-amber-400');
     expect(screen.getByTestId('meter-bar-8')).toHaveClass('opacity-30');
     expect(screen.getByTestId('meter-bar-9')).toHaveClass('opacity-30');
+  });
+});
+
+// gaulatti/alcantara#527: a frame that fires after the meter is torn down reads no analyser and stops, without
+// scheduling another frame or touching the closed context.
+describe('AudioMeter after teardown', () => {
+  it('stops a frame that fires after unmount instead of scheduling another', () => {
+    const scheduled: FrameRequestCallback[] = [];
+    const live = new Set<number>();
+    let nextId = 1;
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      const id = nextId++;
+      scheduled.push(cb);
+      live.add(id);
+      return id;
+    });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => {
+      live.delete(id);
+    });
+    class FakeTrack {}
+    class FakeStream {
+      constructor(_tracks: unknown[]) {}
+    }
+    vi.stubGlobal('MediaStreamTrack', FakeTrack);
+    vi.stubGlobal('MediaStream', FakeStream);
+    class FakeAudioContext {
+      state = 'running';
+      createAnalyser() {
+        return { fftSize: 0, frequencyBinCount: 4, getByteFrequencyData: () => {} };
+      }
+      createMediaStreamSource() {
+        return { connect: () => {}, disconnect: () => {} };
+      }
+      close() {
+        return Promise.resolve();
+      }
+    }
+    vi.stubGlobal('AudioContext', FakeAudioContext);
+    try {
+      const { unmount } = render(<AudioMeter audioTrack={{ mediaStreamTrack: new FakeTrack() }} />);
+      expect(scheduled).toHaveLength(1);
+      unmount();
+      expect(live.size).toBe(0);
+      // The frame that was already on its way fires after teardown: it must stop, not schedule another frame.
+      scheduled[0](0);
+      expect(scheduled).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

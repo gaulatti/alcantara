@@ -155,6 +155,7 @@ function harness(programType = 'both') {
     metrics as unknown as ManagedMetricsService,
     // No program filler configured: Start is unchanged (gaulatti/alcantara#126).
     { televisionStartBinding: jest.fn().mockResolvedValue(null) } as never,
+    { cancelDeletion: jest.fn(), scheduleDeletion: jest.fn() } as never,
   );
   return {
     service,
@@ -350,6 +351,22 @@ describe('BroadcastDestinationsService coverage', () => {
 
     it('retires with a timestamp and restores with null', async () => {
       const h = harness();
+      h.prisma.broadcastDestination.findUnique
+        .mockResolvedValueOnce({
+          id: 'x',
+          service: null,
+          secretId: 'broadcast/hand-typed',
+          retiredAt: null,
+        })
+        .mockResolvedValueOnce({
+          ...{
+            id: 'x',
+            service: null,
+            secretId: 'broadcast/hand-typed',
+            retiredAt: null,
+          },
+          retiredAt: new Date(),
+        });
       await h.service.setRetired('x', true);
       await h.service.setRetired('x', false);
       const [retire, restore] = h.prisma.broadcastDestination.update.mock
@@ -361,6 +378,12 @@ describe('BroadcastDestinationsService coverage', () => {
 
     it('validates ids and maps errors when retiring', async () => {
       const h = harness();
+      h.prisma.broadcastDestination.findUnique.mockResolvedValue({
+        id: 'x',
+        service: null,
+        secretId: 'broadcast/hand-typed',
+        retiredAt: null,
+      });
       await expect(h.service.setRetired('/', true)).rejects.toBeInstanceOf(
         BadRequestException,
       );

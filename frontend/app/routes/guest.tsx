@@ -51,6 +51,8 @@ export default function GuestRoute() {
   const heartbeatRef = useRef<number | null>(null);
   const [status, setStatus] = useState<GuestStatus>('preflight');
   const [error, setError] = useState('');
+  // The join was refused (401/403): the invitation is closed, so a rejoin cannot succeed (gaulatti/alcantara#353).
+  const [invitationClosed, setInvitationClosed] = useState(false);
   const [cameraEnabled, setCameraEnabled] = useState(true);
   const [microphoneEnabled, setMicrophoneEnabled] = useState(true);
   const [headphonesConfirmed, setHeadphonesConfirmed] = useState(false);
@@ -221,6 +223,7 @@ export default function GuestRoute() {
       if (response.status === 401 || response.status === 403) {
         // A rejoin with a revoked or expired invitation: say what to do, not the server's text (gaulatti/alcantara#353).
         setError(`${await responseError(response)} ${INVITATION_CLOSED_HINT}`);
+        setInvitationClosed(true);
         setStatus('ended');
         return;
       }
@@ -467,9 +470,10 @@ export default function GuestRoute() {
           {status === 'ended' || status === 'left' ? (
             <div className='absolute inset-0 flex flex-col items-center justify-center gap-4 bg-zinc-950/95 px-6 text-center text-xl'>
               <p>{status === 'left' ? 'You left the studio.' : 'The studio session ended.'}</p>
-              {error ? <p className='max-w-md text-base text-amber-200'>{error}</p> : null}
-              {/* A rejoin asks the studio again; if the invitation is closed, the message above says to ask for a new link. */}
-              <Button onClick={() => void join()}>Rejoin the studio</Button>
+              {error ? <p role='alert' className='max-w-md text-base text-amber-200'>{error}</p> : null}
+              {/* A rejoin asks the studio again while the invitation is still open; once the join itself was refused,
+                  the message above says to ask for a new link and no rejoin is offered. */}
+              {invitationClosed ? null : <Button onClick={() => void join()}>Rejoin the studio</Button>}
             </div>
           ) : null}
           {notice ? (
@@ -494,7 +498,8 @@ export default function GuestRoute() {
             </div>
           ) : null}
         </div>
-        {error ? (
+        {/* The ended/left panel already shows the message; the banner is for every other state. */}
+        {error && status !== 'ended' && status !== 'left' ? (
           <div role='alert' className='mt-4 rounded-xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-200'>
             {error}
           </div>

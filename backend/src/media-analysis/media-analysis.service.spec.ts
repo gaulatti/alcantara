@@ -23,6 +23,8 @@ import {
   MAX_ATTEMPTS,
   BACKFILL_RETRY_AFTER_MS,
   MediaAnalysisService,
+  MAX_HAND_BACKS,
+  RESUME_DELAY_MS,
   START_DELAY_MS,
 } from './media-analysis.service';
 
@@ -73,7 +75,12 @@ function setup(rows: unknown[][] = [[candidate()]]) {
     $queryRaw: jest.fn(async () => queue.shift() ?? []),
     mediaAssetAnalysis: {
       create: jest.fn(async () => ({})),
-      updateMany: jest.fn(async () => ({ count: 1 })),
+      // A claim a stopped process left is found by `claimedAt`; there is none unless a test says so.
+      updateMany: jest.fn(
+        async (args?: { where?: Record<string, unknown> }) => ({
+          count: args?.where && 'claimedAt' in args.where ? 0 : 1,
+        }),
+      ),
     },
   };
   const metrics = {
@@ -81,6 +88,7 @@ function setup(rows: unknown[][] = [[candidate()]]) {
     setBacklog: jest.fn(),
     recordWrite: jest.fn(),
     recordCueRule: jest.fn(),
+    recordInterrupted: jest.fn(),
     setDurationBackfill: jest.fn(),
   };
   const analyzer = {
@@ -105,6 +113,133 @@ beforeEach(() => {
 afterEach(() => {
   jest.restoreAllMocks();
   jest.useRealTimers();
+});
+
+// gaulatti/alcantara#235, production 2026-11-26: a re-analysis of songs analysed three times before was marked
+// `interrupted` without running, because the attempts of earlier successful runs still counted, and the failed run
+// replaced their cue points and loudness with nulls.
+describe('a re-analysis of a good result never takes it away', () => {
+  const again = (overrides: Record<string, unknown> = {}) =>
+    candidate({
+      analysisUpdatedAt: new Date('2026-11-24T00:00:00.000Z'),
+      attempts: 0,
+      status: 'success',
+      ...overrides,
+    });
+  const writes = (prisma: ReturnType<typeof setup>['prisma']) =>
+    (
+      prisma.mediaAssetAnalysis.updateMany.mock.calls as unknown as Array<
+        [{ where: Record<string, unknown>; data: Record<string, unknown> }]
+      >
+    ).map(([call]) => call);
+  const MEASURED = [
+    'cueInSeconds',
+    'cueOutSeconds',
+    'integratedLufs',
+    'truePeakDbtp',
+    'durationSeconds',
+    'ruleVersion',
+  ];
+
+  it('stays a success while the run is claimed, and writes the new result to the success row', async () => {
+    const { service, prisma } = setup([[again()]]);
+    await service.runOnce(NOW);
+    const [claim, store] = writes(prisma);
+    expect(claim.data.status).toBe('success');
+    expect(MEASURED.some((name) => name in claim.data)).toBe(false);
+    expect(store.where.status).toBe('success');
+    expect(store.data).toMatchObject({ status: 'success', cueOutSeconds: 238 });
+  });
+
+  it('records only why a run failed, keeps the request for a retry and drops it when final', async () => {
+    for (const [attempts, retried] of [
+      [0, true],
+      [2, false],
+    ] as const) {
+      const { service, prisma, analyzer } = setup([
+        [again({ attempts, requestedRuleVersion: 2 })],
+      ]);
+      analyzer.analyze.mockRejectedValueOnce(
+        new AudioAnalysisError('source-unavailable'),
+      );
+      await service.runOnce(NOW);
+      const failed = writes(prisma)[1];
+      expect(failed.where.status).toBe('success');
+      expect(failed.data.error).toBe('source-unavailable');
+      expect('status' in failed.data).toBe(false);
+      expect(MEASURED.some((name) => name in failed.data)).toBe(false);
+      expect(failed.data.nextAttemptAt !== null).toBe(retried);
+      expect('requestedRuleVersion' in failed.data).toBe(!retried);
+    }
+  });
+
+  it('keeps the result of a row whose attempts are already spent: interrupted is recorded, nothing is erased', async () => {
+    const { service, prisma, analyzer } = setup([[again({ attempts: 3 })]]);
+    await service.runOnce(NOW);
+    expect(analyzer.analyze).not.toHaveBeenCalled();
+    const [only] = writes(prisma);
+    expect(only.data).toEqual(
+      expect.objectContaining({
+        error: 'interrupted',
+        nextAttemptAt: null,
+        requestedRuleVersion: null,
+      }),
+    );
+    expect('status' in only.data).toBe(false);
+    expect(MEASURED.some((name) => name in only.data)).toBe(false);
+  });
+
+  it('still fails a first analysis and a changed file, which have no good result to keep', async () => {
+    for (const overrides of [
+      { status: null },
+      { status: 'failed' },
+      { sourceChanged: true },
+    ]) {
+      const { service, prisma, analyzer } = setup([[again(overrides)]]);
+      analyzer.analyze.mockRejectedValueOnce(new AudioAnalysisError('silent'));
+      await service.runOnce(NOW);
+      expect(writes(prisma)[0].data.status).toBe('pending');
+      expect(writes(prisma)[1].data).toMatchObject({
+        status: 'failed',
+        cueOutSeconds: null,
+        integratedLufs: null,
+      });
+    }
+  });
+
+  it('gives the claim of a kept result back on the success row when its write keeps failing', async () => {
+    const { service, prisma } = setup([[again()]]);
+    const lost = new Prisma.PrismaClientKnownRequestError('unreachable', {
+      code: 'P1001',
+      clientVersion: 'test',
+    });
+    prisma.mediaAssetAnalysis.updateMany.mockImplementation((async (call: {
+      data: Record<string, unknown>;
+    }) => {
+      if (call.data.status === 'success' && 'cueOutSeconds' in call.data)
+        throw lost;
+      return { count: 1 };
+    }) as never);
+    for (let run = 0; run <= MAX_WRITE_RETRIES; run += 1)
+      await service.runOnce(NOW);
+    const released = writes(prisma).at(-1)!;
+    expect(released.where.status).toBe('success');
+    expect(released.data).toEqual({
+      claimedAt: null,
+      attempts: 0,
+      nextAttemptAt: expect.any(Date),
+    });
+  });
+
+  it('reads the row status in the candidate query', async () => {
+    const { service, prisma } = setup([[]]);
+    await service.runOnce(NOW);
+    const [query] = prisma.$queryRaw.mock.calls[0] as unknown as [
+      { sql: string },
+    ];
+    expect(query.sql).toContain('m."status" AS "status"');
+    expect(query.sql).toContain('"requestedRuleVersion", "status",');
+  });
 });
 
 describe('MediaAnalysisService.runOnce', () => {
@@ -220,6 +355,7 @@ describe('MediaAnalysisService.runOnce', () => {
         status: 'pending',
         attempts: 1,
         nextAttemptAt: new Date(NOW.getTime() + LEASE_MS),
+        claimedAt: NOW,
         sourceUrl: URL_A,
       },
     });
@@ -231,6 +367,8 @@ describe('MediaAnalysisService.runOnce', () => {
     expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenCalledWith({
       where: { assetId: 'song:1', sourceUrl: URL_A, status: 'pending' },
       data: {
+        claimedAt: null,
+        interruptions: 0,
         status: 'success',
         cueInSeconds: 1.5,
         cueOutSeconds: 238,
@@ -285,6 +423,7 @@ describe('MediaAnalysisService.runOnce', () => {
     expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith({
       where: { assetId: 'song:1', sourceUrl: URL_A, status: 'pending' },
       data: {
+        claimedAt: null,
         status: 'failed',
         ...EMPTY,
         error: 'timeout',
@@ -315,6 +454,7 @@ describe('MediaAnalysisService.runOnce', () => {
         status: 'pending',
         attempts: 2,
         nextAttemptAt: new Date(NOW.getTime() + LEASE_MS),
+        claimedAt: NOW,
         sourceUrl: URL_A,
       },
     });
@@ -408,6 +548,7 @@ describe('MediaAnalysisService.runOnce', () => {
     expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenCalledWith({
       where: { assetId: 'song:1', updatedAt: ROW_UPDATED_AT },
       data: {
+        claimedAt: null,
         status: 'failed',
         ...EMPTY,
         error: 'interrupted',
@@ -459,6 +600,7 @@ describe('MediaAnalysisService.runOnce', () => {
       expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith({
         where: { assetId: 'song:1', sourceUrl, status: 'pending' },
         data: {
+          claimedAt: null,
           status: 'failed',
           ...EMPTY,
           error: 'unsupported-source',
@@ -668,12 +810,14 @@ describe('MediaAnalysisService schedule', () => {
 
     await service.onApplicationBootstrap();
     await jest.advanceTimersByTimeAsync(START_DELAY_MS);
+    // Two calls at startup look for claims a stopped process left (#587).
     await settle(
-      () => prisma.mediaAssetAnalysis.updateMany.mock.calls.length > 0,
+      () => prisma.mediaAssetAnalysis.updateMany.mock.calls.length > 2,
     );
     expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith({
       where: { assetId: 'song:2', sourceUrl: PRIVATE_URL, status: 'pending' },
       data: {
+        claimedAt: null,
         status: 'failed',
         ...EMPTY,
         error: 'source-refused',
@@ -1106,7 +1250,9 @@ describe('a database error on the result write (#278)', () => {
         failures += 1;
         throw error();
       }
-      return { count: 1 };
+      // No claim of a stopped process is found at startup (#587).
+      const where = (args as { where?: Record<string, unknown> }).where;
+      return { count: where && 'claimedAt' in where ? 0 : 1 };
     }) as never);
   }
   const resultWrites = (prisma: ReturnType<typeof setup>['prisma']) =>
@@ -1198,6 +1344,7 @@ describe('a database error on the result write (#278)', () => {
     expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith({
       where: { assetId: 'song:1', sourceUrl: URL_A, status: 'pending' },
       data: {
+        claimedAt: null,
         attempts: 1,
         nextAttemptAt: new Date(NOW.getTime() + RETRY_BACKOFF_MS[0]),
       },
@@ -1231,6 +1378,7 @@ describe('a database error on the result write (#278)', () => {
     expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith(
       expect.objectContaining({
         data: {
+          claimedAt: null,
           attempts: 2,
           nextAttemptAt: new Date(NOW.getTime() + RETRY_BACKOFF_MS[0]),
         },
@@ -1362,5 +1510,71 @@ describe('MediaAnalysisService backlog', () => {
     expect(metrics.setBacklog).toHaveBeenLastCalledWith(4321);
     await service.runOnce(NOW);
     expect(metrics.setBacklog).toHaveBeenLastCalledWith(0);
+  });
+});
+
+// gaulatti/alcantara#587: a restart must not leave the job it was running waiting out its ten minute lease.
+describe('claims a stopped process left', () => {
+  const claimed = { claimedAt: { not: null } };
+
+  it('are handed back with their attempt, due at once, and only a bounded number of times for free', async () => {
+    const { service, prisma, metrics } = setup([]);
+    prisma.mediaAssetAnalysis.updateMany
+      .mockResolvedValueOnce({ count: 2 })
+      .mockResolvedValueOnce({ count: 1 });
+    await expect(service.handBackClaims(NOW)).resolves.toBe(3);
+    expect(prisma.mediaAssetAnalysis.updateMany.mock.calls).toEqual([
+      [
+        {
+          where: {
+            ...claimed,
+            attempts: { gt: 0 },
+            interruptions: { lt: MAX_HAND_BACKS },
+          },
+          data: {
+            claimedAt: null,
+            nextAttemptAt: NOW,
+            attempts: { decrement: 1 },
+            interruptions: { increment: 1 },
+          },
+        },
+      ],
+      [{ where: claimed, data: { claimedAt: null, nextAttemptAt: NOW } }],
+    ]);
+    expect(metrics.recordInterrupted.mock.calls).toEqual([
+      ['handed_back', 2],
+      ['attempt_spent', 1],
+    ]);
+  });
+
+  it('bring the first run forward when there are any', async () => {
+    jest.useFakeTimers();
+    const { service, prisma } = setup([]);
+    prisma.mediaAssetAnalysis.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    await service.onApplicationBootstrap();
+    await jest.advanceTimersByTimeAsync(RESUME_DELAY_MS - 1);
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(1);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(RESUME_DELAY_MS).toBeLessThan(START_DELAY_MS);
+    service.onModuleDestroy();
+  });
+
+  it('are left to their lease when the database refuses, and the job still starts', async () => {
+    jest.useFakeTimers();
+    const { service, prisma, metrics } = setup([]);
+    prisma.mediaAssetAnalysis.updateMany.mockRejectedValueOnce(
+      new Error('down'),
+    );
+    await service.onApplicationBootstrap();
+    expect(Logger.prototype.warn).toHaveBeenCalledWith(
+      'Media analysis could not hand back interrupted runs (Error); their lease runs out',
+    );
+    expect(metrics.recordInterrupted).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(START_DELAY_MS);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    service.onModuleDestroy();
   });
 });
