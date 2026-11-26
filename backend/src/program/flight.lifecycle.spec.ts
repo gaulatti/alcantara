@@ -47,6 +47,7 @@ function fixture() {
     asset: { labels: [{ labelId: 'music', position: 0 }] },
   };
   const prisma: any = {
+    asRunRecord: { findMany: jest.fn().mockResolvedValue([]) },
     programState: {
       findUnique: jest.fn(async ({ where }: any) =>
         where.programId === 'news' ? state : null,

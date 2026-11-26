@@ -81,6 +81,16 @@ export interface FlightSequence {
   updatedAt: Date;
 }
 
+/**
+ * A rundown cue that was logged as not aired (gaulatti/alcantara#726). `reason` is the as-run row's
+ * end reason, such as `engine_unavailable`.
+ */
+export interface FlightCueOutcome {
+  cueId: string;
+  state: 'not-aired';
+  reason: string | null;
+}
+
 export interface FlightRuntimeState {
   sequenceId: number;
   programId: string;

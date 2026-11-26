@@ -27,6 +27,7 @@ function minuteAt(offsetMs: number): string {
 
 function harness() {
   const prisma = {
+    asRunRecord: { findMany: jest.fn().mockResolvedValue([]) },
     programState: {
       findUnique: jest
         .fn()

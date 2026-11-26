@@ -56,6 +56,12 @@ block is then stopped and `radio_log_cue_failed` is broadcast with `reason: "eng
 so it does not run silently. The CSV export lists `not-aired` rows; the SoundExchange export and the
 royalty summary read only `ended` rows, so a song that was not aired is never reported as played.
 
+A `not-aired` row written for a rundown cue also names that rundown and cue (`flightSequenceId`,
+`flightCueId`; #726). `GET /program/:programId/flight` answers each rundown with `cueOutcomes`, a list of
+`{ cueId, state: "not-aired", reason }` read from those rows (an empty list when none), so the on-air
+rundown shows such a cue as **Skipped** with its reason instead of Played. Older rows have neither
+field and appear in no rundown's outcomes.
+
 ## Output confidence and recovery
 
 The Radio desk separates **Stream verified** (Liquidsoap and Icecast transport) from output confidence. It shows fresh sampled output as detected, checking, silent after ten seconds below 0.001 RMS while song playback is expected, idle, unavailable, or unverified. A sample older than fifteen seconds cannot prove audio. This is a level check, not a listener-side measurement.

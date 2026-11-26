@@ -29,6 +29,7 @@ import { fillRadioRundown, parseFillerRules } from './radio-rundown-filler';
 import type {
   FlightCue,
   FlightCueKind,
+  FlightCueOutcome,
   FlightRecipeUse,
   FlightRuntimeState,
   FlightSequence,
@@ -316,16 +317,55 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     this.runtimes.clear();
   }
 
-  async listFlightSequences(
-    programId: string,
-  ): Promise<Omit<FlightSequence, 'programStateId'>[]> {
+  async listFlightSequences(programId: string): Promise<
+    (Omit<FlightSequence, 'programStateId'> & {
+      cueOutcomes: FlightCueOutcome[];
+    })[]
+  > {
     const state = await this.getProgramStateRecord(programId);
     const sequences = await this.prisma.flightSequence.findMany({
       where: { programStateId: state.id },
       orderBy: { createdAt: 'asc' },
     });
+    const outcomes = await this.cueOutcomesBySequence(
+      sequences.map((seq) => seq.id),
+    );
 
-    return sequences.map((seq) => this.toFlightSequence(seq));
+    return sequences.map((seq) => ({
+      ...this.toFlightSequence(seq),
+      cueOutcomes: outcomes.get(seq.id) ?? [],
+    }));
+  }
+
+  /**
+   * gaulatti/alcantara#726: the cues of these rundowns that were logged as not aired, from the
+   * as-run rows written for them, so the rundown shows them as skipped instead of played.
+   */
+  private async cueOutcomesBySequence(
+    sequenceIds: number[],
+  ): Promise<Map<number, FlightCueOutcome[]>> {
+    const bySequence = new Map<number, FlightCueOutcome[]>();
+    if (sequenceIds.length === 0) return bySequence;
+    const rows = await this.prisma.asRunRecord.findMany({
+      where: {
+        flightSequenceId: { in: sequenceIds },
+        flightCueId: { not: null },
+        state: 'not-aired',
+      },
+      select: { flightSequenceId: true, flightCueId: true, endReason: true },
+      orderBy: { at: 'asc' },
+    });
+    for (const row of rows) {
+      const list = bySequence.get(row.flightSequenceId!) ?? [];
+      if (!list.some((outcome) => outcome.cueId === row.flightCueId))
+        list.push({
+          cueId: row.flightCueId!,
+          state: 'not-aired',
+          reason: row.endReason,
+        });
+      bySequence.set(row.flightSequenceId!, list);
+    }
+    return bySequence;
   }
 
   async generateTaggedLog(
@@ -1798,6 +1838,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     // start a local timeline that plays nowhere. It is skipped and logged as not aired instead.
     if (await isRadioOnlyEngineOff(this.prisma, programId)) {
       this.metrics.recordStartRefused('automation_engine_unavailable');
+      const runtime = this.runtimes.get(programId);
       await this.prisma.asRunRecord.create({
         data: {
           programId,
@@ -1805,6 +1846,9 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
           state: 'not-aired',
           endReason: 'engine_unavailable',
           at: new Date(),
+          // gaulatti/alcantara#726: the rundown shows this cue as skipped, not played.
+          flightSequenceId: runtime?.sequenceId ?? null,
+          flightCueId: runtime ? cue.id : null,
         },
       });
       throw new AutomationEngineUnavailableError();

@@ -855,8 +855,12 @@ model AsRunRecord {
   actorVia          String?
   /// MCP client name when `actorVia` is `mcp`; null otherwise.
   actorClient       String?
+  /// On a `not-aired` row written for a rundown cue: that rundown and cue (gaulatti/alcantara#726); null otherwise.
+  flightSequenceId  Int?
+  flightCueId       String?
 
   @@unique([programId, playbackRequestId, state])
   @@index([programId, at])
+  @@index([flightSequenceId])
 }
 
