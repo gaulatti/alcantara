@@ -120,4 +120,6 @@ it("backs off between failed saves and stops growing at the cap", async () => {
   // Each failed attempt waits longer than the last; the wait stops growing at its cap.
   await waitFor(() => expect(server.requests("PUT /scenes/1").length).toBeGreaterThanOrEqual(4), { timeout: 15000 });
   expect(await screen.findByText("Scene save failed. Retrying...")).toBeVisible();
-});
+  // The real backoff takes about 4.6 s, so the test needs room for the 15 s wait above: vitest's 5 s
+  // default cut it off when the suite ran in the Compose image (gaulatti/alcantara#200).
+}, 20000);
