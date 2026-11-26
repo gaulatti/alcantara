@@ -21,7 +21,18 @@ describe('renaming a program that is on air', () => {
         ),
         update: jest.fn().mockResolvedValue({}),
       },
-      program: { findUnique: jest.fn().mockResolvedValue(null) },
+      program: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      flightSequence: {
+        findUnique: jest.fn(({ where }: { where: { id: number } }) =>
+          Promise.resolve({ isRunning: where.id === 4 }),
+        ),
+      },
+      $transaction: jest.fn((operations: Promise<unknown>[]) =>
+        Promise.all(operations),
+      ),
     };
     const engine = {
       getOnAirView: jest.fn((): { playbackRequestId: string | null } => ({
@@ -79,6 +90,12 @@ describe('renaming a program that is on air', () => {
       );
       await refused(service, reason);
     }
+  });
+
+  it('renames a program whose selected log is not running', async () => {
+    const { service, engine } = build({ activeFlightSequenceId: 5 });
+    await service.renameProgram('show', 'other');
+    expect(engine.renameProgram).toHaveBeenCalledWith('show', 'other');
   });
 
   it('still changes the type of a program on air under the same id', async () => {

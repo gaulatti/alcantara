@@ -1550,18 +1550,26 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
    * A rename moves the program's engines and outputs to another id, so a program that is on air is not renamed: it
    * would go silent, or lose its output.
    */
-  private refuseRenameOnAir(
+  private async refuseRenameOnAir(
     programId: string,
     state: {
       activeSceneId: number | null;
       fadeToBlack: boolean;
       activeFlightSequenceId: number | null;
     },
-  ): void {
+  ): Promise<void> {
+    // A selected log that is not running airs nothing.
+    const log =
+      state.activeFlightSequenceId == null
+        ? null
+        : await this.prisma.flightSequence.findUnique({
+            where: { id: state.activeFlightSequenceId },
+            select: { isRunning: true },
+          });
     const reasons = [
       [state.activeSceneId != null, 'a scene is on air'],
       [!!state.fadeToBlack, 'fade to black is on'],
-      [state.activeFlightSequenceId != null, 'a log is running'],
+      [!!log?.isRunning, 'a log is running'],
       [
         !!this.programSongPlaybackByProgramId.get(programId)?.isPlaying ||
           !!this.songExecutionEngine.getOnAirView(programId).playbackRequestId,
@@ -1618,7 +1626,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     if (!existingSource) {
       throw new Error('Program not found');
     }
-    if (current !== next) this.refuseRenameOnAir(current, existingSource);
+    if (current !== next) await this.refuseRenameOnAir(current, existingSource);
 
     if (current !== next) {
       const existingTarget = await this.prisma.programState.findUnique({
