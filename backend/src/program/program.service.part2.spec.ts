@@ -311,7 +311,7 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       );
       const result = await service.renameProgram('a', 'c');
       expect(prisma.programState.update).toHaveBeenCalledWith({
-        where: { id: 9 },
+        where: expect.objectContaining({ id: 9, activeSceneId: null }),
         data: { programId: 'c' },
       });
       expect(result).toMatchObject({ programId: 'c' });

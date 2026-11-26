@@ -139,6 +139,8 @@ export class PalazzoRadioTelemetryService
     setting: { type: string; palazzoUrl: string | null } | null,
   ): void {
     this.stopClient(current);
+    // A deleted program's client under the new id would keep its own URL; startClient would not replace it.
+    this.stopClient(next);
     this.rejectedPrograms.delete(current);
     this.rejectedPrograms.delete(next);
     if (!setting?.palazzoUrl || isDeployCandidate()) return;

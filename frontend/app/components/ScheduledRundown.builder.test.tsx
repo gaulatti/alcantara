@@ -297,7 +297,7 @@ function dataTransfer() {
 }
 
 const fixedStartInput = () =>
-  screen.getByRole("spinbutton", { name: "Fixed start" });
+  screen.getByRole("textbox", { name: "Fixed start" });
 
 it("drops a library item where it lands on the timeline, and nowhere when the drag is foreign", async () => {
   stubLibrary();
@@ -319,9 +319,9 @@ it("drops a library item where it lands on the timeline, and nowhere when the dr
   expect(rows).toHaveLength(3);
   expect(rows[0]).toHaveTextContent("Station ident");
   expect(rows[1]).toHaveTextContent("Harbor Light");
-  expect(fixedStartInput()).toHaveValue(0);
+  expect(fixedStartInput()).toHaveValue("+00:00");
   fireEvent.click(rows[1]);
-  expect(fixedStartInput()).toHaveValue(null);
+  expect(fixedStartInput()).toHaveValue("");
 
   // A drag that is not a library entry adds nothing.
   const foreign = dataTransfer();
@@ -371,7 +371,7 @@ it("adds the searched item with Enter and moves the selection with the arrows", 
   search.blur();
   fireEvent.keyDown(window, { key: "/", metaKey: true });
   expect(search).not.toHaveFocus();
-  const duration = screen.getByRole("spinbutton", { name: "Fixed start" });
+  const duration = screen.getByRole("textbox", { name: "Fixed start" });
   duration.focus();
   fireEvent.keyDown(duration, { key: "/" });
   expect(duration).toHaveFocus();
@@ -410,7 +410,7 @@ it("moves a fixed start with the arrow keys and by dragging its pin, in 5 s step
   fireEvent.keyDown(news, { key: "Tab" });
   expect(news).toHaveAttribute("aria-valuenow", "360");
   fireEvent.click(eventRows(table)[2]);
-  expect(fixedStartInput()).toHaveValue(360);
+  expect(fixedStartInput()).toHaveValue("+06:00");
 
   // Dragged to 480 px of 900 (08:00), snapped to 5 s.
   fireEvent.pointerMove(news, { clientX: 480 });
@@ -421,11 +421,11 @@ it("moves a fixed start with the arrow keys and by dragging its pin, in 5 s step
   expect(news).toHaveAttribute("aria-valuenow", "480");
   fireEvent.pointerUp(news);
   expect(news).toHaveAttribute("data-dragging", "false");
-  expect(fixedStartInput()).toHaveValue(480);
+  expect(fixedStartInput()).toHaveValue("+08:00");
   fireEvent.pointerDown(news, { pointerId: 1 });
   fireEvent.pointerMove(news, { clientX: -50 });
   fireEvent.pointerCancel(news);
-  expect(fixedStartInput()).toHaveValue(0);
+  expect(fixedStartInput()).toHaveValue("+00:00");
   expect(screen.getByText(/Unsaved changes/)).toBeVisible();
 });
 
@@ -465,12 +465,12 @@ it("draws gaps, cuts and unknown lengths from rundownTiming(), and pins or frees
   // Pinning the ident at its estimated start (01:00) leaves the timing alone.
   fireEvent.click(eventRows(table)[1]);
   fireEvent.click(screen.getByRole("button", { name: "Pin its start here" }));
-  expect(fixedStartInput()).toHaveValue(60);
+  expect(fixedStartInput()).toHaveValue("+01:00");
   expect(screen.getAllByRole("slider")).toHaveLength(4);
   fireEvent.click(
     screen.getByRole("button", { name: "Follow the previous event" }),
   );
-  expect(fixedStartInput()).toHaveValue(null);
+  expect(fixedStartInput()).toHaveValue("");
   expect(screen.getAllByRole("slider")).toHaveLength(3);
   // The timeline selects the same event as the log.
   fireEvent.click(
@@ -705,9 +705,9 @@ it("pins an event with no estimated start at 00:00", async () => {
   renderRundown();
   const table = await openBlock();
   fireEvent.click(eventRows(table)[2]);
-  expect(fixedStartInput()).toHaveValue(null);
+  expect(fixedStartInput()).toHaveValue("");
   fireEvent.click(screen.getByRole("button", { name: "Pin its start here" }));
-  expect(fixedStartInput()).toHaveValue(0);
+  expect(fixedStartInput()).toHaveValue("+00:00");
   expect(screen.getByText(/Unsaved changes/)).toBeVisible();
 });
 

@@ -612,10 +612,13 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         },
       },
     });
-    const state = this.states.get(current);
-    if (state) this.silence(current, state);
-    this.states.delete(current);
-    this.radioProgramIds.delete(current);
+    // The new id may still hold the engine of a deleted program, which would be hydrated over; both ids are dropped.
+    for (const programId of [current, next]) {
+      const state = this.states.get(programId);
+      if (state) this.silence(programId, state);
+      this.states.delete(programId);
+      this.radioProgramIds.delete(programId);
+    }
     const capable =
       !!setting?.palazzoUrl &&
       RADIO_PROGRAM_TYPES.has(setting.programState.type);

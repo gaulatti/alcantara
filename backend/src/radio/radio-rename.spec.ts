@@ -161,6 +161,30 @@ describe('renaming a radio program', () => {
     expect(engine.getOnAirView('demo').mode).toBeNull();
   });
 
+  it('drops what a deleted program left under the new id: its engine state and its client', async () => {
+    const { engine, telemetry } = await build(stored);
+    engine.handleSequenceUpdated('night', {
+      mode: 'manual',
+      items: [],
+      activeItemId: null,
+      startedAt: null,
+      loop: false,
+    });
+    telemetry.renameProgram('none', 'night', {
+      type: 'radio',
+      palazzoUrl: 'http://old-night:3100',
+    });
+    const stale = mockClients[1];
+
+    await engine.renameProgram('demo', 'night');
+
+    expect(stale.stop).toHaveBeenCalled();
+    expect(mockClients).toHaveLength(3);
+    // The stored program has no sequence, so none of the deleted program's remains.
+    expect(engine.getOnAirView('night').mode).toBeNull();
+    engine.onModuleDestroy();
+  });
+
   it('leaves telemetry alone where it never starts: a rejected or deploy-candidate setting', async () => {
     const { telemetry } = await build(stored);
     telemetry.renameProgram('demo', 'tv', {

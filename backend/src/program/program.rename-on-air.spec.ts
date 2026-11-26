@@ -98,6 +98,28 @@ describe('renaming a program that is on air', () => {
     expect(engine.renameProgram).toHaveBeenCalledWith('show', 'other');
   });
 
+  it('writes only while the show is still off air, and refuses when that changed', async () => {
+    const { service, prisma, engine } = build({ activeFlightSequenceId: 5 });
+    await service.renameProgram('show', 'other');
+    expect(prisma.programState.update.mock.calls[0][0].where).toEqual({
+      id: 1,
+      activeSceneId: null,
+      fadeToBlack: false,
+      activeFlightSequenceId: 5,
+      flightSequences: { none: { id: 5, isRunning: true } },
+    });
+    engine.renameProgram.mockClear();
+    prisma.programState.update.mockRejectedValueOnce(
+      Object.assign(new Error('no row'), { code: 'P2025' }),
+    );
+    await refused(service, 'it changed while it was being renamed');
+    expect(engine.renameProgram).not.toHaveBeenCalled();
+    prisma.programState.update.mockRejectedValueOnce(new Error('database'));
+    await expect(service.renameProgram('show', 'other')).rejects.toThrow(
+      'database',
+    );
+  });
+
   it('still changes the type of a program on air under the same id', async () => {
     const { service, engine } = build({ activeSceneId: 3 });
     await service.renameProgram('show', 'show', 'both');

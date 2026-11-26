@@ -1,3 +1,4 @@
+import { ProgramTeamAccess } from '../tenancy/program-team-access';
 import { Inject, Injectable, OnModuleInit, Optional } from '@nestjs/common';
 import { DiscoveryService, Reflector } from '@nestjs/core';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -72,6 +73,7 @@ export class McpRegistry implements OnModuleInit {
     @Optional()
     @Inject(MCP_ACTION_EXECUTOR)
     private readonly executor?: McpActionExecutor,
+    @Optional() private readonly programTeams?: ProgramTeamAccess,
   ) {}
 
   onModuleInit(): void {
@@ -162,6 +164,13 @@ export class McpRegistry implements OnModuleInit {
     try {
       if (!ctx.principal.permissions.has(spec.permission))
         throw new McpToolError('forbidden', `requires ${spec.permission}`);
+      // A tool acts only on the station team's programs (gaulatti/alcantara#122).
+      if (
+        this.programTeams &&
+        typeof args.program_id === 'string' &&
+        !(await this.programTeams.allowsStation(args.program_id))
+      )
+        throw new McpToolError('not_found', 'Program not found');
       if (spec.tier !== 'R') {
         if (!this.executor)
           throw new McpToolError(

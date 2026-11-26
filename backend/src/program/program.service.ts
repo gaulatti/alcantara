@@ -22,6 +22,7 @@ import {
 } from '../operator-change/operator-change-recorder';
 import { INSTANT_CHANGE_FIELDS } from '../operator-change/library-change-fields';
 import { PrismaService } from '../prisma.service';
+import { ProgramTeamAccess } from '../tenancy/program-team-access';
 import { PlayoutSongScope } from '../radio/playout-song-scope';
 import { forTeam } from '../tenancy/scoped-prisma';
 import {
@@ -247,6 +248,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly recorder?: OperatorChangeRecorder,
     @Optional() private readonly songScope?: PlayoutSongScope,
     @Optional() private readonly sceneAssets?: SceneAssetScope,
+    @Optional() private readonly programTeams?: ProgramTeamAccess,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -1543,6 +1545,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         },
       }),
     ]);
+    this.programTeams?.invalidate(normalized);
     return this.getProgramStateWithScenes(normalized);
   }
 
@@ -1626,8 +1629,6 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     if (!existingSource) {
       throw new Error('Program not found');
     }
-    if (current !== next) await this.refuseRenameOnAir(current, existingSource);
-
     if (current !== next) {
       const existingTarget = await this.prisma.programState.findUnique({
         where: { programId: next },
@@ -1667,23 +1668,51 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       Object.assign(updateData, this.programTemplateUpdateData(template));
     }
 
-    const updateState = this.prisma.programState.update({
-      where: { id: existingSource.id },
-      data: updateData,
-    });
+    // The on-air check is the last thing before the write, and the write itself matches the row only while it is
+    // still off air, so a scene or a log that starts in between rolls the rename back. A song playing is known only
+    // in memory: one that starts between this check and the commit is stopped by the engine's move to the new id.
+    if (current !== next) await this.refuseRenameOnAir(current, existingSource);
+    const updateState = () =>
+      this.prisma.programState.update({
+        where:
+          current === next
+            ? { id: existingSource.id }
+            : {
+                id: existingSource.id,
+                activeSceneId: null,
+                fadeToBlack: false,
+                activeFlightSequenceId: existingSource.activeFlightSequenceId,
+                flightSequences: {
+                  none: {
+                    id: existingSource.activeFlightSequenceId ?? 0,
+                    isRunning: true,
+                  },
+                },
+              },
+        data: updateData,
+      });
     if (current === next) {
-      await updateState;
+      await updateState();
     } else {
       // gaulatti/alcantara#122: the Program row carries the program's team and branding, so it is renamed with the
       // program, or the renamed program would belong to no team.
-      await this.prisma.$transaction([
-        this.prisma.program.updateMany({
-          where: { programId: current },
-          data: { programId: next },
-        }),
-        updateState,
-      ]);
+      try {
+        await this.prisma.$transaction([
+          this.prisma.program.updateMany({
+            where: { programId: current },
+            data: { programId: next },
+          }),
+          updateState(),
+        ]);
+      } catch (error) {
+        if ((error as { code?: string }).code !== 'P2025') throw error;
+        throw new ConflictException(
+          `${ON_AIR_RENAME_MESSAGE_START} (it changed while it was being renamed). Take it off air before renaming it.`,
+        );
+      }
     }
+    this.programTeams?.invalidate(current);
+    this.programTeams?.invalidate(next);
     await recorder.record({
       actor,
       target: 'program',
@@ -1755,6 +1784,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.programState.delete({
       where: { id: existing.id },
     });
+    this.programTeams?.invalidate(normalized);
 
     const subject = this.eventSubjects.get(normalized);
     if (subject) {
