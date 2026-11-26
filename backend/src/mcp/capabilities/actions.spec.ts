@@ -518,11 +518,10 @@ const ROWS: Row[] = [
       { args: { name: 'L', component_type: 'grid', settings: { a: 1 } } },
     ],
     rest: (c, a) =>
-      c.layouts.create({
-        name: 'L',
-        componentType: 'grid',
-        settings: a.settings,
-      }),
+      c.layouts.create(
+        { name: 'L', componentType: 'grid', settings: a.settings },
+        TEAM_REQUEST,
+      ),
     service: (f) => f.layouts.create,
   },
   {
@@ -544,17 +543,21 @@ const ROWS: Row[] = [
       },
     ],
     rest: (c, a) =>
-      c.layouts.update('2', {
-        name: a.name as string,
-        componentType: a.component_type as string,
-        settings: a.settings,
-      }),
+      c.layouts.update(
+        '2',
+        {
+          name: a.name as string,
+          componentType: a.component_type as string,
+          settings: a.settings,
+        },
+        TEAM_REQUEST,
+      ),
     service: (f) => f.layouts.update,
   },
   {
     name: 'layout_remove',
     cases: [{ args: { layout_id: 2 } }],
-    rest: (c) => c.layouts.remove('2'),
+    rest: (c) => c.layouts.remove('2', TEAM_REQUEST),
     service: (f) => f.layouts.remove,
     confirm: ['2', layout.name],
   },
@@ -609,6 +612,8 @@ const ROWS: Row[] = [
   },
 ];
 
+const TEAM_REQUEST = { user: { authorization: { teamId: 7 } } };
+
 function build() {
   const f = fakeServices();
   const controllers: Controllers = {
@@ -628,7 +633,11 @@ function build() {
       { teamId: 7 } as never,
     ).specs(),
     ...new ScenesMcpTools(f.scenes as never, f.programs as never).specs(),
-    ...new LayoutsMcpTools(f.layouts as never, f.programs as never).specs(),
+    ...new LayoutsMcpTools(
+      f.layouts as never,
+      f.programs as never,
+      { teamId: 7 } as never,
+    ).specs(),
     ...new MediaGroupsMcpTools(f.groups as never, f.programs as never).specs(),
   ];
   return { f, controllers, specs };

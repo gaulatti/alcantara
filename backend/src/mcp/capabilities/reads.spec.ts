@@ -48,7 +48,11 @@ const specs = [
     { teamId: 7 } as never,
   ).specs(),
   ...new ScenesMcpTools(services.scenes as never, {} as never).specs(),
-  ...new LayoutsMcpTools(services.layouts as never, {} as never).specs(),
+  ...new LayoutsMcpTools(
+    services.layouts as never,
+    {} as never,
+    { teamId: 7 } as never,
+  ).specs(),
   ...new MediaGroupsMcpTools(services.groups as never, {} as never).specs(),
 ];
 const ctx = { principal: {} as never };
@@ -65,6 +69,8 @@ beforeEach(() => {
   services.layouts.findOne.mockResolvedValue({ ...layout, scenes: [scene] });
   services.groups.findAll.mockResolvedValue(mediaGroupsPage);
 });
+
+const TEAM_REQUEST = { user: { authorization: { teamId: 7 } } };
 
 describe('read capabilities return what the controller returns', () => {
   it('program_list_programs', async () => {
@@ -103,10 +109,10 @@ describe('read capabilities return what the controller returns', () => {
 
   it('layout_find_all and layout_find_one', async () => {
     expect(rebuilt(await run('layout_find_all', {}))).toEqual(
-      asRest(await controllers.layouts.findAll()),
+      asRest(await controllers.layouts.findAll(TEAM_REQUEST)),
     );
     expect(rebuilt(await run('layout_find_one', { layout_id: 2 }))).toEqual(
-      asRest(await controllers.layouts.findOne('2')),
+      asRest(await controllers.layouts.findOne('2', TEAM_REQUEST)),
     );
   });
 
