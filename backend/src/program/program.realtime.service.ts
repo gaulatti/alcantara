@@ -489,6 +489,7 @@ export class ProgramRealtimeService implements OnModuleDestroy {
         await this.programService.updateProgramSongPlayback(
           songPlayback,
           client.programId,
+          { forwardToRadio: false },
         );
       } catch {
         // ignore malformed payloads from client

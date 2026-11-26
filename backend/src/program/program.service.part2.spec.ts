@@ -1012,6 +1012,22 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       expect(radio.playSong).toHaveBeenCalledTimes(3);
     });
 
+    it('records telemetry without forwarding when forwarding is off, even for a new track', async () => {
+      const { service, put, radio } = build();
+      put('main');
+      const recorded = await service.updateProgramSongPlayback(base, 'main', {
+        forwardToRadio: false,
+      });
+      expect(radio.playSong).not.toHaveBeenCalled();
+      expect(recorded.isPlaying).toBe(true);
+      expect((await service.getProgramSongPlayback('main')).audioUrl).toBe(
+        base.audioUrl,
+      );
+      // The default, used by the authorized HTTP write, still forwards.
+      await service.updateProgramSongPlayback({ ...base, token: 't-default' });
+      expect(radio.playSong).toHaveBeenCalledTimes(1);
+    });
+
     it('surfaces a rejected radio command as a bad gateway', async () => {
       const { service, put, radio } = build();
       put('main');

@@ -220,9 +220,11 @@ describe('ProgramRealtimeService actual WebSocket boundary', () => {
       { main: { vu: 0.4 } },
       'news',
     );
+    // Renderer telemetry is recorded, never forwarded to radio.
     expect(programs.updateProgramSongPlayback).toHaveBeenCalledWith(
       { token: 'song-1', currentTimeMs: 100 },
       'news',
+      { forwardToRadio: false },
     );
     expect(flights.handleSongEnded).toHaveBeenCalledWith('news');
     expect(renderer.packets).toEqual([]);
@@ -263,6 +265,7 @@ describe('ProgramRealtimeService actual WebSocket boundary', () => {
     expect(programs.updateProgramSongPlayback).toHaveBeenCalledWith(
       { type: 'song_playback_update', playback: null, token: 'song-1' },
       'main',
+      { forwardToRadio: false },
     );
     expect(console.error).toHaveBeenCalledWith('[WS] song_ended handler threw');
     expect(renderer.socket.readyState).toBe(WebSocket.OPEN);

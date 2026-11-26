@@ -591,9 +591,14 @@ describe('ProgramRealtimeService client messages', () => {
       client('control'),
       json({ type: 'song_playback_update', playback }),
     );
+    // Recorded as telemetry only: a renderer never forwards a song to radio.
     expect(ctx.programService.updateProgramSongPlayback.mock.calls).toEqual([
-      [playback, 'p'],
-      [{ type: 'song_playback_update', token: 'u' }, 'p'],
+      [playback, 'p', { forwardToRadio: false }],
+      [
+        { type: 'song_playback_update', token: 'u' },
+        'p',
+        { forwardToRadio: false },
+      ],
     ]);
   });
 
