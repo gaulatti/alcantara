@@ -1701,6 +1701,9 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
             state: 'not-aired',
             endReason: 'engine_unavailable',
             at: new Date(),
+            // gaulatti/alcantara#726: the rundown shows this cue as skipped, not played.
+            flightSequenceId: runtime.sequenceId,
+            flightCueId: cue.id,
           },
         });
       } catch (err) {
