@@ -707,3 +707,26 @@ it("pins an event with no estimated start at 00:00", async () => {
   expect(fixedStartInput()).toHaveValue(0);
   expect(screen.getByText(/Unsaved changes/)).toBeVisible();
 });
+
+it("runs the Check shortcut on Ctrl+Enter, and dismisses the overrun warning with Escape", async () => {
+  stubLibrary();
+  vi.mocked(fetchFlightSequences).mockResolvedValue([overrunning()]);
+  vi.mocked(publishFlightSequence).mockClear();
+  renderRundown();
+  await openBlock();
+
+  // Escape closes the overrun warning without publishing.
+  fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+  const dialog = await screen.findByRole("dialog");
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(publishFlightSequence).not.toHaveBeenCalled();
+
+  // Ctrl+Enter asks the same warning first, for a check rather than a publish.
+  fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
+  const checkDialog = await screen.findByRole("dialog");
+  expect(within(checkDialog).getByRole("alert")).toHaveTextContent(
+    "00:30 of content is cut at the next fixed start",
+  );
+  expect(publishFlightSequence).not.toHaveBeenCalled();
+});
