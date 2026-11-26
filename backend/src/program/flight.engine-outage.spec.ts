@@ -141,6 +141,9 @@ describe('FlightService engine outage grace (#719)', () => {
         state: 'not-aired',
         endReason: 'engine_unavailable',
         at: expect.any(Date),
+        // #726: the row names the rundown and cue, so the rundown shows it as skipped.
+        flightSequenceId: 7,
+        flightCueId: 'top',
       },
     });
     expect(h.program.broadcastUpdate).toHaveBeenCalledWith('radio-1', {
@@ -205,7 +208,12 @@ describe('FlightService engine outage grace (#719)', () => {
     jest.advanceTimersByTime(ENGINE_OUTAGE_GRACE_MS - 10_000);
     await settle();
     expect(h.prisma.asRunRecord.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ songId: 5, state: 'not-aired' }),
+      data: expect.objectContaining({
+        songId: 5,
+        state: 'not-aired',
+        flightSequenceId: 7,
+        flightCueId: 'after',
+      }),
     });
   });
 

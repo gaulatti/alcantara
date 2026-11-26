@@ -114,7 +114,7 @@ The authenticated private `/metrics` endpoint includes `alcantara_radio_log_tran
 A timed-block cue that fails while the automation engine is unavailable (the song engine has frozen the program on a Palazzo `unavailable`, `instance-mismatch` or `instance-conflict` status) does not stop the block. The cue is held:
 
 - When the engine is back within 60 seconds (`ENGINE_OUTAGE_GRACE_MS`) of the cue's due time, the cue is retried once. When it then plays, `cue-retried` is counted and the block goes on as usual. A fixed-time cue's due time is its clock time; a cue without one counts from when it first failed.
-- Past the grace, the cue is skipped and `cue-skipped` is counted. A skipped song writes a `not-aired` as-run row with end reason `engine_unavailable` (#715). The desk shows "A timed cue was skipped", and the block runs the next cue.
+- Past the grace, the cue is skipped and `cue-skipped` is counted. A skipped song writes a `not-aired` as-run row with end reason `engine_unavailable` (#715) that names its rundown and cue, so the on-air rundown shows it as **SKIPPED** (#726). The desk shows "A timed cue was skipped", and the block runs the next cue.
 - A retry that fails again stays held until the same deadline. A cue failure while the engine is up still stops the block (`cue-failed`), as before.
 
 
