@@ -30,6 +30,8 @@ vi.mock("../platform/desktopHost", () => ({ getDesktopHost: () => hostState.host
 const pref = vi.hoisted(() => ({
   profile: { touchMode: false, shortcutsEnabled: true, dockWidth: 280 },
   setDeviceClassOverride: vi.fn(),
+  resetCurrent: vi.fn(),
+  resetAll: vi.fn(),
   adoptAcknowledged: vi.fn(),
   updateProfile: vi.fn(),
   features: { teamId: undefined as string | undefined },
@@ -42,6 +44,9 @@ vi.mock("../contexts/ConsolePreferencesContext", () => ({
     deviceClass: "desktop",
     version: 1,
     setDeviceClassOverride: pref.setDeviceClassOverride,
+    resetCurrent: pref.resetCurrent,
+    resetAll: pref.resetAll,
+    detectedDeviceClass: "desktop",
     adoptAcknowledged: pref.adoptAcknowledged,
   }),
 }));
@@ -181,3 +186,20 @@ it("says a lost return's signal was lost since its last frame when it had one", 
   );
   expect(screen.getByRole("alert")).toHaveTextContent(/Signal lost · .* since the last frame/);
 });
+
+it("uses the detected device class and resets the current or every preference from the panel", async () => {
+  render(<BroadcastSwitcherDeck {...props} workspace="director" />);
+  await openPreferences();
+  fireEvent.click(await screen.findByRole("button", { name: /Use detected/ }));
+  expect(pref.setDeviceClassOverride).toHaveBeenCalledWith(null);
+  fireEvent.click(screen.getByRole("button", { name: "Reset class" }));
+  expect(pref.resetCurrent).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole("button", { name: "Reset all" }));
+  expect(pref.resetAll).toHaveBeenCalledTimes(1);
+}, 15000);
+
+it("passes a chosen transition up to the deck", async () => {
+  render(<BroadcastSwitcherDeck {...props} workspace="director" />);
+  fireEvent.change(await screen.findByLabelText("Transition"), { target: { value: "crescendo-prism" } });
+  expect(props.onTransitionChange).toHaveBeenCalledWith("crescendo-prism");
+}, 15000);
