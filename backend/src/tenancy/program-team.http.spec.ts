@@ -296,6 +296,23 @@ describe("programs of the caller's team", () => {
     if (ownedMain) await setMain(ownedMain.teamId!);
   });
 
+  it('checks main for the instant list named no program, for its own team and another', async () => {
+    const setMain = async (teamId: number) => {
+      await prisma.program.upsert({
+        where: { programId: 'main' },
+        create: { programId: 'main', teamId },
+        update: { teamId },
+      });
+      app.get(ProgramTeamAccess).invalidate('main');
+    };
+    await setMain(team + 1);
+    await expect(call('GET', '/instants')).resolves.toBe(404);
+    await expect(call('GET', `/instants?programId=${mine}`)).resolves.toBe(200);
+    await setMain(team);
+    await expect(call('GET', '/instants')).resolves.toBe(200);
+    if (ownedMain) await setMain(ownedMain.teamId!);
+  });
+
   it('lets an on-air command through when the team cannot be read, and counts it', async () => {
     const access = app.get(ProgramTeamAccess);
     const lookup = jest
@@ -338,6 +355,7 @@ describe("programs of the caller's team", () => {
       '/program/reload',
       '/auth/realtime-ticket',
       '/instants/:instantId/play',
+      '/instants',
       '/instants/stop-all',
       '/program',
     ]) {
