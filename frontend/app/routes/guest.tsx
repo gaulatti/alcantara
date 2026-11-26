@@ -70,6 +70,10 @@ export default function GuestRoute() {
   const [returnVideo, setReturnVideo] = useState('program');
   const [returnAudioBus, setReturnAudioBus] = useState('master');
   const [notice, setNotice] = useState<DirectorCommand | null>(null);
+  // The heartbeat is scheduled once per join, so it reads the call through this ref, kept current on every
+  // render: each heartbeat reports the call as it is, not as it was at join (gaulatti/alcantara#672).
+  const telemetryRef = useRef({ quality, returnFeed, cameraEnabled, microphoneEnabled });
+  telemetryRef.current = { quality, returnFeed, cameraEnabled, microphoneEnabled };
 
   const stopHeartbeat = () => {
     if (heartbeatRef.current !== null) window.clearInterval(heartbeatRef.current);
@@ -78,6 +82,7 @@ export default function GuestRoute() {
 
   const heartbeat = async () => {
     if (!sessionTokenRef.current) return;
+    const telemetry = telemetryRef.current;
     const response = await fetch(apiUrl('/webrtc/session/heartbeat'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -85,10 +90,10 @@ export default function GuestRoute() {
         sessionToken: sessionTokenRef.current,
         telemetry: {
           connectionState: roomRef.current?.state ?? 'disconnected',
-          quality,
-          returnFeedHealth: returnFeed ? 'healthy' : 'missing',
-          cameraEnabled,
-          microphoneEnabled
+          quality: telemetry.quality,
+          returnFeedHealth: telemetry.returnFeed ? 'healthy' : 'missing',
+          cameraEnabled: telemetry.cameraEnabled,
+          microphoneEnabled: telemetry.microphoneEnabled
         }
       })
     });
@@ -101,15 +106,17 @@ export default function GuestRoute() {
   };
 
   const acknowledge = async (command: DirectorCommand, commandStatus: 'accepted' | 'rejected' | 'read' | 'acknowledged') => {
-    if (!sessionTokenRef.current) return;
-    await fetch(apiUrl(`/webrtc/commands/${encodeURIComponent(command.id)}/ack`), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionToken: sessionTokenRef.current,
-        status: commandStatus
-      })
-    });
+    // Without a session token no receipt can be sent, but the guest's own answer still clears the notice.
+    if (sessionTokenRef.current) {
+      await fetch(apiUrl(`/webrtc/commands/${encodeURIComponent(command.id)}/ack`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionToken: sessionTokenRef.current,
+          status: commandStatus
+        })
+      });
+    }
     // Only the guest's own answer clears the notice; the automatic 'read' receipt
     // leaves a director message on screen until the guest acknowledges it.
     if (commandStatus === 'acknowledged' || commandStatus === 'accepted') setNotice(null);
@@ -258,6 +265,10 @@ export default function GuestRoute() {
         disconnectOnPageLeave: true
       });
       roomRef.current = room;
+      // A new room has no return feed and no quality reading yet: a rejoin does not report the last room's.
+      setReturnFeed(false);
+      setQuality('unknown');
+      telemetryRef.current = { ...telemetryRef.current, returnFeed: false, quality: 'unknown' };
       const programReturn = credentials.returnVideo === 'program';
       const wantedParticipant = (participant: RemoteParticipant) =>
         isProgramFeed(participant.identity, credentials.programId) ||
@@ -345,6 +356,8 @@ export default function GuestRoute() {
         try {
           const command = JSON.parse(new TextDecoder().decode(payload)) as DirectorCommand;
           if (!command.id) return;
+          // A media command must name the device it is for; one that does not is ignored like other malformed data.
+          if (command.type === 'media' && command.device !== 'camera' && command.device !== 'microphone') return;
           if (command.type === 'media' && command.enabled === false) {
             const operation = command.device === 'camera' ? room.localParticipant.setCameraEnabled(false) : room.localParticipant.setMicrophoneEnabled(false);
             void operation.then(() => {

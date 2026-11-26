@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { SimulcastStatusRail } from "./SimulcastStatusRail";
 
@@ -50,4 +50,35 @@ it("says ready for a live status from an older backend", async () => {
   api({ connection: "connected", degraded: false, detail: null });
   render(<SimulcastStatusRail programId="radio-1" />);
   expect(await screen.findByText("Radio ready")).toBeVisible();
+});
+
+it("reports the radio ready when the stream runs and the palazzo is connected", async () => {
+  api(status({ connection: "connected", degraded: false }));
+  render(<SimulcastStatusRail programId="radio-1" />);
+  expect(await screen.findByText("Radio ready")).toBeVisible();
+});
+
+it("reports the radio as needing attention when both status calls fail", async () => {
+  vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
+  render(<SimulcastStatusRail programId="radio-1" />);
+  expect(await screen.findByText("Radio needs attention")).toBeVisible();
+});
+
+it("asks for the status again every eight seconds", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
+  try {
+    api(status({ connection: "connected", degraded: false }));
+    render(<SimulcastStatusRail programId="radio-1" />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const before = vi.mocked(globalThis.fetch).mock.calls.length;
+    await act(async () => {
+      vi.advanceTimersByTime(8_000);
+      await Promise.resolve();
+    });
+    expect(vi.mocked(globalThis.fetch).mock.calls.length).toBeGreaterThan(before);
+  } finally {
+    vi.useRealTimers();
+  }
 });

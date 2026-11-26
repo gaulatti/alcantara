@@ -193,3 +193,10 @@ it('prepares an ordered radio filler for a radio-only program', async () => {
     .map(([, config]) => (config as any).params.mediaType);
   expect(types).toEqual(['AUDIO']);
 });
+
+it('shows the shared failure message for an error that is not an HTTP response', async () => {
+  vi.mocked(api.get).mockRejectedValueOnce(new Error('connection reset'));
+  render(<ProgramFillerPanel programId="both-1" canManage />);
+  expect(await screen.findByRole('alert')).toBeInTheDocument();
+  expect(screen.getByRole('alert').textContent).not.toContain('connection reset');
+});

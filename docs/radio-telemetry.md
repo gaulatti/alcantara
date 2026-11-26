@@ -491,6 +491,15 @@ route list, so it marks a route the list does not name yet. `status_class` is `2
 | `alcantara_media_analysis_duration_seconds`    | `result`                            | Wall time of one audio asset analysis          |
 | `alcantara_media_analysis_backlog_assets`      | none                                | Audio assets still waiting for analysis        |
 | `alcantara_media_analysis_interrupted_runs_total` | `outcome`                        | Claims a stopped process left, found at start  |
+| `alcantara_radio_programs_without_team`           | none                             | Radio programs with no team (#122)             |
+| `alcantara_library_songs_without_team`            | none                             | Library songs with no team (#122)              |
+
+`alcantara_radio_programs_without_team` and `alcantara_library_songs_without_team`
+count what a team-scoped song read would miss: programs of type `radio` or `both`
+with no positive team, and songs with none. Both must read `0` before the radio's
+song reads are scoped to a team (gaulatti/alcantara#122). The backend reads them at
+startup and every five minutes. A series is absent, not zero, before the first read
+and while the last read failed. A deploy candidate does not read them.
 
 `alcantara_media_analyses_total{result}` counts audio asset analysis runs:
 `success` (measurements stored), `retry` (failed and scheduled again) and
@@ -640,6 +649,17 @@ Contract: gaulatti/palazzo#40 §5.
 
 Every series is exported at 0 from start-up, and no label carries a song, URL,
 program or request ID.
+
+## Command failures shown to the operator
+
+A song stop, a radio mixer update or an instant stop that Palazzo did not carry out answers `502`. Its message
+says what happened, so an outage is not shown as a refusal:
+- **Unreachable** (or no answer): "Palazzo could not be reached; the song stop was not confirmed".
+- **An answer Alcántara could not read:** "Palazzo's answer to the song stop could not be read".
+- **A refusal** (rejected, unauthorized or another program's engine): "Palazzo rejected the song stop".
+
+The same wording applies to the mixer update and the instant stop. The failure is counted in
+`alcantara_palazzo_machine_requests_total` with its result, as before.
 
 ## Two sources on the program bus (#242)
 

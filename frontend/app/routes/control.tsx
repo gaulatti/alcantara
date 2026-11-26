@@ -1133,11 +1133,14 @@ export default function Control() {
   };
 
   const persistMixerLevels = async (nextMixerLevels: BroadcastSettings) => {
+    // The levels belong to the program they were set on, and so does the answer: one that arrives after the
+    // operator switched program is not applied to the program now on screen (gaulatti/alcantara#682).
+    const targetProgramId = activeProgramId;
     setIsSavingMixerLevels(true);
     setMixerSaveError(null);
     try {
       const res = await fetch(
-        apiUrl(`/program/${encodeURIComponent(activeProgramId)}/audio-bus`),
+        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/audio-bus`),
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -1154,6 +1157,7 @@ export default function Control() {
       }
 
       const payload = (await res.json()) as ProgramAudioBusSettings | null;
+      if (targetProgramId !== activeProgramIdRef.current) return;
       if (!shouldApplyControlUpdatePayload(payload, "audioBus")) {
         return;
       }
@@ -1164,6 +1168,7 @@ export default function Control() {
       setMixerLevels(persistedMixerLevels);
     } catch (err) {
       console.error("Failed to save mixer levels:", err);
+      if (targetProgramId !== activeProgramIdRef.current) return;
       setMixerSaveError("Mixer change was not applied to Palazzo. Try again.");
     } finally {
       setIsSavingMixerLevels(false);
@@ -1682,6 +1687,8 @@ export default function Control() {
   const saveProgramAudioBusSongSequence = async (
     nextSequence: ProgramSongSequence,
   ) => {
+    // Like the mixer levels, the answer belongs to the program the sequence was saved for (gaulatti/alcantara#682).
+    const targetProgramId = activeProgramId;
     const normalizedSongSequence = normalizeProgramSongPlaylist(
       normalizeProgramSongSequence(nextSequence) ?? {
         /* v8 ignore start -- every loader normalises the stored sequence and falls back to an empty manual sequence first, so this fallback cannot receive a null */
@@ -1698,7 +1705,7 @@ export default function Control() {
 
     try {
       const res = await fetch(
-        apiUrl(`/program/${encodeURIComponent(activeProgramId)}/audio-bus`),
+        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/audio-bus`),
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -1713,6 +1720,7 @@ export default function Control() {
 
       const payload =
         (await res.json()) as Partial<ProgramAudioBusSettings> | null;
+      if (targetProgramId !== activeProgramIdRef.current) return;
       if (!shouldApplyControlUpdatePayload(payload, "audioBus")) {
         return;
       }
@@ -1740,7 +1748,8 @@ export default function Control() {
       }));
     } catch (err) {
       console.error("Failed to save program audio bus settings:", err);
-      await fetchProgramAudioBusSettings(activeProgramId, false);
+      if (targetProgramId !== activeProgramIdRef.current) return;
+      await fetchProgramAudioBusSettings(targetProgramId, false);
       throw err;
     } finally {
       setIsSavingProgramAudioBus(false);
@@ -1990,10 +1999,13 @@ export default function Control() {
   };
 
   const stageSceneForProgram = async (sceneId: number | null) => {
+    // A Preview answer belongs to the program it was asked for: one that arrives after the operator
+    // switched program changes nothing on the program now on screen (gaulatti/alcantara#669).
+    const targetProgramId = activeProgramId;
     setTakeError(null);
     try {
       const response = await fetch(
-        apiUrl(`/program/${encodeURIComponent(activeProgramId)}/stage`),
+        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/stage`),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2005,6 +2017,7 @@ export default function Control() {
       }
 
       const result = (await response.json()) as StageSceneResponse;
+      if (targetProgramId !== activeProgramIdRef.current) return;
       const acceptedResult = acceptStageSceneResponse<Scene>(
         result,
         shouldApplyControlUpdatePayload,
@@ -2027,9 +2040,10 @@ export default function Control() {
       );
 
       if (!isProgramRealtimeConnected) {
-        await fetchProgramState(activeProgramId);
+        await fetchProgramState(targetProgramId);
       }
     } catch (err) {
+      if (targetProgramId !== activeProgramIdRef.current) return;
       setTakeError(err instanceof Error ? `Could not prepare Preview: ${err.message}` : "Could not prepare Preview.");
       return false;
     }
@@ -2060,9 +2074,11 @@ export default function Control() {
   };
 
   const setFadeToBlack = async (active: boolean) => {
+    // Like a Preview answer, a fade answer belongs to the program it was sent for (gaulatti/alcantara#669).
+    const targetProgramId = activeProgramId;
     try {
       const response = await fetch(
-        apiUrl(`/program/${encodeURIComponent(activeProgramId)}/fade-to-black`),
+        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/fade-to-black`),
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -2071,6 +2087,7 @@ export default function Control() {
       );
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const nextState = normalizeProgramState(await response.json());
+      if (targetProgramId !== activeProgramIdRef.current) return;
       if (nextState) syncProgramStateAndStagedScene(nextState);
     } catch (err) {
       console.error("Failed to change fade-to-black state:", err);
