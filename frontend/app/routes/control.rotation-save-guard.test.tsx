@@ -120,7 +120,7 @@ it("sends no audio-bus write from the playlist when the rotation has not loaded,
   render(view());
   fireEvent.click(await screen.findByRole("button", { name: "Add songs" }, { timeout: 5000 }));
   expect((await screen.findAllByText(notLoaded, {}, { timeout: 5000 })).length).toBeGreaterThan(0);
-  fireEvent.click(await screen.findByRole("button", { name: "Add to queue" }, { timeout: 5000 }));
+  fireEvent.click(await screen.findByRole("button", { name: /^Add .+ to the playlist$/ }, { timeout: 5000 }));
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
   });

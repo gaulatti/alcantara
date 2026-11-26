@@ -1,7 +1,7 @@
 import { StatePill } from '../radio-desk/primitives';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Input, Select } from '@gaulatti/bleecker';
-import { Clock, GripVertical, Headphones, ListPlus, Music2, Plus, Star } from 'lucide-react';
+import { Check, Clock, GripVertical, Headphones, ListPlus, Music2, Plus, Star } from 'lucide-react';
 import {
   createProgramSongSequence,
   createProgramSongSequenceItem,
@@ -544,7 +544,9 @@ export function ProgramSongSequenceEditor({
 
         {showCatalog ? (
           <div
-            className={`flex min-h-0 flex-col border-t border-sand/30 bg-dark-sand/70 ${showQueue ? 'hidden w-[320px] shrink-0 md:flex' : 'min-h-0 flex-1'}`}
+            // Beside the playlist from 768 px; below it on a phone, where it was hidden and Add fillers added nothing
+            // (walk part 4).
+            className={`flex min-h-0 flex-col border-t border-sand/30 bg-dark-sand/70 ${showQueue ? 'w-full md:w-[320px] md:shrink-0' : 'min-h-0 flex-1'}`}
           >
             <div className='border-b border-sand/30 bg-dark-sand/80 p-2'>
               <Input
@@ -555,7 +557,7 @@ export function ProgramSongSequenceEditor({
                 className='w-full rounded-md border border-sand/30 bg-dark-sand px-3 py-1.5 text-xs text-text-primary placeholder:text-text-secondary focus:border-sea/60 focus:outline-none focus:ring-1 focus:ring-sea/40'
               />
             </div>
-            <div className={showQueue ? 'min-h-0 flex-1 overflow-y-auto' : 'max-h-125 overflow-y-auto'}>
+            <div className={showQueue ? 'max-h-80 overflow-y-auto md:max-h-none md:min-h-0 md:flex-1' : 'max-h-125 overflow-y-auto'}>
               {availableSongCatalog
                 .filter((s) => {
                   if (!addSongValue) return true;
@@ -578,15 +580,17 @@ export function ProgramSongSequenceEditor({
                         <div className='truncate text-[10px] text-text-secondary'>{song.artist}</div>
                       </div>
                     </div>
+                    {/* Always visible: a touch screen has no hover (walk part 4). A song already in the playlist shows a
+                        muted check, never Bleecker's filled disabled button, so the addable ones read as the actions. */}
                     <Button
                       type='button'
                       disabled={songIdsInPlaylist.has(song.id)}
                       onClick={() => addItemFromCatalog(song)}
-                      className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary opacity-0 shadow-none transition-all hover:translate-y-0 hover:scale-100 hover:bg-sea/20 hover:text-sea group-hover:opacity-100'
-                      title={songIdsInPlaylist.has(song.id) ? 'Already in the playlist' : 'Add to queue'}
-                      aria-label={songIdsInPlaylist.has(song.id) ? 'Already in the playlist' : 'Add to queue'}
+                      className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary shadow-none transition-all hover:translate-y-0 hover:scale-100 hover:bg-sea/20 hover:text-sea disabled:bg-transparent disabled:text-text-secondary disabled:opacity-60'
+                      title={songIdsInPlaylist.has(song.id) ? 'Already in the playlist' : `Add ${song.title || 'song'} to the playlist`}
+                      aria-label={songIdsInPlaylist.has(song.id) ? 'Already in the playlist' : `Add ${song.title || 'song'} to the playlist`}
                     >
-                      <Plus size={14} />
+                      {songIdsInPlaylist.has(song.id) ? <Check size={14} aria-hidden='true' /> : <Plus size={14} aria-hidden='true' />}
                     </Button>
                   </div>
                 ))}

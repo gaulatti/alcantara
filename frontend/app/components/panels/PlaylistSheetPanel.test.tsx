@@ -44,7 +44,7 @@ function sheet(props: Record<string, unknown> = {}) {
 it("adds a catalog song to the playlist and shows when it is saving", () => {
   const { onChange } = sheet();
   expect(screen.queryByText("Saving…")).toBeNull();
-  fireEvent.click(screen.getByLabelText("Add to queue"));
+  fireEvent.click(screen.getByLabelText("Add Opening to the playlist"));
   expect(onChange).toHaveBeenCalledWith(
     expect.objectContaining({
       items: [expect.objectContaining({ songId: 4, title: "Opening" })],
