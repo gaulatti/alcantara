@@ -153,3 +153,13 @@ describe('ModoItalianoProgramRow: legacy', () => {
     expect(slot(visible, 'clock')?.querySelector('[aria-label="MI"]')).not.toBeNull();
   });
 });
+
+describe('ModoItalianoProgramRow: flags it cannot read', () => {
+  it('keeps the row when a flag is neither a boolean, a number nor a known word', async () => {
+    const container = await renderRow('modoitaliano-giorgia-clock,modoitaliano-giorgia-chyron', {
+      'modoitaliano-giorgia-clock': { showWorldClocks: 'maybe' },
+      'modoitaliano-giorgia-chyron': { show: true, textSequence: text('Sanremo 2027'), ctaSequence: text('En directo') },
+    });
+    expect(container.querySelector('[data-program-row="giorgia"]')).not.toBeNull();
+  });
+});
