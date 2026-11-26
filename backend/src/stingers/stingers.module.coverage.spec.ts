@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { PompeiiService } from '../auth/pompeii.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { ProgramService } from '../program/program.service';
 import { PrismaService } from '../prisma.service';
@@ -11,8 +12,11 @@ import { StingersService } from './stingers.service';
 // this module asks for its service.
 @Global()
 @Module({
-  providers: [{ provide: ProgramService, useValue: {} }],
-  exports: [ProgramService],
+  providers: [
+    { provide: ProgramService, useValue: {} },
+    { provide: PompeiiService, useValue: { teamId: 0 } },
+  ],
+  exports: [ProgramService, PompeiiService],
 })
 class ProgramStubModule {}
 
@@ -36,7 +40,9 @@ describe('StingersModule', () => {
 
     expect(moduleRef.get(StingersService)).toBeInstanceOf(StingersService);
     await expect(
-      moduleRef.get(StingersController).listStingers(),
+      moduleRef
+        .get(StingersController)
+        .listStingers({ user: { authorization: { teamId: 0 } } }),
     ).resolves.toEqual([7]);
     expect(prisma.stinger.findMany).toHaveBeenCalledWith({
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],

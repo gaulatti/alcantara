@@ -80,6 +80,7 @@ describe('catalogue, preference and ticket contracts through Fastify HTTP', () =
     },
     {
       path: 'stingers',
+      scoped: true,
       controller: StingersController,
       token: StingersService,
       service: methods(['findAll', 'create', 'update', 'remove']),
