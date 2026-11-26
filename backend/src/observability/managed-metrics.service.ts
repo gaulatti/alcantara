@@ -201,6 +201,8 @@ const OPERATOR_CHANGE_TARGETS = new Set([
 const OPERATOR_CHANGE_RESULTS = new Set(['recorded', 'failed']);
 /** gaulatti/alcantara#424: a recipe use previewed or built (`issues`: built, with something to fix). */
 const RECIPE_EXPANSION_RESULTS = new Set(['ok', 'issues', 'rejected']);
+/** gaulatti/alcantara#612: calls to the song-playback write route, to see whether anything still makes them. */
+const SONG_PLAYBACK_WRITE_RESULTS = new Set(['accepted', 'refused']);
 /** gaulatti/alcantara#424: a use rebuilt after its recipe changed, left on air, or lost to a concurrent edit. */
 const RECIPE_REBUILD_RESULTS = new Set(['rebuilt', 'skipped', 'conflict']);
 /** gaulatti/alcantara#465: a recipe delete, or why it was refused. */
@@ -338,6 +340,7 @@ export class ManagedMetricsService {
   private readonly artistLabelWrites: Counter<string>;
   private readonly operatorChangeRecords: Counter<string>;
   private readonly recipeExpansions: Counter<string>;
+  private readonly songPlaybackWrites: Counter<string>;
   private readonly recipeRebuilds: Counter<string>;
   private readonly recipeDeletes: Counter<string>;
   private readonly sceneHandoffs: Counter<string>;
@@ -442,6 +445,14 @@ export class ManagedMetricsService {
       labelNames: ['target', 'result'],
       registers: [this.registry],
     });
+    this.songPlaybackWrites = new Counter({
+      name: 'alcantara_program_song_playback_writes_total',
+      help: 'Calls to POST /program/:programId/song-playback, by result. Exposed from 0.',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    for (const result of SONG_PLAYBACK_WRITE_RESULTS)
+      this.songPlaybackWrites.inc({ result }, 0);
     this.recipeExpansions = new Counter({
       name: 'alcantara_recipe_expansions_total',
       help: 'Rundown recipe uses previewed or built, by result.',
@@ -708,6 +719,12 @@ export class ManagedMetricsService {
     if (normalizedResult === 'success') {
       this.jobLastSuccess.set({ job: normalizedJob }, Date.now() / 1000);
     }
+  }
+
+  recordSongPlaybackWrite(result: string): void {
+    this.songPlaybackWrites.inc({
+      result: bounded(result, SONG_PLAYBACK_WRITE_RESULTS),
+    });
   }
 
   recordRecipeExpansion(result: string): void {
