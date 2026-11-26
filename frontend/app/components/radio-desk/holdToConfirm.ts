@@ -28,10 +28,13 @@ export function useHoldToConfirm({
     setProgress(0);
   }, []);
 
-  const tick = useCallback(
-    (now: number) => {
-      if (startedAt.current === null) return;
-      const ratio = Math.min(1, (now - startedAt.current) / holdMs);
+  const begin = useCallback(() => {
+    if (startedAt.current !== null) return;
+    const start = performance.now();
+    startedAt.current = start;
+    // Each frame measures from this hold's own start, so a frame can never read a hold that has ended.
+    const step = (now: number) => {
+      const ratio = Math.min(1, (now - start) / holdMs);
       setProgress(ratio);
       if (ratio >= 1) {
         frame.current = null;
@@ -40,16 +43,10 @@ export function useHoldToConfirm({
         confirm.current();
         return;
       }
-      frame.current = requestAnimationFrame(tick);
-    },
-    [holdMs],
-  );
-
-  const begin = useCallback(() => {
-    if (startedAt.current !== null) return;
-    startedAt.current = performance.now();
-    frame.current = requestAnimationFrame(tick);
-  }, [tick]);
+      frame.current = requestAnimationFrame(step);
+    };
+    frame.current = requestAnimationFrame(step);
+  }, [holdMs]);
 
   const end = useCallback(() => {
     if (startedAt.current === null) return;
