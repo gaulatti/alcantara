@@ -1020,10 +1020,11 @@ it("starts and stops the recovery session through Palazzo", async () => {
   );
   fireEvent.click(stop);
   expect(await screen.findByText("Prepared for next session")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Configure" })).toHaveAttribute(
-    "href",
-    "/radio-settings",
-  );
+  const configure = screen.getByRole("link", { name: "Configure" });
+  expect(configure).toHaveAttribute("href", "/radio-settings");
+  // Keyboard focus shows a ring: the link has no border or background, so without these classes it has no focus indicator.
+  expect(configure.className).toContain("focus-visible:ring-2");
+  expect(configure.className).toContain("focus-visible:ring-sea");
 });
 
 it("reports recovery commands Palazzo refused or could not receive", async () => {
