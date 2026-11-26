@@ -39,6 +39,7 @@ function harness(programState: unknown) {
     program as any,
     metrics,
     noRecorder(),
+    { teamId: 0 } as never,
   );
   return { prisma, program, metrics, internals: service as any };
 }

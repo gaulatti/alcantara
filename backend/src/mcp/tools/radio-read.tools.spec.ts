@@ -355,12 +355,14 @@ async function harness() {
     machine as never,
     {} as never,
     radioMetrics,
+    { teamId: 0 } as never,
   );
   const flight = new FlightService(
     prisma,
     programs,
     radioMetrics,
     noRecorder(),
+    { teamId: 0 } as never,
   );
   const asRun = new AsRunService(prisma, { teamId: 0 } as never);
   const songs = new SongsService(prisma, noRecorder());
@@ -1474,13 +1476,16 @@ describe('MCP radio read tools', () => {
         query: 'o',
         limit: 10,
       });
-      const consoleList = await h.songs.findAll({
-        search: 'o',
-        sortBy: 'artist',
-        sortOrder: 'asc',
-        page: 1,
-        limit: 10,
-      });
+      const consoleList = await h.songs.findAll(
+        {
+          search: 'o',
+          sortBy: 'artist',
+          sortOrder: 'asc',
+          page: 1,
+          limit: 10,
+        },
+        0,
+      );
       expect(answer.body.total).toBe(consoleList.meta.total);
       expect(answer.body.songs.map((s: any) => s.song_id)).toEqual(
         consoleList.data.map((s) => s.id),
@@ -1529,7 +1534,7 @@ describe('MCP radio read tools', () => {
 
     it('reads one song with its stored analysis and no override, URL or cover', async () => {
       const answer = await h.session(ALL).run('get_song', { song_id: 1 });
-      const consoleSong = await h.songs.findOne(1);
+      const consoleSong = await h.songs.findOne(1, undefined, 0);
       expect(answer.body).toEqual({
         song_id: consoleSong.id,
         enabled: true,

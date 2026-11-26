@@ -1,10 +1,19 @@
 FROM node:22.23.5-alpine
 
+RUN npm install -g pnpm@9
+
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm install
+# Install exactly the workspace lockfile's versions, as the production image and CI do (gaulatti/alcantara#741,
+# following #590 for the backend). The build context is the repository root; a lockfile out of step with a
+# package.json fails the build. Only the frontend's dependencies are installed, at /app/frontend.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY frontend/package.json frontend/
+COPY backend/package.json backend/
+COPY infra/aws/package.json infra/aws/
+RUN pnpm install --frozen-lockfile --ignore-scripts --filter frontend
 
-COPY . .
+WORKDIR /app/frontend
+COPY frontend/ ./
 
-CMD ["npm", "run", "dev"]
+CMD ["pnpm", "run", "dev"]

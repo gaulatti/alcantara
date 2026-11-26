@@ -41,7 +41,9 @@ function build(
     recordListenerConfiguration: jest.fn(),
     recordOperatorChangeRecord: jest.fn(),
   };
-  const service = new RadioService(prisma, palazzo, config, metrics);
+  const service = new RadioService(prisma, palazzo, config, metrics, {
+    teamId: 0,
+  } as never);
   const warn = jest
     .spyOn((service as any).logger, 'warn')
     .mockImplementation(() => undefined);

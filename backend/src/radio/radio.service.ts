@@ -15,6 +15,8 @@ import {
   type CueGroupShape,
 } from './radio-metrics.service';
 import { PrismaService } from '../prisma.service';
+import { PompeiiService } from '../auth/pompeii.service';
+import { forTeam } from '../tenancy/scoped-prisma';
 import { PlayoutSongScope } from './playout-song-scope';
 import { isRadioOnlyEngineOff } from './engine-availability';
 import { ActorContext } from '../auth/actor-context';
@@ -111,8 +113,31 @@ export class RadioService {
     private readonly palazzo: PalazzoMachineClient,
     private readonly config: ConfigService,
     private readonly metrics: RadioMetricsService,
+    private readonly pompeii: PompeiiService,
     @Optional() private readonly songScope?: PlayoutSongScope,
   ) {}
+
+  /**
+   * The songs the program's recovery filler may use (gaulatti/alcantara#122): its team's, all of them when no station
+   * team is configured, and none (counted) when the program has no team.
+   */
+  private async recoverySongDb(
+    programId: string,
+  ): Promise<PrismaService | null> {
+    if (this.pompeii.teamId === 0) return this.prisma;
+    const program = await this.prisma.program.findUnique({
+      where: { programId },
+      select: { teamId: true },
+    });
+    if (program?.teamId && program.teamId > 0) {
+      return forTeam(this.prisma, program.teamId) as unknown as PrismaService;
+    }
+    this.metrics.recordLogSongScopeRefusal('recovery');
+    this.logger.warn(
+      `Program ${programId} has no team; recovery reads no songs`,
+    );
+    return null;
+  }
 
   async getRecoveryStatus(programId: string) {
     const settings = await this.requireRadioSettings(programId);
@@ -174,10 +199,13 @@ export class RadioService {
       );
     }
     const settings = await this.requireRadioSettings(programId);
-    const songs = await this.prisma.song.findMany({
-      where: { id: { in: songIds } },
-      select: { id: true, enabled: true, audioUrl: true },
-    });
+    const songDb = await this.recoverySongDb(programId);
+    const songs = songDb
+      ? await songDb.song.findMany({
+          where: { id: { in: songIds } },
+          select: { id: true, enabled: true, audioUrl: true },
+        })
+      : [];
     const byId = new Map(songs.map((song) => [song.id, song]));
     const ordered = songIds.map((id) => byId.get(id));
     if (ordered.some((song) => !song?.enabled || !song.audioUrl.trim()))

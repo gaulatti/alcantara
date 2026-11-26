@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { ProgramService } from '../program/program.service';
+import { PompeiiService } from '../auth/pompeii.service';
 import { PrismaService } from '../prisma.service';
 import { SongsController } from './songs.controller';
 import { SongsModule } from './songs.module';
@@ -11,8 +12,11 @@ import { SongsService } from './songs.service';
 // this module asks for its service.
 @Global()
 @Module({
-  providers: [{ provide: ProgramService, useValue: {} }],
-  exports: [ProgramService],
+  providers: [
+    { provide: ProgramService, useValue: {} },
+    { provide: PompeiiService, useValue: { teamId: 0 } },
+  ],
+  exports: [ProgramService, PompeiiService],
 })
 class ProgramStubModule {}
 
@@ -37,9 +41,11 @@ describe('SongsModule', () => {
       .compile();
 
     expect(moduleRef.get(SongsService)).toBeInstanceOf(SongsService);
-    await expect(moduleRef.get(SongsController).findOne('5')).rejects.toThrow(
-      'Song not found',
-    );
+    await expect(
+      moduleRef
+        .get(SongsController)
+        .findOne('5', { user: { authorization: { teamId: 0 } } }),
+    ).rejects.toThrow('Song not found');
     expect(prisma.song.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 5 } }),
     );

@@ -27,6 +27,7 @@ function harness() {
     program as any,
     metrics,
     noRecorder(),
+    { teamId: 0 } as never,
   );
   const internals = service as any;
   jest.spyOn(console, 'error').mockImplementation(() => undefined);

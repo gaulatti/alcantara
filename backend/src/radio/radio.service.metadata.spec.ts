@@ -4,6 +4,7 @@ import 'reflect-metadata';
 // when a constructor dependency is unresolved at decoration time.
 jest.mock('./playout-song-scope', () => ({ PlayoutSongScope: undefined }));
 jest.mock('../prisma.service', () => ({ PrismaService: undefined }));
+jest.mock('../auth/pompeii.service', () => ({ PompeiiService: undefined }));
 jest.mock('@nestjs/config', () => ({ ConfigService: undefined }));
 jest.mock('./radio-metrics.service', () => ({
   RadioMetricsService: undefined,
@@ -18,6 +19,7 @@ import { RadioService } from './radio.service';
 describe('RadioService constructor metadata', () => {
   it('falls back to Object parameter types when dependencies are unresolved', () => {
     expect(Reflect.getMetadata('design:paramtypes', RadioService)).toEqual([
+      Object,
       Object,
       Object,
       Object,

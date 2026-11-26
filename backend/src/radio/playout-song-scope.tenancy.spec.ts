@@ -87,7 +87,14 @@ describe('playout song reads and the program team, against Postgres', () => {
       );
 
   const radio = () =>
-    new RadioService(prisma, {} as never, {} as never, metrics, scope) as any;
+    new RadioService(
+      prisma,
+      {} as never,
+      {} as never,
+      metrics,
+      { teamId: team } as never,
+      scope,
+    ) as any;
   const analysis = (programId: string, url: string, songId?: number) =>
     radio().findSongForAnalysis(programId, url, songId, []);
 

@@ -592,6 +592,12 @@ program has no team, with `path` one of `propose`, `decisions`, `coverage`, `exp
 and `upload`. A refused pick leaves the choice to the playlist cursor. It should
 stay at `0`.
 
+Radio logs, recipes, cues and the recovery filler read only the songs of the
+program's team (gaulatti/alcantara#122).
+`alcantara_log_song_scope_refusals_total{path}` counts reads refused because the
+program has no team, with `path` one of `generate`, `validate`, `cue`, `recipe` and
+`recovery`. A refused read treats the songs as missing. It should stay at `0`.
+
 Playout reads the program team's songs for four things: the analysis sent with a song
 command, recognising an unannounced track, now-playing artwork and the playing
 track's cover (gaulatti/alcantara#122). Here scoping never takes anything off air:

@@ -176,6 +176,13 @@ export type SimilarityScopePath =
 export type RadioSongScopePath = 'analysis' | 'recognise' | 'artwork' | 'cover';
 export type RadioSongScopeReason = 'no-team' | 'other-team' | 'lookup-failed';
 
+export type LogSongScopePath =
+  | 'generate'
+  | 'validate'
+  | 'cue'
+  | 'recipe'
+  | 'recovery';
+
 export type SimilarityActionResult =
   | 'selected'
   | 'fallback-no-candidate'
@@ -475,6 +482,14 @@ const RADIO_SONG_SCOPE_REASONS: RadioSongScopeReason[] = [
   'lookup-failed',
 ];
 
+const LOG_SONG_SCOPE_PATHS: LogSongScopePath[] = [
+  'generate',
+  'validate',
+  'cue',
+  'recipe',
+  'recovery',
+];
+
 const SIMILARITY_ACTION_RESULTS: SimilarityActionResult[] = [
   'selected',
   'fallback-no-candidate',
@@ -549,6 +564,7 @@ export class RadioMetricsService {
   private readonly radioSongScopeRefusals = new Map<string, number>();
   private readonly asRunScopeRefusals = new Map<string, number>();
   private readonly similarityScopeRefusals = new Map<string, number>();
+  private readonly logSongScopeRefusals = new Map<string, number>();
   private readonly analysisDrops = new Map<string, number>();
   private readonly cueGroups = new Map<string, number>();
   private readonly nextAnnouncements = new Map<string, number>();
@@ -708,6 +724,14 @@ export class RadioMetricsService {
     this.radioSongScopeRefusals.set(
       key,
       (this.radioSongScopeRefusals.get(key) ?? 0) + 1,
+    );
+  }
+
+  recordLogSongScopeRefusal(path: LogSongScopePath): void {
+    if (!LOG_SONG_SCOPE_PATHS.includes(path)) return;
+    this.logSongScopeRefusals.set(
+      path,
+      (this.logSongScopeRefusals.get(path) ?? 0) + 1,
     );
   }
 
@@ -1042,6 +1066,15 @@ export class RadioMetricsService {
           `alcantara_radio_song_scope_refusals_total{path="${path}",reason="${reason}"} ${this.radioSongScopeRefusals.get(`${path}|${reason}`) ?? 0}`,
         );
       }
+    }
+    lines.push(
+      '# HELP alcantara_log_song_scope_refusals_total Log, recipe, cue and recovery song reads refused because the program has no team, by bounded path.',
+      '# TYPE alcantara_log_song_scope_refusals_total counter',
+    );
+    for (const path of LOG_SONG_SCOPE_PATHS) {
+      lines.push(
+        `alcantara_log_song_scope_refusals_total{path="${path}"} ${this.logSongScopeRefusals.get(path) ?? 0}`,
+      );
     }
     lines.push(
       '# HELP alcantara_radio_similarity_total Similarity picker outcomes by bounded result.',

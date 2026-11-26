@@ -74,6 +74,7 @@ function setup(
     flightSequence: { findMany: jest.fn(async () => [] as any[]) },
   };
   const flights = {
+    programSongDb: jest.fn(async () => prisma),
     listFlightSequences: jest.fn(async () => [] as any[]),
     updateFlightSequence: jest.fn(async () => ({ revision: 9 })),
   };

@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return -- the spec drives private members of ProgramService. */
 import { BadRequestException } from '@nestjs/common';
 import { EMPTY } from 'rxjs';
@@ -1003,7 +1004,7 @@ describe('ProgramService part 1 (settings, versions, state lookup)', () => {
         expect(prisma.programState.create.mock.calls[0][0].data).toMatchObject({
           type: stored,
           templateUrl: null,
-          templateManifest: null,
+          templateManifest: Prisma.DbNull,
           templateVerifiedAt: null,
         });
       },

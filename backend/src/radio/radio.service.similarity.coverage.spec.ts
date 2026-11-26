@@ -7,6 +7,7 @@ function normalize(data: Record<string, unknown>) {
     {} as any,
     { get: jest.fn() } as any,
     {} as any,
+    { teamId: 0 } as never,
   );
   return (service as any).normalizeSimilarityPayload(data);
 }

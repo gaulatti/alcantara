@@ -25,6 +25,7 @@ const radioServiceWith = (state: unknown) =>
     {} as any,
     {} as any,
     new RadioMetricsService(),
+    { teamId: 0 } as never,
   );
 
 const sequence = (
@@ -113,17 +114,16 @@ describe('alcantara_radio_start_refused_total', () => {
     const refusing = new RadioService(
       {
         programState: {
-          findUnique: jest
-            .fn()
-            .mockResolvedValue({
-              type: 'radio',
-              radioSettings: { enabled: false },
-            }),
+          findUnique: jest.fn().mockResolvedValue({
+            type: 'radio',
+            radioSettings: { enabled: false },
+          }),
         },
       } as any,
       {} as any,
       {} as any,
       metrics,
+      { teamId: 0 } as never,
     );
     expect(count(metrics)).toBe(0);
     await refusing
@@ -133,17 +133,16 @@ describe('alcantara_radio_start_refused_total', () => {
     const allowing = new RadioService(
       {
         programState: {
-          findUnique: jest
-            .fn()
-            .mockResolvedValue({
-              type: 'radio',
-              radioSettings: { enabled: true },
-            }),
+          findUnique: jest.fn().mockResolvedValue({
+            type: 'radio',
+            radioSettings: { enabled: true },
+          }),
         },
       } as any,
       {} as any,
       {} as any,
       metrics,
+      { teamId: 0 } as never,
     );
     await allowing.refuseStartWhileEngineUnavailable('station');
     expect(count(metrics)).toBe(1);

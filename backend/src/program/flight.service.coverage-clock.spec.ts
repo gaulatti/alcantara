@@ -61,6 +61,7 @@ function harness() {
     program as any,
     metrics,
     noRecorder(),
+    { teamId: 0 } as never,
   );
   return {
     prisma,
@@ -568,9 +569,7 @@ describe('FlightService schedule parsing', () => {
     ['a zone offset', '2030-05-06T07:08:00+01:00'],
   ])('rejects %s', (_name, value) => {
     expect(() => parse(value)).toThrow(
-      new BadRequestException(
-        'scheduledAt must be a whole minute, ISO time',
-      ),
+      new BadRequestException('scheduledAt must be a whole minute, ISO time'),
     );
   });
 
@@ -602,7 +601,12 @@ describe('FlightService clocked preflight', () => {
       { id: 7, enabled: true, audioUrl: 'https://media.test/7.mp3' },
     ]);
     const result = await internals.preflightClockItems('radio-1', items);
-    expect(result).toEqual({ programId: 'radio-1', ready: true, issues: [], warnings: [] });
+    expect(result).toEqual({
+      programId: 'radio-1',
+      ready: true,
+      issues: [],
+      warnings: [],
+    });
     expect(prisma.song.findMany).toHaveBeenCalledWith({
       where: { id: { in: [1] } },
       select: { id: true, enabled: true, audioUrl: true, durationMs: true },
@@ -666,9 +670,7 @@ describe('FlightService clocked preflight', () => {
 
   it('warns, without blocking, on a playable song of unknown duration', async () => {
     const { internals, prisma } = harness();
-    prisma.song.findMany.mockResolvedValue([
-      { ...playable, durationMs: null },
-    ]);
+    prisma.song.findMany.mockResolvedValue([{ ...playable, durationMs: null }]);
     prisma.instant.findMany.mockResolvedValue([
       { id: 7, enabled: true, audioUrl: 'x' },
     ]);
@@ -711,7 +713,12 @@ describe('FlightService clocked preflight', () => {
     });
     await expect(
       service.preflightFlightSequence('radio-1', 5),
-    ).resolves.toEqual({ programId: 'radio-1', ready: true, issues: [], warnings: [] });
+    ).resolves.toEqual({
+      programId: 'radio-1',
+      ready: true,
+      issues: [],
+      warnings: [],
+    });
   });
 });
 
