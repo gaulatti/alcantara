@@ -475,6 +475,31 @@ describe('next-song announcement and handoff', () => {
     expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 1 });
   });
 
+  // Yakko's pre-read of #804's Play Next fix: an announced queue head is claimed under the announcement's ID at the
+  // handoff. An announcement is not a song command, so that ID is never marked as sent and the head is promoted, not
+  // dropped as a stale claim.
+  it('promotes an announced queue head at the handoff without marking its ID as sent', async () => {
+    const h = harness();
+    await onAir(h);
+    const [entry] = await h.engine.enqueueSong(PROGRAM, SONGS[4].itemId);
+    await settle();
+    const announcedId = h.palazzo.announced[h.palazzo.announced.length - 1].id;
+    h.palazzo.endCurrent();
+    await settle();
+    expect(urls(h.palazzo.commands)).toEqual([SONGS[0].url]);
+    expect(h.engine.getPlaybackState(PROGRAM)).toEqual(
+      expect.objectContaining({ audioUrl: SONGS[4].url, queueEntryId: entry.id }),
+    );
+    const state = (
+      h.engine as unknown as {
+        states: Map<string, { sentRequestIds?: Set<string> }>;
+      }
+    ).states.get(PROGRAM)!;
+    expect(state.sentRequestIds?.has(announcedId) ?? false).toBe(false);
+    expect(h.metrics.snapshot().songQueueActions['stale-claim-dropped']).toBeUndefined();
+    expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 1 });
+  });
+
   it('withdraws when the successor goes away and announces again when it returns', async () => {
     const h = harness();
     await onAir(h);

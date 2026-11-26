@@ -728,9 +728,10 @@ describe("ProgramSongSequenceEditor catalog", () => {
     { id: 5, enabled: true, artist: "No", title: "Audio", audioUrl: "   " },
     { id: 6, enabled: true, audioUrl: "https://example.test/6.mp3" },
   ];
+  const ADD = /^Add .+ to the playlist$/;
   const catalogRows = () =>
     screen
-      .getAllByLabelText("Add to queue")
+      .getAllByLabelText(ADD)
       .map((button) => button.parentElement as HTMLElement);
 
   it("will not add a song the playlist already holds (#280)", () => {
@@ -739,10 +740,41 @@ describe("ProgramSongSequenceEditor catalog", () => {
       songCatalog: catalog,
       view: "catalog",
     });
-    expect(screen.getAllByLabelText("Add to queue")).toHaveLength(3);
+    expect(screen.getAllByLabelText(ADD)).toHaveLength(3);
     const held = screen.getByLabelText("Already in the playlist");
     expect(held).toBeDisabled();
     fireEvent.click(held);
+  });
+
+  // Walk part 4: the add button was hidden until hover (unusable on a touch screen) while a song already in the
+  // playlist showed Bleecker's filled disabled button, and it was labelled "Add to queue" though it adds to the
+  // playlist.
+  it("shows every add button without hover, names the song and the playlist, and marks a held song with a check", () => {
+    editor({
+      sequence: { items: [{ ...preset("held"), songId: 1 }] },
+      songCatalog: catalog,
+      view: "catalog",
+    });
+    const add = screen.getByLabelText("Add Beta tune to the playlist");
+    expect(add).toBeEnabled();
+    expect(add.className).not.toMatch(/(^|\s)opacity-0(\s|$)/);
+    expect(add.querySelector(".lucide-plus")).not.toBeNull();
+    expect(screen.getByLabelText("Add song to the playlist")).toBeEnabled();
+    const held = screen.getByLabelText("Already in the playlist");
+    expect(held.className).toMatch(/disabled:bg-transparent/);
+    expect(held.querySelector(".lucide-check")).not.toBeNull();
+    expect(held.querySelector(".lucide-plus")).toBeNull();
+  });
+
+  // Walk part 4: on a phone the catalog beside the playlist was "hidden md:flex", so Add fillers showed nothing.
+  it("keeps the catalog shown below the playlist on a phone, beside it from 768 px", () => {
+    editor({ sequence: { items: [] }, songCatalog: catalog, view: "full" });
+    const column = screen
+      .getByPlaceholderText("Search catalog to add...")
+      .closest("div.flex-col") as HTMLElement;
+    expect(column.className).not.toMatch(/(^|\s)hidden(\s|$)/);
+    expect(column.className).toMatch(/(^|\s)w-full(\s|$)/);
+    expect(column.className).toMatch(/md:w-\[320px\]/);
   });
 
   it("lists only enabled songs with audio, sorted by artist and title, and searches them", () => {
@@ -765,7 +797,7 @@ describe("ProgramSongSequenceEditor catalog", () => {
     fireEvent.change(search, { target: { value: "tune" } });
     expect(catalogRows()[0]).toHaveTextContent("Beta tune");
     fireEvent.change(search, { target: { value: "nothing like it" } });
-    expect(screen.queryAllByLabelText("Add to queue")).toHaveLength(0);
+    expect(screen.queryAllByLabelText(ADD)).toHaveLength(0);
     expect(screen.getByText("No matches found")).toBeInTheDocument();
     cleanup();
     editor({ sequence: { items: [] }, songCatalog: [], view: "catalog" });
@@ -783,7 +815,7 @@ describe("ProgramSongSequenceEditor catalog", () => {
       fireEvent.click(
         within(
           catalogRows().find((row) => row.textContent?.includes(title))!,
-        ).getByLabelText("Add to queue"),
+        ).getByLabelText(ADD),
       );
       const next = onChange.mock.lastCall![0];
       cleanup();
