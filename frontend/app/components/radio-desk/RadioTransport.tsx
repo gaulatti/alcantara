@@ -57,6 +57,11 @@ export function RadioTransport({
       setWaitingFor(null);
     }
   }, [confirmedItemId, waitingFor]);
+  // Once the engine no longer confirms the taken song (it ended, automation moved on, the engine stopped it), the
+  // line stops naming it: a stale On air is never announced (Wakko's #781 review).
+  useEffect(() => {
+    if (onAir && confirmedItemId !== onAir.itemId) setOnAir(null);
+  }, [confirmedItemId, onAir]);
 
   const cue = useCallback(() => {
     setError(null);

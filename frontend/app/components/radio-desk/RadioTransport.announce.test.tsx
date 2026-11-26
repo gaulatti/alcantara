@@ -93,3 +93,24 @@ it("announces the taken song on air once the engine confirms it, until the next 
   view.rerender(<RadioTransport {...props} confirmedItemId="s2" />);
   expect(status).toHaveTextContent(/^On air: Copper Season\.$/);
 });
+
+// Wakko's #781 review: the line said "On air: X." after X ended or automation moved on, until the next cue or stop.
+it("stops naming the taken song once the engine confirms another item or nothing", async () => {
+  const onTake = vi.fn(async () => undefined);
+  const props = { next, onTake, onTakeOffAir: vi.fn(async () => undefined) };
+  for (const after of ["s3", null]) {
+    const view = render(<RadioTransport {...props} confirmedItemId={null} />);
+    const status = screen.getByRole("status");
+    fireEvent.keyDown(window, { key: "n" });
+    await act(async () => {
+      fireEvent.keyDown(window, { key: " " });
+    });
+    view.rerender(<RadioTransport {...props} confirmedItemId="s2" />);
+    expect(status).toHaveTextContent(/^On air: Copper Season\.$/);
+    view.rerender(<RadioTransport {...props} confirmedItemId={after} />);
+    // Back to what plays next (the fixture's next song happens to share the title), never On air.
+    expect(status).not.toHaveTextContent("On air:");
+    expect(status).toHaveTextContent(/^Next: /);
+    view.unmount();
+  }
+});
