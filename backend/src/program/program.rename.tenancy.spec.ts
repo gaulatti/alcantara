@@ -59,20 +59,39 @@ describe('renaming a program keeps its Program row, against Postgres', () => {
     await expect(row('a')).resolves.toBeNull();
   });
 
-  it('does not inherit the row a deleted program left under the new id', async () => {
+  it("refuses an id a deleted program's settings still hold, and removes nothing", async () => {
     await service.createProgram(id('gone'), 'radio', null, team + 1);
+    await prisma.programBranding.create({
+      data: { programId: id('gone'), displayName: 'Old station' },
+    });
     await service.deleteProgram(id('gone'));
     await service.createProgram(id('c'), 'radio', null, team);
-    await service.renameProgram(id('c'), id('gone'));
-    await expect(row('gone')).resolves.toMatchObject({ teamId: team });
-
-    // A program with no row of its own does not pick one up either.
-    await prisma.program.create({
-      data: { programId: id('orphan'), teamId: team + 1 },
+    await expect(
+      service.renameProgram(id('c'), id('gone')),
+    ).rejects.toMatchObject({
+      status: 409,
+      message:
+        "That ID belongs to a deleted show's settings. Choose another ID.",
     });
+    await expect(row('c')).resolves.toMatchObject({ teamId: team });
+    await expect(row('gone')).resolves.toEqual({
+      teamId: team + 1,
+      branding: { displayName: 'Old station' },
+    });
+    await expect(
+      prisma.programState.count({ where: { programId: id('c') } }),
+    ).resolves.toBe(1);
+  });
+
+  it('renames a program that has no row of its own', async () => {
     await prisma.programState.create({ data: { programId: id('legacy') } });
-    await service.renameProgram(id('legacy'), id('orphan'));
-    await expect(row('orphan')).resolves.toBeNull();
+    await service.renameProgram(id('legacy'), id('legacy-renamed'));
+    await expect(row('legacy-renamed')).resolves.toBeNull();
+    await expect(
+      prisma.programState.count({
+        where: { programId: id('legacy-renamed') },
+      }),
+    ).resolves.toBe(1);
   });
 
   it('leaves the row alone when only the type changes', async () => {

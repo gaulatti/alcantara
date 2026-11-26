@@ -163,6 +163,10 @@ export function startsSongPlayback(
   );
 }
 
+/** The refusal of a rename onto the id a deleted program's settings still hold (gaulatti/alcantara#122). */
+export const LEFTOVER_PROGRAM_ID_MESSAGE =
+  "That ID belongs to a deleted show's settings. Choose another ID.";
+
 @Injectable()
 export class ProgramService implements OnModuleInit, OnModuleDestroy {
   private static readonly DEFAULT_PROGRAM_ID = 'main';
@@ -1578,6 +1582,15 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       if (existingTarget) {
         throw new ConflictException('Target program id already exists');
       }
+      // A deleted program leaves its Program row (team and branding) behind. Nothing is removed as a side effect of
+      // a rename: the id is refused instead.
+      const leftover = await this.prisma.program.findUnique({
+        where: { programId: next },
+        select: { programId: true },
+      });
+      if (leftover) {
+        throw new ConflictException(LEFTOVER_PROGRAM_ID_MESSAGE);
+      }
     }
 
     const effectiveType = programType ?? existingSource.type;
@@ -1608,10 +1621,8 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       await updateState;
     } else {
       // gaulatti/alcantara#122: the Program row carries the program's team and branding, so it is renamed with the
-      // program, or the renamed program would belong to no team. A row already under the new id was left by a
-      // deleted program (no program uses that id) and is removed, so its team is not inherited.
+      // program, or the renamed program would belong to no team.
       await this.prisma.$transaction([
-        this.prisma.program.deleteMany({ where: { programId: next } }),
         this.prisma.program.updateMany({
           where: { programId: current },
           data: { programId: next },

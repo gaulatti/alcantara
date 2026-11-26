@@ -14,8 +14,9 @@ Every program has one `Program` row (`backend/prisma/schema.prisma`), and its `t
 
 ## Renaming a program
 
-The `Program` row is renamed with the program, so its team and branding stay with it. A row already under the new id,
-left by a deleted program, is removed.
+The `Program` row is renamed with the program, so its team and branding stay with it. A deleted program leaves its
+row behind; renaming onto that id is refused with 409 (`That ID belongs to a deleted show's settings. Choose another
+ID.`), and nothing is removed.
 
 ## Programs still without a team
 
