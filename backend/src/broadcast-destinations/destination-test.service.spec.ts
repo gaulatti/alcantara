@@ -158,3 +158,19 @@ describe('DestinationTestService', () => {
     expect(testing.test).toHaveBeenCalledWith('d1', 'u', 7);
   });
 });
+
+describe('DestinationTestService decorator metadata under unresolved circular imports', () => {
+  it('records Object for dependencies whose modules are not yet defined', () => {
+    jest.isolateModules(() => {
+      jest.doMock('../prisma.service', () => ({}));
+      jest.doMock('./broadcast-ingest.service', () => ({}));
+      jest.doMock('../observability/managed-metrics.service', () => ({}));
+      /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- loaded with its dependencies mocked away */
+      const loaded = require('./destination-test.service');
+      expect(
+        Reflect.getMetadata('design:paramtypes', loaded.DestinationTestService),
+      ).toEqual([Object, Object, Object]);
+      /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
+    });
+  });
+});
