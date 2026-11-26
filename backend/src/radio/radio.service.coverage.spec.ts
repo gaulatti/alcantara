@@ -1,3 +1,4 @@
+import { PalazzoMachineClient } from './palazzo-machine.client';
 import { BadGatewayException, BadRequestException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { PalazzoInstantRefusedException, RadioService } from './radio.service';
@@ -1559,7 +1560,9 @@ describe('RadioService coverage', () => {
       const { service, palazzo } = build();
       palazzo.stopSong.mockRejectedValue(new Error('x'));
       await expect(service.stopSong('p')).rejects.toThrow(
-        new BadGatewayException('Palazzo rejected the song stop'),
+        new BadGatewayException(
+          'Palazzo did not answer; the song stop was not confirmed',
+        ),
       );
       expect(service['logger'].error).toHaveBeenCalledWith({
         event: 'palazzo.machine.failed',
@@ -1567,6 +1570,164 @@ describe('RadioService coverage', () => {
         programId: 'p',
         reason: 'unavailable',
       });
+    });
+
+    it.each<[string, unknown, string]>([
+      [
+        'no answer',
+        new PalazzoMachineError('unavailable'),
+        'Palazzo did not answer; the song stop was not confirmed',
+      ],
+      [
+        'a dropped socket',
+        new Error('socket hang up'),
+        'Palazzo did not answer; the song stop was not confirmed',
+      ],
+      [
+        'an answer that does not confirm',
+        new PalazzoMachineError('malformed'),
+        "Palazzo's answer to the song stop did not confirm it",
+      ],
+      [
+        'a refusal',
+        new PalazzoMachineError('rejected', 409),
+        'Palazzo rejected the song stop',
+      ],
+      [
+        'a rate limit',
+        new PalazzoMachineError('rejected', 429),
+        'Palazzo rejected the song stop',
+      ],
+      [
+        'an authorization refusal',
+        new PalazzoMachineError('unauthorized', 401),
+        'Palazzo rejected the song stop',
+      ],
+      [
+        "another program's engine",
+        new PalazzoMachineError('cross-program'),
+        'Palazzo rejected the song stop',
+      ],
+      [
+        'a local refusal',
+        new PalazzoMachineError('rejected'),
+        'The song stop was not sent to Palazzo: Alcántara refused it',
+      ],
+      [
+        'a server error',
+        new PalazzoMachineError('rejected', 500),
+        'Palazzo answered the song stop with an error; it was not confirmed',
+      ],
+      [
+        'a bad gateway',
+        new PalazzoMachineError('rejected', 502),
+        'Palazzo answered the song stop with an error; it was not confirmed',
+      ],
+      [
+        'an unavailable proxy',
+        new PalazzoMachineError('rejected', 503),
+        'Palazzo answered the song stop with an error; it was not confirmed',
+      ],
+      [
+        'a gateway timeout',
+        new PalazzoMachineError('rejected', 504),
+        'Palazzo answered the song stop with an error; it was not confirmed',
+      ],
+    ])('words %s truthfully', async (_case, error, message) => {
+      const { service, palazzo } = build();
+      palazzo.stopSong.mockRejectedValueOnce(error);
+      await expect(service.stopSong('main')).rejects.toThrow(
+        new BadGatewayException(message),
+      );
+    });
+
+    it('words the mixer update and the instant stop the same way', async () => {
+      const { service, palazzo } = build();
+      palazzo.updateMixer.mockRejectedValueOnce(
+        new PalazzoMachineError('rejected', 400),
+      );
+      await expect(service.updateMixer('main', {} as never)).rejects.toThrow(
+        'Palazzo rejected the radio mixer update',
+      );
+      palazzo.stopInstants.mockRejectedValueOnce(
+        new PalazzoMachineError('rejected', 503),
+      );
+      await expect(service.stopAllInstants('main')).rejects.toThrow(
+        'Palazzo answered the instant stop with an error; it was not confirmed',
+      );
+    });
+
+    it('reports a missing Palazzo address as such, before anything is sent', async () => {
+      const { service, palazzo } = build({
+        ...defaultSettings(),
+        palazzoUrl: ' ',
+      });
+      for (const command of [
+        () => service.stopSong('main'),
+        () => service.updateMixer('main', {} as never),
+        () => service.stopAllInstants('main'),
+      ]) {
+        await expect(command()).rejects.toThrow(
+          'Palazzo URL is not configured',
+        );
+      }
+      expect(palazzo.stopSong).not.toHaveBeenCalled();
+      expect(palazzo.updateMixer).not.toHaveBeenCalled();
+      expect(palazzo.stopInstants).not.toHaveBeenCalled();
+    });
+
+    // Through the real client, so the wording is tied to what the client actually throws.
+    const throughClient = (url: string, answer: () => Response) => {
+      const ctx = build({ ...defaultSettings(), palazzoUrl: url });
+      const fetchImpl = jest.fn(async () => answer());
+      const client = new PalazzoMachineClient(
+        {
+          get: (key: string) =>
+            key === 'PALAZZO_ALLOWED_URLS' ? 'http://palazzo:3100' : undefined,
+        } as never,
+        {
+          recordMachineRequest: jest.fn(),
+          recordMachineRetry: jest.fn(),
+        } as never,
+        fetchImpl as never,
+      );
+      Object.assign(ctx.service, { palazzo: client });
+      return { ...ctx, fetchImpl };
+    };
+
+    it('says an unapproved address was not sent, and sends nothing', async () => {
+      const { service, fetchImpl } = throughClient(
+        'http://other:3100',
+        () => new Response('{"ok":true}'),
+      );
+      await expect(service.stopSong('main')).rejects.toThrow(
+        'The song stop was not sent to Palazzo: Alcántara refused it',
+      );
+      expect(fetchImpl).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [
+        503,
+        'Palazzo answered the song stop with an error; it was not confirmed',
+      ],
+      [409, 'Palazzo rejected the song stop'],
+    ])('words an HTTP %i from the real client', async (status, message) => {
+      const { service } = throughClient(
+        'http://palazzo:3100',
+        () => new Response('', { status }),
+      );
+      await expect(service.stopSong('main')).rejects.toThrow(message);
+    });
+
+    it('says a readable answer without ok did not confirm the command', async () => {
+      const { service } = throughClient(
+        'http://palazzo:3100',
+        () => new Response('{"ok":false}'),
+      );
+      await expect(service.stopSong('main')).rejects.toThrow(
+        "Palazzo's answer to the song stop did not confirm it",
+      );
     });
 
     it('plays an instant with a supplied or generated request id', async () => {
@@ -1635,7 +1796,9 @@ describe('RadioService coverage', () => {
       );
       palazzo.updateMixer.mockRejectedValue(new Error('x'));
       await expect(service.updateMixer('p', mixer)).rejects.toThrow(
-        new BadGatewayException('Palazzo rejected the radio mixer update'),
+        new BadGatewayException(
+          'Palazzo did not answer; the radio mixer update was not confirmed',
+        ),
       );
     });
 
@@ -1658,7 +1821,9 @@ describe('RadioService coverage', () => {
       );
       palazzo.stopInstants.mockRejectedValue(new Error('x'));
       await expect(service.stopAllInstants('p')).rejects.toThrow(
-        new BadGatewayException('Palazzo rejected the instant stop'),
+        new BadGatewayException(
+          'Palazzo did not answer; the instant stop was not confirmed',
+        ),
       );
     });
   });

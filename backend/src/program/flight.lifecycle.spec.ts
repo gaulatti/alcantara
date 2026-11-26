@@ -13,6 +13,8 @@ function fixture() {
     id: 1,
     programId: 'news',
     type: 'radio',
+    // A working station: its playout engine is enabled (#609).
+    radioSettings: { enabled: true },
     activeFlightSequenceId: 7,
   };
   let sequence: any = {
@@ -45,6 +47,7 @@ function fixture() {
     asset: { labels: [{ labelId: 'music', position: 0 }] },
   };
   const prisma: any = {
+    asRunRecord: { findMany: jest.fn().mockResolvedValue([]) },
     programState: {
       findUnique: jest.fn(async ({ where }: any) =>
         where.programId === 'news' ? state : null,
@@ -890,6 +893,7 @@ describe('FlightService public lifecycle and clock boundary', () => {
       programId: 'news',
       ready: true,
       issues: [],
+      warnings: [],
     });
     const published = await f.service.publishFlightSequence('news', 7, 1);
     expect(published).toEqual(
@@ -930,6 +934,7 @@ describe('FlightService public lifecycle and clock boundary', () => {
         'Item 1: audio clip unavailable',
         'Item 2: audio clip unavailable',
       ],
+      warnings: [],
     });
     await expect(f.service.publishFlightSequence('news', 7, 1)).rejects.toThrow(
       'audio clip unavailable',

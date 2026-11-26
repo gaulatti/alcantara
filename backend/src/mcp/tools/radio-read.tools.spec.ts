@@ -327,6 +327,7 @@ async function harness() {
     palazzo.radioService as never,
     {
       isClockedLogRunning: jest.fn(() => false),
+      handleEngineAvailability: jest.fn(),
       handleSongEnded: jest.fn().mockResolvedValue({ ok: true }),
     } as never,
     prisma,
@@ -363,7 +364,7 @@ async function harness() {
     noRecorder(),
     { teamId: 0 } as never,
   );
-  const asRun = new AsRunService(prisma);
+  const asRun = new AsRunService(prisma, { teamId: 0 } as never);
   const songs = new SongsService(prisma, noRecorder());
   const statuses = new Map<string, unknown>([
     [
@@ -914,9 +915,14 @@ describe('MCP radio read tools', () => {
       expect(b.preflight).toEqual({
         ready: (await h.flight.preflightFlightSequence(PROGRAM, 1)).ready,
         issue_count: 0,
+        warning_count: 0,
       });
       expect(b.published_at).toBe('2026-11-17T08:00:00.000Z');
-      expect(c.preflight).toEqual({ ready: false, issue_count: 1 });
+      expect(c.preflight).toEqual({
+        ready: false,
+        issue_count: 1,
+        warning_count: 0,
+      });
       expect(d.preflight).toBeUndefined();
       expect(d.last_started_at).toBe('2026-11-17T09:00:00.000Z');
       expectNoCredentials(answer.body);

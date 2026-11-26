@@ -509,6 +509,7 @@ async function build() {
     radio,
     {
       isClockedLogRunning: jest.fn(() => false),
+      handleEngineAvailability: jest.fn(),
       handleSongEnded: jest.fn().mockResolvedValue({ ok: true }),
     } as never,
     prisma,
@@ -538,7 +539,7 @@ async function build() {
     noRecorder(),
     { teamId: 0 } as never,
   );
-  const asRun = new AsRunService(prisma);
+  const asRun = new AsRunService(prisma, { teamId: 0 } as never);
   const songs = new SongsService(prisma, noRecorder());
   const status = {
     programId: PROGRAM,
@@ -808,6 +809,7 @@ describe('MCP radio read tools against a fake Palazzo and the console endpoints'
                 preflight: {
                   ready: preflight.ready,
                   issue_count: preflight.issues.length,
+                  warning_count: preflight.warnings.length,
                 },
               }
             : {}),

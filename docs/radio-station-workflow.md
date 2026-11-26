@@ -18,7 +18,7 @@ Radio and Simulcast shows use **Rundown** at `/flight`. An operator creates a fu
 
 Save keeps the log a draft. **Check** validates cue shape and referenced enabled audio. **Publish** repeats validation and marks the block for automatic start. The backend claims a published block once when its time arrives; a failed start is visible through the `radio_log_start_failed` event and is not retried automatically after an ambiguous failure. The planner and Radio desk show the current and next items. On-air and already played items are locked; stopped/previously aired logs cannot be rewritten, and published blocks cannot be rescheduled. Future items can be changed with an optimistic revision check. Cue execution and edits are serialized per program, and fixed-time timers are rebound to cue IDs after an edit. A log cannot be published for a past start time. Scheduled logs require the backend process to be running when the block begins. If the process is down beyond five seconds after the block, the log is not started late.
 
-The existing `/program/:programId/flight` list, create, update, activate, and start APIs carry the additive `scheduledAt`, `publishedAt`, `lastStartedAt`, and `revision` fields. `GET .../flight/:sequenceId/preflight` returns `{ready,issues}`; `POST .../publish` accepts `{revision}`. Program `flight.read` and `flight.manage` permissions remain in force.
+The existing `/program/:programId/flight` list, create, update, activate, and start APIs carry the additive `scheduledAt`, `publishedAt`, `lastStartedAt`, and `revision` fields. `GET .../flight/:sequenceId/preflight` returns `{ready,issues,warnings}`: issues block a start, warnings never do (a playable song of unknown duration, so the block's later times are estimates). A `scheduledAt` that is not a whole minute in UTC ISO form is refused with "scheduledAt must be a whole minute, ISO time"; `POST .../publish` accepts `{revision}`. Program `flight.read` and `flight.manage` permissions remain in force.
 
 ## Song similarity selection
 
@@ -32,9 +32,47 @@ Radio settings created from now on have segue-aware and loudness-normalized play
 
 Use **Voice** on a song row to record a link with the browser microphone. Preview the take alone or over the chosen song, set duck and fade values, then **Use this take**. The recording uploads as a managed audio clip and is attached to that exact cue by `voiceTrackInstantId`; changing another play of the same song does not change this cue. Palazzo receives the voice clip with the song command and applies the saved duck/fades. Browser preview approximates the mix. A missing or disabled clip fails preflight; if it disappears between preflight and playout, the Radio desk shows intro degradation.
 
+## Take and start while the engine is off
+
+A radio-only program plays only through its playout engine (gaulatti/alcantara#609). While
+that engine is disabled in radio settings, or the program has no radio settings, an operator's
+take or start is refused before anything is saved:
+
+- `POST /radio/:programId/song` (Take, play now);
+- `PUT /program/:programId/audio-bus` when the write would start a song (a different song
+  becomes active, or an idle manual rotation switches to Autoplay or Shuffle).
+
+Both answer `409` with `{"statusCode":409,"error":"Conflict","reason":"engine_unavailable",
+"message":"The radio engine is off (disabled in settings), so nothing was taken."}`. Their MCP
+capabilities, `radio_play_song` and `program_update_program_audio_bus_by_id`, run the same check
+and answer `conflict`. Rotation
+edits that start nothing, and stopping, still save. TV and simulcast programs are not affected:
+their program output plays songs itself.
+
+Rundown automation follows the same rule. When a scheduled or running rundown reaches a song for a
+radio-only program whose engine is off, the song is not started (no audio-bus write, no engine
+take). The as-run gets a row with `state: "not-aired"` and `endReason: "engine_unavailable"`. The
+block is then stopped and `radio_log_cue_failed` is broadcast with `reason: "engine_unavailable"`,
+so it does not run silently. The CSV export lists `not-aired` rows; the SoundExchange export and the
+royalty summary read only `ended` rows, so a song that was not aired is never reported as played.
+
+A `not-aired` row written for a rundown cue also names that rundown and cue (`flightSequenceId`,
+`flightCueId`; #726). `GET /program/:programId/flight` answers each rundown with `cueOutcomes`, a list of
+`{ cueId, state: "not-aired", reason }` read from those rows (an empty list when none), so the on-air
+rundown shows such a cue as **Skipped** with its reason instead of Played. Older rows have neither
+field and appear in no rundown's outcomes.
+
 ## Output confidence and recovery
 
 The Radio desk separates **Stream verified** (Liquidsoap and Icecast transport) from output confidence. It shows fresh sampled output as detected, checking, silent after ten seconds below 0.001 RMS while song playback is expected, idle, unavailable, or unverified. A sample older than fifteen seconds cannot prove audio. This is a level check, not a listener-side measurement.
+
+**Dead air** (#694): while output confidence reads silent, the on-air strip leads with a **Dead air** chip and the
+Output confidence alarm names the next step. Because Palazzo's local playlist plays only when the live song queue
+runs dry, the silent song comes off air first: hold Stop, then **Start with fallback** when a recovery playlist is
+prepared (**Go to recovery** opens Recovery & session), or **Prepare a recovery playlist** when none is. When one
+is already bound, it plays once the queue runs dry. While the recovery status is unknown or the engine is
+unavailable, the alarm says to take the silent song off air and check the engine, and claims nothing about a
+playlist. The `state=radio-dead-air` fixture shows this state.
 
 **Engine audio detected** measures Palazzo's post-master mix before Icecast.
 **Listen** returns Icecast audio through Palazzo and Alcántara's
@@ -48,7 +86,7 @@ public-stream fallback is used.
 The return audio includes Icecast buffering and does not test the public DNS/CDN
 listener path.
 
-Radio distribution contains **Prepared local playlist**. Choose one to 100 enabled songs from the managed S3 media bucket and prepare them. Alcantara reads each exact catalog URL to calculate SHA-256, then calls Palazzo's private filler preparation API with the same URL and checksum. Palazzo downloads, verifies, normalizes, and stores the version locally. The version and selected song IDs are saved only after Palazzo reports ready. Preparing a new version does not replace the active one. The Radio desk's **Start with fallback** binds the prepared version to a new Palazzo automation session; **Stop session** clears program audio and the binding. Palazzo's local playlist plays when its live song queue runs dry. Start/stop use Palazzo's monotonic command sequence and idempotency key. If Palazzo is unreachable, controls show an error and do not claim recovery is active. Once a program radio filler is configured ([`program-filler.md`](program-filler.md)), preparation through this panel is refused and **Start with fallback** binds that configured version instead.
+Radio distribution contains **Prepared local playlist**. Choose one to 100 enabled songs from the managed S3 media bucket and prepare them. Alcantara reads each exact catalog URL to calculate SHA-256, then calls Palazzo's private filler preparation API with the same URL and checksum. Palazzo downloads, verifies, normalizes, and stores the version locally. The version and selected song IDs are saved only after Palazzo reports ready. Preparing a new version does not replace the active one. The Radio desk's **Start with fallback** binds the prepared version to a new Palazzo automation session; **Stop session** clears program audio and the binding, so it acts only when held for 0.6 seconds, like Stop and Stop all; a click only explains (#693). Palazzo's local playlist plays when its live song queue runs dry. Start/stop use Palazzo's monotonic command sequence and idempotency key. If Palazzo is unreachable, controls show an error and do not claim recovery is active. Once a program radio filler is configured ([`program-filler.md`](program-filler.md)), preparation through this panel is refused and **Start with fallback** binds that configured version instead.
 
 Only exact HTTPS URLs on the configured `MEDIA_S3_BUCKET` S3 host are accepted for preparation. Redirects and files above 512 MiB are rejected. The backend uses the existing private Palazzo URL allowlist; the browser never calls Palazzo directly. Palazzo is an external dependency and is not included in Alcantara's local Compose stack, so local UI can show an unavailable recovery state until a Palazzo instance is attached to the documented private URL.
 
@@ -69,7 +107,16 @@ contains no URL or station labels. Updating only the listener URL does not
 reconnect Palazzo telemetry. The nullable database column is additive; reverting
 application code safely leaves it unused without removing station data.
 
-The authenticated private `/metrics` endpoint includes `alcantara_radio_log_transitions_total{result}` with bounded `interrupted`, `completed`, `unended-closed` and `unended-close-failed` (#241), `record-failed` (#256: a play's started or ended as-run row was lost after three retries; the writer retries a failed write after 250, 500 and 1000 ms, per program in arrival order, and the writes are idempotent), `resume-failed`, `filled`, `fill-failed`, `generated`, `generation-failed`, `edited`, `edit-failed`, `published`, `started`, `start-failed`, `cue-failed`, `preflight-failed`, and `poll-failed` results; `alcantara_radio_output_confidence_transitions_total{state}` with bounded confidence states; `alcantara_radio_output_silent_programs`; `alcantara_radio_recovery_preparations_total{result}` with bounded `ready` and `failed` results; and the existing Palazzo request/retry metrics with `filler-prepare` and `automation-*` operations. No program, song, URL, version, or error text appears in metric labels. The Radio desk shows active and upcoming log state and recovery readiness; inspect Palazzo's filler metrics and lifecycle state for its local playback and preparation details.
+The authenticated private `/metrics` endpoint includes `alcantara_radio_log_transitions_total{result}` with bounded `interrupted`, `completed`, `unended-closed` and `unended-close-failed` (#241), `record-failed` (#256: a play's started or ended as-run row was lost after three retries; the writer retries a failed write after 250, 500 and 1000 ms, per program in arrival order, and the writes are idempotent), `resume-failed`, `filled`, `fill-failed`, `generated`, `generation-failed`, `edited`, `edit-failed`, `published`, `started`, `start-failed`, `cue-failed`, `cue-retried` and `cue-skipped` (#719, below), `preflight-failed`, and `poll-failed` results; `alcantara_radio_output_confidence_transitions_total{state}` with bounded confidence states; `alcantara_radio_output_silent_programs`; `alcantara_radio_recovery_preparations_total{result}` with bounded `ready` and `failed` results; and the existing Palazzo request/retry metrics with `filler-prepare` and `automation-*` operations. No program, song, URL, version, or error text appears in metric labels. The Radio desk shows active and upcoming log state and recovery readiness; inspect Palazzo's filler metrics and lifecycle state for its local playback and preparation details.
+
+### Timed-block cues during an engine outage (#719)
+
+A timed-block cue that fails while the automation engine is unavailable (the song engine has frozen the program on a Palazzo `unavailable`, `instance-mismatch` or `instance-conflict` status) does not stop the block. The cue is held:
+
+- When the engine is back within 60 seconds (`ENGINE_OUTAGE_GRACE_MS`) of the cue's due time, the cue is retried once. When it then plays, `cue-retried` is counted and the block goes on as usual. A fixed-time cue's due time is its clock time; a cue without one counts from when it first failed.
+- Past the grace, the cue is skipped and `cue-skipped` is counted. A skipped song writes a `not-aired` as-run row with end reason `engine_unavailable` (#715) that names its rundown and cue, so the on-air rundown shows it as **SKIPPED** (#726). The desk shows "A timed cue was skipped", and the block runs the next cue.
+- A retry that fails again stays held until the same deadline. A cue failure while the engine is up still stops the block (`cue-failed`), as before.
+
 
 ## Fillers between timed blocks
 
@@ -105,6 +152,12 @@ advanced. The record stores `inferred = true`. If it closes a play shorter than
 a royalty rule: a play that brief behind a dropped connection is more likely a
 stale reconnect or an immediate skip, so an operator should look at it.
 
+**Which song a row names.** The as-run log asks the engine which library song it
+commanded, announced or adopted for the event's playback ID, and looks the audio
+address (then title and artist) up only when the engine has no record: two songs
+can share an address. The engine keeps the last 128 playbacks per program, in
+memory, so after a backend restart the lookup applies.
+
 **Starts adopted from a snapshot.** When the engine adopts a song from a
 playing snapshot without having seen its start (for example after a backend
 restart mid-song), it emits one `track.started` with `inferred: true`, at
@@ -112,6 +165,10 @@ Palazzo's reported start time (`track.startedAt`), or at the snapshot time when
 the snapshot carries none. The `started` row stores `inferred = true` and no
 `reviewFlag`; the play's end is then no longer flagged `no-start`. If the real
 `track.started` also arrives, the unique key keeps one row.
+
+The same applies to a song the engine commanded itself whose start event was
+missed, for example one started while the event stream was reconnecting
+(gaulatti/alcantara#716): the playing snapshot that names it is its start.
 
 **Plays whose end never arrived (#241).** A song that ends while the backend
 is down never delivers its `track.ended`. A restarted backend has no event

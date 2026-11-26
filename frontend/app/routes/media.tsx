@@ -906,11 +906,14 @@ export default function MediaRoute() {
                       <img
                         src={asset.sourceUrl}
                         alt=""
-                        className="h-16 w-24 rounded-lg bg-sand/10 object-cover"
+                        className="h-16 w-16 rounded-lg bg-sand/10 object-cover sm:w-24"
                       />
                     ) : null}
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium text-text-primary">
+                      <p
+                        className="truncate font-medium text-text-primary"
+                        title={asset.name}
+                      >
                         {asset.name}
                       </p>
                       <p className="mt-1 text-xs uppercase tracking-wide text-text-secondary">

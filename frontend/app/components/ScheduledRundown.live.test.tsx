@@ -444,13 +444,33 @@ it("reports a save failure and keeps the edits", async () => {
   expect(screen.getByText(/Unsaved changes/)).toBeVisible();
 });
 
+it("shows preflight warnings without blocking a ready block (unknown song durations)", async () => {
+  stubLibrary();
+  vi.mocked(preflightFlightSequence).mockResolvedValueOnce({
+    ready: true,
+    issues: [],
+    warnings: ["Item 2: song duration unknown"],
+  });
+  renderRundown();
+  await openBlock();
+  fireEvent.click(screen.getByRole("button", { name: "Check" }));
+  expect(
+    await screen.findByText("Audio checked · ready for air"),
+  ).toBeVisible();
+  expect(screen.getByText("Times are estimates")).toBeVisible();
+  expect(
+    screen.getByRole("list", { name: "Preflight warnings" }),
+  ).toHaveTextContent("Item 2: song duration unknown");
+});
+
 it("checks the saved block's audio and lists what needs attention", async () => {
   stubLibrary();
   vi.mocked(preflightFlightSequence)
-    .mockResolvedValueOnce({ ready: true, issues: [] })
+    .mockResolvedValueOnce({ ready: true, issues: [], warnings: [] })
     .mockResolvedValueOnce({
       ready: false,
       issues: ["Station ident has no audio"],
+      warnings: [],
     });
   renderRundown();
   await openBlock();
@@ -528,6 +548,7 @@ it("keeps a passing check after saving unsaved edits first, and drops it once th
   vi.mocked(preflightFlightSequence).mockResolvedValue({
     ready: true,
     issues: [],
+    warnings: [],
   });
   renderRundown();
   await openBlock();

@@ -230,3 +230,36 @@ describe('BrandingSection logo from the media library', () => {
     expect(screen.getByRole('img', { name: 'Current logo' })).toHaveAttribute('src', 'https://media.example.test/logo.png');
   });
 });
+
+describe('BrandingSection loading edges', () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it('starts with empty marks when nothing is stored yet', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('null', { status: 200 })));
+    render(<BrandingSection programId='fictional-main' />);
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('The branding could not be loaded.')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Branding' })).toBeInTheDocument();
+  });
+
+  it('keeps quiet when the program goes before the marks arrive', async () => {
+    let answer!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => (answer = resolve))));
+    const { unmount } = render(<BrandingSection programId='fictional-main' />);
+    unmount();
+    await act(async () => answer(new Response(JSON.stringify(stored), { status: 200 })));
+    expect(screen.queryByText('The branding could not be loaded.')).toBeNull();
+  });
+
+  it('keeps quiet when the program goes before a failed load is reported', async () => {
+    let fail!: (reason: Error) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((_resolve, reject) => (fail = reject))));
+    const { unmount } = render(<BrandingSection programId='fictional-main' />);
+    unmount();
+    await act(async () => fail(new Error('offline')));
+    expect(screen.queryByText('The branding could not be loaded.')).toBeNull();
+  });
+});

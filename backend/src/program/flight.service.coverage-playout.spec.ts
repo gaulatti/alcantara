@@ -14,6 +14,8 @@ function harness(stateExtra: Record<string, unknown> = {}) {
         id: 1,
         programId: 'radio-1',
         type: 'radio',
+        // A working station: its playout engine is enabled (#609).
+        radioSettings: { enabled: true },
         activeFlightSequenceId: 7,
         ...stateExtra,
       }),
