@@ -777,11 +777,12 @@ describe('FlightService clocked preflight timing warnings (D5, D6)', () => {
     prisma.song.findMany.mockResolvedValue([{ ...playable, durationMs: null }]);
     const result = await internals.preflightClockItems(
       'radio-1',
-      [song(1), song(1, { clockOffsetSeconds: 300 })],
+      [song(1, { clockOffsetSeconds: 0 }), song(1, { clockOffsetSeconds: 300 })],
       timing(null),
     );
     expect(result.warnings).toEqual([
       'Item 1: song duration unknown',
+      'Item 2: song duration unknown',
       'May be cut by the fixed start at 18:05.',
     ]);
     expect(result.ready).toBe(true);
@@ -792,7 +793,7 @@ describe('FlightService clocked preflight timing warnings (D5, D6)', () => {
     prisma.song.findMany.mockResolvedValue([{ ...playable, durationMs: 60_000 }]);
     const result = await internals.preflightClockItems(
       'radio-1',
-      [song(1), song(1, { clockOffsetSeconds: 300 })],
+      [song(1, { clockOffsetSeconds: 0 }), song(1, { clockOffsetSeconds: 300 })],
       timing(null),
     );
     expect(result.warnings).toEqual([]);
