@@ -21,7 +21,8 @@ docker compose --profile fake-palazzo up --build
 - **Enable radio first.** The seed turns radio off for `main` and `radio-demo`. Enable it in **Radio settings**;
   Alcántara then starts its Palazzo telemetry client against the fake.
 - **Control routes.** Call them from inside the network, for example
-  `docker compose exec palazzo wget -qO- http://localhost:3100/__fake/log`.
+  `docker compose exec palazzo wget -qO- http://127.0.0.1:3100/__fake/log`. Use `127.0.0.1`: inside the container
+  `localhost` resolves to IPv6 first, which the fake does not listen on, so `wget` is refused.
 
 ## A dead-air walk
 
@@ -30,7 +31,7 @@ docker compose --profile fake-palazzo up --build
 2. **Make the output silent** while the track keeps playing:
    ```bash
    docker compose exec palazzo wget -qO- --header 'Content-Type: application/json' \
-     --post-data '{"silent":true}' http://localhost:3100/__fake/programs/radio-demo/silence
+     --post-data '{"silent":true}' http://127.0.0.1:3100/__fake/programs/radio-demo/silence
    ```
    After 10 s below 0.001 RMS, output confidence reads silent and the desk shows dead air.
 3. **Prepare a recovery playlist** in Radio settings (**Prepared local playlist**). The fake answers `ready`

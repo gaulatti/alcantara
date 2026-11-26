@@ -47,6 +47,38 @@ describe("deriveOnAir and dead air", () => {
     ]);
   });
 
+  it("renders the good chips neutral while dead air shows, so only Dead air is coloured", () => {
+    const view = deriveOnAir({ ...base, outputSilent: true });
+    expect(view.chips.map((chip) => [chip.label, chip.tone])).toEqual([
+      ["Dead air", "bad"],
+      ["Stream verified", "idle"],
+      ["Engine ready", "idle"],
+      ["Monitor off", "idle"],
+    ]);
+    // Without dead air the same chips are green again.
+    const healthy = deriveOnAir({ ...base, outputSilent: false });
+    expect(healthy.chips.map((chip) => [chip.label, chip.tone])).toEqual([
+      ["Stream verified", "ok"],
+      ["Engine ready", "ok"],
+      ["Monitor off", "idle"],
+    ]);
+  });
+
+  it("keeps a warning chip's colour during dead air: it is a second problem, not a good state", () => {
+    const view = deriveOnAir({
+      ...base,
+      outputSilent: true,
+      streamRunning: null,
+      engine: { ...base.engine, degraded: true, detail: "Telemetry late" },
+    });
+    expect(view.chips.map((chip) => [chip.label, chip.tone])).toEqual([
+      ["Dead air", "bad"],
+      ["Stream unverified", "warn"],
+      ["Engine degraded", "warn"],
+      ["Monitor off", "idle"],
+    ]);
+  });
+
   it("shows no output chip while the output is not silent", () => {
     for (const outputSilent of [false, undefined]) {
       const view = deriveOnAir({ ...base, outputSilent });
