@@ -2057,6 +2057,30 @@ it("says On air only for an engine-confirmed song, and refuses Take while the en
 
 // gaulatti/alcantara#694: dead air shows in the on-air strip, and the alarm names the action that cures it for
 // the recovery state the desk knows.
+// Advance answers on the rundown's feedback line when it goes through, and names the failure when it does not.
+it("confirms an advanced rundown on screen, and shows the refusal when it fails", async () => {
+  vi.mocked(flight.goFlight).mockResolvedValue(undefined);
+  const p = props();
+  mount(p);
+  fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
+  expect(await screen.findByText("Advanced to the next cue.")).toBeVisible();
+  vi.mocked(flight.goFlight).mockRejectedValueOnce(new Error("Cue refused"));
+  fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
+  expect(await screen.findByText("Cue refused")).toBeVisible();
+  expect(screen.queryByText("Advanced to the next cue.")).toBeNull();
+}, 15_000);
+
+// Advance pressed while the engine's feedback is stale says the command is only sent, not that it took.
+it("says Sent and waits for the engine when Advance is pressed while its feedback is stale", async () => {
+  vi.mocked(flight.goFlight).mockResolvedValue(undefined);
+  const p = props();
+  p.programSongPlayback = { ...p.programSongPlayback!, telemetryStale: true };
+  mount(p);
+  fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
+  expect(await screen.findByText("Sent: waiting for the engine to confirm.")).toBeVisible();
+  expect(screen.queryByText("Advanced to the next cue.")).toBeNull();
+}, 15_000);
+
 describe("dead air", () => {
   const deadAir = (
     recovery: NonNullable<ReturnType<typeof props>["fixtureData"]>["recovery"],
@@ -2182,24 +2206,3 @@ describe("dead air", () => {
   });
 });
 
-// Advance answers on the rundown's feedback line when it goes through, and names the failure when it does not.
-it("confirms an advanced rundown on screen, and shows the refusal when it fails", async () => {
-  const p = props();
-  mount(p);
-  fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
-  expect(await screen.findByText("Advanced to the next cue.")).toBeVisible();
-  vi.mocked(flight.goFlight).mockRejectedValueOnce(new Error("Cue refused"));
-  fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
-  expect(await screen.findByText("Cue refused")).toBeVisible();
-  expect(screen.queryByText("Advanced to the next cue.")).toBeNull();
-});
-
-// Advance pressed while the engine's feedback is stale says the command is only sent, not that it took.
-it("says Sent and waits for the engine when Advance is pressed while its feedback is stale", async () => {
-  const p = props();
-  p.programSongPlayback = { ...p.programSongPlayback!, telemetryStale: true };
-  mount(p);
-  fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
-  expect(await screen.findByText("Sent: waiting for the engine to confirm.")).toBeVisible();
-  expect(screen.queryByText("Advanced to the next cue.")).toBeNull();
-});
