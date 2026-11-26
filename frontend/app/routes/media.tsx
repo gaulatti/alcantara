@@ -911,7 +911,7 @@ export default function MediaRoute() {
                     ) : null}
                     <div className="min-w-0 flex-1">
                       <p
-                        className="truncate font-medium text-text-primary"
+                        className="line-clamp-2 font-medium text-text-primary"
                         title={asset.name}
                       >
                         {asset.name}
