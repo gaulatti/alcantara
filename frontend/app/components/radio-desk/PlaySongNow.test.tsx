@@ -97,3 +97,25 @@ it("shows a library song with no length without a clock", () => {
   expect(row).toHaveTextContent("Library");
   expect(row.textContent).not.toMatch(/·\s*\d+:\d\d/);
 });
+
+it("moves the highlight with the arrow keys and with the pointer", () => {
+  open({ leaves: [leaf("s1", "Harbor Lights"), leaf("s2", "Harbor Tides")] });
+  typeQuery("Harbor");
+  const options = screen.getAllByRole("option");
+  expect(options[0]).toHaveAttribute("aria-selected", "true");
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "ArrowDown" });
+  expect(options[1]).toHaveAttribute("aria-selected", "true");
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "ArrowUp" });
+  expect(options[0]).toHaveAttribute("aria-selected", "true");
+  fireEvent.mouseEnter(options[1]);
+  expect(options[1]).toHaveAttribute("aria-selected", "true");
+});
+
+it("ignores other keys in the dialog", () => {
+  const props = open();
+  typeQuery("Harbor");
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "x" });
+  expect(props.onCueNext).not.toHaveBeenCalled();
+  expect(props.onTakeNow).not.toHaveBeenCalled();
+  expect(props.onClose).not.toHaveBeenCalled();
+});

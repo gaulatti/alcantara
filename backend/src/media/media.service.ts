@@ -15,6 +15,7 @@ import {
   summarizeChange,
 } from '../operator-change/operator-change-recorder';
 import { MEDIA_CHANGE_FIELDS } from '../operator-change/library-change-fields';
+import { forTeam } from '../tenancy/scoped-prisma';
 
 interface MediaInput {
   name?: string;
@@ -38,7 +39,28 @@ export class MediaService {
     private readonly recorder: OperatorChangeRecorder,
   ) {}
 
-  async findAll(params: FindAllParams) {
+  /**
+   * The rows of one team (gaulatti/alcantara#122): media, their assets, and the groups and labels a delete touches.
+   * `0` means no team is configured, which production refuses, and sees every row. Nested relations are not scoped.
+   */
+  private db(teamId: number): PrismaService {
+    return teamId > 0
+      ? (forTeam(this.prisma, teamId) as unknown as PrismaService)
+      : this.prisma;
+  }
+
+  /** The row just written; findUniqueOrThrow is refused on the team-scoped client. */
+  private async readBack(
+    tx: Prisma.TransactionClient,
+    id: number,
+    teamId: number,
+  ) {
+    return teamId > 0
+      ? (await tx.media.findUnique({ where: { id } }))!
+      : tx.media.findUniqueOrThrow({ where: { id } });
+  }
+
+  async findAll(params: FindAllParams, teamId = 0) {
     const { search, sortBy, sortOrder, page, limit } = params;
 
     const where: Prisma.MediaWhereInput = {};
@@ -66,8 +88,8 @@ export class MediaService {
     const skip = (page - 1) * limit;
 
     const [data, total] = await Promise.all([
-      this.prisma.media.findMany({ where, orderBy, skip, take: limit }),
-      this.prisma.media.count({ where }),
+      this.db(teamId).media.findMany({ where, orderBy, skip, take: limit }),
+      this.db(teamId).media.count({ where }),
     ]);
 
     return {
@@ -81,28 +103,28 @@ export class MediaService {
     };
   }
 
-  async findOne(id: number) {
-    const media = await this.prisma.media.findUnique({ where: { id } });
+  async findOne(id: number, teamId = 0) {
+    const media = await this.db(teamId).media.findUnique({ where: { id } });
     if (!media) {
       throw new NotFoundException('Media not found');
     }
     return media;
   }
 
-  async create(data: MediaInput) {
+  async create(data: MediaInput, teamId = 0) {
     const name = this.toRequiredTrimmedString(data.name, 'name');
     const imageUrl = this.toRequiredTrimmedString(data.imageUrl, 'imageUrl');
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.db(teamId).$transaction(async (tx) => {
       const media = await tx.media.create({ data: { name, imageUrl } });
       await syncImageAsset(tx, media);
-      return tx.media.findUniqueOrThrow({ where: { id: media.id } });
+      return this.readBack(tx, media.id, teamId);
     });
   }
 
-  async update(id: number, data: MediaInput) {
+  async update(id: number, data: MediaInput, teamId = 0) {
     const actor = this.recorder.actor();
-    await this.findOne(id);
+    await this.findOne(id, teamId);
 
     const updateData: Prisma.MediaUpdateInput = {};
 
@@ -118,13 +140,13 @@ export class MediaService {
     }
 
     if (Object.keys(updateData).length === 0) {
-      return this.findOne(id);
+      return this.findOne(id, teamId);
     }
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.db(teamId).$transaction(async (tx) => {
       const media = await tx.media.update({ where: { id }, data: updateData });
       await syncImageAsset(tx, media);
-      return tx.media.findUniqueOrThrow({ where: { id } });
+      return this.readBack(tx, id, teamId);
     });
     // The change is final; recording who made it never blocks it (gaulatti/alcantara#236).
     await this.recorder.record({
@@ -138,8 +160,8 @@ export class MediaService {
     return result;
   }
 
-  async remove(id: number) {
-    await this.findOne(id);
+  async remove(id: number, teamId = 0) {
+    await this.findOne(id, teamId);
 
     const impactedRows = await this.prisma.mediaGroupItem.findMany({
       where: { mediaId: id },
@@ -149,21 +171,25 @@ export class MediaService {
       ...new Set(impactedRows.map((row) => row.mediaGroupId)),
     ];
 
-    await this.prisma.$transaction(async (tx) => {
+    await this.db(teamId).$transaction(async (tx) => {
       await tx.media.delete({ where: { id } });
       await deleteMediaAsset(tx, MediaAssetKind.IMAGE, id);
 
       for (const mediaGroupId of impactedGroupIds) {
         await this.rebalanceGroupItems(tx, mediaGroupId);
-        const group = await tx.mediaGroup.findUniqueOrThrow({
+        const query = {
           where: { id: mediaGroupId },
           include: {
             mediaItems: {
               include: { media: true },
-              orderBy: { position: 'asc' },
+              orderBy: { position: 'asc' as const },
             },
           },
-        });
+        };
+        const group =
+          teamId > 0
+            ? (await tx.mediaGroup.findUnique(query))!
+            : await tx.mediaGroup.findUniqueOrThrow(query);
         await syncLegacyMediaGroupLabel(tx, group);
       }
     });

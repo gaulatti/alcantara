@@ -253,3 +253,27 @@ describe('Login', () => {
     });
   });
 });
+
+describe('login desktop change without an error', () => {
+  afterEach(() => {
+    desktop.host = null;
+  });
+
+  it('keeps the form ready when the desktop reports a successful change', () => {
+    const listeners: Array<(change: { signedIn: boolean; error: string | null }) => void> = [];
+    const auth = {
+      currentSession: vi.fn(),
+      signIn: vi.fn(async () => undefined),
+      signOut: vi.fn(),
+      onChange: vi.fn((listener: (change: { signedIn: boolean; error: string | null }) => void) => {
+        listeners.push(listener);
+        return vi.fn();
+      }),
+    };
+    desktop.host = { auth };
+    renderLogin('ready');
+    listeners[0]({ signedIn: true, error: null });
+    expect(screen.queryByText('Sign-in could not begin. Please retry or contact your administrator.')).toBeNull();
+    expect(screen.getByRole('button', { name: /sign in with google/i })).toBeEnabled();
+  });
+});

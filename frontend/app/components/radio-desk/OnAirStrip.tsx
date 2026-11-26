@@ -22,7 +22,13 @@ export function OnAirStrip({
       className="sticky top-0 z-20 flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-sand/30 bg-deep-sea px-4 py-2.5 text-text-primary"
     >
       <StatePill
-        tone={view.state === "on-air" ? "live" : view.state === "delayed" ? "warn" : "idle"}
+        tone={
+          view.state === "on-air"
+            ? "live"
+            : view.state === "delayed" || view.state === "unconfirmed"
+              ? "warn"
+              : "idle"
+        }
         label={view.label}
         pulse={view.state === "on-air"}
       />
@@ -55,7 +61,9 @@ export function OnAirStrip({
               : `${formatClock(view.elapsedMs)} played, ${formatClock(view.remainingMs)} left`
           }
         >
-          {view.state === "delayed" ? (
+          {view.state === "unconfirmed" ? (
+            <span className="text-xs text-amber-200">No engine confirmation</span>
+          ) : view.state === "delayed" ? (
             <span className="text-xs text-amber-200">No live clock</span>
           ) : (
             <>
