@@ -249,6 +249,20 @@ describe('ModoItalianoGiorgiaArtistBumperEditorFields', () => {
     expect(document.body.textContent).toContain('Loading labels...');
   });
 
+  it('writes the artist, the song title, the content type and each credit line back to the bumper', () => {
+    const updateProp = editor({ artist: 'ROB', songTitle: 'Cento ragazze', images: IMAGES });
+    fireEvent.change(screen.getByLabelText('Artist'), { target: { value: 'Mina' } });
+    expect(updateProp).toHaveBeenLastCalledWith(TYPE, 'artist', 'Mina');
+    fireEvent.change(screen.getByLabelText('Song title'), { target: { value: 'Se telefonando' } });
+    expect(updateProp).toHaveBeenLastCalledWith(TYPE, 'songTitle', 'Se telefonando');
+    fireEvent.change(screen.getByLabelText('Content type (optional)'), { target: { value: 'Singolo' } });
+    expect(updateProp).toHaveBeenLastCalledWith(TYPE, 'contentType', 'Singolo');
+    fireEvent.change(screen.getByPlaceholderText('Warner Music Italy · 2025'), { target: { value: 'Label, 2025' } });
+    expect(updateProp).toHaveBeenLastCalledWith(TYPE, 'creditLines', ['Label, 2025', '']);
+    fireEvent.change(screen.getByPlaceholderText('Inedito di X Factor 2025'), { target: { value: 'Prima' } });
+    expect(updateProp).toHaveBeenLastCalledWith(TYPE, 'creditLines', ['', 'Prima']);
+  });
+
   // gaulatti/alcantara#186
   it('says a one-image label repeats it, and shows the saved show setting', () => {
     const updateProp = editor({ show: false, artist: 'ROB', songTitle: 'Cento ragazze', labelId: 'rob', images: [] }, [label('rob', [IMAGES[0]])]);
