@@ -504,6 +504,8 @@ export class RadioMetricsService {
   private readonly connectionsByState = new Map<string, number>();
   private reconnectAttempts = 0;
   private reconnectFailures = 0;
+  /** Event streams aborted after PALAZZO_EVENT_IDLE_MS without a byte (gaulatti/alcantara#734). */
+  private eventStreamIdleDisconnects = 0;
   private readonly snapshotReconciliation = new Map<string, number>();
   private readonly eventsIgnored = new Map<string, number>();
   private readonly unknownValues = new Map<string, number>();
@@ -551,6 +553,10 @@ export class RadioMetricsService {
 
   recordReconnectFailure(): void {
     this.reconnectFailures += 1;
+  }
+
+  recordEventStreamIdleDisconnect(): void {
+    this.eventStreamIdleDisconnects += 1;
   }
 
   recordSnapshotReconciliation(result: SnapshotReconciliationResult): void {
@@ -851,6 +857,9 @@ export class RadioMetricsService {
       '# HELP alcantara_palazzo_reconnect_failures_total Palazzo SSE reconnect failures.',
       '# TYPE alcantara_palazzo_reconnect_failures_total counter',
       `alcantara_palazzo_reconnect_failures_total ${this.reconnectFailures}`,
+      '# HELP alcantara_palazzo_event_stream_idle_disconnects_total Palazzo event streams dropped after 30 s without an event, then reconnected.',
+      '# TYPE alcantara_palazzo_event_stream_idle_disconnects_total counter',
+      `alcantara_palazzo_event_stream_idle_disconnects_total ${this.eventStreamIdleDisconnects}`,
       '# HELP alcantara_palazzo_snapshot_reconciliation_total Palazzo snapshot reconciliation results.',
       '# TYPE alcantara_palazzo_snapshot_reconciliation_total counter',
     );

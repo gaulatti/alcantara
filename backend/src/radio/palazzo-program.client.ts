@@ -49,6 +49,17 @@ const DEFAULT_POLL_INTERVAL_MS = 2_000;
 const DEFAULT_STALENESS_MS = 15_000;
 
 /**
+ * gaulatti/alcantara#734: an event stream that delivers no byte for this long is treated as lost. Palazzo emits
+ * `playback.position` every second and a `heartbeat` every 10 s from its Liquidsoap sample loop
+ * (gaulatti/palazzo src/stream/playback-telemetry.service.ts, `now - this.lastHeartbeatAt >= 10_000`, L556 at
+ * 706c383), so 30 s is three missed heartbeats. A hung Palazzo (connections accepted, nothing answered) keeps the
+ * TCP stream open and silent, and was never noticed. The stream is aborted and takes the usual path: `connecting`
+ * (no freeze), the state-endpoint poll, reconnect. The engine freezes only if Palazzo also fails the state poll; a
+ * Palazzo that answers reconnects with a snapshot at once and never freezes.
+ */
+export const PALAZZO_EVENT_IDLE_MS = 30_000;
+
+/**
  * Consumes one Palazzo instance's authoritative playback telemetry for one
  * radio-capable program.
  *
@@ -67,6 +78,9 @@ export class PalazzoProgramClient {
   private readonly stalenessMs: number;
 
   private abort: AbortController | null = null;
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Set when the idle watchdog aborted the stream, so the loop names the reason. */
+  private idleAborted = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
@@ -119,6 +133,7 @@ export class PalazzoProgramClient {
 
   stop(): void {
     this.stopped = true;
+    this.clearIdleWatchdog();
     this.clearReconnectTimer();
     this.clearPollTimer();
     this.abort?.abort();
@@ -140,8 +155,19 @@ export class PalazzoProgramClient {
         } else {
           this.options.metrics.recordReconnectFailure();
           if (this.connection !== 'unavailable') {
-            this.setConnection('connecting', 'sse connect failed');
+            this.setConnection(
+              'connecting',
+              this.idleAborted
+                ? 'sse idle: no event for 30 s'
+                : 'sse connect failed',
+            );
           }
+          // The idle watchdog aborted this controller; the state poll reuses it, and an aborted signal would fail
+          // the poll at once and read unavailable for a Palazzo that still answers (#734). Start a fresh one.
+          if (this.idleAborted && this.abort?.signal.aborted) {
+            this.abort = new AbortController();
+          }
+          this.idleAborted = false;
           this.startPolling();
         }
         if (this.stopped) return;
@@ -195,10 +221,13 @@ export class PalazzoProgramClient {
     const reader = body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    this.armIdleWatchdog();
     try {
       for (;;) {
         const { done, value } = await reader.read();
         if (done) return;
+        // Any byte proves the stream is alive, a partial frame included.
+        this.armIdleWatchdog();
         buffer += decoder.decode(value, { stream: true });
         let separator = /\r?\n\r?\n/.exec(buffer);
         while (separator?.index !== undefined) {
@@ -213,7 +242,29 @@ export class PalazzoProgramClient {
         }
       }
     } finally {
+      this.clearIdleWatchdog();
       reader.releaseLock();
+    }
+  }
+
+  private armIdleWatchdog(): void {
+    this.clearIdleWatchdog();
+    this.idleTimer = setTimeout(() => {
+      // stop() clears this timer, so it never fires for a stopped client.
+      this.idleTimer = null;
+      this.idleAborted = true;
+      this.options.metrics.recordEventStreamIdleDisconnect();
+      this.logger.warn(
+        `Palazzo event stream for ${this.options.programId} sent nothing for ${PALAZZO_EVENT_IDLE_MS / 1000} s; reconnecting`,
+      );
+      this.abort?.abort();
+    }, PALAZZO_EVENT_IDLE_MS);
+  }
+
+  private clearIdleWatchdog(): void {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
     }
   }
 
