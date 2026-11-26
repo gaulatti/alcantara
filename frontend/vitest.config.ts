@@ -35,7 +35,11 @@ export default defineConfig({
     // with `Timeout calling "onTaskUpdate"` (an unhandled error, exit 1). Measured on 172 files / 1,570
     // tests: no coverage 30 s; coverage with 4 forks 96 s and with 2 forks 121 s, both exit 0; coverage
     // with the default 9 forks 86 s and the timeout. No timeout is raised.
-    poolOptions: { forks: { maxForks: 4, minForks: 1 } },
+    // Two forks, not four, as the candidate for the coverage-run RPC timeouts ("Timeout calling onTaskUpdate"
+    // and "snapshotSaved") on a 4-vCPU runner (gaulatti/alcantara#531). Reproduced once locally under heavy CPU
+    // load with four forks; two forks passed one normal-load run. Not yet proven: three green normal runs and a
+    // loaded run are still needed before this is called a fix.
+    poolOptions: { forks: { maxForks: 2, minForks: 1 } },
     coverage: {
       provider: 'v8',
       all: true,
