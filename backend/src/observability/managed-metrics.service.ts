@@ -213,6 +213,13 @@ const RECIPE_DELETE_RESULTS = new Set([
   'conflict',
 ]);
 const SCENE_HANDOFF_RESULTS = new Set(['success', 'failure']);
+/** gaulatti/alcantara#122: why a scene background asset read was not served by the program's team. */
+export type SceneAssetScopeReason = 'no-team' | 'other-team' | 'lookup-failed';
+const SCENE_ASSET_SCOPE_REASONS = new Set<string>([
+  'no-team',
+  'other-team',
+  'lookup-failed',
+]);
 const PREFERENCE_ACTIONS = new Set([
   'read',
   'write',
@@ -347,6 +354,7 @@ export class ManagedMetricsService {
   private readonly recipeRebuilds: Counter<string>;
   private readonly recipeDeletes: Counter<string>;
   private readonly sceneHandoffs: Counter<string>;
+  private readonly sceneAssetScopeRefusals: Counter<string>;
   private readonly jobLastSuccess: Gauge<string>;
   private readonly preferenceOperations: Counter<string>;
   private readonly broadcastDestinationOperations: Counter<string>;
@@ -474,6 +482,14 @@ export class ManagedMetricsService {
       labelNames: ['result'],
       registers: [this.registry],
     });
+    this.sceneAssetScopeRefusals = new Counter({
+      name: 'alcantara_scene_asset_scope_refusals_total',
+      help: 'Scene background asset reads the program team could not serve, read unscoped instead, by reason. Exposed from 0.',
+      labelNames: ['reason'],
+      registers: [this.registry],
+    });
+    for (const reason of SCENE_ASSET_SCOPE_REASONS)
+      this.sceneAssetScopeRefusals.inc({ reason }, 0);
     this.sceneHandoffs = new Counter({
       name: 'alcantara_scene_handoffs_total',
       help: 'Atomic Program and Preview scene handoff persistence outcomes.',
@@ -762,6 +778,12 @@ export class ManagedMetricsService {
     this.operatorChangeRecords.inc({
       target: bounded(target, OPERATOR_CHANGE_TARGETS),
       result: bounded(result, OPERATOR_CHANGE_RESULTS),
+    });
+  }
+
+  recordSceneAssetScopeRefusal(reason: SceneAssetScopeReason): void {
+    this.sceneAssetScopeRefusals.inc({
+      reason: bounded(reason, SCENE_ASSET_SCOPE_REASONS),
     });
   }
 

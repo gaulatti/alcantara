@@ -1,6 +1,7 @@
 import { Module, Global } from '@nestjs/common';
 import { ProgramController } from './program.controller';
 import { ProgramService } from './program.service';
+import { SceneAssetScope } from './scene-asset-scope';
 import { ProgramRealtimeService } from './program.realtime.service';
 import { FlightService } from './flight.service';
 import { OperatorChangeModule } from '../operator-change/operator-change.module';
@@ -25,6 +26,7 @@ import { ArtistLabelsService } from '../artist-labels/artist-labels.service';
   controllers: [ProgramController, RecipesController],
   providers: [
     ProgramService,
+    SceneAssetScope,
     ProgramRealtimeService,
     FlightService,
     ProgramTemplateService,
