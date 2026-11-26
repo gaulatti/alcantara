@@ -95,7 +95,7 @@ async function compile(prisma: ReturnType<typeof prismaWith>) {
     .overrideProvider(ProgramService)
     .useValue({ addEventListener: jest.fn(() => jest.fn()) })
     .overrideProvider(FlightService)
-    .useValue({})
+    .useValue({ programSongDb: jest.fn(async () => prisma) })
     .overrideProvider(PrismaService)
     .useValue(prisma)
     .compile();

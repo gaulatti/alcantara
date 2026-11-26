@@ -173,6 +173,13 @@ export type SimilarityScopePath =
   | 'export'
   | 'upload';
 
+export type LogSongScopePath =
+  | 'generate'
+  | 'validate'
+  | 'cue'
+  | 'recipe'
+  | 'recovery';
+
 export type SimilarityActionResult =
   | 'selected'
   | 'fallback-no-candidate'
@@ -460,6 +467,14 @@ const SIMILARITY_SCOPE_PATHS: SimilarityScopePath[] = [
   'upload',
 ];
 
+const LOG_SONG_SCOPE_PATHS: LogSongScopePath[] = [
+  'generate',
+  'validate',
+  'cue',
+  'recipe',
+  'recovery',
+];
+
 const SIMILARITY_ACTION_RESULTS: SimilarityActionResult[] = [
   'selected',
   'fallback-no-candidate',
@@ -533,6 +548,7 @@ export class RadioMetricsService {
   private readonly similarityActions = new Map<string, number>();
   private readonly asRunScopeRefusals = new Map<string, number>();
   private readonly similarityScopeRefusals = new Map<string, number>();
+  private readonly logSongScopeRefusals = new Map<string, number>();
   private readonly analysisDrops = new Map<string, number>();
   private readonly cueGroups = new Map<string, number>();
   private readonly nextAnnouncements = new Map<string, number>();
@@ -676,6 +692,14 @@ export class RadioMetricsService {
     this.similarityScopeRefusals.set(
       path,
       (this.similarityScopeRefusals.get(path) ?? 0) + 1,
+    );
+  }
+
+  recordLogSongScopeRefusal(path: LogSongScopePath): void {
+    if (!LOG_SONG_SCOPE_PATHS.includes(path)) return;
+    this.logSongScopeRefusals.set(
+      path,
+      (this.logSongScopeRefusals.get(path) ?? 0) + 1,
     );
   }
 
@@ -998,6 +1022,15 @@ export class RadioMetricsService {
     for (const path of AS_RUN_SCOPE_PATHS) {
       lines.push(
         `alcantara_as_run_scope_refusals_total{path="${path}"} ${this.asRunScopeRefusals.get(path) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_log_song_scope_refusals_total Log, recipe, cue and recovery song reads refused because the program has no team, by bounded path.',
+      '# TYPE alcantara_log_song_scope_refusals_total counter',
+    );
+    for (const path of LOG_SONG_SCOPE_PATHS) {
+      lines.push(
+        `alcantara_log_song_scope_refusals_total{path="${path}"} ${this.logSongScopeRefusals.get(path) ?? 0}`,
       );
     }
     lines.push(

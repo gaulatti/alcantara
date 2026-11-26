@@ -41,6 +41,7 @@ function harness(sequences: any[], asRun: any[]) {
     { broadcastUpdate: jest.fn() } as any,
     new RadioMetricsService(),
     noRecorder(),
+    { teamId: 0 } as never,
   );
   return { prisma, service };
 }
