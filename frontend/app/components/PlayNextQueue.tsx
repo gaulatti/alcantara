@@ -60,9 +60,7 @@ export function PlayNextQueue({
     }
   };
 
-  const move = (index: number, offset: -1 | 1) => {
-    const target = index + offset;
-    if (target < 0 || target >= queue.length) return;
+  const moveTo = (index: number, target: number) => {
     const reordered = [...queue];
     const [entry] = reordered.splice(index, 1);
     reordered.splice(target, 0, entry);
@@ -92,6 +90,8 @@ export function PlayNextQueue({
       ) : (
         <ol className="max-h-48 divide-y divide-sand/20 overflow-y-auto border-t border-sand/20">
           {queue.map((entry, index) => {
+            const earlierTo = index > 0 ? index - 1 : null;
+            const laterTo = index < queue.length - 1 ? index + 1 : null;
             const song = songsById.get(entry.itemId) ?? null;
             const isPlaying = entry.id === activeQueueEntryId;
             const disabled = pendingEntryId !== null;
@@ -128,7 +128,7 @@ export function PlayNextQueue({
                       index === 0 ||
                       index === activeIndex + 1
                     }
-                    onClick={() => move(index, -1)}
+                    onClick={earlierTo === null ? undefined : () => moveTo(index, earlierTo)}
                     className="flex h-6 w-6 items-center justify-center border-0 bg-transparent p-0 text-text-secondary shadow-none hover:translate-y-0 hover:scale-100 hover:text-text-primary disabled:opacity-30"
                     title="Move earlier"
                     aria-label={`Move ${song?.title || "queued song"} earlier`}
@@ -143,7 +143,7 @@ export function PlayNextQueue({
                       index === activeIndex - 1 ||
                       index === queue.length - 1
                     }
-                    onClick={() => move(index, 1)}
+                    onClick={laterTo === null ? undefined : () => moveTo(index, laterTo)}
                     className="flex h-6 w-6 items-center justify-center border-0 bg-transparent p-0 text-text-secondary shadow-none hover:translate-y-0 hover:scale-100 hover:text-text-primary disabled:opacity-30"
                     title="Move later"
                     aria-label={`Move ${song?.title || "queued song"} later`}

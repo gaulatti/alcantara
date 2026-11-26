@@ -18,6 +18,9 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // Every test starts from the provider default; a test that needs TEST AUTH stubs it. Compose sets
+    // VITE_AUTH_MODE=test for the dev server, and it must not leak into the suite (gaulatti/alcantara#200).
+    env: { VITE_AUTH_MODE: '' },
     // Both suffixes: .test.ts files were silently skipped before (gaulatti/alcantara#253).
     include: ['app/**/*.test.{ts,tsx}'],
     setupFiles: ['./test/setup.ts'],

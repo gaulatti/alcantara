@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
 import { ProgramService } from '../../program/program.service';
+import { PompeiiService } from '../../auth/pompeii.service';
 import { ScenesService } from '../../scenes/scenes.service';
 import { McpToolError, McpToolProvider, type McpToolSpec } from '../contract';
 import {
@@ -38,11 +39,15 @@ export class ScenesMcpTools {
   constructor(
     private readonly scenes: ScenesService,
     private readonly programs: ProgramService,
+    private readonly pompeii: PompeiiService,
   ) {}
 
   /** The scene, or not_found where REST answers an empty 200. */
   private async requireScene(sceneId: number) {
-    const scene = (await this.scenes.findOne(sceneId)) as SceneRow | null;
+    const scene = (await this.scenes.findOne(
+      sceneId,
+      this.pompeii.teamId,
+    )) as SceneRow | null;
     if (!scene) throw new McpToolError('not_found', 'Scene not found');
     return scene;
   }
@@ -98,7 +103,7 @@ export class ScenesMcpTools {
           'Lists every scene with its layout, newest first, as the console loads them.',
         permission: permissions.read,
         shape: {},
-        run: () => this.scenes.findAll(),
+        run: () => this.scenes.findAll(this.pompeii.teamId),
       }),
       readSpec({
         name: 'scene_find_one',
@@ -135,13 +140,16 @@ export class ScenesMcpTools {
           recoverable: true,
         }),
         run: (args) =>
-          this.scenes.create({
-            name: args.name,
-            layoutId: args.layout_id,
-            chyronText: args.chyron_text,
-            metadata: args.metadata,
-            externalSourceId: args.external_source_id,
-          }),
+          this.scenes.create(
+            {
+              name: args.name,
+              layoutId: args.layout_id,
+              chyronText: args.chyron_text,
+              metadata: args.metadata,
+              externalSourceId: args.external_source_id,
+            },
+            this.pompeii.teamId,
+          ),
       }),
       actionSpec({
         name: 'scene_update',
@@ -176,13 +184,17 @@ export class ScenesMcpTools {
         }),
         onAir: (_args, { onAirIn }) => onAirIn.length > 0,
         run: (args) =>
-          this.scenes.update(args.scene_id, {
-            name: args.name,
-            layoutId: args.layout_id,
-            chyronText: args.chyron_text,
-            metadata: args.metadata,
-            externalSourceId: args.external_source_id,
-          }),
+          this.scenes.update(
+            args.scene_id,
+            {
+              name: args.name,
+              layoutId: args.layout_id,
+              chyronText: args.chyron_text,
+              metadata: args.metadata,
+              externalSourceId: args.external_source_id,
+            },
+            this.pompeii.teamId,
+          ),
       }),
       this.operate({
         name: 'scene_update_chyron',
@@ -192,7 +204,11 @@ export class ScenesMcpTools {
         shape: { scene_id: rowIdArg, chyron_text: chyronArg },
         what: 'Replaces the chyron text',
         call: (args) =>
-          this.scenes.updateChyron(args.scene_id, args.chyron_text),
+          this.scenes.updateChyron(
+            args.scene_id,
+            args.chyron_text,
+            this.pompeii.teamId,
+          ),
       }),
       this.operate({
         name: 'scene_draw_modo_italiano_bracket',
@@ -202,10 +218,14 @@ export class ScenesMcpTools {
         shape: { ...bracket, seed: z.number().int().optional() },
         what: 'Starts a bracket draw',
         call: (args) =>
-          this.scenes.drawBracket(args.scene_id, {
-            componentType: args.component_type,
-            seed: args.seed,
-          }),
+          this.scenes.drawBracket(
+            args.scene_id,
+            {
+              componentType: args.component_type,
+              seed: args.seed,
+            },
+            this.pompeii.teamId,
+          ),
       }),
       this.operate({
         name: 'scene_vote_modo_italiano_bracket',
@@ -220,12 +240,16 @@ export class ScenesMcpTools {
         },
         what: 'Records a bracket vote',
         call: (args) =>
-          this.scenes.voteBracket(args.scene_id, {
-            componentType: args.component_type,
-            matchId: args.match_id,
-            voterId: args.voter_id,
-            songId: args.song_id,
-          }),
+          this.scenes.voteBracket(
+            args.scene_id,
+            {
+              componentType: args.component_type,
+              matchId: args.match_id,
+              voterId: args.voter_id,
+              songId: args.song_id,
+            },
+            this.pompeii.teamId,
+          ),
       }),
       this.operate({
         name: 'scene_open_modo_italiano_bracket_voting',
@@ -235,10 +259,14 @@ export class ScenesMcpTools {
         shape: { ...bracket, match_id: matchArg },
         what: 'Opens bracket voting',
         call: (args) =>
-          this.scenes.openBracketVoting(args.scene_id, {
-            componentType: args.component_type,
-            matchId: args.match_id,
-          }),
+          this.scenes.openBracketVoting(
+            args.scene_id,
+            {
+              componentType: args.component_type,
+              matchId: args.match_id,
+            },
+            this.pompeii.teamId,
+          ),
       }),
       actionSpec({
         name: 'scene_remove',
@@ -251,6 +279,7 @@ export class ScenesMcpTools {
         load: async (args) => {
           const scene = (await this.scenes.findOne(
             args.scene_id,
+            this.pompeii.teamId,
           )) as SceneRow | null;
           if (!scene) throw new McpToolError('not_found', 'Scene not found');
           const listed = await listPrograms(this.programs);
@@ -290,7 +319,7 @@ export class ScenesMcpTools {
               `scene ${scene.id} is staged on ${stagedIn.join(', ')}`,
             ],
           ]),
-        run: (args) => this.scenes.remove(args.scene_id),
+        run: (args) => this.scenes.remove(args.scene_id, this.pompeii.teamId),
       }),
     ];
   }

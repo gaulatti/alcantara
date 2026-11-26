@@ -552,6 +552,8 @@ The frontend SSE client automatically reconnects with a 3-second interval if the
 - SSE endpoint uses RxJS observables for broadcasting
 - Fastify is used instead of Express for better performance
 - Prisma handles database migrations and client generation
+- One Node version, stated in `.nvmrc`, runs Compose, CI and the deploy; `backend/test/node-version.test.js` fails when a Dockerfile or workflow differs from it
+- The frontend suite also passes inside the Compose frontend service, which holds only `frontend/` and runs with the dev server's `VITE_AUTH_MODE=test`: `docker compose build frontend && docker compose run --rm --no-deps frontend npx vitest run`. The suite starts every test from the provider default (`vitest.config.ts` clears `VITE_AUTH_MODE`); a test that needs TEST AUTH stubs it. Tests that read repository-level files, such as the deploy workflow, belong in `backend/test` and run with `pnpm --dir backend run test:deployment`
 
 ## License
 
