@@ -178,6 +178,9 @@ function notAiredReason(reason: string | null): string {
   return reason ? `not aired (${reason})` : "not aired";
 }
 
+/** Why the desk refuses what would be accepted and not air while Palazzo's playout is down. */
+const PLAYOUT_DOWN_REASON = "Playout down: nothing can air";
+
 export const RadioPanel: React.FC<RadioPanelProps> = ({
   fixtureData,
   programId,
@@ -536,7 +539,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     queue: songQueue,
     playback: programSongPlayback,
   });
-  // Palazzo answers but its playout is down: display only, automation still follows the connection.
+  // Palazzo answers but its playout is down: automation still follows the connection, but the desk refuses
+  // what would be accepted and not air (Take, Take now, Start with fallback). Stop stays available.
   const playoutDown = engineReady && palazzo?.playout === "down";
   const onAirView = deriveOnAir({
     playback: programSongPlayback,
@@ -1183,6 +1187,12 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   Starting binds the prepared playlist. Stopping clears program
                   audio and the binding.
                 </p>
+                {playoutDown ? (
+                  <p className="text-terracotta">
+                    {PLAYOUT_DOWN_REASON}, the recovery playlist included: Start
+                    with fallback is unavailable until playout is back.
+                  </p>
+                ) : null}
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
@@ -1191,6 +1201,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     onClick={() => void commandRecovery("start")}
                     disabled={
                       recoveryBusy ||
+                      playoutDown ||
                       !recovery?.preparedVersion ||
                       recovery.connection !== "connected" ||
                       recovery.automation?.filler.ready
@@ -1280,7 +1291,13 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
           onTake={takeNext}
           onTakeOffAir={onTakeOffAir}
           keysEnabled={!findingSong}
-          engineUnavailable={engineReady ? null : engineUnavailableLabel(palazzo)}
+          engineUnavailable={
+            !engineReady
+              ? engineUnavailableLabel(palazzo)
+              : playoutDown
+                ? PLAYOUT_DOWN_REASON
+                : null
+          }
           confirmedItemId={confirmedLiveLeaf?.id ?? null}
           onListen={
             monitor
@@ -1300,6 +1317,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
         onClose={() => setFindingSong(false)}
         onCueNext={(leaf) => onQueueSong(leaf.id)}
         onTakeNow={async (candidate) => {
+          if (playoutDown)
+            throw new Error(`${PLAYOUT_DOWN_REASON}. Nothing was taken.`);
           if (candidate.leaf) return takeRotationSong(candidate.leaf.id);
           if (candidate.song && onPlaySongNow) return onPlaySongNow(candidate.song);
           throw new Error("Playing a library song now is not available here.");

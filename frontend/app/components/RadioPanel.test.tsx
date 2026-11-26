@@ -670,6 +670,44 @@ it("shows Playout down on the strip and names the action, over the dead-air advi
   expect(screen.queryByRole("alert", { name: "Dead air" })).toBeNull();
 });
 
+// Wakko's #740 review: while playout is down a take would be accepted and not air, so the desk refuses it on every
+// take path, and Start with fallback (the recovery playlist cannot play either). Stop stays available.
+it("refuses Take, Take now and Start with fallback while playout is down, and keeps Stop", async () => {
+  const p = deskProps();
+  p.fixtureData!.logs = [];
+  p.fixtureData!.palazzo = { ...p.fixtureData!.palazzo, playout: "down" } as never;
+  p.fixtureData!.recovery = {
+    preparedVersion: "v3",
+    automation: { actualState: "ready", filler: { activeVersion: null, ready: false } },
+    connection: "connected",
+  } as never;
+  mount(p);
+  expect(
+    screen.getByText("Playout down: nothing can air. Take is unavailable until the engine is back."),
+  ).toBeVisible();
+  const fallback = screen.getByRole("button", { name: "Start with fallback" });
+  expect(fallback).toBeDisabled();
+  expect(
+    screen.getByText(
+      "Playout down: nothing can air, the recovery playlist included: Start with fallback is unavailable until playout is back.",
+    ),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Stop the song on air" })).toBeEnabled();
+
+  fireEvent.keyDown(window, { key: "/" });
+  const dialog = await screen.findByRole("dialog", { name: "Play a song now" });
+  fireEvent.change(
+    within(dialog).getByRole("textbox", { name: "Search the rotation and the library" }),
+    { target: { value: "paper sat" } },
+  );
+  fireEvent.click(within(dialog).getByRole("button", { name: "Take now Paper Satellites" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Confirm Paper Satellites" }));
+  expect(
+    await within(dialog).findByText("Playout down: nothing can air. Nothing was taken."),
+  ).toBeVisible();
+  expect(p.onTakeSelection).not.toHaveBeenCalled();
+});
+
 it("reads Engine ready when Palazzo reports its playout up", async () => {
   radioApi({
     "/palazzo-status": json({ ...props().fixtureData!.palazzo, playout: "up" }),
