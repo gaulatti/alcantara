@@ -21,6 +21,7 @@ describe('renaming a program that is on air', () => {
         ),
         update: jest.fn().mockResolvedValue({}),
       },
+      program: { findUnique: jest.fn().mockResolvedValue(null) },
     };
     const engine = {
       getOnAirView: jest.fn((): { playbackRequestId: string | null } => ({

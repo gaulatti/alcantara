@@ -88,6 +88,9 @@ async function showSaveRefusal(response: Response): Promise<ShowSaveRefused> {
   return new ShowSaveRefused(response.status, reason);
 }
 
+/** The server's refusal of a rename onto an ID a deleted show's settings still hold (gaulatti/alcantara#122). */
+const HELD_SHOW_ID_MESSAGE = "That ID belongs to a deleted show's settings. Choose another ID.";
+
 /**
  * What the create or edit dialog says when saving fails. It used to say "Ensure the ID is unique" for every failure,
  * which sent operators after the wrong cause (the #744 walk).
@@ -96,9 +99,10 @@ function showSaveErrorMessage(error: unknown, showSaved: boolean): string {
   if (showSaved)
     return 'The show was saved, but its scenes or stingers were not updated. Edit it to try again.';
   if (error instanceof ShowSaveRefused) {
-    // A show on air is not renamed: say what the server said.
+    // A show on air, and an ID a deleted show's settings still hold, are not 'a show with this ID': say what the
+    // server said.
     if (error.status === 409)
-      return error.reason?.startsWith('This show is on air')
+      return error.reason === HELD_SHOW_ID_MESSAGE || error.reason?.startsWith('This show is on air')
         ? error.reason
         : 'A show with this ID already exists. Choose another ID.';
     if (error.status === 400 && error.reason)

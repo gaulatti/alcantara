@@ -1413,9 +1413,8 @@ it("starts and stops the recovery session through Palazzo", async () => {
   ).toHaveLength(1);
   const configure = screen.getByRole("link", { name: "Configure" });
   expect(configure).toHaveAttribute("href", "/radio-settings");
-  // Keyboard focus shows a ring: the link has no border or background, so without these classes it has no focus indicator.
-  expect(configure.className).toContain("focus-visible:ring-2");
-  expect(configure.className).toContain("focus-visible:ring-sea");
+  // Keyboard focus uses the global :focus-visible ring (#688): no per-link style cancels its outline.
+  expect(configure.className).not.toMatch(/outline-none|focus-visible:/);
 });
 
 // gaulatti/alcantara#693 review: one stop while one is on its way. A second hold sends nothing.
