@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
 import { ProgramService } from '../../program/program.service';
 import { SongsService } from '../../songs/songs.service';
+import { PompeiiService } from '../../auth/pompeii.service';
 import { McpToolProvider, type McpToolSpec } from '../contract';
 import {
   loadUsage,
@@ -88,11 +89,16 @@ export class SongsMcpTools {
   constructor(
     private readonly songs: SongsService,
     private readonly programs: ProgramService,
+    private readonly pompeii: PompeiiService,
   ) {}
 
   /** The song and where it is playing, queued or sequenced. */
   private async songInUse(songId: number) {
-    const song = (await this.songs.findOne(songId)) as SongRow;
+    const song = (await this.songs.findOne(
+      songId,
+      undefined,
+      this.pompeii.teamId,
+    )) as SongRow;
     const list = await loadUsage(this.programs);
     return {
       song,
@@ -131,15 +137,18 @@ export class SongsMcpTools {
           program_id: programIdArg.optional(),
         },
         run: (args) =>
-          this.songs.findAll({
-            search: args.search,
-            enabled: args.enabled,
-            sortBy: args.sort_by,
-            sortOrder: args.sort_order,
-            page: args.page ?? 1,
-            limit: args.limit ?? 50,
-            programId: args.program_id,
-          }),
+          this.songs.findAll(
+            {
+              search: args.search,
+              enabled: args.enabled,
+              sortBy: args.sort_by,
+              sortOrder: args.sort_order,
+              page: args.page ?? 1,
+              limit: args.limit ?? 50,
+              programId: args.program_id,
+            },
+            this.pompeii.teamId,
+          ),
       }),
       readSpec({
         name: 'song_find_one',
@@ -149,7 +158,12 @@ export class SongsMcpTools {
         permission: permissions.read,
         untrusted: SONG_UNTRUSTED,
         shape: { song_id: rowIdArg, program_id: programIdArg.optional() },
-        run: (args) => this.songs.findOne(args.song_id, args.program_id),
+        run: (args) =>
+          this.songs.findOne(
+            args.song_id,
+            args.program_id,
+            this.pompeii.teamId,
+          ),
       }),
       actionSpec({
         name: 'song_create',
@@ -167,7 +181,7 @@ export class SongsMcpTools {
           affects: [],
           recoverable: true,
         }),
-        run: (args) => this.songs.create(songInput(args)),
+        run: (args) => this.songs.create(songInput(args), this.pompeii.teamId),
       }),
       actionSpec({
         name: 'song_update',
@@ -199,7 +213,11 @@ export class SongsMcpTools {
         onAir: (_args, { playing }) => playing.length > 0,
         run: (args) => {
           const { song_id: songId, ...fields } = args;
-          return this.songs.update(songId, songInput(fields));
+          return this.songs.update(
+            songId,
+            songInput(fields),
+            this.pompeii.teamId,
+          );
         },
       }),
       actionSpec({
@@ -242,7 +260,7 @@ export class SongsMcpTools {
               `song ${args.song_id} is in the song sequence of ${sequenced.join(', ')}`,
             ],
           ]),
-        run: (args) => this.songs.remove(args.song_id),
+        run: (args) => this.songs.remove(args.song_id, this.pompeii.teamId),
       }),
     ];
   }

@@ -73,7 +73,11 @@ const controllers = {
   ),
 };
 const specs = [
-  ...new SongsMcpTools(services.songs as never, {} as never).specs(),
+  ...new SongsMcpTools(
+    services.songs as never,
+    {} as never,
+    { teamId: 7 } as never,
+  ).specs(),
   ...new MediaMcpTools(services.media as never, {} as never).specs(),
   ...new MediaAssetsMcpTools(services.assets as never, {} as never).specs(),
   ...new SimilarityMcpTools(services.similarity as never).specs(),
@@ -96,10 +100,14 @@ beforeEach(() => {
   services.similarity.exportSongs.mockResolvedValue(exportOf(3));
 });
 
+const SONG_TEAM = { user: { authorization: { teamId: 7 } } };
+
 describe('song reads return what the controller returns', () => {
   it('song_find_all, with the console defaults and the filters it passes on', async () => {
     const result = await run('song_find_all', {});
-    expect(rebuilt(result)).toEqual(asRest(await controllers.songs.findAll()));
+    expect(rebuilt(result)).toEqual(
+      asRest(await controllers.songs.findAll(SONG_TEAM)),
+    );
     expect(result).toMatchObject({
       data: [
         {
@@ -108,18 +116,23 @@ describe('song reads return what the controller returns', () => {
         },
       ],
     });
-    expect(services.songs.findAll).toHaveBeenNthCalledWith(1, {
-      search: undefined,
-      enabled: undefined,
-      sortBy: undefined,
-      sortOrder: undefined,
-      page: 1,
-      limit: 50,
-      programId: undefined,
-    });
+    expect(services.songs.findAll).toHaveBeenNthCalledWith(
+      1,
+      {
+        search: undefined,
+        enabled: undefined,
+        sortBy: undefined,
+        sortOrder: undefined,
+        page: 1,
+        limit: 50,
+        programId: undefined,
+      },
+      7,
+    );
     expect(services.songs.findAll).toHaveBeenNthCalledWith(
       2,
       services.songs.findAll.mock.calls[0][0],
+      7,
     );
     await run('song_find_all', {
       search: 'ant',
@@ -130,16 +143,20 @@ describe('song reads return what the controller returns', () => {
       limit: 5,
       program_id: 'news',
     });
-    expect(services.songs.findAll).toHaveBeenLastCalledWith({
-      search: 'ant',
-      enabled: false,
-      sortBy: 'title',
-      sortOrder: 'asc',
-      page: 2,
-      limit: 5,
-      programId: 'news',
-    });
+    expect(services.songs.findAll).toHaveBeenLastCalledWith(
+      {
+        search: 'ant',
+        enabled: false,
+        sortBy: 'title',
+        sortOrder: 'asc',
+        page: 2,
+        limit: 5,
+        programId: 'news',
+      },
+      7,
+    );
     await controllers.songs.findAll(
+      SONG_TEAM,
       'ant',
       'false',
       'title',
@@ -150,20 +167,21 @@ describe('song reads return what the controller returns', () => {
     );
     expect(services.songs.findAll).toHaveBeenLastCalledWith(
       services.songs.findAll.mock.calls[2][0],
+      7,
     );
   });
 
   it('song_find_one', async () => {
     const result = await run('song_find_one', { song_id: 7 });
     expect(rebuilt(result)).toEqual(
-      asRest(await controllers.songs.findOne('7')),
+      asRest(await controllers.songs.findOne('7', SONG_TEAM)),
     );
     expect(result).toMatchObject({
       untrusted: { audioUrl: song.audioUrl },
       intro: { instant: { untrusted: { name: 'Station id' } } },
     });
     await run('song_find_one', { song_id: 7, program_id: 'news' });
-    expect(services.songs.findOne).toHaveBeenLastCalledWith(7, 'news');
+    expect(services.songs.findOne).toHaveBeenLastCalledWith(7, 'news', 7);
   });
 });
 

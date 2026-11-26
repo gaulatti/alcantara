@@ -59,7 +59,11 @@ function build() {
     },
   };
   const specs = [
-    ...new SongsMcpTools(services.songs as never, programs as never).specs(),
+    ...new SongsMcpTools(
+      services.songs as never,
+      programs as never,
+      { teamId: 7 } as never,
+    ).specs(),
     ...new MediaMcpTools(services.media as never, programs as never).specs(),
     ...new MediaAssetsMcpTools(
       services.assets as never,
@@ -167,7 +171,7 @@ describe('song_remove', () => {
     await expect(spec('song_remove').run(args, ctx)).resolves.toMatchObject({
       result: { deletedSongId: 7 },
     });
-    expect(services.songs.remove).toHaveBeenCalledWith(7);
+    expect(services.songs.remove).toHaveBeenCalledWith(7, 7);
   });
 
   it('reports an unknown song as not_found', async () => {

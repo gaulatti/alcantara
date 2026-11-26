@@ -34,6 +34,7 @@ describe('catalogue, preference and ticket contracts through Fastify HTTP', () =
   const catalogues = [
     {
       path: 'songs',
+      scoped: true,
       controller: SongsController,
       token: SongsService,
       service: methods(['findAll', 'findOne', 'create', 'update', 'remove']),
@@ -322,13 +323,20 @@ describe('catalogue, preference and ticket contracts through Fastify HTTP', () =
         url: `/${name}${query}`,
       });
       expect(response.statusCode).toBe(200);
-      expect(item.service.findAll).toHaveBeenCalledWith(expected);
+      expect(item.service.findAll).toHaveBeenCalledWith(
+        expected,
+        ...('scoped' in item ? [identity.authorization.teamId] : []),
+      );
     },
   );
 
   it('forwards program-scoped song reads and opaque shared-layout scope IDs without rewriting them', async () => {
     await app.inject({ method: 'GET', url: '/songs/41?programId=radio%2Fone' });
-    expect(catalogues[0].service.findOne).toHaveBeenCalledWith(41, 'radio/one');
+    expect(catalogues[0].service.findOne).toHaveBeenCalledWith(
+      41,
+      'radio/one',
+      identity.authorization.teamId,
+    );
     const found = await app.inject({
       method: 'GET',
       url: '/operator-preferences/shared?scope=program&scopeId=radio%2Fone',

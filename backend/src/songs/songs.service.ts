@@ -10,6 +10,7 @@ import {
   syncSongAsset,
 } from '../media-assets/media-asset-sync';
 import { PrismaService } from '../prisma.service';
+import { forTeam } from '../tenancy/scoped-prisma';
 import {
   OperatorChangeRecorder,
   summarizeChange,
@@ -104,7 +105,32 @@ export class SongsService {
     private readonly recorder: OperatorChangeRecorder,
   ) {}
 
-  async findAll(params: FindAllParams) {
+  /**
+   * The songs of one team (gaulatti/alcantara#122), their assets and intro instants. `0` means no team is configured,
+   * and the radio's reads stay unscoped. Analyses and nested relations are not scoped.
+   */
+  private db(teamId: number): PrismaService {
+    return teamId > 0
+      ? (forTeam(this.prisma, teamId) as unknown as PrismaService)
+      : this.prisma;
+  }
+
+  /** The row just written; findUniqueOrThrow is refused on the team-scoped client. */
+  private async readBack(
+    tx: Prisma.TransactionClient,
+    id: number,
+    teamId: number,
+  ) {
+    const query = {
+      where: { id },
+      include: { intro: { include: { instant: true } } },
+    };
+    return teamId > 0
+      ? (await tx.song.findUnique(query))!
+      : tx.song.findUniqueOrThrow(query);
+  }
+
+  async findAll(params: FindAllParams, teamId = 0) {
     const { search, enabled, sortBy, sortOrder, page, limit } = params;
     const programId = this.normalizeProgramId(params.programId);
 
@@ -140,18 +166,21 @@ export class SongsService {
 
     const skip = limit > 0 ? (page - 1) * limit : 0;
 
+    const db = this.db(teamId);
     const [data, total, catalogTotal, catalogEnabled, durationAgg] =
       await Promise.all([
-        this.prisma.song.findMany({
+        db.song.findMany({
           where,
           orderBy,
           include: { intro: { include: { instant: true } } },
           ...(limit > 0 ? { skip, take: limit } : {}),
         }),
-        this.prisma.song.count({ where }),
-        this.prisma.song.count(),
-        this.prisma.song.count({ where: { enabled: true } }),
+        db.song.count({ where }),
+        db.song.count(),
+        db.song.count({ where: { enabled: true } }),
+        // aggregate is refused on the team-scoped client, so the team is named here.
         this.prisma.song.aggregate({
+          ...(teamId > 0 ? { where: { teamId } } : {}),
           _sum: { durationMs: true },
           _count: { durationMs: true },
         }),
@@ -174,9 +203,9 @@ export class SongsService {
     };
   }
 
-  async findOne(id: number, requestedProgramId?: string) {
+  async findOne(id: number, requestedProgramId?: string, teamId = 0) {
     const programId = this.normalizeProgramId(requestedProgramId);
-    const song = await this.prisma.song.findUnique({
+    const song = await this.db(teamId).song.findUnique({
       where: { id },
       include: { intro: { include: { instant: true } } },
     });
@@ -199,7 +228,7 @@ export class SongsService {
     return new Map<string, SongAnalysis>(rows.map((row) => [row.assetId, row]));
   }
 
-  async create(data: SongInput) {
+  async create(data: SongInput, teamId = 0) {
     const artist = this.toTrimmedString(data.artist);
     const title = this.toTrimmedString(data.title);
     const audioUrl = this.toRequiredTrimmedString(data.audioUrl, 'audioUrl');
@@ -219,7 +248,7 @@ export class SongsService {
     );
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      return await this.db(teamId).$transaction(async (tx) => {
         const song = await tx.song.create({
           data: {
             artist,
@@ -243,10 +272,7 @@ export class SongsService {
         if (data.introInstantId !== undefined) {
           await this.setIntro(tx, song.id, data.programId, data.introInstantId);
         }
-        const saved = await tx.song.findUniqueOrThrow({
-          where: { id: song.id },
-          include: { intro: { include: { instant: true } } },
-        });
+        const saved = await this.readBack(tx, song.id, teamId);
         return this.withGenericChartFields(
           this.scopeIntro(saved, this.normalizeProgramId(data.programId)),
         );
@@ -256,9 +282,9 @@ export class SongsService {
     }
   }
 
-  async update(id: number, data: SongInput) {
+  async update(id: number, data: SongInput, teamId = 0) {
     const actor = this.recorder.actor();
-    const existing = await this.prisma.song.findUnique({ where: { id } });
+    const existing = await this.db(teamId).song.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException('Song not found');
     }
@@ -324,7 +350,7 @@ export class SongsService {
       updateData.enabled = Boolean(data.enabled);
     }
 
-    const result = await this.prisma
+    const result = await this.db(teamId)
       .$transaction(async (tx) => {
         const song = await tx.song.update({ where: { id }, data: updateData });
         await syncSongAsset(tx, song);
@@ -334,10 +360,7 @@ export class SongsService {
         if (data.introInstantId !== undefined) {
           await this.setIntro(tx, id, data.programId, data.introInstantId);
         }
-        const saved = await tx.song.findUniqueOrThrow({
-          where: { id },
-          include: { intro: { include: { instant: true } } },
-        });
+        const saved = await this.readBack(tx, id, teamId);
         return this.withGenericChartFields(
           this.scopeIntro(saved, this.normalizeProgramId(data.programId)),
         );
@@ -377,12 +400,12 @@ export class SongsService {
     return given;
   }
 
-  async remove(id: number) {
-    const existing = await this.prisma.song.findUnique({ where: { id } });
+  async remove(id: number, teamId = 0) {
+    const existing = await this.db(teamId).song.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException('Song not found');
     }
-    await this.prisma.$transaction(async (tx) => {
+    await this.db(teamId).$transaction(async (tx) => {
       await tx.song.delete({ where: { id } });
       await deleteMediaAsset(tx, MediaAssetKind.SONG, id);
       await deleteSongCoverAsset(tx, id);
