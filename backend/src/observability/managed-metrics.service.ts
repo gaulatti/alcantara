@@ -932,6 +932,39 @@ export class ManagedMetricsService {
     });
   }
 
+  /**
+   * gaulatti/alcantara#122: the two counts that gate the radio's song scoping. The gauges exist only while
+   * there is a value, because an unlabelled gauge would otherwise be scraped as 0 before anything was read.
+   */
+  setRadioScopePreflight(
+    counts: {
+      radioProgramsWithoutTeam: number;
+      librarySongsWithoutTeam: number;
+    } | null,
+  ): void {
+    for (const [name, help, value] of [
+      [
+        'alcantara_radio_programs_without_team',
+        'Radio programs with no team, at the last successful read.',
+        counts?.radioProgramsWithoutTeam,
+      ],
+      [
+        'alcantara_library_songs_without_team',
+        'Library songs with no team, at the last successful read.',
+        counts?.librarySongsWithoutTeam,
+      ],
+    ] as const) {
+      if (value === undefined) {
+        this.registry.removeSingleMetric(name);
+        continue;
+      }
+      const gauge =
+        (this.registry.getSingleMetric(name) as Gauge | undefined) ??
+        new Gauge({ name, help, registers: [this.registry] });
+      gauge.set(value);
+    }
+  }
+
   async render(radioMetrics: string): Promise<string> {
     const managed = await this.registry.metrics();
     return `${managed.trimEnd()}\n${radioMetrics.trimStart()}`;
