@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import { Button, IconButton } from "@gaulatti/bleecker";
 import { TooltipButton } from "../components/BleeckerButtons";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { songRequestFailureNotice } from "../utils/songRequestFailure";
 import {
   BroadcastSwitcherDeck,
@@ -123,6 +123,19 @@ const consoleInstants = [
   enabled: index !== 5,
   position: index,
 }));
+
+// radio-unverified: audible output whose last sample is 10 s old, so the desk shows Output unverified (#706).
+type RadioFixtureData = NonNullable<ComponentProps<typeof RadioPanel>["fixtureData"]>;
+function withSampleAge(fixture: string, data: RadioFixtureData): RadioFixtureData {
+  if (fixture !== "radio-unverified") return data;
+  return {
+    ...data,
+    output: {
+      ...data.output,
+      lastSampleAt: new Date(Date.now() - 10_000).toISOString(),
+    },
+  };
+}
 
 export default function ConsoleFixture() {
   const [params] = useSearchParams();
@@ -293,6 +306,27 @@ export default function ConsoleFixture() {
         </div>
       </main>
     );
+  if (fixture === "focus-ring")
+    return (
+      <main className="min-h-screen p-8" data-visual-fixture="focus-ring">
+        <h1 className="mb-2 text-xl font-semibold">Link focus ring</h1>
+        <p className="mb-6 text-sm text-text-secondary">
+          Press Tab: each plain link shows the one focus-visible ring from app.css (#688). A mouse
+          click shows none.
+        </p>
+        <p className="mb-8 flex gap-6 text-sm">
+          <a href="#app-link">App link</a>
+          <Link to="/radio-settings">App route link</Link>
+        </p>
+        <section className="broadcast-console rounded p-6">
+          <p className="mb-3 text-sm">In a console, the ring takes the console's ready colour.</p>
+          <p className="flex gap-6 text-sm">
+            <a href="#console-link">Console link</a>
+            <Link to="/radio-settings">Configure</Link>
+          </p>
+        </section>
+      </main>
+    );
   if (fixture === "button-help")
     return (
       <main
@@ -352,7 +386,7 @@ export default function ConsoleFixture() {
         <div className="flex h-full min-h-0">
           <RadioPanel
             programId="fixture"
-            fixtureData={{
+            fixtureData={withSampleAge(fixture, {
               monitorAudioUrl: new URL(
                 "/fifthbell/audio/pipes.ogg",
                 window.location.origin,
@@ -372,6 +406,8 @@ export default function ConsoleFixture() {
                 lastEventAt: new Date().toISOString(),
                 lastSnapshotAt: new Date().toISOString(),
                 degraded: false,
+                // Palazzo answers, but its playout (Liquidsoap) is down.
+                playout: fixture === "radio-playout-down" ? "down" : "up",
                 // #257: a program with no Palazzo URL says why there is no engine.
                 ...(fixture === "radio-not-configured"
                   ? {
@@ -386,22 +422,37 @@ export default function ConsoleFixture() {
                     ? "unavailable"
                     : fixture === "radio-empty"
                       ? "idle"
-                      : "audible",
+                      : fixture === "radio-dead-air"
+                        ? "silent"
+                        : "audible",
                 expectedAudio: fixture !== "radio-empty",
-                outputRms: fixture === "radio-empty" ? 0 : 0.08,
+                outputRms:
+                  fixture === "radio-empty" || fixture === "radio-dead-air"
+                    ? 0
+                    : 0.08,
                 lastSampleAt: new Date().toISOString(),
-                quietForMs: null,
+                quietForMs: fixture === "radio-dead-air" ? 15_000 : null,
               },
-              recovery: {
-                preparedVersion: "fixture-filler",
-                connection: "connected",
-                automation: {
-                  actualState: "ready",
-                  filler: { activeVersion: "fixture-filler", ready: true },
-                },
-              },
+              // Dead air with a recovery playlist prepared but not yet bound (gaulatti/alcantara#694).
+              recovery:
+                fixture === "radio-dead-air"
+                  ? {
+                      preparedVersion: "fixture-filler",
+                      connection: "connected",
+                      automation: null,
+                    }
+                  : {
+                      preparedVersion: "fixture-filler",
+                      connection: "connected",
+                      automation: {
+                        actualState: "ready",
+                        filler: { activeVersion: "fixture-filler", ready: true },
+                      },
+                    },
               logs:
-                fixture === "radio-empty" || fixture === "radio-continuous"
+                fixture === "radio-empty" ||
+                fixture === "radio-continuous" ||
+                fixture === "radio-audio-off-rundown"
                   ? []
                   : [
                       {
@@ -418,7 +469,22 @@ export default function ConsoleFixture() {
                         })),
                         loop: false,
                         isRunning: true,
-                        activeItemId: "fixture-cue-1",
+                        // radio-skipped (#726): the second event was not aired, the block went on.
+                        activeItemId:
+                          fixture === "radio-skipped"
+                            ? "fixture-cue-3"
+                            : "fixture-cue-1",
+                        ...(fixture === "radio-skipped"
+                          ? {
+                              cueOutcomes: [
+                                {
+                                  cueId: "fixture-cue-2",
+                                  state: "not-aired" as const,
+                                  reason: "engine_unavailable",
+                                },
+                              ],
+                            }
+                          : {}),
                         scheduledAt: new Date().toISOString(),
                         publishedAt: new Date().toISOString(),
                         lastStartedAt: new Date().toISOString(),
@@ -427,7 +493,7 @@ export default function ConsoleFixture() {
                         updatedAt: new Date().toISOString(),
                       },
                     ],
-            }}
+            })}
             songSequence={songs}
             songQueue={songQueue}
             songCatalog={consoleSongs.items
@@ -445,7 +511,10 @@ export default function ConsoleFixture() {
                 enabled: true,
               }))}
             programSongPlayback={
-              playbackOnAir && fixture !== "radio-empty"
+              // radio-audio-off-rundown (D7): no song commanded while the station is audible.
+              playbackOnAir &&
+              fixture !== "radio-empty" &&
+              fixture !== "radio-audio-off-rundown"
                 ? {
                     token:
                       fixture === "radio-external"

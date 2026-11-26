@@ -36,7 +36,10 @@ function setup(records: unknown[]) {
   };
   return {
     prisma,
-    service: new AsRunService(prisma as unknown as PrismaService),
+    service: new AsRunService(
+      prisma as unknown as PrismaService,
+      { teamId: 0 } as never,
+    ),
   };
 }
 
@@ -118,7 +121,10 @@ describe('AsRunService.countExportRows', () => {
 
   const count = async (query: Record<string, string>) => {
     const prisma = { asRunRecord: { count: jest.fn().mockResolvedValue(7) } };
-    const service = new AsRunService(prisma as unknown as PrismaService);
+    const service = new AsRunService(
+      prisma as unknown as PrismaService,
+      { teamId: 0 } as never,
+    );
     const n = await service.countExportRows('p1', query);
     return { n, where: prisma.asRunRecord.count.mock.calls[0][0].where };
   };
@@ -195,10 +201,13 @@ describe('AsRunService paged reads', () => {
         where.id.in.map((id) => ({ id, title: `T${id}`, artist: `A${id}` })),
       ),
     );
-    const service = new AsRunService({
-      asRunRecord: { findMany: table.findMany },
-      song: { findMany: songs },
-    } as unknown as PrismaService);
+    const service = new AsRunService(
+      {
+        asRunRecord: { findMany: table.findMany },
+        song: { findMany: songs },
+      } as unknown as PrismaService,
+      { teamId: 0 } as never,
+    );
 
     const csv = await service.exportCsv(
       'p1',
@@ -224,11 +233,14 @@ describe('AsRunService paged reads', () => {
         where.id.in.map((id) => ({ id, title: `T${id}`, artist: `A${id}` })),
       ),
     );
-    const service = new AsRunService({
-      asRunRecord: { findMany: table.findMany },
-      song: { findMany: songFind },
-      mediaAsset: { findMany: jest.fn().mockResolvedValue([]) },
-    } as unknown as PrismaService);
+    const service = new AsRunService(
+      {
+        asRunRecord: { findMany: table.findMany },
+        song: { findMany: songFind },
+        mediaAsset: { findMany: jest.fn().mockResolvedValue([]) },
+      } as unknown as PrismaService,
+      { teamId: 0 } as never,
+    );
 
     const performances = await service.summarizePerformances(
       'p1',

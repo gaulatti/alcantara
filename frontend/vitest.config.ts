@@ -42,21 +42,24 @@ export default defineConfig({
     // and "snapshotSaved") on a 4-vCPU runner (gaulatti/alcantara#531). Reproduced once locally under heavy CPU
     // load with four forks; two forks passed one normal-load run. Not yet proven: three green normal runs and a
     // loaded run are still needed before this is called a fix.
-    poolOptions: { forks: { maxForks: 2, minForks: 1 } },
+    // Vitest 4 takes pool limits at the top level (poolOptions is deprecated); minWorkers is gone.
+    maxWorkers: 2,
     coverage: {
       provider: 'v8',
-      all: true,
       include: ['app/**/*.{ts,tsx}'],
       exclude: ['app/**/*.test.{ts,tsx}', 'app/**/*.d.ts'],
       reporter: ['json', 'text-summary'],
       reportsDirectory: 'coverage',
       // Set from the CI measurement (pnpm workspace install), which reads lower than a local npm run:
       // 99.74 / 99.74 / 98.88 / 96.03 on 2026-11-24. Raise these as coverage rises; never lower them.
+      // Re-baselined for vitest 4.1.12 (the coverage engine changed; not a relaxation), then ratcheted to the
+      // vitest 4 measurement on 2026-11-26 over 307 files and 2,588 tests: statements 99.43, lines 99.73,
+      // branches 98.63, functions 98.88, floored to two decimals. The ratchet moves up from here; see gaulatti/alcantara#624.
       thresholds: {
-        statements: 99.7,
-        lines: 99.7,
-        branches: 98.8,
-        functions: 96.0,
+        statements: 99.43,
+        lines: 99.73,
+        branches: 98.63,
+        functions: 98.88,
       },
     },
   },

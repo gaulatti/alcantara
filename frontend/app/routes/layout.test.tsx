@@ -89,10 +89,11 @@ vi.mock("@gaulatti/bleecker", async (original) => {
     const link = (item: any) =>
       p.renderLink({
         item,
+        // Like bleecker's SidebarLink, a collapsed rail shows the icon only.
         children: (
           <>
             {item.icon}
-            {item.label}
+            {p.collapsed ? null : item.label}
           </>
         ),
         className: "item",
@@ -438,6 +439,46 @@ it("reloads the program from the header and reports a refused reload in the cons
   );
 });
 
+// The rundown-building walk: a show created on the Shows page was not in the list the header loaded with the page,
+// so selecting it snapped back to the first show. The list is reloaded once before the selection is judged gone.
+it("keeps a newly created show selected by reloading the show list before falling back", async () => {
+  let listed = 0;
+  routes["GET /program"] = () => {
+    listed += 1;
+    return json(listed === 1 ? programs : [...programs, { programId: "fresh" }]);
+  };
+  shell.program = "fresh";
+  open("/");
+  await waitFor(() => expect(listed).toBe(2));
+  await waitFor(() => expect(programSelects()[0]).toHaveValue("fresh"));
+  expect(shell.program).toBe("fresh");
+});
+
+it("falls back to the first show once the reloaded list still lacks the selected one", async () => {
+  let listed = 0;
+  routes["GET /program"] = () => {
+    listed += 1;
+    return json(programs);
+  };
+  shell.program = "gone";
+  open("/");
+  await waitFor(() => expect(shell.program).toBe(programs[0].programId));
+  expect(listed).toBe(2);
+});
+
+it("falls back to the first show when the reload of the list fails", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  let listed = 0;
+  routes["GET /program"] = () => {
+    listed += 1;
+    return listed === 1 ? json(programs) : json({}, 500);
+  };
+  shell.program = "gone";
+  open("/");
+  await waitFor(() => expect(shell.program).toBe(programs[0].programId));
+  expect(listed).toBe(2);
+});
+
 it("keeps a show it cannot find, and logs catalogs that fail to load", async () => {
   const errors = vi.spyOn(console, "error").mockImplementation(() => {});
   routes["GET /program"] = () => json({}, 500);
@@ -482,6 +523,18 @@ it("keeps a show it cannot find, and logs catalogs that fail to load", async () 
   expect(
     within(collapsed).getByRole("link", { name: "TV control" }),
   ).toHaveAttribute("aria-current", "page");
+  // #688: each rail link is a tooltip trigger for its label (opened in layout.rail-tooltip.test.tsx);
+  // the brand link, which shows its name, is not.
+  expect(
+    within(collapsed).getByRole("link", { name: "TV control" }),
+  ).toHaveAttribute("data-state", "closed");
+  // The tooltip replaces #692's native title on the rail, so the label never shows twice.
+  expect(
+    within(collapsed).getByRole("link", { name: "TV control" }),
+  ).not.toHaveAttribute("title");
+  expect(
+    within(collapsed).getByRole("link", { name: "Alcántara live control" }),
+  ).not.toHaveAttribute("data-state");
 
   const dialog = await openCommands();
   expect(
@@ -1121,4 +1174,16 @@ it("shows no desktop controls on the website", async () => {
   open("/media/library");
   await waitFor(() => expect(programSelects()[0]).toHaveValue("news"));
   expect(screen.queryByRole("button", { name: /Go live/ })).toBeNull();
+});
+
+it("leaves Open Preview out of the command menu outside development builds", async () => {
+  vi.stubEnv("DEV", false);
+  try {
+    open();
+    await openCommands();
+    expect(within(commands()).queryByRole("button", { name: "Open Preview" })).toBeNull();
+    expect(within(commands()).getByRole("button", { name: "Go to Broadcasts" })).toBeInTheDocument();
+  } finally {
+    vi.unstubAllEnvs();
+  }
 });

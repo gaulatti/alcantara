@@ -332,6 +332,17 @@ export interface FlightSequence {
   lastStartedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * The cues the as-run logged as not aired (gaulatti/alcantara#726). Absent from a backend that
+   * predates it; the rundown then marks rows by position alone.
+   */
+  cueOutcomes?: FlightCueOutcome[];
+}
+
+export interface FlightCueOutcome {
+  cueId: string;
+  state: "not-aired";
+  reason: string | null;
 }
 
 export interface FlightRuntime {

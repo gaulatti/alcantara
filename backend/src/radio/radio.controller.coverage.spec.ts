@@ -5,6 +5,7 @@ function build() {
   const radio = {
     getRadioSettings: jest.fn(),
     updateRadioSettings: jest.fn(),
+    refuseStartWhileEngineUnavailable: jest.fn(),
     getRecoveryStatus: jest.fn(),
     prepareRecoveryPlaylist: jest.fn(),
     setRecoveryAutomation: jest.fn(),
@@ -353,10 +354,10 @@ describe('RadioController similarity endpoints', () => {
     const { controller, similarity } = build();
     const body = { items: [] };
     similarity.storeEmbeddings.mockResolvedValue({ stored: 0 });
-    await expect(controller.similarityUpload(body)).resolves.toEqual({
+    await expect(controller.similarityUpload('p', body)).resolves.toEqual({
       stored: 0,
     });
-    expect(similarity.storeEmbeddings).toHaveBeenCalledWith(body);
+    expect(similarity.storeEmbeddings).toHaveBeenCalledWith(body, 'p');
   });
 
   it.each([

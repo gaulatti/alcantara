@@ -118,6 +118,7 @@ const STATUS_CODES: Record<number, McpErrorCode> = {
   403: 'forbidden',
   404: 'not_found',
   409: 'conflict',
+  429: 'rate_limited',
 };
 
 // A database refusal the console reports as a plain 500: a row that is not
@@ -224,6 +225,8 @@ export interface ActionDef<S extends z.ZodRawShape, L> {
   plan: (args: Args<S>, loaded: L) => Plan;
   /** D: why the target is on air, queued or in use; refused as `on_air`. */
   refuse?: (args: Args<S>, loaded: L) => string | null;
+  /** Called when a run, not a dry run, is refused: for the counters. */
+  onRefused?: (args: Args<S>, loaded: L) => void;
   /** W: the change shows on air at once. */
   onAir?: (args: Args<S>, loaded: L) => boolean;
   run: (args: Args<S>, loaded: L, ctx: McpContext) => Promise<unknown>;
@@ -273,7 +276,10 @@ export function actionSpec<S extends z.ZodRawShape, L>(
     run: async (args: Args<S>, ctx: McpContext): Promise<McpOutcome> => {
       const loaded = await load(args, ctx);
       const why = blocked(args, loaded);
-      if (why !== null) throw new McpToolError('on_air', why);
+      if (why !== null) {
+        def.onRefused?.(args, loaded);
+        throw new McpToolError('on_air', why);
+      }
       const raw = await viaService(() => def.run(args, loaded, ctx));
       return {
         result: answer(def.result ? def.result(raw, args) : raw, def.untrusted),

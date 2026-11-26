@@ -73,7 +73,10 @@ camera, test their speaker/network, and confirm headphones before explicitly
 joining. A documented acoustic-risk override is available when headphones are
 impossible. Each invitation permits one active browser session. A signed
 session lease refreshed every 20 seconds preserves the stable slot for a
-60-second network-reconnect window; a second browser fails closed. Revocation
+60-second network-reconnect window; a second browser fails closed. Each refresh
+reports the call as it is then: connection quality, return-feed health, and
+whether the camera and microphone are on. A rejoin starts from the new room, with
+no return feed until it attaches (#672). Revocation
 disconnects the guest and prevents future credentials. A join refused as
 revoked, expired or invalid (401 or 403) ends the guest's session; any other
 refusal (the invitation in use in another window, the studio not ready, a
@@ -81,11 +84,13 @@ network or room-connection failure) keeps the preflight and lets the guest
 press Join again. A refused camera or microphone permission keeps Join locked.
 
 Operator mute is immediate. Camera/microphone enable is delivered as a request
-that the guest accepts or rejects. Standby/live/wrap cues and private messages
+that the guest accepts or rejects. A media command that names no camera or
+microphone is ignored. Standby/live/wrap cues and private messages
 persist requested, delivered, acknowledged/read, rejected, or failed state. A
 message is marked read as soon as the guest's page shows it and stays on screen
 until the guest presses Acknowledge, so operators see read and then
-acknowledged.
+acknowledged. Acknowledge clears the message even when the page has no session
+to send the receipt for.
 Private talkback publishes only to the target guest's N-1 route and never to the
 Program feed. Removing or disconnecting a guest does not mutate Preview or
 Program.
@@ -296,7 +301,13 @@ configurable via `.env`:
   sequencing, and exact selection acknowledgement without AWS or public output;
   it is not a deployment or a substitute for production Alana/Croccante proof.
 
-Source directories are mounted so changes are reflected immediately.
+Source directories are mounted so changes are reflected immediately. On Colima a
+host edit reaches the container without a file event, so the backend's TypeScript
+watcher polls in Compose (`TSC_WATCHFILE` and `TSC_WATCHDIRECTORY` on the `backend`
+service, gaulatti/alcantara#600). A saved `backend/src` file restarts the backend:
+measured at 2-6 s for a file edited recently and about 15 s for one not edited in a
+while (polling slows for files that do not change). The setting is local only: `backend/test/compose-watch-polling.test.js`
+fails if the production image, the deploy script or the deploy workflow sets it.
 
 The local stack never reaches real AWS or another real outside service
 (gaulatti/alcantara#206):
@@ -359,6 +370,15 @@ seed data from an empty volume:
 docker compose down -v
 docker compose up --build
 ```
+
+The seeded `radio-demo` songs 9101–9104 have their own fictional tones in the
+Compose LocalStack bucket, under `LOCAL_MEDIA_PUBLIC_BASE_URL`, so a fresh stack
+can prepare a recovery playlist (gaulatti/alcantara#695). In Radio settings,
+**Prepared local playlist** with those songs reaches Palazzo's filler
+preparation; without a Palazzo attached, it fails as Palazzo unavailable, not as
+a URL refusal. The seeded songs 9001 and 9002 keep their relative
+`/fifthbell/audio/` URLs, which the browser plays but Palazzo cannot download,
+so they are refused for recovery. The production media guard is unchanged.
 
 The `postgres-data` volume otherwise preserves local changes across restarts.
 `AUTH_MODE=test` fails startup under `NODE_ENV=production`; the issuance route

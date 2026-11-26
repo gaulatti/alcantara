@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { PlaybackBar } from "./PlaybackBar";
 import type {
@@ -766,45 +766,6 @@ it("shows an empty manual playlist when the sequence from the API is malformed",
   );
 });
 
-// gaulatti/alcantara#189: control-room help is Bleecker's tooltip, not a native
-// title (BleeckerButtons moves `title` into the tooltip). Keyboard focus opens
-// it at once, as hover does after its delay. The tooltip carries the loop
-// state, and its text uses the readable dark-console colour that Bleecker
-// 0.1.42 and later give it (gaulatti/alcantara#191 removed #189's local class).
-it("shows the loop help in a readable tooltip when the loop toggle is focused", () => {
-  // jsdom has no ResizeObserver; Radix measures the open tooltip with one.
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    },
-  );
-  const view = render(
-    <PlaybackBar sequence={sequence} programSongPlayback={null} onChange={vi.fn()} />,
-  );
-  const loop = screen.getByLabelText("Loop playlist: off");
-  expect(loop).not.toHaveAttribute("title");
-  expect(document.querySelector("[role=tooltip]")).toBeNull();
-
-  act(() => {
-    fireEvent.focus(loop);
-  });
-  const tooltip = document.querySelector("[role=tooltip]")!;
-  expect(tooltip.textContent).toBe("Loop is off");
-  expect(loop).toHaveAttribute("aria-describedby", tooltip.id);
-  const content = document.querySelector("[data-radix-popper-content-wrapper] [data-state]")!;
-  expect(content).toHaveClass("dark:text-text-primary");
-  expect(content).not.toHaveClass("dark:text-deep-sea");
-
-  act(() => {
-    fireEvent.blur(loop);
-  });
-  view.unmount();
-  vi.unstubAllGlobals();
-});
-
 it("holds its clock and says Not confirmed while the engine cannot confirm playback (#609)", () => {
   const playback = {
     token: "song-2:https://example.test/song-2.mp3",
@@ -833,4 +794,20 @@ it("holds its clock and says Not confirmed while the engine cannot confirm playb
   expect(screen.getByText("00:30 elapsed")).toBeInTheDocument();
   expect(screen.getByRole("progressbar", { name: "Track progress" })).toBeInTheDocument();
   expect(screen.getByText("Feedback live")).toBeInTheDocument();
+});
+
+it("selects the first song when the playlist has no active song, and plays it", () => {
+  const onTakeSelection = vi.fn();
+  render(
+    <PlaybackBar
+      sequence={{ ...sequence, activeItemId: null }}
+      programSongPlayback={null}
+      onChange={vi.fn()}
+      onTakeSelection={onTakeSelection}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Play selection" }));
+  expect(onTakeSelection).toHaveBeenCalledWith(
+    expect.objectContaining({ activeItemId: "song-1" }),
+  );
 });

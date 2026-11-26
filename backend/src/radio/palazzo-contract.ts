@@ -122,7 +122,11 @@ export type PalazzoPlaybackEventType =
  * reason Alcantara does not know is read as `other`.
  */
 export type PalazzoNextWithdrawnReason =
-  'replaced' | 'withdrawn' | 'flushed' | 'not_ready' | 'other';
+  | 'replaced'
+  | 'withdrawn'
+  | 'flushed'
+  | 'not_ready'
+  | 'other';
 
 const NEXT_WITHDRAWN_REASONS: ReadonlySet<string> = new Set([
   'replaced',
@@ -160,6 +164,12 @@ export interface PalazzoProgramStatus {
   lastSnapshotAt: string | null;
   degraded: boolean;
   detail: string | null;
+  /**
+   * Whether Palazzo's playout (Liquidsoap) is up, from its state's `liquidsoap.connected` and its
+   * `telemetry.connected` / `telemetry.disconnected` events; null until Palazzo has said (gaulatti/alcantara#734
+   * follow-up). Display only: automation still follows `connection`.
+   */
+  playout?: 'up' | 'down' | null;
 }
 
 /**

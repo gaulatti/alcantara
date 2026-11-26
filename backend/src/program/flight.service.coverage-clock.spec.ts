@@ -27,10 +27,17 @@ function minuteAt(offsetMs: number): string {
 
 function harness() {
   const prisma = {
+    asRunRecord: { findMany: jest.fn().mockResolvedValue([]) },
     programState: {
       findUnique: jest
         .fn()
-        .mockResolvedValue({ id: 1, programId: 'radio-1', type: 'radio' }),
+        .mockResolvedValue({
+          id: 1,
+          programId: 'radio-1',
+          type: 'radio',
+          // A set-up station: the preflight reads its radio as ready.
+          radioSettings: { enabled: true, palazzoUrl: 'http://palazzo:3100' },
+        }),
       update: jest.fn().mockResolvedValue({}),
     },
     flightSequence: {
@@ -60,6 +67,7 @@ function harness() {
     program as any,
     metrics,
     noRecorder(),
+    { teamId: 0 } as never,
   );
   return {
     prisma,
@@ -567,7 +575,7 @@ describe('FlightService schedule parsing', () => {
     ['a zone offset', '2030-05-06T07:08:00+01:00'],
   ])('rejects %s', (_name, value) => {
     expect(() => parse(value)).toThrow(
-      new BadRequestException('scheduledAt must be an ISO time'),
+      new BadRequestException('scheduledAt must be a whole minute, ISO time'),
     );
   });
 
@@ -599,7 +607,13 @@ describe('FlightService clocked preflight', () => {
       { id: 7, enabled: true, audioUrl: 'https://media.test/7.mp3' },
     ]);
     const result = await internals.preflightClockItems('radio-1', items);
-    expect(result).toEqual({ programId: 'radio-1', ready: true, issues: [] });
+    expect(result).toEqual({
+      programId: 'radio-1',
+      ready: true,
+      issues: [],
+      warnings: [],
+      engine: 'ready',
+    });
     expect(prisma.song.findMany).toHaveBeenCalledWith({
       where: { id: { in: [1] } },
       select: { id: true, enabled: true, audioUrl: true, durationMs: true },
@@ -657,6 +671,24 @@ describe('FlightService clocked preflight', () => {
       programId: 'radio-1',
       ready: false,
       issues: ['Item 2: audio clip unavailable'],
+      warnings: [],
+      engine: 'ready',
+    });
+  });
+
+  it('warns, without blocking, on a playable song of unknown duration', async () => {
+    const { internals, prisma } = harness();
+    prisma.song.findMany.mockResolvedValue([{ ...playable, durationMs: null }]);
+    prisma.instant.findMany.mockResolvedValue([
+      { id: 7, enabled: true, audioUrl: 'x' },
+    ]);
+    const result = await internals.preflightClockItems('radio-1', items);
+    expect(result).toEqual({
+      programId: 'radio-1',
+      ready: true,
+      issues: [],
+      warnings: ['Item 1: song duration unknown'],
+      engine: 'ready',
     });
   });
 
@@ -690,7 +722,81 @@ describe('FlightService clocked preflight', () => {
     });
     await expect(
       service.preflightFlightSequence('radio-1', 5),
-    ).resolves.toEqual({ programId: 'radio-1', ready: true, issues: [] });
+    ).resolves.toEqual({
+      programId: 'radio-1',
+      ready: true,
+      issues: [],
+      warnings: [],
+      engine: 'ready',
+    });
+  });
+});
+
+describe('FlightService clocked preflight timing warnings (D5, D6)', () => {
+  // 18:00 UTC is the block's start; the warnings name the clock time in UTC.
+  const timing = (rotationMode: string | null, hasFollowingBlock = false) => ({
+    scheduledAt: new Date('2026-11-26T18:00:00Z'),
+    rotationMode,
+    hasFollowingBlock,
+  });
+  const song = (songId: number, extra: Record<string, unknown> = {}) => ({
+    id: `s${songId}-${Math.random()}`,
+    kind: 'playSong',
+    songId,
+    ...extra,
+  });
+
+  it('warns that the station goes silent at a known block end with nothing after it on a Manual rotation (D5)', async () => {
+    const { internals, prisma } = harness();
+    prisma.song.findMany.mockResolvedValue([{ ...playable, durationMs: 180_000 }]);
+    const result = await internals.preflightClockItems(
+      'radio-1',
+      [song(1, { clockOffsetSeconds: 0 })],
+      timing('manual'),
+    );
+    expect(result.warnings).toEqual([
+      'After this block nothing is scheduled and the rotation is Manual: the station goes silent at 18:03.',
+    ]);
+    expect(result.ready).toBe(true);
+  });
+
+  it('gives no D5 warning when a block follows, when the rotation is not Manual, or when the end is unknown', async () => {
+    const { internals, prisma } = harness();
+    prisma.song.findMany.mockResolvedValue([{ ...playable, durationMs: 180_000 }]);
+    const block = [song(1, { clockOffsetSeconds: 0 })];
+    expect((await internals.preflightClockItems('radio-1', block, timing('manual', true))).warnings).toEqual([]);
+    expect((await internals.preflightClockItems('radio-1', block, timing('autoplay'))).warnings).toEqual([]);
+    expect((await internals.preflightClockItems('radio-1', block, timing(null))).warnings).toEqual([]);
+    prisma.song.findMany.mockResolvedValue([{ ...playable, durationMs: null }]);
+    const unknown = await internals.preflightClockItems('radio-1', block, timing('manual'));
+    expect(unknown.warnings).toEqual(['Item 1: song duration unknown']);
+  });
+
+  it('warns that a fixed start may cut an unknown-length song before it (D6)', async () => {
+    const { internals, prisma } = harness();
+    prisma.song.findMany.mockResolvedValue([{ ...playable, durationMs: null }]);
+    const result = await internals.preflightClockItems(
+      'radio-1',
+      [song(1, { clockOffsetSeconds: 0 }), song(1, { clockOffsetSeconds: 300 })],
+      timing(null),
+    );
+    expect(result.warnings).toEqual([
+      'Item 1: song duration unknown',
+      'Item 2: song duration unknown',
+      'May be cut by the fixed start at 18:05.',
+    ]);
+    expect(result.ready).toBe(true);
+  });
+
+  it('gives no D6 warning when the songs before a fixed start all have known lengths', async () => {
+    const { internals, prisma } = harness();
+    prisma.song.findMany.mockResolvedValue([{ ...playable, durationMs: 60_000 }]);
+    const result = await internals.preflightClockItems(
+      'radio-1',
+      [song(1, { clockOffsetSeconds: 0 }), song(1, { clockOffsetSeconds: 300 })],
+      timing(null),
+    );
+    expect(result.warnings).toEqual([]);
   });
 });
 

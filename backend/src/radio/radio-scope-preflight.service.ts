@@ -1,0 +1,74 @@
+import {
+  Injectable,
+  Logger,
+  OnApplicationBootstrap,
+  OnModuleDestroy,
+} from '@nestjs/common';
+import { isDeployCandidate } from '../config/deploy-candidate';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
+import { PrismaService } from '../prisma.service';
+
+export const RADIO_SCOPE_PREFLIGHT_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * What must read zero before the radio's song reads are scoped to a team
+ * (gaulatti/alcantara#122): radio programs with no team, and library songs with
+ * no team. A scoped read finds neither. Read-only; the counts are published
+ * only while the last read succeeded, so no value is ever assumed.
+ */
+@Injectable()
+export class RadioScopePreflightService
+  implements OnApplicationBootstrap, OnModuleDestroy
+{
+  private readonly logger = new Logger(RadioScopePreflightService.name);
+  private timer: NodeJS.Timeout | null = null;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly metrics: ManagedMetricsService,
+  ) {}
+
+  async onApplicationBootstrap(): Promise<void> {
+    if (isDeployCandidate()) return;
+    this.timer = setInterval(
+      () => void this.refresh(),
+      RADIO_SCOPE_PREFLIGHT_INTERVAL_MS,
+    );
+    this.timer.unref();
+    await this.refresh();
+  }
+
+  onModuleDestroy(): void {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+  }
+
+  /** Reads both counts and publishes them. A failed read withdraws them. */
+  async refresh(): Promise<void> {
+    try {
+      const radio = await this.prisma.programState.findMany({
+        where: { type: { in: ['radio', 'both'] } },
+        select: { programId: true },
+      });
+      const [owned, songs] = await Promise.all([
+        this.prisma.program.count({
+          where: {
+            programId: { in: radio.map((state) => state.programId) },
+            teamId: { gt: 0 },
+          },
+        }),
+        this.prisma.song.count({
+          where: { OR: [{ teamId: null }, { teamId: { lte: 0 } }] },
+        }),
+      ]);
+      this.metrics.setRadioScopePreflight({
+        radioProgramsWithoutTeam: radio.length - owned,
+        librarySongsWithoutTeam: songs,
+      });
+    } catch {
+      // Never the error itself: it can carry a query or a host.
+      this.logger.warn('Radio scope preflight could not read the database');
+      this.metrics.setRadioScopePreflight(null);
+    }
+  }
+}

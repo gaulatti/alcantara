@@ -24,6 +24,8 @@ describe('FlightService song cues', () => {
       enabled: true,
     };
     const prisma = {
+      // An unknown program is never "engine off" (#609).
+      programState: { findUnique: jest.fn().mockResolvedValue(null) },
       song: { findUnique: jest.fn().mockResolvedValue(song) },
     };
     const programService = {
@@ -35,6 +37,7 @@ describe('FlightService song cues', () => {
       programService as any,
       new RadioMetricsService(),
       noRecorder(),
+      { teamId: 0 } as never,
     );
 
     await (service as any).executePlaySongCue('radio-1', {
@@ -96,6 +99,9 @@ describe('FlightService clocked logs', () => {
       },
       flightSequence: {
         create: jest.fn().mockResolvedValue(record),
+        // No later block: the fixed-start window (#788 item 4) reads it on create, and preflight must report ready
+        // with no following-block warning.
+        findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockImplementation(async () => record),
         updateMany: jest.fn().mockImplementation(async ({ data }) => {
           record.publishedAt = data.publishedAt;
@@ -117,7 +123,13 @@ describe('FlightService clocked logs', () => {
       instant: { findMany: jest.fn().mockResolvedValue([]) },
     } as any;
     const metrics = new RadioMetricsService();
-    const service = new FlightService(prisma, {} as any, metrics, noRecorder());
+    const service = new FlightService(
+      prisma,
+      {} as any,
+      metrics,
+      noRecorder(),
+      { teamId: 0 } as never,
+    );
     await service.createFlightSequence('radio-1', {
       name: 'Next hour',
       scheduledAt: scheduledAt.toISOString(),
@@ -175,6 +187,7 @@ describe('FlightService clocked logs', () => {
       {} as any,
       new RadioMetricsService(),
       noRecorder(),
+      { teamId: 0 } as never,
     );
     await expect(
       service.createFlightSequence('radio-1', {
@@ -271,6 +284,7 @@ describe('FlightService tag generation and live log edits', () => {
       {} as ProgramService,
       metrics,
       recorder,
+      { teamId: 0 } as never,
     );
     return { record, prisma, metrics, service, recorder };
   }
@@ -433,7 +447,7 @@ describe('FlightService tag generation and live log edits', () => {
       });
       expect(runtime.items.map((item) => item.id)).toEqual(['now', 'hard']);
       jest.advanceTimersByTime(1800000);
-      expect(execute).toHaveBeenCalledWith('radio-1', 1, 2);
+      expect(execute).toHaveBeenCalledWith('radio-1', 1, 2, 'fixed_start');
     } finally {
       service.onModuleDestroy();
       jest.useRealTimers();
@@ -573,7 +587,7 @@ describe('FlightService tag generation and live log edits', () => {
       jest.advanceTimersByTime(30000);
       expect(execute).not.toHaveBeenCalled();
       jest.advanceTimersByTime(10000);
-      expect(execute).toHaveBeenCalledWith('radio-1', 2, 5);
+      expect(execute).toHaveBeenCalledWith('radio-1', 2, 5, 'fixed_start');
     } finally {
       service.onModuleDestroy();
       jest.useRealTimers();
@@ -620,6 +634,7 @@ describe('continuous rotation around timed blocks', () => {
       program as any,
       metrics,
       noRecorder(),
+      { teamId: 0 } as never,
     );
     const internals = service as any;
     jest.spyOn(internals, 'broadcastFlightUpdate').mockResolvedValue(undefined);
@@ -733,6 +748,7 @@ it('marks scheduled runtimes interrupted on startup without replaying them or ch
     program as any,
     metrics,
     noRecorder(),
+    { teamId: 0 } as never,
   );
   await service.onModuleInit();
   service.onModuleDestroy();

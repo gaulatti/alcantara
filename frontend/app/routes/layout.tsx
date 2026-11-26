@@ -1,4 +1,5 @@
 import { getDesktopHost } from '../platform/desktopHost';
+import { Tooltip } from '@gaulatti/bleecker/components/tooltip';
 import { BrandLockup, IconButton, CommandSpotlight, HeaderSelect, Input, Button, Modal, Sidebar, type CommandSpotlightAction, type SidebarItem } from '@gaulatti/bleecker';
 import {
   Blend,
@@ -33,7 +34,7 @@ import {
   X,
   Video
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { apiUrl, getApiBaseUrl } from '../utils/apiBaseUrl';
 import { useGlobalProgramId } from '../utils/globalProgram';
@@ -83,6 +84,7 @@ const NAVIGATION_ICONS: Record<string, ReactNode> = {
   'radio-log': <List size={17} />,
   'radio-workflow-fixture': <RadioTower size={17} />,
   'radio-continuous-fixture': <RadioTower size={17} />,
+  'radio-skipped-fixture': <RadioTower size={17} />,
   calls: <PhoneCall size={17} />,
   sources: <Video size={17} />,
   destinations: <RadioTower size={17} />,
@@ -106,11 +108,12 @@ const NAVIGATION_ICONS: Record<string, ReactNode> = {
 interface ShellLinkProps {
   children: ReactNode;
   className?: string;
-  item: { href: string; external?: boolean; active?: boolean };
+  item: { href: string; label?: string; external?: boolean; active?: boolean };
   onClick?: () => void;
 }
 
-function renderAppLink({ children, className, item, onClick }: ShellLinkProps) {
+/** An app link; `nativeTitle` is #692's hover label, which the rail's tooltip replaces (#688). */
+function appLink({ children, className, item, onClick }: ShellLinkProps, nativeTitle: boolean) {
   /* v8 ignore start -- no navigation item sets external, so the external link branch cannot be reached from this shell */
   if (item.external) {
     return (
@@ -122,9 +125,29 @@ function renderAppLink({ children, className, item, onClick }: ShellLinkProps) {
   /* v8 ignore stop */
 
   return (
-    <Link to={item.href} className={className} onClick={onClick} aria-current={item.active ? 'page' : undefined}>
+    <Link to={item.href} className={className} onClick={onClick} title={nativeTitle ? item.label : undefined} aria-label={item.label} aria-current={item.active ? 'page' : undefined}>
       {children}
     </Link>
+  );
+}
+
+/**
+ * A link in the collapsed, icon-only rail (gaulatti/alcantara#688): its label also shows as a
+ * tooltip beside it on hover and on keyboard focus, since the rail shows no visible name. The
+ * accessible name stays the link's own aria-label.
+ */
+function renderAppLink(props: ShellLinkProps) {
+  return appLink(props, true);
+}
+
+export function renderRailLink(props: ShellLinkProps) {
+  const link = appLink(props, false);
+  return props.item.label ? (
+    <Tooltip content={props.item.label} side='right'>
+      {link}
+    </Tooltip>
+  ) : (
+    link
   );
 }
 
@@ -189,26 +212,33 @@ function ConsoleShell() {
     }
   }, []);
 
-  useEffect(() => {
-    const loadPrograms = async () => {
-      try {
-        const res = await fetch(apiUrl('/program'));
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-
-        const payload = await res.json();
-        if (Array.isArray(payload)) {
-          setKnownPrograms(payload);
-        }
-      } catch (err) {
-        console.error('Failed to fetch programs for site header selector:', err);
+  /** Loads the show list; true when it answered. */
+  const loadPrograms = useCallback(async (): Promise<boolean> => {
+    try {
+      const res = await fetch(apiUrl('/program'));
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
       }
-    };
 
-    void loadPrograms();
+      const payload = await res.json();
+      if (Array.isArray(payload)) {
+        setKnownPrograms(payload);
+        return true;
+      }
+    } catch (err) {
+      console.error('Failed to fetch programs for site header selector:', err);
+    }
+    return false;
   }, []);
 
+  useEffect(() => {
+    void loadPrograms();
+  }, [loadPrograms]);
+
+  // The show the operator selects may be newer than the list loaded with the page: one created on the Shows
+  // page, or selected there. Reload the list once for it before deciding it is gone, so a new show is not
+  // silently swapped for the first one.
+  const recheckedProgramId = useRef<string | null>(null);
   useEffect(() => {
     if (knownPrograms.length === 0) {
       return;
@@ -219,8 +249,17 @@ function ConsoleShell() {
       return;
     }
 
+    if (recheckedProgramId.current !== selectedProgramId) {
+      recheckedProgramId.current = selectedProgramId;
+      const fallback = knownPrograms[0].programId;
+      void loadPrograms().then((answered) => {
+        if (!answered) setSelectedProgramId(fallback);
+      });
+      return;
+    }
+
     setSelectedProgramId(knownPrograms[0].programId);
-  }, [knownPrograms, selectedProgramId, setSelectedProgramId]);
+  }, [knownPrograms, loadPrograms, selectedProgramId, setSelectedProgramId]);
 
   useEffect(() => {
     const loadScenes = async () => {
@@ -597,8 +636,6 @@ function ConsoleShell() {
         group: 'Navigation',
         icon: <Eye size={16} />,
         onSelect: () => {
-          /* v8 ignore next -- callbacks in this route run only in the browser, where a window always exists */
-          if (typeof window === 'undefined') return;
           window.open('/preview', '_blank', 'noopener,noreferrer');
         }
       }] : []),
@@ -609,8 +646,6 @@ function ConsoleShell() {
         group: 'Programs',
         icon: <Radio size={16} />,
         onSelect: () => {
-          /* v8 ignore next -- callbacks in this route run only in the browser, where a window always exists */
-          if (typeof window === 'undefined') return;
           openSelectedProgramOutput();
         }
       },
@@ -854,7 +889,7 @@ function ConsoleShell() {
           header={sidebarHeader}
           items={isViewportConstrainedRoute ? flatSidebarItems : groupedSidebarItems}
           footer={sidebarFooter}
-          renderLink={renderAppLink}
+          renderLink={isViewportConstrainedRoute ? renderRailLink : renderAppLink}
         />
 
         <div className='flex min-w-0 flex-1 flex-col'>

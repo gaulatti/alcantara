@@ -1,9 +1,9 @@
-import { createRef, type ReactNode } from "react";
+import { createPortal } from "react-dom"; import { createRef, type ReactNode } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { Button, IconButton } from "@gaulatti/bleecker";
 import { Tooltip } from "@gaulatti/bleecker/components/tooltip";
-import { TooltipButton } from "./BleeckerButtons";
+import { Button as AppButton, TooltipButton } from "./BleeckerButtons";
 
 // Verify the application-to-Bleecker contract. Popper positioning and hover/focus
 // visuals require a browser and are exposed in the button-help visual fixture.
@@ -127,4 +127,28 @@ it("adds no help when a control has no name, title or label of its own", () => {
   );
   expect(Tooltip).not.toHaveBeenCalled();
   expect(container.querySelectorAll("button")).toHaveLength(3);
+});
+
+it("labels a button from its text when a child is a portal, not an element", () => {
+  render(
+    <TooltipButton>
+      {createPortal(<i>hidden</i>, document.body)}
+      Go
+    </TooltipButton>,
+  );
+  expect(help()).toBe("Go");
+  expect(screen.getByRole("button", { name: "Go" })).toBeInTheDocument();
+});
+// The walk's polish: a button just under a field opens its help below, off the field.
+it("opens the help on the side asked for, and keeps the side off the button", () => {
+  render(
+    <>
+      <AppButton tooltipSide="bottom">Remove</AppButton>
+      <AppButton>Record voice</AppButton>
+    </>,
+  );
+  const calls = vi.mocked(Tooltip).mock.calls.map(([props]) => props);
+  expect(calls.find((props) => props.content === "Remove")?.side).toBe("bottom");
+  expect(calls.find((props) => props.content === "Record voice")?.side).toBeUndefined();
+  expect(screen.getByRole("button", { name: "Remove" })).not.toHaveAttribute("tooltipside");
 });

@@ -15,7 +15,10 @@ import { RadioMetricsService } from './radio-metrics.service';
 import { RadioOutputConfidenceService } from './radio-output-confidence.service';
 import { PalazzoMachineClient } from './palazzo-machine.client';
 import { SongSimilarityService } from './song-similarity.service';
+import { PlayoutSongScope } from './playout-song-scope';
 import { PrismaService } from '../prisma.service';
+import { PompeiiService } from '../auth/pompeii.service';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
 
 const configStub = {
   get: jest.fn((key: string) =>
@@ -25,6 +28,7 @@ const configStub = {
 };
 const flightStub = {};
 const programStub = {};
+const managedMetricsStub = { setRadioScopePreflight: jest.fn() };
 
 // External collaborators that other application modules provide globally.
 @Global()
@@ -33,8 +37,16 @@ const programStub = {};
     { provide: ConfigService, useValue: configStub },
     { provide: FlightService, useValue: flightStub },
     { provide: ProgramService, useValue: programStub },
+    { provide: PompeiiService, useValue: { teamId: 0 } },
+    { provide: ManagedMetricsService, useValue: managedMetricsStub },
   ],
-  exports: [ConfigService, FlightService, ProgramService],
+  exports: [
+    ConfigService,
+    FlightService,
+    ProgramService,
+    PompeiiService,
+    ManagedMetricsService,
+  ],
 })
 class RadioModuleCoverageHostModule {}
 
@@ -56,6 +68,7 @@ describe('RadioModule wiring', () => {
         RadioOutputConfidenceService,
         PalazzoMachineClient,
         SongSimilarityService,
+        PlayoutSongScope,
         PrismaService,
         SongSimilarityService,
       ]),
@@ -69,6 +82,7 @@ describe('RadioModule wiring', () => {
       RadioOutputConfidenceService,
       PalazzoMachineClient,
       SongSimilarityService,
+      PlayoutSongScope,
     ]);
   });
 

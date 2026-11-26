@@ -6,6 +6,7 @@ import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
 import { ManagedMetricsService } from '../../observability/managed-metrics.service';
 import { FlightService } from '../../program/flight.service';
 import { ProgramService } from '../../program/program.service';
+import { RadioService } from '../../radio/radio.service';
 import { MCP_ACTION_EXECUTOR } from '../contract';
 import { McpActionExecutor } from '../mcp-action.executor';
 import { McpRegistry } from '../mcp-registry.service';
@@ -44,6 +45,13 @@ async function connect(principal: ReturnType<typeof principalWith>) {
       ManagedMetricsService,
       { provide: ProgramService, useValue: f.programs },
       { provide: FlightService, useValue: flights },
+      {
+        provide: RadioService,
+        useValue: {
+          judgePlayout: () => Promise.resolve(null),
+          recordPlayoutVerdict: () => undefined,
+        },
+      },
       FlightMcpTools,
     ],
   }).compile();

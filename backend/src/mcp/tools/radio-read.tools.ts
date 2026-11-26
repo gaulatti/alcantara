@@ -6,6 +6,7 @@ import {
 import { z } from 'zod';
 import { AsRunService } from '../../as-run/as-run.service';
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
+import { PompeiiService } from '../../auth/pompeii.service';
 import { FlightService } from '../../program/flight.service';
 import { ProgramService } from '../../program/program.service';
 import { PalazzoRadioTelemetryService } from '../../radio/palazzo-telemetry.service';
@@ -110,6 +111,7 @@ export class McpRadioReadTools implements McpToolProviderShape {
     private readonly asRun: AsRunService,
     private readonly songs: SongsService,
     private readonly feed: McpChangeFeed,
+    private readonly pompeii: PompeiiService,
   ) {}
 
   specs(): McpToolSpec[] {
@@ -284,7 +286,7 @@ export class McpRadioReadTools implements McpToolProviderShape {
     return tool({
       name: 'get_rundown',
       title: 'Rundown',
-      description: `Lists the program's rundown sequences (flight logs) with the active one and, for each clocked log that has not started, a preflight summary (ready and the number of issues). Cue contents are not listed, only their count. ${UNTRUSTED_NOTE}`,
+      description: `Lists the program's rundown sequences (flight logs) with the active one and, for each clocked log that has not started, a preflight summary (ready, the number of issues, and the number of warnings that never block a start). Cue contents are not listed, only their count. ${UNTRUSTED_NOTE}`,
       permission: ALCANTARA_PERMISSIONS.flight.read,
       tier: 'R',
       firstClass: true,
@@ -322,6 +324,7 @@ export class McpRadioReadTools implements McpToolProviderShape {
                     preflight: {
                       ready: preflight.ready,
                       issue_count: preflight.issues.length,
+                      warning_count: preflight.warnings.length,
                     },
                   }
                 : {}),
@@ -566,13 +569,17 @@ export class McpRadioReadTools implements McpToolProviderShape {
       },
       run: (args) =>
         guarded(async (): Promise<McpOutcome> => {
-          const found = await this.songs.findAll({
-            search: args.query,
-            sortBy: 'artist',
-            sortOrder: 'asc',
-            page: 1,
-            limit: args.limit ?? MCP_READ_LIMITS.songSearchDefault,
-          });
+          // The station team's songs only (gaulatti/alcantara#122).
+          const found = await this.songs.findAll(
+            {
+              search: args.query,
+              sortBy: 'artist',
+              sortOrder: 'asc',
+              page: 1,
+              limit: args.limit ?? MCP_READ_LIMITS.songSearchDefault,
+            },
+            this.pompeii.teamId,
+          );
           const analyses = await this.songs.findAnalyses(
             found.data
               .map((song) => song.assetId)
@@ -608,7 +615,12 @@ export class McpRadioReadTools implements McpToolProviderShape {
       shape: { song_id: z.number().int().min(1) },
       run: (args) =>
         guarded(async (): Promise<McpOutcome> => {
-          const song = await this.songs.findOne(args.song_id);
+          // Another team's song is not found, as in the search above (#122).
+          const song = await this.songs.findOne(
+            args.song_id,
+            undefined,
+            this.pompeii.teamId,
+          );
           const analysis = song.assetId
             ? ((await this.songs.findAnalyses([song.assetId])).get(
                 song.assetId,

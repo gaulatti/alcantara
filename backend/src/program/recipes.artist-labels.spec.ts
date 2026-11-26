@@ -4,6 +4,7 @@ import { ArtistLabelsService } from '../artist-labels/artist-labels.service';
 import { PompeiiService } from '../auth/pompeii.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { PrismaService } from '../prisma.service';
+import { RadioService } from '../radio/radio.service';
 import { RealtimeTicketService } from '../auth/realtime-ticket.service';
 import {
   ARTIST_LABEL_LOOKUP,
@@ -26,9 +27,16 @@ import { RecipesService } from './recipes.service';
       useValue: { recordRecipeExpansion: jest.fn() },
     },
     { provide: PompeiiService, useValue: { teamId: 7 } },
+    // Global in the application; the flight MCP tools judge playout on it.
+    { provide: RadioService, useValue: {} },
     RealtimeTicketService,
   ],
-  exports: [ManagedMetricsService, PompeiiService, RealtimeTicketService],
+  exports: [
+    ManagedMetricsService,
+    PompeiiService,
+    RadioService,
+    RealtimeTicketService,
+  ],
 })
 class GlobalStubs {}
 
@@ -95,7 +103,7 @@ async function compile(prisma: ReturnType<typeof prismaWith>) {
     .overrideProvider(ProgramService)
     .useValue({ addEventListener: jest.fn(() => jest.fn()) })
     .overrideProvider(FlightService)
-    .useValue({})
+    .useValue({ programSongDb: jest.fn(async () => prisma) })
     .overrideProvider(PrismaService)
     .useValue(prisma)
     .compile();

@@ -32,7 +32,7 @@ it("keeps the hour readable while editing only the selected event", async () => 
   expect(within(table).queryByRole("combobox")).not.toBeInTheDocument();
   fireEvent.click(within(table).getAllByRole("button")[0]);
   expect(
-    screen.getByRole("spinbutton", { name: "Fixed start" }),
+    screen.getByRole("textbox", { name: "Fixed start" }),
   ).toBeDisabled();
   fireEvent.change(screen.getByRole("spinbutton", { name: "Clip duration" }), {
     target: { value: "120" },

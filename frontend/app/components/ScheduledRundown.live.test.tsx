@@ -273,6 +273,9 @@ it("loads the scheduled block, every page of the song catalog and the rotation s
   expect(within(blocks).getAllByRole("option")[1]).toHaveTextContent("Draft");
   expect(screen.getByText(/DRAFT · Revision 3 · 2 events/)).toBeVisible();
   expect(screen.getByText(/0 fillers · 00:00 unfilled/)).toBeVisible();
+  expect(screen.getByRole("button", { name: /Check & publish/ })).toHaveClass(
+    "bg-sea",
+  );
 });
 
 it("tolerates an empty rotation and library payloads that are not lists", async () => {
@@ -317,6 +320,11 @@ it("shows how to start when the program has no scheduled block", async () => {
   ).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Check" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
+  // Disabled, Check & publish no longer wears the primary styling (the walk's polish).
+  const checkAndPublish = screen.getByRole("button", { name: /Check & publish/ });
+  expect(checkAndPublish).toBeDisabled();
+  expect(checkAndPublish).not.toHaveClass("bg-sea");
+  expect(checkAndPublish).toHaveClass("bg-white");
 });
 
 it("creates a draft block only for a future start", async () => {
@@ -325,11 +333,11 @@ it("creates a draft block only for a future start", async () => {
   vi.mocked(createFlightSequence).mockResolvedValue(created);
   renderRundown();
   await openBlock();
-  fireEvent.click(screen.getByRole("button", { name: /New block/ }));
-  const start = await screen.findByLabelText("New block");
+  fireEvent.click(screen.getByRole("button", { name: /New timed block/ }));
+  const start = await screen.findByLabelText("Scheduled start");
 
   fireEvent.change(start, { target: { value: "2000-01-01T10:00" } });
-  fireEvent.click(screen.getByRole("button", { name: "Create rundown" }));
+  fireEvent.click(screen.getByRole("button", { name: "Create timed block" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Choose a future start time.",
   );
@@ -337,7 +345,7 @@ it("creates a draft block only for a future start", async () => {
 
   vi.mocked(fetchFlightSequences).mockResolvedValue([block(), created]);
   fireEvent.change(start, { target: { value: "2099-01-01T10:00" } });
-  fireEvent.click(screen.getByRole("button", { name: "Create rundown" }));
+  fireEvent.click(screen.getByRole("button", { name: "Create timed block" }));
   await waitFor(() =>
     expect(createFlightSequence).toHaveBeenCalledWith(
       "radio-demo",
@@ -352,7 +360,7 @@ it("creates a draft block only for a future start", async () => {
     "11",
   );
   await waitFor(() =>
-    expect(screen.queryByLabelText("New block")).not.toBeInTheDocument(),
+    expect(screen.queryByLabelText("Scheduled start")).not.toBeInTheDocument(),
   );
 });
 
@@ -361,11 +369,11 @@ it("reports a block that could not be created", async () => {
   vi.mocked(createFlightSequence).mockRejectedValue(new Error("Overlaps"));
   renderRundown();
   await openBlock();
-  fireEvent.click(screen.getByRole("button", { name: /New block/ }));
-  fireEvent.change(await screen.findByLabelText("New block"), {
+  fireEvent.click(screen.getByRole("button", { name: /New timed block/ }));
+  fireEvent.change(await screen.findByLabelText("Scheduled start"), {
     target: { value: "2099-01-01T10:00" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Create rundown" }));
+  fireEvent.click(screen.getByRole("button", { name: "Create timed block" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Overlaps");
 });
 
@@ -415,15 +423,17 @@ it("starts a new block's first event at its fixed start and appends after a foll
   await screen.findByText(/DRAFT · Revision 3 · 0 events/);
   addFromLibrary(/^Stop program audio/);
   // The first event is fixed at the block start.
-  expect(screen.getByRole("spinbutton", { name: "Fixed start" })).toHaveValue(
-    0,
+  expect(screen.getByRole("textbox", { name: "Fixed start" })).toHaveValue(
+    "+00:00",
   );
   expect(
-    screen.getByRole("spinbutton", { name: "Fixed start" }),
+    screen.getByRole("textbox", { name: "Fixed start" }),
   ).toBeDisabled();
-  fireEvent.change(screen.getByRole("spinbutton", { name: "Fixed start" }), {
+  fireEvent.change(screen.getByRole("textbox", { name: "Fixed start" }), {
     target: { value: "" },
   });
+  // The field is read when it loses focus (D3).
+  fireEvent.blur(screen.getByRole("textbox", { name: "Fixed start" }));
   addFromLibrary(/^Harbor Light/);
   const table = screen.getByRole("table", { name: "Scheduled rundown events" });
   const rows = eventRows(table);
@@ -444,13 +454,36 @@ it("reports a save failure and keeps the edits", async () => {
   expect(screen.getByText(/Unsaved changes/)).toBeVisible();
 });
 
+it("shows preflight warnings without blocking a ready block (unknown song durations)", async () => {
+  stubLibrary();
+  vi.mocked(preflightFlightSequence).mockResolvedValueOnce({
+    ready: true,
+    issues: [],
+    warnings: ["Item 2: song duration unknown"],
+  });
+  renderRundown();
+  await openBlock();
+  fireEvent.click(screen.getByRole("button", { name: "Check" }));
+  expect(
+    await screen.findByText("Audio checked · ready for air"),
+  ).toBeVisible();
+  expect(
+    screen.getByText("All scheduled audio is available. 1 warning: check before air."),
+  ).toBeVisible();
+  expect(screen.getByText("Check before air")).toBeVisible();
+  expect(
+    screen.getByRole("list", { name: "Preflight warnings" }),
+  ).toHaveTextContent("Item 2: song duration unknown");
+});
+
 it("checks the saved block's audio and lists what needs attention", async () => {
   stubLibrary();
   vi.mocked(preflightFlightSequence)
-    .mockResolvedValueOnce({ ready: true, issues: [] })
+    .mockResolvedValueOnce({ ready: true, issues: [], warnings: [] })
     .mockResolvedValueOnce({
       ready: false,
       issues: ["Station ident has no audio"],
+      warnings: [],
     });
   renderRundown();
   await openBlock();
@@ -512,12 +545,97 @@ it("keeps the ready-for-air confirmation after publishing moves the block to a n
   vi.mocked(publishFlightSequence).mockImplementation(async (_program, id) =>
     block({ id, revision: 5, publishedAt: "2026-11-17T09:00:00Z" }),
   );
+  vi.mocked(preflightFlightSequence).mockResolvedValue({
+    ready: true,
+    issues: [],
+    warnings: [],
+    engine: "ready",
+  });
   renderRundown();
   await openBlock();
   addFromLibrary(/^Stop program audio/);
   fireEvent.click(screen.getByRole("button", { name: "Publish" }));
   expect(await screen.findByText(/PUBLISHED · Revision 5/)).toBeVisible();
-  expect(screen.getByText("Audio checked · ready for air")).toBeVisible();
+  expect(await screen.findByText("Audio checked · ready for air")).toBeVisible();
+  // The published revision is checked again rather than assumed ready.
+  expect(preflightFlightSequence).toHaveBeenLastCalledWith("radio-demo", 7);
+});
+
+// The rundown-building walk (GM's decision D1): a new radio show with no radio set up was "ready for air". The desk
+// never says so while the show's radio is not set up or is off, on Check or after Publish.
+it("never says ready for air while the show's radio is not set up, on Check or after Publish", async () => {
+  stubLibrary();
+  vi.mocked(updateFlightSequence).mockImplementation(
+    async (_program, id, body) => block({ id, revision: 4, items: body.items }),
+  );
+  vi.mocked(publishFlightSequence).mockImplementation(async (_program, id) =>
+    block({ id, revision: 5, publishedAt: "2026-11-17T09:00:00Z" }),
+  );
+  vi.mocked(preflightFlightSequence)
+    .mockResolvedValueOnce({
+      ready: true,
+      issues: [],
+      warnings: [
+        "Item 1: song duration unknown",
+        "Item 2: song duration unknown",
+        "Radio isn't set up for this show: set it up in Radio distribution before the block starts",
+      ],
+      engine: "not-configured",
+    })
+    .mockResolvedValueOnce({
+      ready: true,
+      issues: [],
+      warnings: [
+        "Radio is off for this show: turn it on in Radio distribution before the block starts",
+      ],
+      engine: "disabled",
+    });
+  renderRundown();
+  await openBlock();
+  addFromLibrary(/^Stop program audio/);
+  fireEvent.click(screen.getByRole("button", { name: "Check" }));
+  expect(
+    await screen.findByText("Audio checked · radio not set up"),
+  ).toBeVisible();
+  expect(screen.queryByText("Audio checked · ready for air")).toBeNull();
+  expect(
+    screen.getByText(
+      "All scheduled audio is available, but radio isn't set up for this show: it won't air until it is. 2 warnings: check before air.",
+    ),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("list", { name: "Preflight warnings" }),
+  ).toHaveTextContent("Radio isn't set up for this show");
+
+  fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+  expect(
+    await screen.findByText(
+      "Rundown published, but radio isn't set up for this show: it won't air until it is.",
+    ),
+  ).toBeVisible();
+  expect(screen.getByText("Audio checked · radio not set up")).toBeVisible();
+  expect(
+    screen.getByRole("list", { name: "Preflight warnings" }),
+  ).toHaveTextContent("Radio is off for this show");
+});
+
+it("shows no check result after publishing when the published revision cannot be checked", async () => {
+  stubLibrary();
+  vi.mocked(updateFlightSequence).mockImplementation(
+    async (_program, id, body) => block({ id, revision: 4, items: body.items }),
+  );
+  vi.mocked(publishFlightSequence).mockImplementation(async (_program, id) =>
+    block({ id, revision: 5, publishedAt: "2026-11-17T09:00:00Z" }),
+  );
+  vi.mocked(preflightFlightSequence).mockRejectedValue(new Error("offline"));
+  renderRundown();
+  await openBlock();
+  addFromLibrary(/^Stop program audio/);
+  fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+  expect(
+    await screen.findByText("Rundown published for automatic start."),
+  ).toBeVisible();
+  expect(screen.queryByText("Audio checked · ready for air")).toBeNull();
 });
 
 it("keeps a passing check after saving unsaved edits first, and drops it once the block changes", async () => {
@@ -528,6 +646,7 @@ it("keeps a passing check after saving unsaved edits first, and drops it once th
   vi.mocked(preflightFlightSequence).mockResolvedValue({
     ready: true,
     issues: [],
+    warnings: [],
   });
   renderRundown();
   await openBlock();
@@ -626,11 +745,12 @@ it("edits a clip's source, duration and fixed start in the inspector", async () 
   });
   expect(within(table).getAllByRole("row")[2]).toHaveTextContent("00:45");
 
-  fireEvent.change(screen.getByRole("spinbutton", { name: "Fixed start" }), {
-    target: { value: "125" },
-  });
+  const fixedStart = screen.getByRole("textbox", { name: "Fixed start" });
+  fireEvent.change(fixedStart, { target: { value: "125" } });
+  fireEvent.blur(fixedStart);
+  expect(fixedStart).toHaveValue("+02:05");
   expect(
-    screen.getByText("+02:05 · Starts on time and cuts the preceding filler."),
+    screen.getByText(/^\d\d:\d\d:\d\d · \+02:05 · Starts on time and cuts the preceding filler\.$/),
   ).toBeVisible();
 
   fireEvent.click(screen.getByRole("button", { name: "Discard" }));
@@ -665,8 +785,8 @@ it("changes an event's song, marks disabled songs and removes events", async () 
     screen.getByRole("heading", { name: "Select an event" }),
   ).toBeVisible();
   fireEvent.click(eventRows(table)[0]);
-  expect(screen.getByRole("spinbutton", { name: "Fixed start" })).toHaveValue(
-    0,
+  expect(screen.getByRole("textbox", { name: "Fixed start" })).toHaveValue(
+    "+00:00",
   );
 });
 
@@ -866,8 +986,107 @@ it("closes the record and new-block dialogs with Escape", async () => {
   const recording = await screen.findByText("Recording over Harbor Light");
   fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   await waitFor(() => expect(recording).not.toBeInTheDocument());
-  fireEvent.click(screen.getByRole("button", { name: /New block/ }));
-  const start = await screen.findByLabelText("New block");
+  fireEvent.click(screen.getByRole("button", { name: /New timed block/ }));
+  const start = await screen.findByLabelText("Scheduled start");
   fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   await waitFor(() => expect(start).not.toBeInTheDocument());
+});
+
+it("warns that the station goes silent after a block with nothing after it on a Manual rotation (D5)", async () => {
+  stubLibrary();
+  vi.mocked(preflightFlightSequence).mockResolvedValueOnce({
+    ready: true,
+    issues: [],
+    warnings: ["After this block nothing is scheduled and the rotation is Manual: the station goes silent at 19:20."],
+  });
+  renderRundown();
+  await openBlock();
+  fireEvent.click(screen.getByRole("button", { name: "Check" }));
+  expect(
+    await screen.findByRole("list", { name: "Preflight warnings" }),
+  ).toHaveTextContent("the station goes silent at 19:20.");
+});
+
+it("warns that an unknown-length song before a fixed start may be cut by it (D6)", async () => {
+  stubLibrary();
+  vi.mocked(preflightFlightSequence).mockResolvedValueOnce({
+    ready: true,
+    issues: [],
+    warnings: ["Item 2: song duration unknown", "May be cut by the fixed start at 19:05."],
+  });
+  renderRundown();
+  await openBlock();
+  fireEvent.click(screen.getByRole("button", { name: "Check" }));
+  expect(
+    await screen.findByRole("list", { name: "Preflight warnings" }),
+  ).toHaveTextContent("May be cut by the fixed start at 19:05.");
+});
+
+it("says the block returns to what was playing before, not to continuous fillers", async () => {
+  stubLibrary();
+  renderRundown();
+  await openBlock();
+  fireEvent.click(screen.getByRole("button", { name: /New timed block/ }));
+  expect(await screen.findByText(/returns to what was playing before/)).toBeVisible();
+  expect(screen.queryByText(/returns to continuous fillers/)).toBeNull();
+});
+
+// The walk's D3: the fixed start takes a clock time, +mm:ss or seconds, inside the block's window.
+it("pins an event's fixed start by clock time and refuses a time outside the block", async () => {
+  stubLibrary();
+  vi.mocked(fetchFlightSequences).mockResolvedValue([
+    block(),
+    block({ id: 8, name: "Next", scheduledAt: "2026-11-17T11:00:00" }),
+  ]);
+  renderRundown();
+  const table = await openBlock();
+  fireEvent.click(eventRows(table)[1]);
+  const fixedStart = screen.getByRole("textbox", { name: "Fixed start" });
+  const typeIn = (value: string, key?: string) => {
+    fireEvent.change(fixedStart, { target: { value } });
+    if (key) fireEvent.keyDown(fixedStart, { key });
+    else fireEvent.blur(fixedStart);
+  };
+
+  typeIn("10:15:30", "Enter");
+  expect(fixedStart).toHaveValue("+15:30");
+  expect(
+    screen.getByText("10:15:30 · +15:30 · Starts on time and cuts the preceding filler."),
+  ).toBeVisible();
+  expect(screen.getByText(/Unsaved changes/)).toBeVisible();
+
+  typeIn("09:50");
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "09:50 is before this block starts at 10:00.",
+  );
+  expect(fixedStart).toHaveValue("09:50");
+  expect(fixedStart).toHaveAttribute("aria-invalid", "true");
+  // The stored start is unchanged while the entry is refused.
+  expect(screen.getByText(/^10:15:30 · \+15:30/)).toBeVisible();
+
+  typeIn("11:00");
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "11:00 is after the next block starts at 11:00.",
+  );
+  typeIn("02:00");
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "02:00 is more than 6 hours after this block starts at 10:00.",
+  );
+  typeIn("soon");
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "Enter a clock time (07:10 or 07:10:30), an offset (+05:00) or seconds.",
+  );
+  // A key other than Enter does not read the entry.
+  typeIn("+02:00", "Tab");
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.getByText(/^10:15:30 · \+15:30/)).toBeVisible();
+  fireEvent.blur(fixedStart);
+  expect(fixedStart).toHaveValue("+02:00");
+  expect(screen.getByText(/^10:02:00 · \+02:00/)).toBeVisible();
+  // Leaving the field untouched changes nothing; emptying it follows the previous event.
+  fireEvent.blur(fixedStart);
+  expect(fixedStart).toHaveValue("+02:00");
+  typeIn("  ");
+  expect(fixedStart).toHaveValue("");
+  expect(screen.getByText(/^Follows the previous event\./)).toBeVisible();
 });

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
+import { PompeiiService } from '../../auth/pompeii.service';
 import {
   MAX_REANALYSIS_BATCH,
   REANALYSIS_RULES,
@@ -14,7 +15,10 @@ import { whyNot } from './on-air';
 @McpToolProvider()
 @Injectable()
 export class SongReanalysisMcpTools {
-  constructor(private readonly reanalysis: SongReanalysisService) {}
+  constructor(
+    private readonly reanalysis: SongReanalysisService,
+    private readonly pompeii: PompeiiService,
+  ) {}
 
   specs(): McpToolSpec[] {
     return [
@@ -29,7 +33,10 @@ export class SongReanalysisMcpTools {
           rule: z.enum(REANALYSIS_RULES).optional(),
         },
         load: async (args) => ({
-          onAir: await this.reanalysis.onAir(args.song_ids),
+          onAir: await this.reanalysis.onAir(
+            args.song_ids,
+            this.pompeii.teamId,
+          ),
         }),
         id: (args) => args.song_ids.join(','),
         plan: (args, { onAir }) => ({
@@ -56,7 +63,12 @@ export class SongReanalysisMcpTools {
                 ] as const,
             ),
           ),
-        run: (args) => this.reanalysis.request(args.song_ids, args.rule),
+        run: (args) =>
+          this.reanalysis.request(
+            args.song_ids,
+            this.pompeii.teamId,
+            args.rule,
+          ),
       }),
     ];
   }

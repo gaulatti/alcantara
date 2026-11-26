@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Optional,
   Logger,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -12,8 +13,13 @@ import {
   RadioMetricsService,
   type AnalysisDropResult,
   type CueGroupShape,
+  type PlayoutUnconfirmedTake,
 } from './radio-metrics.service';
 import { PrismaService } from '../prisma.service';
+import { PompeiiService } from '../auth/pompeii.service';
+import { forTeam } from '../tenancy/scoped-prisma';
+import { PlayoutSongScope } from './playout-song-scope';
+import { isRadioOnlyEngineOff } from './engine-availability';
 import { ActorContext } from '../auth/actor-context';
 import { radioSettingsChangeSummary } from '../operator-change/operator-change-summary';
 import {
@@ -25,7 +31,11 @@ import {
   validateSongLoudness,
   validateSongSegue,
 } from './palazzo-machine.client';
-import { isLocalMediaUrl, localMediaEnvironment } from '../config/local-media';
+import {
+  describeAcceptedMediaUrl,
+  isLocalMediaUrl,
+  localMediaEnvironment,
+} from '../config/local-media';
 import type { PalazzoPlaybackState } from './palazzo-contract';
 import {
   MAX_WINDOW_SECONDS,
@@ -64,10 +74,40 @@ export interface RadioMixerPayload {
  * restart), so a caller can retry that one case and never one whose outcome is
  * unknown (a timeout or a network error carries no answer).
  */
+/**
+ * What a failed Palazzo command tells the operator. Only an answer from Palazzo that refuses the command reads as
+ * "rejected". A command Alcántara refused before sending (a rejection with no HTTP status: the address is not
+ * approved or the program ID is invalid), a server or gateway error, no answer, and an answer that does not
+ * confirm the command each say so (found in the engine-outage walk, gaulatti/alcantara#703).
+ */
+export function palazzoCommandFailure(
+  action: string,
+  error: unknown,
+): BadGatewayException {
+  const machine = error instanceof PalazzoMachineError ? error : null;
+  const reason = machine?.reason ?? 'unavailable';
+  const status = machine?.status;
+  let message = `Palazzo rejected the ${action}`;
+  if (reason === 'unavailable')
+    message = `Palazzo did not answer; the ${action} was not confirmed`;
+  else if (reason === 'malformed')
+    message = `Palazzo's answer to the ${action} did not confirm it`;
+  else if (reason === 'rejected' && status === undefined)
+    message = `The ${action} was not sent to Palazzo: Alcántara refused it`;
+  else if (status !== undefined && status >= 500)
+    message = `Palazzo answered the ${action} with an error; it was not confirmed`;
+  return new BadGatewayException(message);
+}
+
 export class PalazzoInstantRefusedException extends BadGatewayException {
   constructor(readonly retryable: boolean) {
     super('Palazzo rejected the instant');
   }
+}
+
+/** What a take is judged by (D4): the engine client's playout report, or null for a program with no client. */
+export interface PlayoutReports {
+  playoutReport(programId: string): 'up' | 'down' | 'stale' | 'unknown' | null;
 }
 
 @Injectable()
@@ -79,7 +119,31 @@ export class RadioService {
     private readonly palazzo: PalazzoMachineClient,
     private readonly config: ConfigService,
     private readonly metrics: RadioMetricsService,
+    private readonly pompeii: PompeiiService,
+    @Optional() private readonly songScope?: PlayoutSongScope,
   ) {}
+
+  /**
+   * The songs the program's recovery filler may use (gaulatti/alcantara#122): its team's, all of them when no station
+   * team is configured, and none (counted) when the program has no team.
+   */
+  private async recoverySongDb(
+    programId: string,
+  ): Promise<PrismaService | null> {
+    if (this.pompeii.teamId === 0) return this.prisma;
+    const program = await this.prisma.program.findUnique({
+      where: { programId },
+      select: { teamId: true },
+    });
+    if (program?.teamId && program.teamId > 0) {
+      return forTeam(this.prisma, program.teamId) as unknown as PrismaService;
+    }
+    this.metrics.recordLogSongScopeRefusal('recovery');
+    this.logger.warn(
+      `Program ${programId} has no team; recovery reads no songs`,
+    );
+    return null;
+  }
 
   async getRecoveryStatus(programId: string) {
     const settings = await this.requireRadioSettings(programId);
@@ -141,10 +205,13 @@ export class RadioService {
       );
     }
     const settings = await this.requireRadioSettings(programId);
-    const songs = await this.prisma.song.findMany({
-      where: { id: { in: songIds } },
-      select: { id: true, enabled: true, audioUrl: true },
-    });
+    const songDb = await this.recoverySongDb(programId);
+    const songs = songDb
+      ? await songDb.song.findMany({
+          where: { id: { in: songIds } },
+          select: { id: true, enabled: true, audioUrl: true },
+        })
+      : [];
     const byId = new Map(songs.map((song) => [song.id, song]));
     const ordered = songIds.map((id) => byId.get(id));
     if (ordered.some((song) => !song?.enabled || !song.audioUrl.trim()))
@@ -165,7 +232,9 @@ export class RadioService {
       try {
         url = new URL(downloadUrl);
       } catch {
-        throw new BadRequestException('recovery song has an invalid URL');
+        throw new BadRequestException(
+          `recovery song ${song!.id} has no absolute audio URL; it needs ${describeAcceptedMediaUrl(localMediaEnvironment(this.config))}`,
+        );
       }
       const isManagedBucketUrl =
         url.protocol === 'https:' &&
@@ -183,7 +252,7 @@ export class RadioService {
         !isLocalMediaUrl(url, localMediaEnvironment(this.config))
       ) {
         throw new BadRequestException(
-          'recovery audio must use the managed media bucket',
+          `recovery song ${song!.id} audio must be ${describeAcceptedMediaUrl(localMediaEnvironment(this.config))}`,
         );
       }
       const response = await fetch(downloadUrl, {
@@ -292,6 +361,67 @@ export class RadioService {
       where: { programId_leg: { programId, leg: 'radio' } },
     });
     return leg?.pendingVersionId ?? leg?.activeVersionId ?? null;
+  }
+
+  /**
+   * gaulatti/alcantara#609: a radio-only program plays only through its playout engine. While
+   * that engine is disabled (or has no settings), a take or start would play nowhere, so it is
+   * refused with 409 and `reason: "engine_unavailable"`. TV and simulcast programs, whose program
+   * output plays songs itself, are not affected.
+   */
+  async refuseStartWhileEngineUnavailable(programId: string): Promise<void> {
+    if (await isRadioOnlyEngineOff(this.prisma, programId)) {
+      this.metrics.recordStartRefused('engine_unavailable');
+      throw new ConflictException({
+        statusCode: 409,
+        error: 'Conflict',
+        reason: 'engine_unavailable',
+        message:
+          'The radio engine is off (disabled in settings), so nothing was taken.',
+      });
+    }
+    const verdict = await this.judgePlayout(programId);
+    this.recordPlayoutVerdict(verdict);
+    if (verdict === 'down')
+      throw new ConflictException({
+        statusCode: 409,
+        error: 'Conflict',
+        reason: 'playout_down',
+        message: 'Playout down: nothing can air. Nothing was taken.',
+      });
+  }
+
+  /**
+   * The airing walk's D4: Palazzo answers but freshly reports its playout (Liquidsoap) down, so what is started would
+   * be accepted and not air. Only a fresh, explicit report refuses (`down`); a stale or missing one lets it through,
+   * because a wrong refusal is dead air too. As for engine_unavailable (#609), only a radio-only program is refused:
+   * a simulcast program's own output plays the song on TV whatever its radio leg does (`tv_leg`). A program with no
+   * engine client is not judged (`null`). Nothing is counted here: a dry run judges too.
+   */
+  async judgePlayout(
+    programId: string,
+  ): Promise<'down' | PlayoutUnconfirmedTake | null> {
+    const report = this.playoutReports?.playoutReport(programId) ?? null;
+    if (report === 'stale' || report === 'unknown') return report;
+    if (report !== 'down') return null;
+    const state = await this.prisma.programState.findUnique({
+      where: { programId },
+      select: { type: true },
+    });
+    return state?.type === 'radio' ? 'down' : 'tv_leg';
+  }
+
+  /** Counts a take or an advance that was refused, or let through without a confirmed playout. */
+  recordPlayoutVerdict(verdict: 'down' | PlayoutUnconfirmedTake | null): void {
+    if (verdict === 'down') this.metrics.recordStartRefused('playout_down');
+    else if (verdict) this.metrics.recordPlayoutUnconfirmedTake(verdict);
+  }
+
+  private playoutReports?: PlayoutReports;
+
+  /** Bound by the Palazzo telemetry service at startup (D4); the engine already depends on this service. */
+  setPlayoutReports(reports: PlayoutReports): void {
+    this.playoutReports = reports;
   }
 
   async getRadioSettings(programId: string) {
@@ -745,7 +875,12 @@ export class RadioService {
     let shape: CueGroupShape | null = null;
     if (!segue && !loudness) {
       try {
-        const song = await this.findSongForAnalysis(audioUrl, songId, drops);
+        const song = await this.findSongForAnalysis(
+          programId,
+          audioUrl,
+          songId,
+          drops,
+        );
         // A song sent without its analysis is counted too (gaulatti/alcantara#255):
         // no library song with a media asset, or an asset not (yet) analysed.
         if (!song?.assetId && !drops.includes('ambiguous-match')) {
@@ -840,21 +975,35 @@ export class RadioService {
 
   // The song whose analysis applies: by id when given, else by audio URL only when exactly one song has it.
   private async findSongForAnalysis(
+    programId: string,
     audioUrl: string,
     songId: number | undefined,
     drops: AnalysisDropResult[],
   ): Promise<{ assetId: string | null; durationMs: number | null } | null> {
     if (songId) {
-      return this.prisma.song.findUnique({
-        where: { id: songId },
-        select: { assetId: true, durationMs: true },
-      });
+      const byId = (db: PrismaService) =>
+        db.song.findUnique({
+          where: { id: songId },
+          select: { assetId: true, durationMs: true },
+        });
+      return this.songScope
+        ? this.songScope.read('analysis', programId, byId, (song) => !!song)
+        : byId(this.prisma);
     }
-    const songs = await this.prisma.song.findMany({
-      where: { audioUrl },
-      select: { assetId: true, durationMs: true },
-      take: 2,
-    });
+    const byUrl = (db: PrismaService) =>
+      db.song.findMany({
+        where: { audioUrl },
+        select: { assetId: true, durationMs: true },
+        take: 2,
+      });
+    const songs = this.songScope
+      ? await this.songScope.read(
+          'analysis',
+          programId,
+          byUrl,
+          (rows) => rows.length > 0,
+        )
+      : await byUrl(this.prisma);
     if (songs.length > 1) {
       drops.push('ambiguous-match');
       return null;
@@ -864,11 +1013,13 @@ export class RadioService {
 
   async stopSong(programId: string): Promise<void> {
     const settings = await this.requireRadioSettings(programId);
+    // Outside the try: a missing address is Alcántara's configuration, not a Palazzo failure.
+    const url = this.palazzoUrl(settings);
     try {
-      await this.palazzo.stopSong(this.palazzoUrl(settings), programId);
+      await this.palazzo.stopSong(url, programId);
     } catch (error) {
       this.logMachineFailure('stopSong', programId, error);
-      throw new BadGatewayException('Palazzo rejected the song stop');
+      throw palazzoCommandFailure('song stop', error);
     }
   }
 
@@ -901,15 +1052,12 @@ export class RadioService {
     mixer: RadioMixerPayload,
   ): Promise<void> {
     const settings = await this.requireRadioSettings(programId);
+    const url = this.palazzoUrl(settings);
     try {
-      await this.palazzo.updateMixer(
-        this.palazzoUrl(settings),
-        programId,
-        mixer,
-      );
+      await this.palazzo.updateMixer(url, programId, mixer);
     } catch (error) {
       this.logMachineFailure('updateMixer', programId, error);
-      throw new BadGatewayException('Palazzo rejected the radio mixer update');
+      throw palazzoCommandFailure('radio mixer update', error);
     }
   }
 
@@ -928,11 +1076,12 @@ export class RadioService {
 
   async stopAllInstants(programId: string): Promise<void> {
     const settings = await this.requireRadioSettings(programId);
+    const url = this.palazzoUrl(settings);
     try {
-      await this.palazzo.stopInstants(this.palazzoUrl(settings), programId);
+      await this.palazzo.stopInstants(url, programId);
     } catch (error) {
       this.logMachineFailure('stopAllInstants', programId, error);
-      throw new BadGatewayException('Palazzo rejected the instant stop');
+      throw palazzoCommandFailure('instant stop', error);
     }
   }
 

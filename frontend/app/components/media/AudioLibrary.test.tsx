@@ -325,6 +325,14 @@ it("plays every asset through one shared transport, not one player per row", () 
   expect(within(transport()).getByText("Asset station")).toBeInTheDocument();
 });
 
+it("shows a clip as stopped once it has ended", () => {
+  setup();
+  fireEvent.click(screen.getByRole("button", { name: "Play Asset pending" }));
+  expect(screen.getByRole("button", { name: "Pause Asset pending" })).toBeInTheDocument();
+  fireEvent.ended(element());
+  expect(screen.getByRole("button", { name: "Play Asset pending" })).toBeInTheDocument();
+});
+
 it("selects with the arrow keys and plays with Space", () => {
   setup();
   rowOf("Asset harbor").focus();
@@ -367,7 +375,10 @@ it("says when a clip cannot be played", async () => {
 it("leaves other audio alone: leaving the library pauses only the transport", () => {
   const listener = document.createElement("audio");
   document.body.append(listener);
-  const listenerPause = vi.spyOn(listener, "pause");
+  // An own property, not vi.spyOn: the prototype pause spy above is what the transport calls, and
+  // vitest 4 returns that same spy for an inherited method.
+  const listenerPause = vi.fn();
+  listener.pause = listenerPause;
   const { unmount } = render(
     <AudioLibrary
       assets={ASSETS}
@@ -573,4 +584,33 @@ it("ignores arrow keys pressed on a button inside a row, which belong to that bu
   const inner = within(row).getAllByRole("button")[0];
   fireEvent.keyDown(inner, { key: "ArrowDown" });
   expect(element().getAttribute("src")).toBeNull();
+});
+
+// gaulatti/alcantara#668: below `sm` the list is one card per clip, title and length with the
+// row's controls; the table is not rendered at all, and the desktop layout is unchanged.
+it("lists each clip as a card below sm, with its title, length and controls, and no table", () => {
+  const matchMedia = vi.fn((query: string) => ({
+    matches: query === "(max-width: 639px)",
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+  vi.stubGlobal("matchMedia", matchMedia);
+  const props = setup();
+  expect(screen.queryByRole("table")).toBeNull();
+  const card = screen.getByRole("button", { name: /^Asset harbor\s/ });
+  expect(within(card.closest("li")!).getByText("3:34")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Play Asset harbor" })).toBeVisible();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select Asset harbor" }));
+  expect(props.onToggleSelected).toHaveBeenCalledWith("harbor", true);
+  fireEvent.click(card);
+  expect(screen.getByRole("button", { name: /^Asset harbor\s/ })).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  vi.unstubAllGlobals();
 });

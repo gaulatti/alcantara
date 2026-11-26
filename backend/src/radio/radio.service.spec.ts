@@ -17,6 +17,7 @@ describe('RadioService settings', () => {
       {} as any,
       {} as any,
       new RadioMetricsService(),
+      { teamId: 0 } as never,
     );
     try {
       process.env.NODE_ENV = 'test';
@@ -60,7 +61,9 @@ describe('RadioService settings', () => {
       },
     } as any;
     const metrics = new RadioMetricsService();
-    const service = new RadioService(prisma, {} as any, {} as any, metrics);
+    const service = new RadioService(prisma, {} as any, {} as any, metrics, {
+      teamId: 0,
+    } as never);
     await service.updateRadioSettings('radio', {
       listenerUrl: 'https://radio.example/stream?format=mp3',
     });
@@ -112,6 +115,7 @@ describe('RadioService settings', () => {
         {} as any,
         {} as any,
         new RadioMetricsService(),
+        { teamId: 0 } as never,
       );
       await expect(
         service.updateRadioSettings('radio', { listenerUrl } as any),
@@ -131,6 +135,7 @@ describe('RadioService settings', () => {
       {} as any,
       {} as any,
       new RadioMetricsService(),
+      { teamId: 0 } as never,
     );
 
     const result = await service.updateRadioSettings('palazzo', {
@@ -174,6 +179,7 @@ describe('RadioService settings', () => {
       palazzo,
       {} as any,
       new RadioMetricsService(),
+      { teamId: 0 } as never,
     );
 
     await expect(
@@ -231,6 +237,7 @@ describe('RadioService settings', () => {
       {} as any,
       {} as any,
       new RadioMetricsService(),
+      { teamId: 0 } as never,
     );
     await expect(
       service.updateRadioSettings('palazzo', { bumperInterval: 0 }),
@@ -289,12 +296,9 @@ describe('RadioService recovery playlist', () => {
       .mockResolvedValue(new Response('fixture audio'));
     try {
       const metrics = new RadioMetricsService();
-      const result = await new RadioService(
-        prisma,
-        palazzo,
-        config,
-        metrics,
-      ).prepareRecoveryPlaylist('radio-1', [5]);
+      const result = await new RadioService(prisma, palazzo, config, metrics, {
+        teamId: 0,
+      } as never).prepareRecoveryPlaylist('radio-1', [5]);
       expect(result.selectedSongIds).toEqual([5]);
       expect(palazzo.prepareFiller).toHaveBeenCalledWith(
         'http://palazzo:3100',
@@ -345,6 +349,7 @@ describe('RadioService recovery playlist', () => {
           palazzo,
           { get: () => 'media-test' } as any,
           metrics,
+          { teamId: 0 } as never,
         ).prepareRecoveryPlaylist('radio-1', [5]),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(request).not.toHaveBeenCalled();
@@ -367,6 +372,7 @@ describe('RadioService recovery playlist', () => {
       {} as any,
       {} as any,
       new RadioMetricsService(),
+      { teamId: 0 } as never,
     );
     await expect(service.getRadioSettings('missing')).rejects.toThrow(
       'Program not found',
@@ -391,6 +397,7 @@ describe('RadioService recovery playlist', () => {
       palazzo,
       {} as any,
       new RadioMetricsService(),
+      { teamId: 0 } as never,
     );
     await expect(service.getPlaybackState('radio')).rejects.toThrow(
       'playback state is unavailable',

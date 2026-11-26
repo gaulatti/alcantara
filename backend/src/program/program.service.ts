@@ -10,8 +10,10 @@ import {
   OnModuleInit,
   OnModuleDestroy,
   NotFoundException,
+  ConflictException,
 } from '@nestjs/common';
-import { MediaAssetKind, type Prisma } from '@prisma/client';
+import { SceneAssetScope } from './scene-asset-scope';
+import { MediaAssetKind, Prisma } from '@prisma/client';
 import { Subject, Observable, type Subscription } from 'rxjs';
 import {
   OperatorChangeRecorder,
@@ -20,6 +22,8 @@ import {
 } from '../operator-change/operator-change-recorder';
 import { INSTANT_CHANGE_FIELDS } from '../operator-change/library-change-fields';
 import { PrismaService } from '../prisma.service';
+import { ProgramTeamAccess } from '../tenancy/program-team-access';
+import { PlayoutSongScope } from '../radio/playout-song-scope';
 import { forTeam } from '../tenancy/scoped-prisma';
 import {
   OUTBOUND_REFUSAL_MESSAGES,
@@ -49,6 +53,7 @@ import {
   collectHighRotationProgramSongLeaves,
   countProgramSongLeavesBySong,
   normalizeProgramSongSequence,
+  type ProgramSongSequence,
 } from '../radio/song-sequence.utils';
 import { MAX_HIGH_ROTATION_SONGS } from '../radio/song-rotation.utils';
 import {
@@ -138,6 +143,35 @@ export interface ProgramPlayingTrack {
   coverUrl?: string;
 }
 
+/**
+ * Whether writing `next` over `stored` would start a song (gaulatti/alcantara#609): a different
+ * song becomes active, or an idle manual rotation switches to Autoplay or Shuffle. Edits that keep
+ * the active song, and stopping (no active song), start nothing.
+ */
+export function startsSongPlayback(
+  stored: ProgramSongSequence | null,
+  next: ProgramSongSequence | null,
+): boolean {
+  if (!next) return false;
+  if (
+    next.activeItemId !== null &&
+    next.activeItemId !== (stored?.activeItemId ?? null)
+  )
+    return true;
+  const automatic = (mode: string | undefined) =>
+    mode === 'autoplay' || mode === 'shuffle';
+  return (
+    automatic(next.mode) && !automatic(stored?.mode) && next.items.length > 0
+  );
+}
+
+/** The refusal of a rename onto the id a deleted program's settings still hold (gaulatti/alcantara#122). */
+export const LEFTOVER_PROGRAM_ID_MESSAGE =
+  "That ID belongs to a deleted show's settings. Choose another ID.";
+
+/** How the refusal to rename a program that is on air begins; the Shows dialog shows such a refusal as it is. */
+export const ON_AIR_RENAME_MESSAGE_START = 'This show is on air';
+
 @Injectable()
 export class ProgramService implements OnModuleInit, OnModuleDestroy {
   private static readonly DEFAULT_PROGRAM_ID = 'main';
@@ -211,6 +245,9 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     @Optional()
     private readonly outputConfidence?: RadioOutputConfidenceService,
     @Optional() private readonly recorder?: OperatorChangeRecorder,
+    @Optional() private readonly songScope?: PlayoutSongScope,
+    @Optional() private readonly sceneAssets?: SceneAssetScope,
+    @Optional() private readonly programTeams?: ProgramTeamAccess,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -255,7 +292,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     event: SongEngineTrackEvent,
   ): Promise<void> {
     if (event.type === 'track.started') {
-      const coverUrl = await this.storedCoverUrl(event.url);
+      const coverUrl = await this.storedCoverUrl(programId, event.url);
       this.playingTrackByProgramId.set(programId, {
         playbackId: event.playbackRequestId,
         title: event.title,
@@ -287,15 +324,20 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
    * alcantara_program_playing_track_cover_lookups_total.
    */
   private async storedCoverUrl(
+    programId: string,
     audioUrl: string | null,
   ): Promise<string | undefined> {
     if (!audioUrl) return undefined;
     let stored: unknown;
     try {
-      const song = await this.prisma.song.findFirst({
-        where: { audioUrl },
-        select: { coverUrl: true },
-      });
+      const byUrl = (db: PrismaService) =>
+        db.song.findFirst({
+          where: { audioUrl },
+          select: { coverUrl: true },
+        });
+      const song = this.songScope
+        ? await this.songScope.read('cover', programId, byUrl, (row) => !!row)
+        : await byUrl(this.prisma);
       stored = song?.coverUrl;
     } catch (error) {
       this.metrics?.recordPlayingTrackCoverLookup('error');
@@ -1266,7 +1308,9 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     if (!template) {
       return {
         templateUrl: null,
-        templateManifest: null,
+        // SQL NULL, not JSON null: a plain null writes JSON null to this Json column, which an audio-only
+        // (radio) row's check constraint refuses, so no radio show could be created or kept radio.
+        templateManifest: Prisma.DbNull,
         templateVerifiedAt: null,
       };
     }
@@ -1475,7 +1519,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     });
 
     if (existing) {
-      throw new Error('Program already exists');
+      throw new ConflictException('Program already exists');
     }
 
     // gaulatti/alcantara#335: the Program row (which carries the team and owns branding) is created
@@ -1500,7 +1544,50 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         },
       }),
     ]);
+    this.programTeams?.invalidate(normalized);
     return this.getProgramStateWithScenes(normalized);
+  }
+
+  /**
+   * A rename moves the program's engines and outputs to another id, so a program that is on air is not renamed: it
+   * would go silent, or lose its output.
+   */
+  private async refuseRenameOnAir(
+    programId: string,
+    state: {
+      activeSceneId: number | null;
+      fadeToBlack: boolean;
+      activeFlightSequenceId: number | null;
+    },
+  ): Promise<void> {
+    // A selected log that is not running airs nothing.
+    const log =
+      state.activeFlightSequenceId == null
+        ? null
+        : await this.prisma.flightSequence.findUnique({
+            where: { id: state.activeFlightSequenceId },
+            select: { isRunning: true },
+          });
+    const reasons = [
+      [state.activeSceneId != null, 'a scene is on air'],
+      [!!state.fadeToBlack, 'fade to black is on'],
+      [!!log?.isRunning, 'a log is running'],
+      [
+        !!this.programSongPlaybackByProgramId.get(programId)?.isPlaying ||
+          !!this.songExecutionEngine.getOnAirView(programId).playbackRequestId,
+        'a song is playing',
+      ],
+      [
+        !!this.programSceneInstantPlaybackByProgramId.get(programId)?.isPlaying,
+        'a scene instant is playing',
+      ],
+    ]
+      .filter(([holds]) => holds)
+      .map(([, reason]) => reason as string);
+    if (reasons.length === 0) return;
+    throw new ConflictException(
+      `${ON_AIR_RENAME_MESSAGE_START} (${reasons.join('; ')}). Take it off air before renaming it.`,
+    );
   }
 
   private requireRecorder(): OperatorChangeRecorder {
@@ -1530,19 +1617,33 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
 
     const existingSource = await this.prisma.programState.findUnique({
       where: { programId: current },
-      select: { id: true, type: true },
+      select: {
+        id: true,
+        type: true,
+        activeSceneId: true,
+        fadeToBlack: true,
+        activeFlightSequenceId: true,
+      },
     });
     if (!existingSource) {
       throw new Error('Program not found');
     }
-
     if (current !== next) {
       const existingTarget = await this.prisma.programState.findUnique({
         where: { programId: next },
         select: { id: true },
       });
       if (existingTarget) {
-        throw new Error('Target program id already exists');
+        throw new ConflictException('Target program id already exists');
+      }
+      // A deleted program leaves its Program row (team and branding) behind. Nothing is removed as a side effect of
+      // a rename: the id is refused instead.
+      const leftover = await this.prisma.program.findUnique({
+        where: { programId: next },
+        select: { programId: true },
+      });
+      if (leftover) {
+        throw new ConflictException(LEFTOVER_PROGRAM_ID_MESSAGE);
       }
     }
 
@@ -1566,10 +1667,51 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       Object.assign(updateData, this.programTemplateUpdateData(template));
     }
 
-    await this.prisma.programState.update({
-      where: { id: existingSource.id },
-      data: updateData,
-    });
+    // The on-air check is the last thing before the write, and the write itself matches the row only while it is
+    // still off air, so a scene or a log that starts in between rolls the rename back. A song playing is known only
+    // in memory: one that starts between this check and the commit is stopped by the engine's move to the new id.
+    if (current !== next) await this.refuseRenameOnAir(current, existingSource);
+    const updateState = () =>
+      this.prisma.programState.update({
+        where:
+          current === next
+            ? { id: existingSource.id }
+            : {
+                id: existingSource.id,
+                activeSceneId: null,
+                fadeToBlack: false,
+                activeFlightSequenceId: existingSource.activeFlightSequenceId,
+                flightSequences: {
+                  none: {
+                    id: existingSource.activeFlightSequenceId ?? 0,
+                    isRunning: true,
+                  },
+                },
+              },
+        data: updateData,
+      });
+    if (current === next) {
+      await updateState();
+    } else {
+      // gaulatti/alcantara#122: the Program row carries the program's team and branding, so it is renamed with the
+      // program, or the renamed program would belong to no team.
+      try {
+        await this.prisma.$transaction([
+          this.prisma.program.updateMany({
+            where: { programId: current },
+            data: { programId: next },
+          }),
+          updateState(),
+        ]);
+      } catch (error) {
+        if ((error as { code?: string }).code !== 'P2025') throw error;
+        throw new ConflictException(
+          `${ON_AIR_RENAME_MESSAGE_START} (it changed while it was being renamed). Take it off air before renaming it.`,
+        );
+      }
+    }
+    this.programTeams?.invalidate(current);
+    this.programTeams?.invalidate(next);
     await recorder.record({
       actor,
       target: 'program',
@@ -1621,6 +1763,9 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       });
       this.programSceneInstantPlaybackByProgramId.delete(current);
     }
+    // The radio engine and Palazzo telemetry take up the new id; without this the renamed show has no engine until
+    // its radio is switched off and on.
+    await this.songExecutionEngine.renameProgram(current, next);
     return this.getProgramStateWithScenes(next);
   }
 
@@ -1638,6 +1783,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.programState.delete({
       where: { id: existing.id },
     });
+    this.programTeams?.invalidate(normalized);
 
     const subject = this.eventSubjects.get(normalized);
     if (subject) {
@@ -1779,6 +1925,40 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       mixerSettings,
       version: this.getProgramTopicVersion(normalizedProgramId, 'audioBus'),
     };
+  }
+
+  /**
+   * gaulatti/alcantara#609: an operator's audio-bus write that would start a song on a radio-only
+   * program is refused (409, `reason: "engine_unavailable"`) while its engine is off. Scheduled
+   * rundown automation does not come through here.
+   */
+  async refuseOperatorStartWhileEngineUnavailable(
+    data: unknown,
+    programId: string,
+  ): Promise<void> {
+    if (
+      !data ||
+      typeof data !== 'object' ||
+      !Object.prototype.hasOwnProperty.call(data, 'songSequence')
+    )
+      return;
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const current = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
+      select: { type: true, songSequence: true },
+    });
+    if (current?.type !== 'radio') return;
+    if (
+      startsSongPlayback(
+        normalizeProgramSongSequence(current.songSequence),
+        normalizeProgramSongSequence(
+          (data as { songSequence?: unknown }).songSequence,
+        ),
+      )
+    )
+      await this.radioService.refuseStartWhileEngineUnavailable(
+        normalizedProgramId,
+      );
   }
 
   async updateProgramAudioBus(
@@ -2379,14 +2559,18 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       volume: number;
     };
     if (mediaAssetId !== null) {
-      const asset = await this.prisma.mediaAsset.findFirst({
-        where: {
-          id: mediaAssetId,
-          enabled: true,
-          backgroundAudio: { isNot: null },
-        },
-        include: { backgroundAudio: true, audioClip: true },
-      });
+      const read = (db: PrismaService) =>
+        db.mediaAsset.findFirst({
+          where: {
+            id: mediaAssetId,
+            enabled: true,
+            backgroundAudio: { isNot: null },
+          },
+          include: { backgroundAudio: true, audioClip: true },
+        });
+      const asset = this.sceneAssets
+        ? await this.sceneAssets.read(normalizedProgramId, read)
+        : await read(this.prisma);
       if (!asset || !asset.backgroundAudio) {
         throw new NotFoundException(
           'Configured background audio asset not found',
@@ -3226,14 +3410,16 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  stopProgramSongForTimedBlock(programId: string) {
-    return this.stopProgramSong(programId, true);
+  /** `fixed_start`: the stop cuts the song for a fixed start, and its as-run end says so (the airing walk). */
+  stopProgramSongForTimedBlock(programId: string, cut?: 'fixed_start') {
+    return this.stopProgramSong(programId, true, false, cut);
   }
 
   private async stopProgramSong(
     programId: string,
     preserveRotation: boolean,
     flightDriven = false,
+    cut?: 'fixed_start',
   ) {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const updatedAt = new Date().toISOString();
@@ -3324,6 +3510,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     if (preserveRotation)
       this.songExecutionEngine.handleStopSong(normalizedProgramId, {
         keepSequence: true,
+        ...(cut ? { endReason: cut } : {}),
       });
     else if (flightDriven)
       this.songExecutionEngine.handleStopSong(normalizedProgramId, {

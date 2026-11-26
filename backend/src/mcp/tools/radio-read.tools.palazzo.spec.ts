@@ -41,6 +41,7 @@ import { McpAuthService } from '../mcp-auth.service';
 import { McpController } from '../mcp.controller';
 import { McpRegistry } from '../mcp-registry.service';
 import { McpChangeFeed } from './mcp-change.feed';
+import { PompeiiService } from '../../auth/pompeii.service';
 import { McpRadioReadTools } from './radio-read.tools';
 import { noRecorder } from '../../operator-change/operator-change-recorder.testing';
 
@@ -503,11 +504,13 @@ async function build() {
     machine,
     new ConfigService({ NODE_ENV: 'test' }),
     radioMetrics,
+    { teamId: 0 } as never,
   );
   const engine = new SongExecutionEngine(
     radio,
     {
       isClockedLogRunning: jest.fn(() => false),
+      handleEngineAvailability: jest.fn(),
       handleSongEnded: jest.fn().mockResolvedValue({ ok: true }),
     } as never,
     prisma,
@@ -535,9 +538,11 @@ async function build() {
     programs,
     radioMetrics,
     noRecorder(),
+    { teamId: 0 } as never,
   );
-  const asRun = new AsRunService(prisma);
+  const asRun = new AsRunService(prisma, { teamId: 0 } as never);
   const songs = new SongsService(prisma, noRecorder());
+  const pompeii = { teamId: 0 };
   const status = {
     programId: PROGRAM,
     programType: 'radio',
@@ -585,6 +590,7 @@ async function build() {
       { provide: SongSimilarityService, useValue: {} },
       { provide: AsRunService, useValue: asRun },
       { provide: SongsService, useValue: songs },
+      { provide: PompeiiService, useValue: pompeii },
       {
         provide: McpAuthService,
         useValue: {
@@ -806,6 +812,7 @@ describe('MCP radio read tools against a fake Palazzo and the console endpoints'
                 preflight: {
                   ready: preflight.ready,
                   issue_count: preflight.issues.length,
+                  warning_count: preflight.warnings.length,
                 },
               }
             : {}),

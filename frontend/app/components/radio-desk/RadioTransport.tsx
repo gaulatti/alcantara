@@ -45,13 +45,28 @@ export function RadioTransport({
   const [error, setError] = useState<string | null>(null);
   // The song taken last, until the engine confirms it on air.
   const [waitingFor, setWaitingFor] = useState<NextUpSong | null>(null);
+  // Set once a stop is confirmed; the status line announces it, and the next cue or take clears it.
+  const [stopped, setStopped] = useState(false);
+  // The taken song once the engine confirms it; the status line says "On air: <title>." until the
+  // next cue, take or stop (gaulatti/alcantara#688).
+  const [onAir, setOnAir] = useState<NextUpSong | null>(null);
 
   useEffect(() => {
-    if (waitingFor && confirmedItemId === waitingFor.itemId) setWaitingFor(null);
+    if (waitingFor && confirmedItemId === waitingFor.itemId) {
+      setOnAir(waitingFor);
+      setWaitingFor(null);
+    }
   }, [confirmedItemId, waitingFor]);
+  // Once the engine no longer confirms the taken song (it ended, automation moved on, the engine stopped it), the
+  // line stops naming it: a stale On air is never announced (Wakko's #781 review).
+  useEffect(() => {
+    if (onAir && confirmedItemId !== onAir.itemId) setOnAir(null);
+  }, [confirmedItemId, onAir]);
 
   const cue = useCallback(() => {
     setError(null);
+    setStopped(false);
+    setOnAir(null);
     if (!next) {
       setNote("Nothing to cue: the rotation has no next song.");
       return;
@@ -69,6 +84,8 @@ export function RadioTransport({
     }
     setNote(null);
     setError(null);
+    setStopped(false);
+    setOnAir(null);
     if (engineUnavailable) {
       setWaitingFor(null);
       setNote(`${engineUnavailable}. Nothing was taken.`);
@@ -84,8 +101,12 @@ export function RadioTransport({
 
   const stopSong = useCallback(async () => {
     setError(null);
+    setStopped(false);
     try {
       await onTakeOffAir();
+      setWaitingFor(null);
+      setOnAir(null);
+      setStopped(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The stop was refused");
     }
@@ -160,7 +181,8 @@ export function RadioTransport({
           Listen <KeyCap>M</KeyCap>
         </button>
       ) : null}
-      <div className="basis-full text-xs" role="status">
+      {/* The one polite live region for transport outcomes: Cued, Taken, On air and Stopped. */}
+      <div className="basis-full text-xs" role="status" aria-live="polite">
         {armed ? (
           <span className="inline-flex items-center gap-2 text-accent-yellow">
             <StatePill tone="arm" label="Cued" />
@@ -172,6 +194,10 @@ export function RadioTransport({
             <StatePill tone="arm" label="Taken" />
             {waitingFor.title}: waiting for the engine to confirm it on air.
           </span>
+        ) : stopped ? (
+          <span className="text-text-primary">Stopped.</span>
+        ) : onAir ? (
+          <span className="text-text-primary">On air: {onAir.title}.</span>
         ) : (
           <span className="text-text-secondary">
             {next

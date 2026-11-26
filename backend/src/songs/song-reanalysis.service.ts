@@ -10,6 +10,7 @@ import {
   PREVIOUS_CUE_RULE_VERSION,
 } from '../media-analysis/ffmpeg-audio.analyzer';
 import { PrismaService } from '../prisma.service';
+import { forTeam } from '../tenancy/scoped-prisma';
 
 /** The most songs one re-analysis request may name: the rollout of a new cue rule is paced in small batches. */
 export const MAX_REANALYSIS_BATCH = 25;
@@ -58,30 +59,52 @@ export class SongReanalysisService {
     return songIds as number[];
   }
 
-  /** For each named song that exists, the programs it is on air in (empty when it is not on air). */
-  async onAir(songIds: unknown): Promise<Map<number, string[]>> {
-    const ids = this.ids(songIds);
-    const songs = await this.prisma.song.findMany({
+  /**
+   * The named songs the team owns (gaulatti/alcantara#122); every one of them when no team is configured (`0`).
+   */
+  private songsOfTeam(ids: number[], teamId: number) {
+    const db =
+      teamId > 0
+        ? (forTeam(this.prisma, teamId) as unknown as PrismaService)
+        : this.prisma;
+    return db.song.findMany({
       where: { id: { in: ids } },
       select: { id: true, audioUrl: true },
     });
+  }
+
+  /**
+   * For each named song of the team that exists, the programs it is on air in (empty when it is not on air). Another
+   * team's song is not looked at.
+   */
+  async onAir(
+    songIds: unknown,
+    teamId: number,
+  ): Promise<Map<number, string[]>> {
+    const songs = await this.songsOfTeam(this.ids(songIds), teamId);
     return this.programs.programsHoldingSongs(songs);
   }
 
   /**
    * Makes the finished analyses of the named songs due now; they keep their cue points and loudness until a new result
    * replaces them, also while the run is claimed and when it fails. Refused with 409 `on_air` (listing each song and its programs) when any named song is on air, checked here
-   * again at queue time so a stale plan cannot take a live song's cues away. Songs that are not found or have no
-   * finished analysis are listed, not queued.
+   * again at queue time so a stale plan cannot take a live song's cues away. Songs that are not found, belong to
+   * another team or have no finished analysis are listed, not queued.
    */
-  async request(songIds: unknown, rule?: unknown, now = new Date()) {
+  async request(
+    songIds: unknown,
+    teamId: number,
+    rule?: unknown,
+    now = new Date(),
+  ) {
     const ids = this.ids(songIds);
     if (rule !== undefined && !REANALYSIS_RULES.includes(rule as never)) {
       throw new BadRequestException(
         `rule must be one of ${REANALYSIS_RULES.join(', ')}`,
       );
     }
-    const holding = [...(await this.onAir(ids))].filter(
+    const own = await this.songsOfTeam(ids, teamId);
+    const holding = [...(await this.programs.programsHoldingSongs(own))].filter(
       ([, programs]) => programs.length > 0,
     );
     if (holding.length > 0) {
@@ -99,7 +122,7 @@ export class SongReanalysisService {
       ];
     const rows = await this.prisma.mediaAssetAnalysis.findMany({
       where: {
-        assetId: { in: ids.map((id) => `song:${id}`) },
+        assetId: { in: own.map((song) => `song:${song.id}`) },
         // A failed analysis can be asked again too: it is how a song that lost its result gets one back (#235).
         status: { in: [...FINISHED] },
       },

@@ -131,6 +131,10 @@ function memoryStore(songs: CatalogSong[]) {
       ),
     },
     song: {
+      findUnique: jest.fn(({ where }: { where: { id: number } }) => {
+        const song = songs.find((s) => s.id === where.id);
+        return Promise.resolve(song ? { id: song.id, assetId: null } : null);
+      }),
       findFirst: jest.fn(
         ({
           where,
@@ -293,6 +297,7 @@ function session(options: { durationMs?: (index: number) => number } = {}) {
   const store = memoryStore(SONGS);
   const asRun = new AsRunService(
     store.prisma as unknown as PrismaService,
+    { teamId: 0 } as never,
     engine,
   );
   asRun.onModuleInit();
@@ -700,7 +705,9 @@ describe('as-run attribution of operator actions', () => {
       const spec = specNamed(
         new ProgramMcpTools(
           fakes.programs as never,
-          fakes.templates as never, { teamId: 7 } as never).specs(),
+          fakes.templates as never,
+          { teamId: 7 } as never,
+        ).specs(),
         NAME,
       );
       const metrics = new ManagedMetricsService();

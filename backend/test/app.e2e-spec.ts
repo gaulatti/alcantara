@@ -12,6 +12,13 @@ import {
 import request from 'supertest';
 import { listenOnLoopback } from './loopback-supertest';
 import { AppModule } from './../src/app.module';
+import { PrismaService } from './../src/prisma.service';
+import { ProgramService } from './../src/program/program.service';
+import { NowPlayingPublisherService } from './../src/radio/now-playing-publisher.service';
+import { PlayoutSongScope } from './../src/radio/playout-song-scope';
+import { RadioService } from './../src/radio/radio.service';
+import { SongExecutionEngine } from './../src/radio/song-execution.engine';
+import { SceneAssetScope } from './../src/program/scene-asset-scope';
 
 describe('AppController (e2e)', () => {
   let app: NestFastifyApplication;
@@ -35,10 +42,75 @@ describe('AppController (e2e)', () => {
     await app.close();
   });
 
+  // The scope is an optional dependency, so a wiring mistake would not fail start-up (gaulatti/alcantara#122).
+  it('gives the playout song scope to all four services that read songs on air', () => {
+    const scope = app.get(PlayoutSongScope);
+    for (const service of [
+      RadioService,
+      SongExecutionEngine,
+      NowPlayingPublisherService,
+      ProgramService,
+    ]) {
+      expect(
+        (app.get(service) as unknown as { songScope?: unknown }).songScope,
+      ).toBe(scope);
+    }
+  });
+
+  it('gives the program service the scene asset scope', () => {
+    const programs = app.get(ProgramService) as unknown as {
+      sceneAssets?: unknown;
+    };
+    expect(programs.sceneAssets).toBe(app.get(SceneAssetScope));
+  });
+
   it('/ (GET)', () => {
     return request(app.getHttpServer())
       .get('/')
       .expect(200)
       .expect('Hello World!');
+  });
+});
+
+// gaulatti/alcantara#122: the program team guard must run after authentication, which sets the caller's team. Booted
+// through the real application, so a change of module or guard order fails here.
+describe('program routes and the caller team (e2e)', () => {
+  const environment = { ...process.env };
+  const programId = `app-e2e-${process.pid}`;
+  const team = 920_000 + (process.pid % 10_000);
+  let app: NestFastifyApplication;
+
+  beforeAll(async () => {
+    process.env.AUTH_MODE = 'test';
+    process.env.TEST_AUTH_SECRET = 'test-secret-test-secret-test-secret-00';
+    process.env.POMPEII_TEAM_ID = String(team);
+    const moduleFixture = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+    app = moduleFixture.createNestApplication<NestFastifyApplication>(
+      new FastifyAdapter(),
+    );
+    await app.init();
+    await app.getHttpAdapter().getInstance().ready();
+    await app.get(PrismaService).program.create({
+      data: { programId, teamId: team + 1 },
+    });
+  });
+
+  afterAll(async () => {
+    await app?.get(PrismaService).program.deleteMany({ where: { programId } });
+    await app?.close();
+    process.env = environment;
+  });
+
+  it("answers 404 for another team's program", async () => {
+    const session = await app.inject({ method: 'GET', url: '/__test/session' });
+    const { accessToken } = session.json<{ accessToken: string }>();
+    const answer = await app.inject({
+      method: 'GET',
+      url: `/program/${programId}/stage`,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    expect(answer.statusCode).toBe(404);
   });
 });

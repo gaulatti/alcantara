@@ -54,8 +54,9 @@ test('the development build context keeps the lockfile and leaves local secrets 
 });
 
 test('every Compose build of the development image uses the repository root', () => {
-  // compose.yml builds it for backend and alana-recording-fixture; the access fake builds it once.
-  for (const [file, expected] of [['compose.yml', 2], ['scripts/access-fake/compose.yml', 1]]) {
+  // compose.yml builds it for backend, alana-recording-fixture and the opt-in fake Palazzo (palazzo); the access
+  // fake builds it once.
+  for (const [file, expected] of [['compose.yml', 3], ['scripts/access-fake/compose.yml', 1]]) {
     const compose = read(file);
     const builds = [...compose.matchAll(/context: (\S+)\n\s+dockerfile: (\S+)/g)].filter(
       (match) => match[2] === 'backend/Dockerfile.dev' || match[1] === './backend',

@@ -1,7 +1,7 @@
-import { TooltipButton } from "./BleeckerButtons";
+// Button from BleeckerButtons directly: the same control the Bleecker alias resolves to, typed with tooltipSide.
+import { Button, TooltipButton } from "./BleeckerButtons";
 import {
   AlertContainer,
-  Button,
   Input,
   Modal,
   Select,
@@ -32,6 +32,7 @@ import {
   type LibraryEntry,
 } from "../utils/rundownBuilder";
 import { rundownTiming } from "../utils/rundownTiming";
+import { fixedStartClock, parseFixedStart } from "../utils/fixedStart";
 import "./Rundown.css";
 import { RadioLogGenerator } from "../components/RadioLogGenerator";
 import { VoiceTrackRecorder } from "../components/VoiceTrackRecorder";
@@ -93,12 +94,23 @@ export default function ScheduledRundown({
   const [preflight, setPreflight] = useState<{
     ready: boolean;
     issues: string[];
+    warnings: string[];
+    engine?: "ready" | "not-configured" | "disabled" | "not-radio";
     forRevision?: string;
   } | null>(null);
+  // A block for a show whose radio is not set up, or is off, would air nothing (the rundown-building walk; D1).
+  const radioNotSetUp =
+    preflight?.engine === "not-configured" || preflight?.engine === "disabled";
   const [inspector, setInspector] = useState<"event" | "fillers" | "build">(
     "event",
   );
   const [selectedCueId, setSelectedCueId] = useState<string | null>(null);
+  // What the operator is typing into an event's fixed start, until it is read (D3).
+  const [fixedStartDraft, setFixedStartDraft] = useState<{
+    cueId: string;
+    text: string;
+    error: string | null;
+  } | null>(null);
   const [creating, setCreating] = useState(false);
   const inspectorRef = useRef<HTMLElement>(null);
   const [recordIndex, setRecordIndex] = useState<number | null>(null);
@@ -239,8 +251,22 @@ export default function ScheduledRundown({
         ...result,
         forRevision: `${updated.id}:${updated.revision}`,
       });
-      if (result.ready)
-        showAlert("All scheduled audio is available.", "success");
+      if (result.ready) {
+        const notSetUp =
+          result.engine === "not-configured" || result.engine === "disabled";
+        // The warnings sit below the block; the toast says they are there (B2).
+        const others = result.warnings.length - (notSetUp ? 1 : 0);
+        const more =
+          others > 0
+            ? ` ${others} warning${others === 1 ? "" : "s"}: check before air.`
+            : "";
+        showAlert(
+          notSetUp
+            ? `All scheduled audio is available, but radio isn't set up for this show: it won't air until it is.${more}`
+            : `All scheduled audio is available.${more}`,
+          notSetUp || others > 0 ? "warning" : "success",
+        );
+      }
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -263,12 +289,25 @@ export default function ScheduledRundown({
       setLogs((current) =>
         current.map((log) => (log.id === published.id ? published : log)),
       );
-      setPreflight({
-        ready: true,
-        issues: [],
-        forRevision: `${published.id}:${published.revision}`,
-      });
-      showAlert("Rundown published for automatic start.", "success");
+      // Read the published revision's check again rather than assume it: its warnings, and whether the show's
+      // radio is set up, still hold after publishing.
+      let after: Awaited<ReturnType<typeof preflightFlightSequence>> | null;
+      try {
+        after = (await preflightFlightSequence(programId, published.id)) ?? null;
+      } catch {
+        after = null;
+      }
+      setPreflight(
+        after
+          ? { ...after, forRevision: `${published.id}:${published.revision}` }
+          : null,
+      );
+      if (after?.engine === "not-configured" || after?.engine === "disabled")
+        showAlert(
+          "Rundown published, but radio isn't set up for this show: it won't air until it is.",
+          "warning",
+        );
+      else showAlert("Rundown published for automatic start.", "success");
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -346,6 +385,27 @@ export default function ScheduledRundown({
   };
   const editIndex = items.findIndex((cue) => cue.id === selectedCueId);
   const editCue = items[editIndex];
+  const fixedDraft =
+    editCue && fixedStartDraft?.cueId === editCue.id ? fixedStartDraft : null;
+  const nextScheduledAt = selected
+    ? (scheduledLogs.find(
+        (log) => Date.parse(log.scheduledAt!) > Date.parse(selected.scheduledAt!),
+      )?.scheduledAt ?? null)
+    : null;
+  const commitFixedStart = (cueId: string, text: string) => {
+    if (!text.trim()) {
+      setFixedStartDraft(null);
+      updateItem(editIndex, { clockOffsetSeconds: undefined });
+      return;
+    }
+    const result = parseFixedStart(text, selected!.scheduledAt!, nextScheduledAt);
+    if (!result.ok) {
+      setFixedStartDraft({ cueId, text, error: result.message });
+      return;
+    }
+    setFixedStartDraft(null);
+    updateItem(editIndex, { clockOffsetSeconds: result.seconds });
+  };
   const editLocked = editIndex <= activeIndex;
   const editable =
     !!selected && (!selected.lastStartedAt || selected.isRunning);
@@ -410,7 +470,7 @@ export default function ScheduledRundown({
             disabled={busy || dirty || !!fixtureData}
             onClick={() => setCreating(true)}
           >
-            <Plus size={14} /> New block
+            <Plus size={14} /> New timed block
           </Button>
         </div>
       </header>
@@ -497,6 +557,8 @@ export default function ScheduledRundown({
               </Button>
               <Button
                 size="xs"
+                // Disabled, the primary blue still read as the action to take (the walk's polish).
+                variant={canPublish ? "primary" : "secondary"}
                 disabled={!canPublish}
                 title="Save, check this revision and publish only if the check passes"
                 onClick={() => requestPublish("check")}
@@ -570,7 +632,11 @@ export default function ScheduledRundown({
           </div>
           {preflight && (
             <div className="rundown-sequence-heading" role="status">
-              {preflight.ready ? (
+              {preflight.ready && radioNotSetUp ? (
+                <span className="console-status" data-tone="warning">
+                  <AlertTriangle size={13} /> Audio checked · radio not set up
+                </span>
+              ) : preflight.ready ? (
                 <span className="console-status" data-tone="ready">
                   <CheckCircle2 size={13} /> Audio checked · ready for air
                 </span>
@@ -582,6 +648,18 @@ export default function ScheduledRundown({
                   <ul>
                     {preflight.issues.map((issue) => (
                       <li key={issue}>{issue}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {preflight.warnings.length > 0 && (
+                <div>
+                  <span className="console-status" data-tone="warning">
+                    <AlertTriangle size={13} /> Check before air
+                  </span>
+                  <ul aria-label="Preflight warnings">
+                    {preflight.warnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
                     ))}
                   </ul>
                 </div>
@@ -729,24 +807,41 @@ export default function ScheduledRundown({
                     </>
                   )}
                   <label>
-                    Fixed start (seconds into block)
+                    Fixed start (clock time, +mm:ss or seconds)
                     <Input
                       aria-label="Fixed start"
-                      type="number"
-                      min="0"
-                      value={editCue.clockOffsetSeconds ?? ""}
+                      type="text"
+                      value={
+                        fixedDraft?.text ??
+                        (editCue.clockOffsetSeconds === undefined
+                          ? ""
+                          : formatClock(editCue.clockOffsetSeconds))
+                      }
+                      aria-invalid={fixedDraft?.error ? true : undefined}
                       disabled={editLocked || editIndex === 0 || busy}
                       placeholder="Follow previous event"
                       onChange={(event) =>
-                        updateItem(editIndex, {
-                          clockOffsetSeconds:
-                            event.target.value === ""
-                              ? undefined
-                              : Number(event.target.value),
+                        setFixedStartDraft({
+                          cueId: editCue.id,
+                          text: event.target.value,
+                          error: null,
                         })
                       }
+                      onBlur={(event) => {
+                        if (fixedDraft)
+                          commitFixedStart(editCue.id, event.currentTarget.value);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && fixedDraft)
+                          commitFixedStart(editCue.id, event.currentTarget.value);
+                      }}
                     />
                   </label>
+                  {fixedDraft?.error && (
+                    <p className="rundown-inspector-note" role="alert">
+                      {fixedDraft.error}
+                    </p>
+                  )}
                   {editIndex > 0 && (
                     <Button
                       size="xs"
@@ -771,7 +866,7 @@ export default function ScheduledRundown({
                   <p className="rundown-inspector-note">
                     {editCue.clockOffsetSeconds === undefined
                       ? "Follows the previous event. The start in the log is estimated from catalog duration."
-                      : `${formatClock(editCue.clockOffsetSeconds)} · Starts on time and cuts the preceding filler.`}
+                      : `${fixedStartClock(selected!.scheduledAt!, editCue.clockOffsetSeconds)} · ${formatClock(editCue.clockOffsetSeconds)} · Starts on time and cuts the preceding filler.`}
                   </p>
                   {editCue.voiceTrackInstantId && (
                     <p className="rundown-inspector-note">
@@ -790,6 +885,7 @@ export default function ScheduledRundown({
                         <Button
                           size="xs"
                           variant="secondary"
+                          tooltipSide="bottom"
                           disabled={editLocked || busy || !!fixtureData}
                           onClick={() => setRecordIndex(editIndex)}
                         >
@@ -799,6 +895,7 @@ export default function ScheduledRundown({
                     <Button
                       size="xs"
                       variant="destructive"
+                      tooltipSide="bottom"
                       disabled={editLocked || busy}
                       onClick={remove}
                     >
@@ -830,7 +927,7 @@ export default function ScheduledRundown({
         <label className="block text-sm">
           Scheduled start
           <Input
-            aria-label="New block"
+            aria-label="Scheduled start"
             type="datetime-local"
             step="60"
             value={startTime}
@@ -839,10 +936,10 @@ export default function ScheduledRundown({
         </label>
         <p className="my-3 text-xs text-text-secondary">
           Choose any start minute. The block goes on air after publishing and
-          returns to continuous fillers when its events finish.
+          returns to what was playing before when its events finish.
         </p>
         <Button disabled={busy} onClick={() => void create()}>
-          Create rundown
+          Create timed block
         </Button>
       </Modal>
       <Modal

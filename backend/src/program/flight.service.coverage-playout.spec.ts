@@ -14,6 +14,8 @@ function harness(stateExtra: Record<string, unknown> = {}) {
         id: 1,
         programId: 'radio-1',
         type: 'radio',
+        // A working station: its playout engine is enabled (#609).
+        radioSettings: { enabled: true },
         activeFlightSequenceId: 7,
         ...stateExtra,
       }),
@@ -45,6 +47,7 @@ function harness(stateExtra: Record<string, unknown> = {}) {
     program as any,
     metrics,
     noRecorder(),
+    { teamId: 0 } as never,
   );
   jest.spyOn(console, 'log').mockImplementation(() => undefined);
   const errors = jest
@@ -438,7 +441,7 @@ describe('FlightService timed clip timer', () => {
     runtime.items[2].clockOffsetSeconds = 5;
     internals.armTimedClip(runtime);
     jest.advanceTimersByTime(5000);
-    expect(execute).toHaveBeenCalledWith('radio-1', 2, 4);
+    expect(execute).toHaveBeenCalledWith('radio-1', 2, 4, 'fixed_start');
   });
 
   it('uses the clip end when it precedes the next fixed cue', () => {
@@ -446,7 +449,7 @@ describe('FlightService timed clip timer', () => {
     runtime.items[2].clockOffsetSeconds = 10;
     internals.armTimedClip(runtime);
     jest.advanceTimersByTime(10_000);
-    expect(execute).toHaveBeenCalledWith('radio-1', 2, 4);
+    expect(execute).toHaveBeenCalledWith('radio-1', 2, 4, 'fixed_start');
     execute.mockClear();
     runtime.items[2].clockOffsetSeconds = 11;
     internals.armTimedClip(runtime);
@@ -555,7 +558,7 @@ describe('FlightService hard cue timer', () => {
     jest.advanceTimersByTime(1);
     expect(runtime.waitingForSongEnd).toBe(false);
     expect(runtime.generation).toBe(5);
-    expect(execute).toHaveBeenCalledWith('radio-1', 2, 5);
+    expect(execute).toHaveBeenCalledWith('radio-1', 2, 5, 'fixed_start');
   });
 
   it('fires at once for an overdue fixed cue', () => {
@@ -564,7 +567,7 @@ describe('FlightService hard cue timer', () => {
     });
     internals.armNextHardCue(runtime);
     jest.advanceTimersByTime(0);
-    expect(execute).toHaveBeenCalledWith('radio-1', 2, 5);
+    expect(execute).toHaveBeenCalledWith('radio-1', 2, 5, 'fixed_start');
   });
 
   it.each([
@@ -603,7 +606,7 @@ describe('FlightService hard cue timer', () => {
     expect(execute).not.toHaveBeenCalled();
     expect(runtime.timer).not.toBeNull();
     jest.advanceTimersByTime(MAX_TIMER);
-    expect(execute).toHaveBeenCalledWith('radio-1', 2, 5);
+    expect(execute).toHaveBeenCalledWith('radio-1', 2, 5, 'fixed_start');
   });
 });
 
@@ -1200,6 +1203,9 @@ describe('FlightService module load without injectable classes', () => {
   it('records Object parameter metadata when a dependency class is not yet defined', () => {
     jest.isolateModules(() => {
       jest.doMock('../prisma.service', () => ({ PrismaService: undefined }));
+      jest.doMock('../auth/pompeii.service', () => ({
+        PompeiiService: undefined,
+      }));
       jest.doMock('./program.service', () => ({ ProgramService: undefined }));
       jest.doMock('../radio/radio-metrics.service', () => ({
         RadioMetricsService: undefined,
@@ -1220,11 +1226,13 @@ describe('FlightService module load without injectable classes', () => {
         'Object',
         'Object',
         'Object',
+        'Object',
       ]);
     });
     jest.dontMock('../prisma.service');
     jest.dontMock('./program.service');
     jest.dontMock('../radio/radio-metrics.service');
     jest.dontMock('../operator-change/operator-change-recorder');
+    jest.dontMock('../auth/pompeii.service');
   });
 });

@@ -5,11 +5,31 @@ import type { StatePillTone } from "./primitives";
 // ProgramSongPlaybackState and the status the desk already polls; a state the desk cannot know is
 // shown as unverified or unavailable, never as a good one.
 
-/** "unconfirmed": the desk has a song playing, but the engine is not connected to confirm it (#609). */
-export type OnAirState = "on-air" | "off-air" | "delayed" | "unconfirmed";
+/**
+ * "unconfirmed": the desk has a song playing, but the engine is not connected to confirm it (#609), or
+ *   Palazzo answers but its playout (Liquidsoap) is down, so nothing can air (the airing walk's W5).
+ * "unverified": the engine is connected, but no fresh output level arrived for a few seconds (#706).
+ * With no song commanded and the output freshly audible, the strip never says Off air (D7). Palazzo airs its local
+ * filler playlist by itself after FILLER_HOLDOFF_SECONDS (15 s) with no song, intro, instant or live input
+ * (gaulatti/palazzo src/stream/liquidsoap-script.ts, `filler_on_air`), and its snapshot names no track for it, so:
+ * "fallback": the engine is connected, its playout is up, and the desk knows no other source is on the air.
+ * "off-rundown": the engine is connected and its playout is up, but another source is on the air, or the desk cannot
+ *   tell: "Audio on air · not from the rundown".
+ * "audio-unconfirmed": the same generic label while the engine is not connected or its playout is down, never in
+ *   the live tone.
+ */
+export type OnAirState =
+  | "on-air"
+  | "fallback"
+  | "off-rundown"
+  | "audio-unconfirmed"
+  | "off-air"
+  | "delayed"
+  | "unconfirmed"
+  | "unverified";
 
 export interface OnAirChip {
-  id: "stream" | "engine" | "monitor";
+  id: "output" | "stream" | "engine" | "monitor";
   tone: StatePillTone;
   label: string;
   title?: string;
@@ -41,18 +61,33 @@ export interface OnAirView {
 
 export interface OnAirInput {
   playback: ProgramSongPlaybackState | null;
+  /** No fresh output level sample for OUTPUT_SAMPLE_UNVERIFIED_MS (#706): display only. */
+  outputUnverified?: boolean;
   next: NextUp | null;
   mode: "manual" | "autoplay" | "shuffle";
   /** null when the stream status is unknown. */
   streamRunning: boolean | null;
   engine: {
     connected: boolean;
+    /** No engine status has answered yet: its state is unknown, never shown as unavailable. */
+    unknown?: boolean;
     degraded: boolean;
     unavailableLabel: string;
     /** What the backend says about the engine; shown as the chip's tooltip. */
     detail?: string | null;
   };
   monitor: "stopped" | "buffering" | "playing" | "unavailable";
+  /** Output confidence reads silent: a song is expected to play, but the output is quiet (#694). */
+  outputSilent?: boolean;
+  /** Palazzo answers but its playout (Liquidsoap) is down: nothing can air. */
+  playoutDown?: boolean;
+  /** Output confidence reads audible: the station is airing something (D7). */
+  outputAudible?: boolean;
+  /**
+   * Whether the desk knows of another source on the air besides a commanded song (D7): an instant, scene audio, live
+   * input or a log event. "none" only when it knows there is none; absent reads as "unknown".
+   */
+  otherAudio?: "none" | "active" | "unknown";
 }
 
 const MODE_LABELS = {
@@ -88,9 +123,13 @@ function introOf(playback: ProgramSongPlaybackState) {
 export function deriveOnAir(input: OnAirInput): OnAirView {
   const { playback } = input;
   const live = playback?.isPlaying === true;
-  // Only the engine confirms that a song is on air (gaulatti/alcantara#609).
-  const unconfirmed = live && !input.engine.connected;
+  // Only the engine confirms that a song is on air (gaulatti/alcantara#609), and never while its playout is
+  // down: a fresh output sample or a running rundown must not turn the pill back to On air (W5).
+  const unconfirmed =
+    live && (!input.engine.connected || input.playoutDown === true);
   const stale = live && !unconfirmed && playback?.telemetryStale === true;
+  const unverified =
+    live && !unconfirmed && !stale && input.outputUnverified === true;
   const hasLength =
     live &&
     typeof playback?.durationMs === "number" &&
@@ -103,6 +142,19 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
       : elapsed;
 
   const chips: OnAirChip[] = [
+    // Dead air leads the chips, so the strip never reads as all good while the output is silent
+    // (gaulatti/alcantara#694).
+    ...(input.outputSilent
+      ? [
+          {
+            id: "output" as const,
+            tone: "bad" as const,
+            label: "Dead air",
+            title:
+              "Expected audio is silent: a song is playing but the output is quiet.",
+          },
+        ]
+      : []),
     input.streamRunning === null
       ? { id: "stream", tone: "warn", label: "Stream unverified" }
       : input.streamRunning
@@ -122,12 +174,19 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
             label: "Engine ready",
             title: input.engine.detail ?? undefined,
           }
-      : {
-          id: "engine",
-          tone: "warn",
-          label: input.engine.unavailableLabel,
-          title: input.engine.detail ?? undefined,
-        },
+      : input.engine.unknown
+        ? {
+            id: "engine",
+            tone: "idle",
+            label: "Checking engine",
+            title: "Waiting for the engine's first status.",
+          }
+        : {
+            id: "engine",
+            tone: "warn",
+            label: input.engine.unavailableLabel,
+            title: input.engine.detail ?? undefined,
+          },
     input.monitor === "playing"
       ? { id: "monitor", tone: "info", label: "Listening" }
       : input.monitor === "buffering"
@@ -136,22 +195,69 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
           ? { id: "monitor", tone: "idle", label: "Monitor unavailable" }
           : { id: "monitor", tone: "idle", label: "Monitor off" },
   ];
+  // Palazzo answers but its playout (Liquidsoap) is down: the engine is not ready, whatever its connection says.
+  // A Palazzo that is not connected keeps its own unavailable state.
+  const engineChips =
+    input.engine.connected && input.playoutDown
+      ? chips.map((chip) =>
+          chip.id === "engine"
+            ? {
+                id: "engine" as const,
+                tone: "bad" as const,
+                label: "Playout down",
+                title:
+                  "Palazzo answers, but its playout engine (Liquidsoap) is down: nothing can air.",
+              }
+            : chip,
+        )
+      : chips;
+  // While Dead air shows, the good chips stay truthful but neutral, so the red Dead air chip is the
+  // only coloured "all is well / not well" signal on the strip (gaulatti/alcantara#694 closing walk).
+  // Warnings keep their colour: they are a second problem, not a good state.
+  const shownChips = input.outputSilent
+    ? engineChips.map((chip) =>
+        chip.tone === "ok" ? { ...chip, tone: "idle" as const } : chip,
+      )
+    : engineChips;
+
+  // D7: with no song commanded, fresh audible output is never "Off air". It is Palazzo's fallback playlist only with
+  // the same engine checks as On air and when the desk knows nothing else is on the air; otherwise it is generic.
+  const audible =
+    !live && input.outputAudible === true && input.outputUnverified !== true;
+  const engineAirs = input.engine.connected && input.playoutDown !== true;
+  const fallback = audible && engineAirs && input.otherAudio === "none";
+  const offRundown = audible && engineAirs && !fallback;
+  const audioUnconfirmed = audible && !engineAirs;
 
   return {
-    state: !live
+    state: fallback
+      ? "fallback"
+      : offRundown
+      ? "off-rundown"
+      : audioUnconfirmed
+      ? "audio-unconfirmed"
+      : !live
       ? "off-air"
       : unconfirmed
         ? "unconfirmed"
         : stale
           ? "delayed"
-          : "on-air",
-    label: !live
+          : unverified
+            ? "unverified"
+            : "on-air",
+    label: fallback
+      ? "Fallback playlist on air"
+      : offRundown || audioUnconfirmed
+      ? "Audio on air · not from the rundown"
+      : !live
       ? "Off air"
       : unconfirmed
         ? "Not confirmed"
         : stale
           ? "Status delayed"
-          : "On air",
+          : unverified
+            ? "Unverified"
+            : "On air",
     title: live ? (playback!.title || "Title unavailable") : null,
     artist: live ? (playback!.artist || "Artist unavailable") : null,
     elapsedMs: clampedElapsed,
@@ -172,6 +278,6 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
         }
       : null,
     modeLabel: MODE_LABELS[input.mode],
-    chips,
+    chips: shownChips,
   };
 }

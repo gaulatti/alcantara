@@ -13,7 +13,9 @@ function build() {
   const palazzo: any = { validateBaseUrl: jest.fn((v: string) => v) };
   const config: any = { get: jest.fn() };
   const metrics: any = { recordListenerConfiguration: jest.fn() };
-  const service = new RadioService(prisma, palazzo, config, metrics);
+  const service = new RadioService(prisma, palazzo, config, metrics, {
+    teamId: 0,
+  } as never);
   return { service, prisma };
 }
 

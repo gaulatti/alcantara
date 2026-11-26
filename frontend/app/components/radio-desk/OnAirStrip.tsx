@@ -1,6 +1,24 @@
 import { ConsoleClock } from "../ConsoleSurface";
-import { formatClock, type OnAirView } from "./onAir";
+import { deriveOnAir, formatClock, type OnAirInput, type OnAirView } from "./onAir";
 import { StatePill } from "./primitives";
+import { useOutputUnverified } from "./useOutputUnverified";
+
+/**
+ * The strip as the desk mounts it: it reads the output's freshness itself, so the once-a-second tick renders the
+ * strip and not the desk around it (gaulatti/alcantara#706).
+ */
+export function LiveOnAirStrip({
+  input,
+  output,
+  programId,
+}: {
+  input: Omit<OnAirInput, "outputUnverified">;
+  output: { state: string; lastSampleAt: string | null } | null;
+  programId: string;
+}) {
+  const outputUnverified = useOutputUnverified(output);
+  return <OnAirStrip view={deriveOnAir({ ...input, outputUnverified })} programId={programId} />;
+}
 
 /**
  * The line that never scrolls away: whether the program is on air, what plays, how long is left,
@@ -14,7 +32,11 @@ export function OnAirStrip({
   view: OnAirView;
   programId: string;
 }) {
-  const on = view.state !== "off-air";
+  // A song's title and clock; audio with no song commanded has neither (D7), so it gets its own line.
+  const fallback = view.state === "fallback";
+  const offRundown =
+    view.state === "off-rundown" || view.state === "audio-unconfirmed";
+  const on = view.state !== "off-air" && !fallback && !offRundown;
   return (
     <section
       aria-label="On air"
@@ -23,14 +45,18 @@ export function OnAirStrip({
     >
       <StatePill
         tone={
-          view.state === "on-air"
+          view.state === "on-air" || fallback || view.state === "off-rundown"
             ? "live"
-            : view.state === "delayed" || view.state === "unconfirmed"
+            : view.state === "delayed" ||
+                view.state === "unconfirmed" ||
+                view.state === "unverified" ||
+                view.state === "audio-unconfirmed"
               ? "warn"
               : "idle"
         }
         label={view.label}
         pulse={view.state === "on-air"}
+        live
       />
       <div className="min-w-0 flex-1 basis-64">
         {on ? (
@@ -46,12 +72,33 @@ export function OnAirStrip({
               ) : null}
             </p>
           </>
+        ) : fallback ? (
+          <>
+            <p className="truncate text-sm font-semibold">Fallback playlist</p>
+            <p className="truncate text-xs text-text-secondary">
+              Palazzo's local playlist, no song commanded · {programId}
+            </p>
+          </>
+        ) : offRundown ? (
+          <>
+            <p className="truncate text-sm font-semibold">
+              Audio not from the rundown
+            </p>
+            <p className="truncate text-xs text-text-secondary">
+              No song commanded · {programId}
+            </p>
+          </>
         ) : (
           <p className="text-sm text-text-secondary">
             Nothing on air · {programId}
           </p>
         )}
       </div>
+      {view.state === "audio-unconfirmed" ? (
+        <span className="text-xs text-amber-200">No engine confirmation</span>
+      ) : fallback || offRundown ? (
+        <span className="text-xs text-text-secondary">No song clock</span>
+      ) : null}
       {on ? (
         <div
           className="font-mono tabular-nums"
@@ -66,14 +113,19 @@ export function OnAirStrip({
           ) : view.state === "delayed" ? (
             <span className="text-xs text-amber-200">No live clock</span>
           ) : (
-            <>
+            // While the output is unverified the clock keeps its place but is dimmed (#706).
+            <span
+              data-testid="on-air-clock"
+              data-dimmed={view.state === "unverified" ? "true" : undefined}
+              className={view.state === "unverified" ? "opacity-40" : undefined}
+            >
               <span className="text-xs text-text-secondary">
                 {formatClock(view.elapsedMs)}
               </span>{" "}
               <strong className="text-lg">
                 −{formatClock(view.remainingMs)}
               </strong>
-            </>
+            </span>
           )}
         </div>
       ) : null}
@@ -93,7 +145,8 @@ export function OnAirStrip({
           <p className="text-text-secondary">Nothing cued</p>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-1.5">
+      {/* On a phone the chips share one row that scrolls sideways (#610); wider screens wrap them. */}
+      <div className="flex w-full min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto md:w-auto md:flex-wrap md:overflow-visible [&>*]:shrink-0">
         {view.chips.map((chip) => (
           <StatePill
             key={chip.id}

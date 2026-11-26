@@ -24,6 +24,7 @@ import { UNTRUSTED_NOTE, type McpPrincipal } from '../contract';
 import { McpRegistry } from '../mcp-registry.service';
 import { MCP_READ_LIMITS, MCP_WAIT_MAX_SECONDS } from '../mcp.constants';
 import { McpChangeFeed } from './mcp-change.feed';
+import { PompeiiService } from '../../auth/pompeii.service';
 import { McpRadioReadTools } from './radio-read.tools';
 import { noRecorder } from '../../operator-change/operator-change-recorder.testing';
 
@@ -327,6 +328,7 @@ async function harness() {
     palazzo.radioService as never,
     {
       isClockedLogRunning: jest.fn(() => false),
+      handleEngineAvailability: jest.fn(),
       handleSongEnded: jest.fn().mockResolvedValue({ ok: true }),
     } as never,
     prisma,
@@ -354,15 +356,18 @@ async function harness() {
     machine as never,
     {} as never,
     radioMetrics,
+    { teamId: 0 } as never,
   );
   const flight = new FlightService(
     prisma,
     programs,
     radioMetrics,
     noRecorder(),
+    { teamId: 0 } as never,
   );
-  const asRun = new AsRunService(prisma);
+  const asRun = new AsRunService(prisma, { teamId: 0 } as never);
   const songs = new SongsService(prisma, noRecorder());
+  const pompeii = { teamId: 0 };
   const statuses = new Map<string, unknown>([
     [
       PROGRAM,
@@ -398,6 +403,7 @@ async function harness() {
       { provide: RadioService, useValue: radio },
       { provide: AsRunService, useValue: asRun },
       { provide: SongsService, useValue: songs },
+      { provide: PompeiiService, useValue: pompeii },
     ],
   }).compile();
   await module.init();
@@ -429,6 +435,7 @@ async function harness() {
 
   let snapshotSequence = 0;
   return {
+    pompeii,
     module,
     state,
     rows,
@@ -912,9 +919,14 @@ describe('MCP radio read tools', () => {
       expect(b.preflight).toEqual({
         ready: (await h.flight.preflightFlightSequence(PROGRAM, 1)).ready,
         issue_count: 0,
+        warning_count: 0,
       });
       expect(b.published_at).toBe('2026-11-17T08:00:00.000Z');
-      expect(c.preflight).toEqual({ ready: false, issue_count: 1 });
+      expect(c.preflight).toEqual({
+        ready: false,
+        issue_count: 1,
+        warning_count: 0,
+      });
       expect(d.preflight).toBeUndefined();
       expect(d.last_started_at).toBe('2026-11-17T09:00:00.000Z');
       expectNoCredentials(answer.body);
@@ -1468,13 +1480,16 @@ describe('MCP radio read tools', () => {
         query: 'o',
         limit: 10,
       });
-      const consoleList = await h.songs.findAll({
-        search: 'o',
-        sortBy: 'artist',
-        sortOrder: 'asc',
-        page: 1,
-        limit: 10,
-      });
+      const consoleList = await h.songs.findAll(
+        {
+          search: 'o',
+          sortBy: 'artist',
+          sortOrder: 'asc',
+          page: 1,
+          limit: 10,
+        },
+        0,
+      );
       expect(answer.body.total).toBe(consoleList.meta.total);
       expect(answer.body.songs.map((s: any) => s.song_id)).toEqual(
         consoleList.data.map((s) => s.id),
@@ -1501,6 +1516,20 @@ describe('MCP radio read tools', () => {
       expect(answer.text).not.toContain('media.test');
     });
 
+    it("asks for the station team's songs, for a search and for one song (#122)", async () => {
+      h.pompeii.teamId = 7;
+      const search = jest.spyOn(h.songs, 'findAll');
+      const one = jest
+        .spyOn(h.songs, 'findOne')
+        .mockRejectedValue(new NotFoundException('Song not found'));
+      const { run } = h.session(ALL);
+      await run('search_songs', { query: 'o' });
+      expect(search).toHaveBeenLastCalledWith(expect.anything(), 7);
+      const answer = await run('get_song', { song_id: 1 });
+      expect(one).toHaveBeenCalledWith(1, undefined, 7);
+      expect(answer.isError).toBe(true);
+    });
+
     it('searches with the default limit, finds no analyses for songs without an asset, and refuses a bad query or limit', async () => {
       const { run } = h.session(ALL);
       h.rows.songs = [songRow({ id: 3 })];
@@ -1523,7 +1552,7 @@ describe('MCP radio read tools', () => {
 
     it('reads one song with its stored analysis and no override, URL or cover', async () => {
       const answer = await h.session(ALL).run('get_song', { song_id: 1 });
-      const consoleSong = await h.songs.findOne(1);
+      const consoleSong = await h.songs.findOne(1, undefined, 0);
       expect(answer.body).toEqual({
         song_id: consoleSong.id,
         enabled: true,

@@ -326,6 +326,7 @@ function build(
     new PalazzoMachineClient(config, new RadioMetricsService()),
     config,
     metrics,
+    { teamId: 0 } as never,
   );
   const samples = async (name: string) =>
     (await metrics.render(''))

@@ -10,12 +10,17 @@ import { FlightService } from './flight.service';
 import { ProgramController } from './program.controller';
 import { ProgramModule } from './program.module';
 import { ProgramRealtimeService } from './program.realtime.service';
+import { ProgramTeamAccess } from '../tenancy/program-team-access';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { ProgramTeamInterceptor } from '../tenancy/program-team.interceptor';
 import { ProgramService } from './program.service';
+import { SceneAssetScope } from './scene-asset-scope';
 import { ProgramTemplateService } from './program-template.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { RecipeMcpTools } from '../mcp/capabilities/recipes';
 import { RecipesController } from './recipes.controller';
 import { RecipesService } from './recipes.service';
+import { RadioService } from '../radio/radio.service';
 import { ARTIST_LABEL_LOOKUP } from './artist-label-lookup';
 import { OperatorChangeModule } from '../operator-change/operator-change.module';
 import { ArtistLabelsModule } from '../artist-labels/artist-labels.module';
@@ -55,6 +60,14 @@ class PompeiiStubModule {}
 })
 class MetricsStubModule {}
 
+// The radio service is global in the application; the flight MCP tools judge playout on it.
+@Global()
+@Module({
+  providers: [{ provide: RadioService, useValue: {} }],
+  exports: [RadioService],
+})
+class RadioStubModule {}
+
 describe('ProgramModule wiring', () => {
   const removeListener = jest.fn();
   const fakeProgramService = {
@@ -74,6 +87,7 @@ describe('ProgramModule wiring', () => {
       imports: [
         TicketsModule,
         MetricsStubModule,
+        RadioStubModule,
         ProgramModule,
         ConsumerModule,
         PompeiiStubModule,
@@ -145,6 +159,7 @@ describe('ProgramModule wiring', () => {
       ProgramService,
       ProgramRealtimeService,
       FlightService,
+      ProgramTeamAccess,
     ]);
     expect(Reflect.getMetadata('controllers', ProgramModule)).toEqual([
       ProgramController,
@@ -152,6 +167,7 @@ describe('ProgramModule wiring', () => {
     ]);
     expect(Reflect.getMetadata('providers', ProgramModule)).toEqual([
       ProgramService,
+      SceneAssetScope,
       ProgramRealtimeService,
       FlightService,
       ProgramTemplateService,
@@ -160,6 +176,8 @@ describe('ProgramModule wiring', () => {
       FlightMcpTools,
       RecipesService,
       RecipeMcpTools,
+      ProgramTeamAccess,
+      { provide: APP_INTERCEPTOR, useClass: ProgramTeamInterceptor },
       {
         provide: ARTIST_LABEL_LOOKUP,
         useFactory: expect.any(Function),

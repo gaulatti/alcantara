@@ -1,8 +1,10 @@
+import { Prisma } from '@prisma/client';
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return -- Test doubles and private-state inspection are intentionally loosely typed. */
 import { scriptedTransport } from '../outbound/safe-fetch.testing';
 import {
   BadGatewayException,
   BadRequestException,
+  ConflictException,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -25,7 +27,11 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
   const build = () => {
     const states = new Map<string, Row>();
     const prisma = {
-      program: { upsert: jest.fn().mockResolvedValue({}) },
+      program: {
+        upsert: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
       $transaction: jest.fn(async (operations: Promise<unknown>[]) =>
         Promise.all(operations),
       ),
@@ -70,6 +76,8 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       handleManualSong: jest.fn(),
       handleSequenceUpdated: jest.fn(),
       handleQueueUpdated: jest.fn(),
+      getOnAirView: jest.fn(() => ({ playbackRequestId: null })),
+      renameProgram: jest.fn().mockResolvedValue(undefined),
     };
     const recorder = noRecorder();
     const service = new ProgramService(
@@ -130,7 +138,7 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       expect(prisma.programState.create.mock.calls[0][0].data).toMatchObject({
         type: 'radio',
         templateUrl: null,
-        templateManifest: null,
+        templateManifest: Prisma.DbNull,
         templateVerifiedAt: null,
       });
     });
@@ -143,6 +151,10 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       put('dup');
       await expect(service.createProgram('dup', 'both')).rejects.toThrow(
         'Program already exists',
+      );
+      // A duplicate is the caller's conflict (409), not a server error.
+      await expect(service.createProgram('dup', 'both')).rejects.toBeInstanceOf(
+        ConflictException,
       );
     });
   });
@@ -165,6 +177,9 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       put('b');
       await expect(service.renameProgram('a', 'b')).rejects.toThrow(
         'Target program id already exists',
+      );
+      await expect(service.renameProgram('a', 'b')).rejects.toBeInstanceOf(
+        ConflictException,
       );
     });
 
@@ -214,7 +229,7 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       await service.renameProgram('a', 'a', undefined, null);
       expect(prisma.programState.update.mock.calls[0][0].data).toEqual({
         templateUrl: null,
-        templateManifest: null,
+        templateManifest: Prisma.DbNull,
         templateVerifiedAt: null,
       });
     });
@@ -296,7 +311,7 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       );
       const result = await service.renameProgram('a', 'c');
       expect(prisma.programState.update).toHaveBeenCalledWith({
-        where: { id: 9 },
+        where: expect.objectContaining({ id: 9, activeSceneId: null }),
         data: { programId: 'c' },
       });
       expect(result).toMatchObject({ programId: 'c' });

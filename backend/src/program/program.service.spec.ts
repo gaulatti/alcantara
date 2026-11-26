@@ -1,4 +1,4 @@
-import { MediaAssetKind, MediaAssetType } from '@prisma/client';
+import { MediaAssetKind, MediaAssetType, Prisma } from '@prisma/client';
 import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 import { ProgramService } from './program.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
@@ -342,7 +342,7 @@ describe('ProgramService switcher state', () => {
       data: expect.objectContaining({
         type: 'radio',
         templateUrl: null,
-        templateManifest: null,
+        templateManifest: Prisma.DbNull,
         templateVerifiedAt: null,
         activeSceneId: null,
         stagedSceneId: null,
@@ -973,6 +973,14 @@ describe('ProgramService timed-block audio cuts', () => {
     expect(engine.handleSequenceUpdated).not.toHaveBeenCalled();
     expect(engine.handleStopSong).toHaveBeenCalledWith('radio-1', {
       keepSequence: true,
+    });
+  });
+  it("names a fixed start's cut as the song's end reason (the airing walk)", async () => {
+    const { service, engine } = setup();
+    await service.stopProgramSongForTimedBlock('radio-1', 'fixed_start');
+    expect(engine.handleStopSong).toHaveBeenCalledWith('radio-1', {
+      keepSequence: true,
+      endReason: 'fixed_start',
     });
   });
   it('keeps the rotation mode on a stop the flight drives, cueing the engine past the song (#173)', async () => {

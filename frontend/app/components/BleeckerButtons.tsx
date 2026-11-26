@@ -14,14 +14,16 @@ import {
   IconButton as BleeckerIconButton,
   type IconButtonProps,
 } from "@gaulatti/bleecker/components/icon-button";
-import { Tooltip } from "@gaulatti/bleecker/components/tooltip";
+import {
+  Tooltip,
+  type TooltipSide,
+} from "@gaulatti/bleecker/components/tooltip";
 
 function labelText(children: ReactNode): string {
   return Children.toArray(children)
     .map((child) => {
       if (typeof child === "string" || typeof child === "number")
         return String(child);
-      /* v8 ignore next 3 -- Children.toArray keeps only strings, numbers and elements here; this fallback covers other node kinds (for example a portal) that a button label never holds. */
       if (isValidElement<{ children?: ReactNode }>(child))
         return labelText(child.props.children);
       return "";
@@ -62,8 +64,11 @@ function helpStyle(
 
 export const Button = forwardRef<
   HTMLButtonElement | HTMLAnchorElement,
-  ButtonProps
->(function Button(props, ref) {
+  ButtonProps & {
+    /** Where the help opens; "bottom" keeps it off a field just above the button. */
+    tooltipSide?: TooltipSide;
+  }
+>(function Button({ tooltipSide, ...props }, ref) {
   const content = buttonHelp(props);
   const button = (
     <BleeckerButton
@@ -74,7 +79,13 @@ export const Button = forwardRef<
       style={helpStyle(props.style, props.disabled || props.loading)}
     />
   );
-  return content ? <Tooltip content={content}>{button}</Tooltip> : button;
+  return content ? (
+    <Tooltip content={content} side={tooltipSide}>
+      {button}
+    </Tooltip>
+  ) : (
+    button
+  );
 });
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(

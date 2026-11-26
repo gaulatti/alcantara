@@ -29,6 +29,7 @@ describeWithDatabase('radio settings and their operator change record', () => {
       {} as never,
       new ConfigService({}),
       metrics as never,
+      { teamId: 0 } as never,
     );
     await prisma.programState.deleteMany({ where: { programId } });
     await prisma.programState.create({ data: { programId } });

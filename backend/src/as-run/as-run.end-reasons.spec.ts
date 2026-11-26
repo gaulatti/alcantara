@@ -105,6 +105,10 @@ function memoryStore(songs: CatalogSong[]) {
       ),
     },
     song: {
+      findUnique: jest.fn(({ where }: { where: { id: number } }) => {
+        const song = songs.find((s) => s.id === where.id);
+        return Promise.resolve(song ? { id: song.id, assetId: null } : null);
+      }),
       findFirst: jest.fn(
         ({
           where,
@@ -265,6 +269,7 @@ function session(options: { durationMs?: (index: number) => number } = {}) {
   const store = memoryStore(SONGS);
   const asRun = new AsRunService(
     store.prisma as unknown as PrismaService,
+    { teamId: 0 } as never,
     engine,
   );
   asRun.onModuleInit();
@@ -378,6 +383,34 @@ describe('as-run records for plays the engine ends itself', () => {
       }),
     ]);
     expect(s.urlOf(ended[0].songId)).toBe(command.url);
+  });
+
+  // The airing walk: a timed block's fixed start cut the song, which the as-run called an operator stop.
+  it('closes a song a fixed start cuts with end reason fixed_start, once', async () => {
+    const s = session();
+    const command = await onAir(s);
+    const cutAt = new Date(Date.now());
+
+    s.engine.handleStopSong('radio-1', {
+      keepSequence: true,
+      endReason: 'fixed_start',
+    });
+    await settle();
+    s.ended(command);
+    await settle();
+
+    expect(
+      s.store.rows.filter(
+        (row) =>
+          row.state === 'ended' && row.playbackRequestId === command.requestId,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        at: cutAt,
+        endReason: 'fixed_start',
+        inferred: false,
+      }),
+    ]);
   });
 
   it('closes a song a manual pick cuts with end reason replaced, and the manual song gets its own record', async () => {
@@ -618,7 +651,10 @@ describe('as-run export of each end reason', () => {
 
   beforeEach(async () => {
     store = memoryStore(SONGS);
-    service = new AsRunService(store.prisma as unknown as PrismaService);
+    service = new AsRunService(
+      store.prisma as unknown as PrismaService,
+      { teamId: 0 } as never,
+    );
     await play(
       'req-natural',
       SONGS[0],

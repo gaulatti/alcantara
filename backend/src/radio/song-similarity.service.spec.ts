@@ -1,5 +1,6 @@
 import { BadRequestException, Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { PompeiiService } from '../auth/pompeii.service';
 import { PrismaService } from '../prisma.service';
 import { RadioMetricsService } from './radio-metrics.service';
 import { SongSimilarityService } from './song-similarity.service';
@@ -53,7 +54,11 @@ function setup() {
   prisma.similarityDecision.create.mockResolvedValue({});
   prisma.$transaction.mockResolvedValue([]);
   const metrics = { recordSimilarityAction: jest.fn() };
-  const service = new SongSimilarityService(prisma as never, metrics as never);
+  const service = new SongSimilarityService(
+    prisma as never,
+    metrics as never,
+    { teamId: 0 } as never,
+  );
   return { prisma, metrics, service };
 }
 
@@ -135,6 +140,7 @@ describe('SongSimilarityService', () => {
           SongSimilarityService,
           { provide: PrismaService, useValue: {} },
           { provide: RadioMetricsService, useValue: {} },
+          { provide: PompeiiService, useValue: {} },
         ],
       }).compile();
       expect(moduleRef.get(SongSimilarityService)).toBeInstanceOf(
@@ -656,7 +662,7 @@ describe('SongSimilarityService', () => {
 
     it('rejects an invalid header', async () => {
       const { service } = setup();
-      await expect(service.storeEmbeddings({ schema: 2 })).rejects.toThrow(
+      await expect(service.storeEmbeddings({ schema: 2 }, 'p')).rejects.toThrow(
         BadRequestException,
       );
     });
@@ -665,23 +671,26 @@ describe('SongSimilarityService', () => {
       const { service } = setup();
       const songs = Array.from({ length: 26 }, (_, i) => song(i + 1));
       await expect(
-        service.storeEmbeddings({ ...header, songs }),
+        service.storeEmbeddings({ ...header, songs }, 'p'),
       ).rejects.toThrow('at most 25');
     });
 
     it('stores valid songs and reports each rejection', async () => {
       const { prisma, service } = setup();
       prisma.song.findMany.mockResolvedValue([{ id: 1 }, { id: 2 }]);
-      const result = await service.storeEmbeddings({
-        ...header,
-        songs: [
-          song(1),
-          song(2, { opening: [1] }),
-          song(3),
-          null,
-          song(1.5 as number),
-        ],
-      });
+      const result = await service.storeEmbeddings(
+        {
+          ...header,
+          songs: [
+            song(1),
+            song(2, { opening: [1] }),
+            song(3),
+            null,
+            song(1.5 as number),
+          ],
+        },
+        'p',
+      );
       expect(result.results).toEqual([
         { songId: 1, status: 'stored' },
         { songId: 2, status: 'rejected', reason: expect.any(String) as string },
@@ -699,10 +708,13 @@ describe('SongSimilarityService', () => {
       prisma.$transaction
         .mockRejectedValueOnce(new Error('insert failed'))
         .mockResolvedValueOnce([]);
-      const result = await service.storeEmbeddings({
-        ...header,
-        songs: [song(1), song(2)],
-      });
+      const result = await service.storeEmbeddings(
+        {
+          ...header,
+          songs: [song(1), song(2)],
+        },
+        'p',
+      );
       expect(result.results.map((r) => r.status)).toEqual([
         'rejected',
         'stored',
@@ -714,7 +726,7 @@ describe('SongSimilarityService', () => {
       const ctx = await activeService();
       ctx.prisma.song.findMany.mockResolvedValue([{ id: 1 }]);
       ctx.prisma.$queryRaw.mockClear();
-      await ctx.service.storeEmbeddings({ ...header, songs: [song(1)] });
+      await ctx.service.storeEmbeddings({ ...header, songs: [song(1)] }, 'p');
       expect(ctx.prisma.$queryRaw).toHaveBeenCalledTimes(1);
     });
 
@@ -722,10 +734,13 @@ describe('SongSimilarityService', () => {
       const ctx = await activeService();
       ctx.prisma.song.findMany.mockResolvedValue([{ id: 1 }]);
       ctx.prisma.$queryRaw.mockRejectedValue(new Error('refresh failed'));
-      const result = await ctx.service.storeEmbeddings({
-        ...header,
-        songs: [song(1)],
-      });
+      const result = await ctx.service.storeEmbeddings(
+        {
+          ...header,
+          songs: [song(1)],
+        },
+        'p',
+      );
       expect(result.results[0].status).toBe('stored');
       expect(errorSpy).toHaveBeenCalled();
     });

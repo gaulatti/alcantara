@@ -1,3 +1,4 @@
+import { RotationLoadNotice, ROTATION_NOT_LOADED } from "../components/RotationLoadNotice";
 import {
   Button,
   Input,
@@ -230,6 +231,8 @@ export default function Control() {
   const [selectedTransitionId, setSelectedTransitionId] =
     useGlobalTransitionId(activeProgramId);
   const consoleWorkspace = consolePreferences.profile.workspace;
+  // The rotation did not load: its surfaces show the notice and every save is refused until a load succeeds.
+  const [rotationLoadFailed, setRotationLoadFailed] = useState(false);
   const [programAudioBusSettings, setProgramAudioBusSettings] =
     useState<ProgramAudioBusSettings>({
       songSequence: createProgramSongSequence("manual"),
@@ -458,6 +461,12 @@ export default function Control() {
     fetchComponentTypes();
     fetchSongCatalog();
   }, []);
+
+  // The route's static title is the TV console's; a radio show's tab names the radio desk.
+  const documentTitle = programState?.type === "radio" ? "Control Panel - Radio" : "Control Panel - TV Broadcast";
+  useEffect(() => {
+    document.title = documentTitle;
+  }, [documentTitle]);
 
   useEffect(() => {
     setProgramState(null);
@@ -1133,11 +1142,14 @@ export default function Control() {
   };
 
   const persistMixerLevels = async (nextMixerLevels: BroadcastSettings) => {
+    // The levels belong to the program they were set on, and so does the answer: one that arrives after the
+    // operator switched program is not applied to the program now on screen (gaulatti/alcantara#682).
+    const targetProgramId = activeProgramId;
     setIsSavingMixerLevels(true);
     setMixerSaveError(null);
     try {
       const res = await fetch(
-        apiUrl(`/program/${encodeURIComponent(activeProgramId)}/audio-bus`),
+        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/audio-bus`),
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -1154,6 +1166,7 @@ export default function Control() {
       }
 
       const payload = (await res.json()) as ProgramAudioBusSettings | null;
+      if (targetProgramId !== activeProgramIdRef.current) return;
       if (!shouldApplyControlUpdatePayload(payload, "audioBus")) {
         return;
       }
@@ -1164,6 +1177,7 @@ export default function Control() {
       setMixerLevels(persistedMixerLevels);
     } catch (err) {
       console.error("Failed to save mixer levels:", err);
+      if (targetProgramId !== activeProgramIdRef.current) return;
       setMixerSaveError("Mixer change was not applied to Palazzo. Try again.");
     } finally {
       setIsSavingMixerLevels(false);
@@ -1657,6 +1671,7 @@ export default function Control() {
         songSequence: normalizedSongSequence,
         songQueue: normalizeProgramSongQueue(payload?.songQueue),
       });
+      setRotationLoadFailed(false);
     } catch (err) {
       if (targetProgramId !== activeProgramIdRef.current) {
         return;
@@ -1665,6 +1680,7 @@ export default function Control() {
       const fallbackMixerLevels = normalizeBroadcastSettingsPayload(null);
       mixerLevelsRef.current = fallbackMixerLevels;
       setMixerLevels(fallbackMixerLevels);
+      setRotationLoadFailed(true);
       setProgramAudioBusSettings({
         songSequence: {
           ...createProgramSongSequence("manual"),
@@ -1679,9 +1695,23 @@ export default function Control() {
     }
   };
 
+  // Retry the rotation once the backend answers again, while its load is failing (a restart is the usual cause).
+  useEffect(() => {
+    if (!rotationLoadFailed) return;
+    const retry = window.setTimeout(() => {
+      void fetchProgramAudioBusSettings(activeProgramId, false);
+    }, 3000);
+    return () => window.clearTimeout(retry);
+  }, [rotationLoadFailed, activeProgramId]);
+
   const saveProgramAudioBusSongSequence = async (
     nextSequence: ProgramSongSequence,
   ) => {
+    // The sequence in state is the empty default while the rotation has not loaded: a save would replace the stored
+    // rotation. The surfaces show ROTATION_NOT_LOADED on screen, so a save from them is dropped here.
+    if (rotationLoadFailed) return;
+    // Like the mixer levels, the answer belongs to the program the sequence was saved for (gaulatti/alcantara#682).
+    const targetProgramId = activeProgramId;
     const normalizedSongSequence = normalizeProgramSongPlaylist(
       normalizeProgramSongSequence(nextSequence) ?? {
         /* v8 ignore start -- every loader normalises the stored sequence and falls back to an empty manual sequence first, so this fallback cannot receive a null */
@@ -1698,7 +1728,7 @@ export default function Control() {
 
     try {
       const res = await fetch(
-        apiUrl(`/program/${encodeURIComponent(activeProgramId)}/audio-bus`),
+        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/audio-bus`),
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -1713,6 +1743,7 @@ export default function Control() {
 
       const payload =
         (await res.json()) as Partial<ProgramAudioBusSettings> | null;
+      if (targetProgramId !== activeProgramIdRef.current) return;
       if (!shouldApplyControlUpdatePayload(payload, "audioBus")) {
         return;
       }
@@ -1740,7 +1771,8 @@ export default function Control() {
       }));
     } catch (err) {
       console.error("Failed to save program audio bus settings:", err);
-      await fetchProgramAudioBusSettings(activeProgramId, false);
+      if (targetProgramId !== activeProgramIdRef.current) return;
+      await fetchProgramAudioBusSettings(targetProgramId, false);
       throw err;
     } finally {
       setIsSavingProgramAudioBus(false);
@@ -1990,10 +2022,13 @@ export default function Control() {
   };
 
   const stageSceneForProgram = async (sceneId: number | null) => {
+    // A Preview answer belongs to the program it was asked for: one that arrives after the operator
+    // switched program changes nothing on the program now on screen (gaulatti/alcantara#669).
+    const targetProgramId = activeProgramId;
     setTakeError(null);
     try {
       const response = await fetch(
-        apiUrl(`/program/${encodeURIComponent(activeProgramId)}/stage`),
+        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/stage`),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2005,6 +2040,7 @@ export default function Control() {
       }
 
       const result = (await response.json()) as StageSceneResponse;
+      if (targetProgramId !== activeProgramIdRef.current) return;
       const acceptedResult = acceptStageSceneResponse<Scene>(
         result,
         shouldApplyControlUpdatePayload,
@@ -2027,9 +2063,10 @@ export default function Control() {
       );
 
       if (!isProgramRealtimeConnected) {
-        await fetchProgramState(activeProgramId);
+        await fetchProgramState(targetProgramId);
       }
     } catch (err) {
+      if (targetProgramId !== activeProgramIdRef.current) return;
       setTakeError(err instanceof Error ? `Could not prepare Preview: ${err.message}` : "Could not prepare Preview.");
       return false;
     }
@@ -2060,9 +2097,11 @@ export default function Control() {
   };
 
   const setFadeToBlack = async (active: boolean) => {
+    // Like a Preview answer, a fade answer belongs to the program it was sent for (gaulatti/alcantara#669).
+    const targetProgramId = activeProgramId;
     try {
       const response = await fetch(
-        apiUrl(`/program/${encodeURIComponent(activeProgramId)}/fade-to-black`),
+        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/fade-to-black`),
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -2071,6 +2110,7 @@ export default function Control() {
       );
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const nextState = normalizeProgramState(await response.json());
+      if (targetProgramId !== activeProgramIdRef.current) return;
       if (nextState) syncProgramStateAndStagedScene(nextState);
     } catch (err) {
       console.error("Failed to change fade-to-black state:", err);
@@ -2915,6 +2955,12 @@ export default function Control() {
         );
         return;
       }
+      if (data.type === "radio_log_cue_skipped") {
+        setRadioPlayoutError(
+          "A timed cue was skipped: the engine was unavailable past its one-minute grace. The block goes on with the next cue.",
+        );
+        return;
+      }
       if (
         data.type === "radio_log_start_failed" ||
         data.type === "radio_log_cue_failed"
@@ -3292,10 +3338,14 @@ export default function Control() {
         programId={activeProgramId}
         playoutError={radioPlayoutError ?? radioSongFailure}
         songSequence={programAudioBusSongSequence}
+        rotationLoadError={rotationLoadFailed}
+        onRetryRotation={() => void fetchProgramAudioBusSettings(activeProgramId)}
         songQueue={normalizeProgramSongQueue(programAudioBusSettings.songQueue)}
         songCatalog={songCatalog}
         programSongPlayback={programSongPlaybackState}
         onSaveSongSequence={async (seq) => {
+          // The desk shows a failed save in its own error line, so a refusal is thrown here, not dropped.
+          if (rotationLoadFailed) throw new Error(ROTATION_NOT_LOADED);
           await saveProgramAudioBusSongSequence(seq);
         }}
         onTakeSelection={takeProgramSongSelection}
@@ -3541,6 +3591,11 @@ export default function Control() {
           </div>
         </>
       )}
+      {consoleWorkspace === "audio" && rotationLoadFailed ? (
+        <div className="px-3 pt-2">
+          <RotationLoadNotice onRetry={() => void fetchProgramAudioBusSettings(activeProgramId)} />
+        </div>
+      ) : null}
       {consoleWorkspace === "audio" && (
         <div className="tv-audio-transport relative z-20 shrink-0">
           <PlaybackBar
@@ -3563,6 +3618,7 @@ export default function Control() {
       )}
       <PlaylistSheetPanel
         isOpen={isPlaylistSheetOpen}
+        notice={rotationLoadFailed ? <RotationLoadNotice onRetry={() => void fetchProgramAudioBusSettings(activeProgramId)} /> : null}
         onClose={() => setIsPlaylistSheetOpen(false)}
         sequence={programAudioBusSongSequence}
         songCatalog={songCatalog}

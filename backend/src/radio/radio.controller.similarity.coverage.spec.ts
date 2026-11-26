@@ -78,10 +78,10 @@ describe('RadioController similarity coverage', () => {
   it('stores uploaded embeddings', async () => {
     const { controller, similarity } = build();
     const body = { embeddings: [] };
-    await expect(controller.similarityUpload(body)).resolves.toEqual({
+    await expect(controller.similarityUpload('p', body)).resolves.toEqual({
       stored: 2,
     });
-    expect(similarity.storeEmbeddings).toHaveBeenCalledWith(body);
+    expect(similarity.storeEmbeddings).toHaveBeenCalledWith(body, 'p');
   });
 
   it.each([

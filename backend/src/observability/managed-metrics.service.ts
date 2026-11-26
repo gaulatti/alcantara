@@ -201,6 +201,8 @@ const OPERATOR_CHANGE_TARGETS = new Set([
 const OPERATOR_CHANGE_RESULTS = new Set(['recorded', 'failed']);
 /** gaulatti/alcantara#424: a recipe use previewed or built (`issues`: built, with something to fix). */
 const RECIPE_EXPANSION_RESULTS = new Set(['ok', 'issues', 'rejected']);
+/** gaulatti/alcantara#612: calls to the song-playback write route, to see whether anything still makes them. */
+const SONG_PLAYBACK_WRITE_RESULTS = new Set(['accepted', 'refused']);
 /** gaulatti/alcantara#424: a use rebuilt after its recipe changed, left on air, or lost to a concurrent edit. */
 const RECIPE_REBUILD_RESULTS = new Set(['rebuilt', 'skipped', 'conflict']);
 /** gaulatti/alcantara#465: a recipe delete, or why it was refused. */
@@ -211,6 +213,19 @@ const RECIPE_DELETE_RESULTS = new Set([
   'conflict',
 ]);
 const SCENE_HANDOFF_RESULTS = new Set(['success', 'failure']);
+/** gaulatti/alcantara#122: a program another team owns, one nobody owns, or a team that could not be read. */
+const PROGRAM_TEAM_CHECK_RESULTS = new Set([
+  'refused',
+  'unowned',
+  'lookup-failed',
+]);
+/** gaulatti/alcantara#122: why a scene background asset read was not served by the program's team. */
+export type SceneAssetScopeReason = 'no-team' | 'other-team' | 'lookup-failed';
+const SCENE_ASSET_SCOPE_REASONS = new Set<string>([
+  'no-team',
+  'other-team',
+  'lookup-failed',
+]);
 const PREFERENCE_ACTIONS = new Set([
   'read',
   'write',
@@ -248,13 +263,16 @@ export type FillerPreparationResult =
   | 'ready'
   | 'failed'
   | 'unavailable'
-  | 'profile-unavailable';
+  | 'profile-unavailable'
+  // The program has no team, so no media asset may be used (gaulatti/alcantara#122).
+  | 'no-team';
 const FILLER_LEGS = ['television', 'radio'] as const;
 const FILLER_PREPARATION_RESULTS: readonly FillerPreparationResult[] = [
   'ready',
   'failed',
   'unavailable',
   'profile-unavailable',
+  'no-team',
 ];
 /** What a television Start did with the program filler (gaulatti/alcantara#126). */
 export type FillerStartBindingResult =
@@ -338,9 +356,12 @@ export class ManagedMetricsService {
   private readonly artistLabelWrites: Counter<string>;
   private readonly operatorChangeRecords: Counter<string>;
   private readonly recipeExpansions: Counter<string>;
+  private readonly songPlaybackWrites: Counter<string>;
   private readonly recipeRebuilds: Counter<string>;
   private readonly recipeDeletes: Counter<string>;
   private readonly sceneHandoffs: Counter<string>;
+  private readonly programTeamChecks: Counter<string>;
+  private readonly sceneAssetScopeRefusals: Counter<string>;
   private readonly jobLastSuccess: Gauge<string>;
   private readonly preferenceOperations: Counter<string>;
   private readonly broadcastDestinationOperations: Counter<string>;
@@ -442,6 +463,14 @@ export class ManagedMetricsService {
       labelNames: ['target', 'result'],
       registers: [this.registry],
     });
+    this.songPlaybackWrites = new Counter({
+      name: 'alcantara_program_song_playback_writes_total',
+      help: 'Calls to POST /program/:programId/song-playback, by result. Exposed from 0.',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    for (const result of SONG_PLAYBACK_WRITE_RESULTS)
+      this.songPlaybackWrites.inc({ result }, 0);
     this.recipeExpansions = new Counter({
       name: 'alcantara_recipe_expansions_total',
       help: 'Rundown recipe uses previewed or built, by result.',
@@ -460,6 +489,22 @@ export class ManagedMetricsService {
       labelNames: ['result'],
       registers: [this.registry],
     });
+    this.programTeamChecks = new Counter({
+      name: 'alcantara_program_team_checks_total',
+      help: 'Requests naming a program of another team (refused) or of no team (unowned), and team lookups that failed (lookup-failed). Exposed from 0.',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    for (const result of PROGRAM_TEAM_CHECK_RESULTS)
+      this.programTeamChecks.inc({ result }, 0);
+    this.sceneAssetScopeRefusals = new Counter({
+      name: 'alcantara_scene_asset_scope_refusals_total',
+      help: 'Scene background asset reads the program team could not serve, read unscoped instead, by reason. Exposed from 0.',
+      labelNames: ['reason'],
+      registers: [this.registry],
+    });
+    for (const reason of SCENE_ASSET_SCOPE_REASONS)
+      this.sceneAssetScopeRefusals.inc({ reason }, 0);
     this.sceneHandoffs = new Counter({
       name: 'alcantara_scene_handoffs_total',
       help: 'Atomic Program and Preview scene handoff persistence outcomes.',
@@ -681,6 +726,26 @@ export class ManagedMetricsService {
     this.dependencyDuration.observe(labels, Math.max(0, seconds));
   }
 
+  /**
+   * gaulatti/alcantara#122. The gauge exists only while there is a value, because an unlabelled gauge would
+   * otherwise be scraped as 0 before anything was read.
+   */
+  setMediaAssetsWithoutTeam(count: number | null): void {
+    const name = 'alcantara_media_assets_without_team';
+    if (count === null) {
+      this.registry.removeSingleMetric(name);
+      return;
+    }
+    const gauge =
+      (this.registry.getSingleMetric(name) as Gauge | undefined) ??
+      new Gauge({
+        name,
+        help: 'Media assets with no team, at the last successful read.',
+        registers: [this.registry],
+      });
+    gauge.set(count);
+  }
+
   recordJob(job: string, result: string): void {
     const normalizedJob = bounded(job, JOBS);
     const normalizedResult = bounded(result, JOB_RESULTS);
@@ -688,6 +753,12 @@ export class ManagedMetricsService {
     if (normalizedResult === 'success') {
       this.jobLastSuccess.set({ job: normalizedJob }, Date.now() / 1000);
     }
+  }
+
+  recordSongPlaybackWrite(result: string): void {
+    this.songPlaybackWrites.inc({
+      result: bounded(result, SONG_PLAYBACK_WRITE_RESULTS),
+    });
   }
 
   recordRecipeExpansion(result: string): void {
@@ -722,6 +793,20 @@ export class ManagedMetricsService {
     this.operatorChangeRecords.inc({
       target: bounded(target, OPERATOR_CHANGE_TARGETS),
       result: bounded(result, OPERATOR_CHANGE_RESULTS),
+    });
+  }
+
+  recordProgramTeamCheck(
+    result: 'refused' | 'unowned' | 'lookup-failed',
+  ): void {
+    this.programTeamChecks.inc({
+      result: bounded(result, PROGRAM_TEAM_CHECK_RESULTS),
+    });
+  }
+
+  recordSceneAssetScopeRefusal(reason: SceneAssetScopeReason): void {
+    this.sceneAssetScopeRefusals.inc({
+      reason: bounded(reason, SCENE_ASSET_SCOPE_REASONS),
     });
   }
 
@@ -910,6 +995,39 @@ export class ManagedMetricsService {
       state: bounded(state, RECORDING_STATES),
       result: bounded(result, RECORDING_RESULTS),
     });
+  }
+
+  /**
+   * gaulatti/alcantara#122: the two counts that gate the radio's song scoping. The gauges exist only while
+   * there is a value, because an unlabelled gauge would otherwise be scraped as 0 before anything was read.
+   */
+  setRadioScopePreflight(
+    counts: {
+      radioProgramsWithoutTeam: number;
+      librarySongsWithoutTeam: number;
+    } | null,
+  ): void {
+    for (const [name, help, value] of [
+      [
+        'alcantara_radio_programs_without_team',
+        'Radio programs with no team, at the last successful read.',
+        counts?.radioProgramsWithoutTeam,
+      ],
+      [
+        'alcantara_library_songs_without_team',
+        'Library songs with no team, at the last successful read.',
+        counts?.librarySongsWithoutTeam,
+      ],
+    ] as const) {
+      if (value === undefined) {
+        this.registry.removeSingleMetric(name);
+        continue;
+      }
+      const gauge =
+        (this.registry.getSingleMetric(name) as Gauge | undefined) ??
+        new Gauge({ name, help, registers: [this.registry] });
+      gauge.set(value);
+    }
   }
 
   async render(radioMetrics: string): Promise<string> {

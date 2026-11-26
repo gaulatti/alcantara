@@ -49,6 +49,26 @@ const DEFAULT_POLL_INTERVAL_MS = 2_000;
 const DEFAULT_STALENESS_MS = 15_000;
 
 /**
+ * gaulatti/alcantara#734: an event stream that delivers no byte for this long is treated as lost. Palazzo emits
+ * `playback.position` every second and a `heartbeat` every 10 s from its Liquidsoap sample loop
+ * (gaulatti/palazzo src/stream/playback-telemetry.service.ts, `now - this.lastHeartbeatAt >= 10_000`, L556 at
+ * 706c383), so 30 s is three missed heartbeats. A hung Palazzo (connections accepted, nothing answered) keeps the
+ * TCP stream open and silent, and was never noticed. The stream is aborted and takes the usual path: `connecting`
+ * (no freeze), the state-endpoint poll, reconnect. The engine freezes only if Palazzo also fails the state poll; a
+ * Palazzo that answers reconnects with a snapshot at once and never freezes.
+ */
+export const PALAZZO_EVENT_IDLE_MS = 30_000;
+
+/** Events Palazzo emits only from a Liquidsoap sample (gaulatti/palazzo playback-telemetry.service.ts apply). */
+const LIQUIDSOAP_SAMPLE_EVENTS: readonly string[] = [
+  'audio.levels',
+  'playback.position',
+  'heartbeat',
+];
+const isLiquidsoapSampleEvent = (type: string) =>
+  LIQUIDSOAP_SAMPLE_EVENTS.includes(type);
+
+/**
  * Consumes one Palazzo instance's authoritative playback telemetry for one
  * radio-capable program.
  *
@@ -67,6 +87,9 @@ export class PalazzoProgramClient {
   private readonly stalenessMs: number;
 
   private abort: AbortController | null = null;
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Set when the idle watchdog aborted the stream, so the loop names the reason. */
+  private idleAborted = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
@@ -78,6 +101,9 @@ export class PalazzoProgramClient {
   private lastEventAt: number | null = null;
   private lastSnapshotAt: number | null = null;
   private connection: PalazzoConnectionState = 'connecting';
+  private playout: 'up' | 'down' | null = null;
+  /** When Palazzo last reported its playout, up or down (a snapshot or a telemetry event). */
+  private playoutReportedAt: number | null = null;
   private detail: string | null = null;
   private sseLoopRunning = false;
   private pollInFlight = false;
@@ -108,7 +134,26 @@ export class PalazzoProgramClient {
       lastSnapshotAt: isoOrNull(this.lastSnapshotAt),
       degraded: this.isDegraded(),
       detail: this.detail,
+      playout: this.playout,
     };
+  }
+
+  /**
+   * The playout report a take is judged by (the airing walk's D4): `down` only for an explicit Liquidsoap-down report
+   * that is fresh, `stale` for a down report older than its window or from a client no longer hearing Palazzo, and
+   * `unknown` when Palazzo has not reported its playout yet. With Liquidsoap down the event stream is silent, so the
+   * report is renewed by the snapshot of each idle reconnect: its window is the idle watchdog plus the staleness window.
+   */
+  playoutReport(now = Date.now()): 'up' | 'down' | 'stale' | 'unknown' {
+    if (this.playout === null || this.playoutReportedAt === null)
+      return 'unknown';
+    if (this.playout === 'up') return 'up';
+    const hearing =
+      this.connection === 'connected' || this.connection === 'polling';
+    return hearing &&
+      now - this.playoutReportedAt <= PALAZZO_EVENT_IDLE_MS + this.stalenessMs
+      ? 'down'
+      : 'stale';
   }
 
   start(): void {
@@ -119,6 +164,7 @@ export class PalazzoProgramClient {
 
   stop(): void {
     this.stopped = true;
+    this.clearIdleWatchdog();
     this.clearReconnectTimer();
     this.clearPollTimer();
     this.abort?.abort();
@@ -140,8 +186,19 @@ export class PalazzoProgramClient {
         } else {
           this.options.metrics.recordReconnectFailure();
           if (this.connection !== 'unavailable') {
-            this.setConnection('connecting', 'sse connect failed');
+            this.setConnection(
+              'connecting',
+              this.idleAborted
+                ? 'sse idle: no event for 30 s'
+                : 'sse connect failed',
+            );
           }
+          // The idle watchdog aborted this controller; the state poll reuses it, and an aborted signal would fail
+          // the poll at once and read unavailable for a Palazzo that still answers (#734). Start a fresh one.
+          if (this.idleAborted && this.abort?.signal.aborted) {
+            this.abort = new AbortController();
+          }
+          this.idleAborted = false;
           this.startPolling();
         }
         if (this.stopped) return;
@@ -195,10 +252,13 @@ export class PalazzoProgramClient {
     const reader = body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    this.armIdleWatchdog();
     try {
       for (;;) {
         const { done, value } = await reader.read();
         if (done) return;
+        // Any byte proves the stream is alive, a partial frame included.
+        this.armIdleWatchdog();
         buffer += decoder.decode(value, { stream: true });
         let separator = /\r?\n\r?\n/.exec(buffer);
         while (separator?.index !== undefined) {
@@ -213,7 +273,29 @@ export class PalazzoProgramClient {
         }
       }
     } finally {
+      this.clearIdleWatchdog();
       reader.releaseLock();
+    }
+  }
+
+  private armIdleWatchdog(): void {
+    this.clearIdleWatchdog();
+    this.idleTimer = setTimeout(() => {
+      // stop() clears this timer, so it never fires for a stopped client.
+      this.idleTimer = null;
+      this.idleAborted = true;
+      this.options.metrics.recordEventStreamIdleDisconnect();
+      this.logger.warn(
+        `Palazzo event stream for ${this.options.programId} sent nothing for ${PALAZZO_EVENT_IDLE_MS / 1000} s; reconnecting`,
+      );
+      this.abort?.abort();
+    }, PALAZZO_EVENT_IDLE_MS);
+  }
+
+  private clearIdleWatchdog(): void {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
     }
   }
 
@@ -304,7 +386,16 @@ export class PalazzoProgramClient {
       // long-lived stream to close before marking it connected leaves the
       // automation engine permanently "unreconciled" during healthy service
       // and prevents idle startup recovery.
-      this.setConnection('connected', null);
+      // Playout is part of the same status as the connection: one change, one status.
+      const playout = state.liquidsoap.connected ? 'up' : 'down';
+      const playoutChanged = this.playout !== playout;
+      this.playout = playout;
+      this.playoutReportedAt = Date.now();
+      if (!this.setConnection('connected', null) && playoutChanged)
+        this.options.callbacks.onStatus(
+          this.options.programId,
+          this.getStatus(),
+        );
       this.emitSnapshot(state);
       return;
     }
@@ -352,6 +443,13 @@ export class PalazzoProgramClient {
 
     this.lastSequence = event.sequence;
     this.touch(event);
+    if (event.type === 'telemetry.disconnected') this.setPlayout('down');
+    else if (event.type === 'telemetry.connected') this.setPlayout('up');
+    // Palazzo emits levels, position and heartbeat only from a Liquidsoap sample (after its telemetry.connected), so
+    // any of them proves playout is back: a down report must not refuse takes after recovery (D4), even when the
+    // telemetry.connected itself was lost in a replay gap.
+    else if (this.playout === 'down' && isLiquidsoapSampleEvent(event.type))
+      this.setPlayout('up');
     if (isEnginePlaybackEvent(event.type)) {
       this.options.callbacks.onEvent(this.options.programId, event);
     }
@@ -445,6 +543,7 @@ export class PalazzoProgramClient {
   /** Keeps the last accepted status for a later unknown one, then forwards. */
   private emitSnapshot(state: PalazzoPlaybackState): void {
     this.lastStatus = state.status;
+    this.setPlayout(state.liquidsoap.connected ? 'up' : 'down');
     this.options.callbacks.onSnapshot(this.options.programId, state);
   }
 
@@ -600,11 +699,19 @@ export class PalazzoProgramClient {
     return false;
   }
 
+  /** Playout up or down is reported, not acted on: the engine still follows `connection` alone. */
+  private setPlayout(next: 'up' | 'down'): void {
+    this.playoutReportedAt = Date.now();
+    if (this.playout === next) return;
+    this.playout = next;
+    this.options.callbacks.onStatus(this.options.programId, this.getStatus());
+  }
+
   private setConnection(
     state: PalazzoConnectionState,
     detail: string | null,
-  ): void {
-    if (this.connection === state && this.detail === detail) return;
+  ): boolean {
+    if (this.connection === state && this.detail === detail) return false;
     const previous = this.connection;
     this.connection = state;
     this.detail = detail;
@@ -615,6 +722,7 @@ export class PalazzoProgramClient {
       this.options.metrics.recordConnectionState(state, 1);
     }
     this.options.callbacks.onStatus(this.options.programId, this.getStatus());
+    return true;
   }
 }
 
