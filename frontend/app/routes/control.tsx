@@ -1,3 +1,4 @@
+import { RotationLoadNotice, ROTATION_NOT_LOADED } from "../components/RotationLoadNotice";
 import {
   Button,
   Input,
@@ -230,6 +231,8 @@ export default function Control() {
   const [selectedTransitionId, setSelectedTransitionId] =
     useGlobalTransitionId(activeProgramId);
   const consoleWorkspace = consolePreferences.profile.workspace;
+  // The rotation did not load: its surfaces show the notice and every save is refused until a load succeeds.
+  const [rotationLoadFailed, setRotationLoadFailed] = useState(false);
   const [programAudioBusSettings, setProgramAudioBusSettings] =
     useState<ProgramAudioBusSettings>({
       songSequence: createProgramSongSequence("manual"),
@@ -1662,6 +1665,7 @@ export default function Control() {
         songSequence: normalizedSongSequence,
         songQueue: normalizeProgramSongQueue(payload?.songQueue),
       });
+      setRotationLoadFailed(false);
     } catch (err) {
       if (targetProgramId !== activeProgramIdRef.current) {
         return;
@@ -1670,6 +1674,7 @@ export default function Control() {
       const fallbackMixerLevels = normalizeBroadcastSettingsPayload(null);
       mixerLevelsRef.current = fallbackMixerLevels;
       setMixerLevels(fallbackMixerLevels);
+      setRotationLoadFailed(true);
       setProgramAudioBusSettings({
         songSequence: {
           ...createProgramSongSequence("manual"),
@@ -1684,9 +1689,21 @@ export default function Control() {
     }
   };
 
+  // Retry the rotation once the backend answers again, while its load is failing (a restart is the usual cause).
+  useEffect(() => {
+    if (!rotationLoadFailed) return;
+    const retry = window.setTimeout(() => {
+      void fetchProgramAudioBusSettings(activeProgramId, false);
+    }, 3000);
+    return () => window.clearTimeout(retry);
+  }, [rotationLoadFailed, activeProgramId]);
+
   const saveProgramAudioBusSongSequence = async (
     nextSequence: ProgramSongSequence,
   ) => {
+    // The sequence in state is the empty default while the rotation has not loaded: a save would replace the stored
+    // rotation. Refuse it, visibly, rather than let the operator think the edit was kept.
+    if (rotationLoadFailed) throw new Error(ROTATION_NOT_LOADED);
     // Like the mixer levels, the answer belongs to the program the sequence was saved for (gaulatti/alcantara#682).
     const targetProgramId = activeProgramId;
     const normalizedSongSequence = normalizeProgramSongPlaylist(
@@ -3564,8 +3581,13 @@ export default function Control() {
           </div>
         </>
       )}
+      {consoleWorkspace === "audio" && rotationLoadFailed ? (
+        <div className="px-3 pt-2">
+          <RotationLoadNotice onRetry={() => void fetchProgramAudioBusSettings(activeProgramId)} />
+        </div>
+      ) : null}
       {consoleWorkspace === "audio" && (
-        <div className="tv-audio-transport relative z-20 shrink-0">
+        <div className="tv-audio-transport relative z-20 shrink-0" inert={rotationLoadFailed || undefined}>
           <PlaybackBar
             sequence={programAudioBusSongSequence}
             programSongPlayback={programSongPlaybackState}
@@ -3586,6 +3608,7 @@ export default function Control() {
       )}
       <PlaylistSheetPanel
         isOpen={isPlaylistSheetOpen}
+        notice={rotationLoadFailed ? <RotationLoadNotice onRetry={() => void fetchProgramAudioBusSettings(activeProgramId)} /> : null}
         onClose={() => setIsPlaylistSheetOpen(false)}
         sequence={programAudioBusSongSequence}
         songCatalog={songCatalog}
