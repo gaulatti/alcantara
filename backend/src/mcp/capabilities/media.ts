@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
+import { PompeiiService } from '../../auth/pompeii.service';
 import { MediaService } from '../../media/media.service';
 import { ProgramService } from '../../program/program.service';
 import { McpToolProvider, type McpToolSpec } from '../contract';
@@ -37,11 +38,15 @@ export class MediaMcpTools {
   constructor(
     private readonly media: MediaService,
     private readonly programs: ProgramService,
+    private readonly pompeii: PompeiiService,
   ) {}
 
   /** The image and which programs read it, through a group or a scene. */
   private async mediaInUse(mediaId: number) {
-    const image = (await this.media.findOne(mediaId)) as MediaRow;
+    const image = (await this.media.findOne(
+      mediaId,
+      this.pompeii.teamId,
+    )) as MediaRow;
     const list = await loadUsage(this.programs);
     const groups = readingImage(list, mediaId);
     const scenes = scenesNaming(list, [image.imageUrl]);
@@ -68,13 +73,16 @@ export class MediaMcpTools {
           limit: z.number().int().min(1).max(200).optional(),
         },
         run: (args) =>
-          this.media.findAll({
-            search: args.search,
-            sortBy: args.sort_by,
-            sortOrder: args.sort_order,
-            page: args.page ?? 1,
-            limit: args.limit ?? 50,
-          }),
+          this.media.findAll(
+            {
+              search: args.search,
+              sortBy: args.sort_by,
+              sortOrder: args.sort_order,
+              page: args.page ?? 1,
+              limit: args.limit ?? 50,
+            },
+            this.pompeii.teamId,
+          ),
       }),
       readSpec({
         name: 'media_find_one',
@@ -82,7 +90,7 @@ export class MediaMcpTools {
         description: 'Returns one image by its id.',
         permission: permissions.read,
         shape: { media_id: rowIdArg },
-        run: (args) => this.media.findOne(args.media_id),
+        run: (args) => this.media.findOne(args.media_id, this.pompeii.teamId),
       }),
       actionSpec({
         name: 'media_create',
@@ -100,7 +108,10 @@ export class MediaMcpTools {
           recoverable: true,
         }),
         run: (args) =>
-          this.media.create({ name: args.name, imageUrl: args.image_url }),
+          this.media.create(
+            { name: args.name, imageUrl: args.image_url },
+            this.pompeii.teamId,
+          ),
       }),
       actionSpec({
         name: 'media_update',
@@ -133,6 +144,7 @@ export class MediaMcpTools {
           this.media.update(
             args.media_id,
             present({ name: args.name, imageUrl: args.image_url }),
+            this.pompeii.teamId,
           ),
       }),
       actionSpec({
@@ -165,7 +177,7 @@ export class MediaMcpTools {
               `image ${args.media_id} is read by program(s) on air: ${onAirIn.join(', ')}`,
             ],
           ]),
-        run: (args) => this.media.remove(args.media_id),
+        run: (args) => this.media.remove(args.media_id, this.pompeii.teamId),
       }),
     ];
   }

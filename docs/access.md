@@ -31,7 +31,7 @@ Alcántara has no service credential configured yet (`POMPEII_ACCESS_CREDENTIAL`
 
 ## Local browser check
 
-`scripts/access-fake/` runs the Access screen in a browser with no Pompeii and no Cognito. It is a local check tool: it is not in any image or deploy path (the backend and frontend images build from `backend/` and `frontend/` only).
+`scripts/access-fake/` runs the Access screen in a browser with no Pompeii and no Cognito. It is a local check tool: it is not in any image or deploy path. The frontend image builds from `frontend/`; the backend images build from the repository root, but their `backend/Dockerfile*.dockerignore` allowlists admit only the workspace manifests, the lockfile and `backend/`, never `scripts/` (gaulatti/alcantara#581, #590).
 
 ```sh
 export BACKEND_PORT=3224 VITE_PORT=5224 LOCALSTACK_PORT=4724   # any free ports

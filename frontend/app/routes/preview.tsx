@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Button, Card, Input, SectionHeader } from '@gaulatti/bleecker';
 import {
   BroadcastLayout,
@@ -16,7 +16,7 @@ import {
   ModoItalianoGiorgiaPodcastPlayer,
   ModoItalianoGiorgiaArtistBumper
 } from '../components';
-import { OVERLAY_COMPONENTS, getComponentMetadata } from '../models/components';
+import { OVERLAY_COMPONENTS, getDefaultPropsForComponent } from '../models/components';
 
 const STAGE_CLASS = 'relative min-h-screen bg-deep-sea';
 const STAGE_CENTER_CLASS = 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center text-white';
@@ -41,16 +41,18 @@ export default function Preview() {
   const [activeDemo, setActiveDemo] = useState<string>('ticker');
   const [chyronText, setChyronText] = useState('PROGRAM TITLE MESSAGE');
   const [showChyron, setShowChyron] = useState(false);
-  const previewRef = useRef<HTMLElement>(null);
   const [previewWidth, setPreviewWidth] = useState(1920);
-  useEffect(() => {
-    const element = previewRef.current;
+  const previewObserver = useRef<ResizeObserver | null>(null);
+  // React hands the stage element over when it mounts, and null when it unmounts.
+  const previewRef = useCallback((element: HTMLElement | null) => {
+    previewObserver.current?.disconnect();
+    previewObserver.current = null;
     if (!element) return;
     const observer = new ResizeObserver(([entry]) => {
       if (entry) setPreviewWidth(entry.contentRect.width);
     });
     observer.observe(element);
-    return () => observer.disconnect();
+    previewObserver.current = observer;
   }, []);
 
   const renderDemo = () => {
@@ -140,8 +142,7 @@ export default function Preview() {
           </div>
         );
       case 'reloj-digital-loop-clock': {
-        const metadata = getComponentMetadata('reloj-digital-loop-clock');
-        const defaultProps = metadata?.defaultProps || {};
+        const defaultProps = getDefaultPropsForComponent('reloj-digital-loop-clock');
         return (
           <div className={`${STAGE_CLASS}`}>
             <RelojDigitalLoopClock timezone={defaultProps.timezone} textSequence={defaultProps.textSequence} ctaSequence={defaultProps.ctaSequence} />
