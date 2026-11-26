@@ -6,7 +6,8 @@ import type { StatePillTone } from "./primitives";
 // shown as unverified or unavailable, never as a good one.
 
 /**
- * "unconfirmed": the desk has a song playing, but the engine is not connected to confirm it (#609).
+ * "unconfirmed": the desk has a song playing, but the engine is not connected to confirm it (#609), or
+ *   Palazzo answers but its playout (Liquidsoap) is down, so nothing can air (the airing walk's W5).
  * "unverified": the engine is connected, but no fresh output level arrived for a few seconds (#706).
  */
 export type OnAirState =
@@ -104,8 +105,10 @@ function introOf(playback: ProgramSongPlaybackState) {
 export function deriveOnAir(input: OnAirInput): OnAirView {
   const { playback } = input;
   const live = playback?.isPlaying === true;
-  // Only the engine confirms that a song is on air (gaulatti/alcantara#609).
-  const unconfirmed = live && !input.engine.connected;
+  // Only the engine confirms that a song is on air (gaulatti/alcantara#609), and never while its playout is
+  // down: a fresh output sample or a running rundown must not turn the pill back to On air (W5).
+  const unconfirmed =
+    live && (!input.engine.connected || input.playoutDown === true);
   const stale = live && !unconfirmed && playback?.telemetryStale === true;
   const unverified =
     live && !unconfirmed && !stale && input.outputUnverified === true;
