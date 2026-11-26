@@ -122,6 +122,18 @@ export type IntroTransitionResult =
   | 'failed'
   | 'ignored-mismatch';
 
+/**
+ * Why a song start was refused before anything was saved (gaulatti/alcantara#609): an operator's
+ * take or start (`engine_unavailable`), or a rundown's song (`automation_engine_unavailable`).
+ */
+export type StartRefusalReason =
+  | 'engine_unavailable'
+  | 'automation_engine_unavailable';
+const START_REFUSAL_REASONS: StartRefusalReason[] = [
+  'engine_unavailable',
+  'automation_engine_unavailable',
+];
+
 export type SongQueueActionResult =
   | 'enqueued'
   | 'claimed'
@@ -291,6 +303,8 @@ const RADIO_LOG_RESULTS = [
   'started',
   'start-failed',
   'cue-failed',
+  'cue-retried',
+  'cue-skipped',
   'preflight-failed',
   'poll-failed',
 ] as const;
@@ -502,6 +516,7 @@ export class RadioMetricsService {
   private readonly introTransitions = new Map<string, number>();
   private readonly songRequestFailures = new Map<string, number>();
   private readonly songQueueActions = new Map<string, number>();
+  private readonly startRefusals = new Map<string, number>();
   private songQueueDepth = 0;
   private readonly highRotationActions = new Map<string, number>();
   private readonly similarityActions = new Map<string, number>();
@@ -604,6 +619,12 @@ export class RadioMetricsService {
       result,
       (this.introTransitions.get(result) ?? 0) + 1,
     );
+  }
+
+  /** An operator's take or start refused before anything was saved, by bounded reason. */
+  recordStartRefused(reason: StartRefusalReason): void {
+    if (!START_REFUSAL_REASONS.includes(reason)) return;
+    this.startRefusals.set(reason, (this.startRefusals.get(reason) ?? 0) + 1);
   }
 
   recordSongQueueAction(result: SongQueueActionResult): void {
@@ -918,6 +939,15 @@ export class RadioMetricsService {
     for (const result of SONG_QUEUE_ACTION_RESULTS) {
       lines.push(
         `alcantara_radio_song_queue_actions_total{result="${result}"} ${this.songQueueActions.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_start_refused_total Song starts refused before anything was saved, by bounded reason (operator or rundown automation).',
+      '# TYPE alcantara_radio_start_refused_total counter',
+    );
+    for (const reason of START_REFUSAL_REASONS) {
+      lines.push(
+        `alcantara_radio_start_refused_total{reason="${reason}"} ${this.startRefusals.get(reason) ?? 0}`,
       );
     }
     lines.push(

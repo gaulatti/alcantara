@@ -1,4 +1,10 @@
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { useHoldToConfirm } from "./holdToConfirm";
 
 /**
@@ -30,7 +36,7 @@ export function HoldButton({
   children?: ReactNode;
 }) {
   const [tapped, setTapped] = useState(false);
-  const { progress, begin, end, cancel } = useHoldToConfirm({
+  const { progress, begin: beginHold, end, cancel } = useHoldToConfirm({
     holdMs,
     onConfirm,
     onTap: () => {
@@ -38,6 +44,15 @@ export function HoldButton({
       setTimeout(() => setTapped(false), 2_500);
     },
   });
+  // A disabled control never starts a hold, and one that becomes disabled mid-hold drops it, so a hold
+  // can never act after the control stopped allowing it (gaulatti/alcantara#693 review). Pointer
+  // events can still reach a disabled button, so the check cannot rely on the browser alone.
+  const begin = useCallback(() => {
+    if (!disabled) beginHold();
+  }, [beginHold, disabled]);
+  useEffect(() => {
+    if (disabled) cancel();
+  }, [cancel, disabled]);
   useEffect(() => {
     if (!globalKey || disabled) return;
     const typing = (target: EventTarget | null) =>

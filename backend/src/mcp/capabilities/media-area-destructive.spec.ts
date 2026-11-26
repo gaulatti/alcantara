@@ -68,6 +68,7 @@ function build() {
     ...new MediaAssetsMcpTools(
       services.assets as never,
       programs as never,
+      { teamId: 7 } as never,
     ).specs(),
   ];
   const live = (overrides: Record<string, unknown>) =>
@@ -283,7 +284,7 @@ describe('media_asset_remove_standalone_asset', () => {
     await spec('media_asset_remove_standalone_asset').run(args, ctx);
     expect(services.assets.removeStandaloneAsset).toHaveBeenCalledWith(
       'media:abc',
-      { permissions: ['alcantara:access'] },
+      { permissions: ['alcantara:access'], teamId: 7 },
     );
   });
 
@@ -351,6 +352,7 @@ describe('media_asset_remove_label', () => {
     await spec('media_asset_remove_label').run(args, ctx);
     expect(services.assets.removeLabel).toHaveBeenCalledWith('label-1', {
       permissions: ['alcantara:access'],
+      teamId: 7,
     });
   });
 });

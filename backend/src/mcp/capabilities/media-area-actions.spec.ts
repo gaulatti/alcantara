@@ -22,7 +22,7 @@ import { SongsMcpTools } from './songs';
 // writes answer a documented projection: ids instead of every asset).
 
 const grants = ['alcantara:access', 'alcantara:scene:manage'];
-const authorization = { permissions: grants };
+const authorization = { permissions: grants, teamId: 7 };
 const request = { user: { authorization } };
 const ctx = { principal: principalWith(...(grants as never[])) };
 
@@ -73,6 +73,7 @@ function build() {
     ...new MediaAssetsMcpTools(
       services.assets as never,
       programs as never,
+      { teamId: 7 } as never,
     ).specs(),
     ...new SimilarityMcpTools(services.similarity as never).specs(),
   ];

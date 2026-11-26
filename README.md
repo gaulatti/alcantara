@@ -73,7 +73,10 @@ camera, test their speaker/network, and confirm headphones before explicitly
 joining. A documented acoustic-risk override is available when headphones are
 impossible. Each invitation permits one active browser session. A signed
 session lease refreshed every 20 seconds preserves the stable slot for a
-60-second network-reconnect window; a second browser fails closed. Revocation
+60-second network-reconnect window; a second browser fails closed. Each refresh
+reports the call as it is then: connection quality, return-feed health, and
+whether the camera and microphone are on. A rejoin starts from the new room, with
+no return feed until it attaches (#672). Revocation
 disconnects the guest and prevents future credentials. A join refused as
 revoked, expired or invalid (401 or 403) ends the guest's session; any other
 refusal (the invitation in use in another window, the studio not ready, a
@@ -81,11 +84,13 @@ network or room-connection failure) keeps the preflight and lets the guest
 press Join again. A refused camera or microphone permission keeps Join locked.
 
 Operator mute is immediate. Camera/microphone enable is delivered as a request
-that the guest accepts or rejects. Standby/live/wrap cues and private messages
+that the guest accepts or rejects. A media command that names no camera or
+microphone is ignored. Standby/live/wrap cues and private messages
 persist requested, delivered, acknowledged/read, rejected, or failed state. A
 message is marked read as soon as the guest's page shows it and stays on screen
 until the guest presses Acknowledge, so operators see read and then
-acknowledged.
+acknowledged. Acknowledge clears the message even when the page has no session
+to send the receipt for.
 Private talkback publishes only to the target guest's N-1 route and never to the
 Program feed. Removing or disconnecting a guest does not mutate Preview or
 Program.

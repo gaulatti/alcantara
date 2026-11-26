@@ -9,6 +9,8 @@ import type { PrismaService } from '../prisma.service';
 import type { NowPlayingPublisherService } from './now-playing-publisher.service';
 import type { RadioMetricsService } from './radio-metrics.service';
 import type { PalazzoPlaybackState } from './palazzo-contract';
+import { AsRunService } from '../as-run/as-run.service';
+import type { SongEngineTrackEvent } from './song-execution.engine';
 
 const SONG_A = {
   id: 'song-a',
@@ -106,6 +108,7 @@ function setup(
   };
   const flightService = {
     isClockedLogRunning: jest.fn().mockReturnValue(false),
+    handleEngineAvailability: jest.fn(),
     handleSongEnded: jest.fn().mockResolvedValue({ ok: true }),
   };
   const publisher = {
@@ -1059,5 +1062,105 @@ describe('SongExecutionEngine broadcasting', () => {
     events.length = 0;
     jest.advanceTimersByTime(500);
     expect(events).toEqual([]);
+  });
+});
+
+// gaulatti/alcantara#716: a song commanded while the telemetry stream reconnects is confirmed by the
+// snapshot alone, and the as-run log had its end without its start.
+describe('a start missed across a reconnect', () => {
+  const commanded = () => {
+    const ctx = setup();
+    const rows: Array<Record<string, unknown>> = [];
+    const asRun = new AsRunService({
+      song: { findFirst: jest.fn().mockResolvedValue(null) },
+      mediaAsset: { findFirst: jest.fn().mockResolvedValue(null) },
+      asRunRecord: {
+        findFirst: jest.fn(async ({ where }) =>
+          rows.find(
+            (row) =>
+              row.playbackRequestId === where.playbackRequestId &&
+              row.state === where.state,
+          ),
+        ),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn(async ({ data }) => (rows.push(data), data)),
+      },
+    } as never,
+      // The station with no team; harmless while the service does not read it (gaulatti/alcantara#705).
+      { teamId: 0 } as never,
+    );
+    const tracked: SongEngineTrackEvent[] = [];
+    ctx.engine.trackEvents$.subscribe((event) => tracked.push(event));
+    ctx.engine.handleManualSong('radio-1', 'https://example.test/a.mp3', 'T', 'A');
+    const requestId = activeRequestId(ctx.engine);
+    const recorded = async () => {
+      for (const event of tracked.splice(0)) await asRun.handleTrackEvent(event);
+      return rows.map((row) => [row.state, row.inferred]);
+    };
+    return { ...ctx, rows, tracked, requestId, recorded };
+  };
+
+  it('records one inferred start at the reported time, once, and clears the pending command', async () => {
+    const { engine, tracked, requestId, rows, recorded } = commanded();
+    engine.handlePalazzoSnapshot('radio-1', playing(requestId));
+    engine.handlePalazzoSnapshot('radio-1', playing(requestId));
+    expect(tracked).toHaveLength(1);
+    expect(stateOf(engine).pendingRequestIds.has(requestId)).toBe(false);
+    await expect(recorded()).resolves.toEqual([['started', true]]);
+    expect(rows[0].at).toEqual(new Date('2026-01-01T00:00:00.000Z'));
+  });
+
+  it('adds no second row when the start event arrives late, and keeps the end', async () => {
+    const { engine, requestId, recorded } = commanded();
+    engine.handlePalazzoSnapshot('radio-1', playing(requestId));
+    for (const type of ['track.started', 'track.ended'] as const) {
+      engine.handlePalazzoEvent('radio-1', {
+        type,
+        data: { playbackRequestId: requestId },
+      });
+    }
+    await expect(recorded()).resolves.toEqual([
+      ['started', true],
+      ['ended', false],
+    ]);
+  });
+
+  it('keeps the on-air clock at the inferred start when the event arrives late', () => {
+    const { engine, tracked, requestId } = commanded();
+    engine.handlePalazzoSnapshot('radio-1', playing(requestId));
+    const inferred = stateOf(engine).activeSong!;
+    const startedAt = inferred.authoritativeStartedAt;
+    const positionMs = inferred.authoritativePositionMs;
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: requestId },
+    });
+    expect(startedAt).toBe(Date.parse('2026-01-01T00:00:00.000Z'));
+    expect(stateOf(engine).activeSong).toMatchObject({
+      authoritativeStartedAt: startedAt,
+      authoritativePositionMs: positionMs,
+    });
+    expect(tracked.map((event) => event.type)).toEqual(['track.started']);
+  });
+
+  it('infers nothing when the start event came first', async () => {
+    const { engine, requestId, recorded } = commanded();
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: requestId },
+    });
+    engine.handlePalazzoSnapshot('radio-1', playing(requestId));
+    await expect(recorded()).resolves.toEqual([['started', false]]);
+  });
+
+  it('starts now when the snapshot reports no start time', async () => {
+    const { engine, requestId, rows, recorded } = commanded();
+    const before = Date.now();
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      playing(requestId, { startedAt: '' }),
+    );
+    await recorded();
+    expect((rows[0].at as Date).getTime()).toBeGreaterThanOrEqual(before);
   });
 });

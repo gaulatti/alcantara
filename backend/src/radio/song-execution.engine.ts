@@ -90,7 +90,11 @@ export interface SongPlaybackData {
 }
 
 export type IntroPlaybackStatus =
-  'none' | 'pending' | 'playing' | 'completed' | 'degraded';
+  | 'none'
+  | 'pending'
+  | 'playing'
+  | 'completed'
+  | 'degraded';
 
 export type SongEngineEvent =
   | { type: 'playback_update'; programId: string; playback: SongPlaybackData }
@@ -449,7 +453,10 @@ export type SongEngineTrackEvent = {
  * longer the engine's successor, so the engine replaced it at once.
  */
 export type SongEngineEndReason =
-  'stopped' | 'replaced' | 'superseded' | 'preempted';
+  | 'stopped'
+  | 'replaced'
+  | 'superseded'
+  | 'preempted';
 
 /**
  * Drives radio automation from authoritative Palazzo playback state.
@@ -1387,10 +1394,12 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(
         `Freezing radio automation for ${programId}: Palazzo ${status.connection}`,
       );
+      this.flightService.handleEngineAvailability(programId, false);
     } else if (!unavailable && state.frozen) {
       state.frozen = false;
       state.reconciled = false;
       this.logger.log(`Unfreezing radio automation for ${programId}`);
+      this.flightService.handleEngineAvailability(programId, true);
     }
     this.emit({ type: 'radio_leg_status', programId, status });
   }
@@ -1677,29 +1686,32 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         if (!activeSong.coverUrl && typeof event.data.coverUrl === 'string') {
           activeSong.coverUrl = event.data.coverUrl;
         }
-        activeSong.authoritativeStartedAt = Date.now();
+        // A snapshot may already have recorded this start (gaulatti/alcantara#716): the late event
+        // then keeps that start and position, and is not recorded again.
+        const alreadyStarted = activeSong.authoritativeStartedAt !== null;
+        const startedAt = activeSong.authoritativeStartedAt ?? Date.now();
+        if (!alreadyStarted) {
+          activeSong.authoritativeStartedAt = startedAt;
+          activeSong.authoritativePositionMs = 0;
+          activeSong.authoritativeUpdatedAt = Date.now();
+        }
         // A song on the air ends a run of failed commands (#230).
         state.commandRetries = 0;
-        activeSong.authoritativePositionMs = 0;
-        activeSong.authoritativeUpdatedAt = Date.now();
         this.metrics.recordTrackTransition('adopted');
-        this.recordHighRotationStarted(
-          programId,
-          state,
-          activeSong,
-          activeSong.authoritativeStartedAt,
-        );
+        this.recordHighRotationStarted(programId, state, activeSong, startedAt);
         this.emitPlaybackUpdate(programId, activeSong);
-        this.emitTrackEvent(
-          programId,
-          event.type,
-          requestId,
-          event.data,
-          false,
-          undefined,
-          undefined,
-          activeSong.actor,
-        );
+        if (!alreadyStarted) {
+          this.emitTrackEvent(
+            programId,
+            event.type,
+            requestId,
+            event.data,
+            false,
+            undefined,
+            undefined,
+            activeSong.actor,
+          );
+        }
         this.refreshAnnouncement(programId);
       } else if (this.acceptAnnouncedStart(programId, state, requestId)) {
         // The announced song started, under overlap or at the handoff.
@@ -2481,6 +2493,33 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   // Internals
   // ---------------------------------------------------------------------
 
+  /**
+   * The playing snapshot is the first sign that the commanded song started: it
+   * does what its `track.started` would have, with one inferred as-run start at
+   * Palazzo's reported time, else now. A late event adds no second row: the
+   * as-run log keeps one per play and state.
+   */
+  private inferMissedStart(
+    programId: string,
+    state: SongEngineState,
+    song: ActiveSong,
+  ): void {
+    const startedAt = song.authoritativeStartedAt ?? Date.now();
+    song.authoritativeStartedAt = startedAt;
+    state.pendingRequestIds.delete(song.playbackRequestId);
+    this.recordHighRotationStarted(programId, state, song, startedAt);
+    this.emitTrackEvent(
+      programId,
+      'track.started',
+      song.playbackRequestId,
+      { title: song.title, artist: song.artist, url: song.audioUrl },
+      true,
+      undefined,
+      new Date(startedAt),
+      song.actor,
+    );
+  }
+
   private reconcilePlayingSnapshot(
     programId: string,
     state: SongEngineState,
@@ -2493,6 +2532,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       if (!song.coverUrl && snapshot.track?.coverUrl) {
         song.coverUrl = snapshot.track.coverUrl;
       }
+      // No start yet: its event was missed, for example a song commanded while
+      // the telemetry stream was reconnecting (gaulatti/alcantara#716).
+      const startMissed =
+        song.authoritativeStartedAt === null && !song.asRunClosed;
       const startedAt = Date.parse(snapshot.track?.startedAt ?? '');
       if (Number.isFinite(startedAt)) {
         song.authoritativeStartedAt = startedAt;
@@ -2502,6 +2545,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       );
       song.authoritativeUpdatedAt = Date.now();
       state.busyWithForeignTrack = false;
+      if (startMissed) this.inferMissedStart(programId, state, song);
       this.emitPlaybackUpdate(programId, song);
       return;
     }

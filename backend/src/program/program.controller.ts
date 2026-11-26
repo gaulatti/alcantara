@@ -456,6 +456,10 @@ export class ProgramController {
     @Param('programId') programId: string,
     @Body() data: { songSequence?: unknown; mixerSettings?: unknown },
   ) {
+    await this.programService.refuseOperatorStartWhileEngineUnavailable(
+      data,
+      programId,
+    );
     return this.programService.updateProgramAudioBus(data, programId);
   }
 

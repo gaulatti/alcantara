@@ -94,4 +94,6 @@ export interface FlightRuntimeState {
   startedAt: number;
   cueStartedAt?: number;
   scheduledAtMs: number | null;
+  /** A timed-block cue held through an engine outage (#719): its row and the time its grace runs from. */
+  engineRetry?: { index: number; dueAt: number };
 }

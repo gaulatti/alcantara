@@ -142,6 +142,7 @@ function createEngine(opts: {
   };
   const flightService = {
     isClockedLogRunning: jest.fn().mockReturnValue(false),
+    handleEngineAvailability: jest.fn(),
     handleSongEnded: jest.fn().mockResolvedValue({ ok: true }),
   };
   const metrics = {

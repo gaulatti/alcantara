@@ -5,6 +5,7 @@ function build() {
   const radio = {
     getRadioSettings: jest.fn(),
     updateRadioSettings: jest.fn(),
+    refuseStartWhileEngineUnavailable: jest.fn(),
     getRecoveryStatus: jest.fn(),
     prepareRecoveryPlaylist: jest.fn(),
     setRecoveryAutomation: jest.fn(),
