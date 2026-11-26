@@ -585,3 +585,32 @@ it("ignores arrow keys pressed on a button inside a row, which belong to that bu
   fireEvent.keyDown(inner, { key: "ArrowDown" });
   expect(element().getAttribute("src")).toBeNull();
 });
+
+// gaulatti/alcantara#668: below `sm` the list is one card per clip, title and length with the
+// row's controls; the table is not rendered at all, and the desktop layout is unchanged.
+it("lists each clip as a card below sm, with its title, length and controls, and no table", () => {
+  const matchMedia = vi.fn((query: string) => ({
+    matches: query === "(max-width: 639px)",
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+  vi.stubGlobal("matchMedia", matchMedia);
+  const props = setup();
+  expect(screen.queryByRole("table")).toBeNull();
+  const card = screen.getByRole("button", { name: /^Asset harbor\s/ });
+  expect(within(card.closest("li")!).getByText("3:34")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Play Asset harbor" })).toBeVisible();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select Asset harbor" }));
+  expect(props.onToggleSelected).toHaveBeenCalledWith("harbor", true);
+  fireEvent.click(card);
+  expect(screen.getByRole("button", { name: /^Asset harbor\s/ })).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  vi.unstubAllGlobals();
+});

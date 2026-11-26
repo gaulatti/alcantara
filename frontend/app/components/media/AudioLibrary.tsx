@@ -107,6 +107,22 @@ function AnalysisPill({ analysis }: { analysis: AssetAnalysisField }) {
   );
 }
 
+/** Below Tailwind's `sm` (640 px) the audio list is one card per clip instead of a table (gaulatti/alcantara#668). */
+const NARROW_LAYOUT_QUERY = "(max-width: 639px)";
+
+function useNarrowLayout(): boolean {
+  const [narrow, setNarrow] = useState(
+    () => window.matchMedia(NARROW_LAYOUT_QUERY).matches,
+  );
+  useEffect(() => {
+    const query = window.matchMedia(NARROW_LAYOUT_QUERY);
+    const onChange = () => setNarrow(query.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+  return narrow;
+}
+
 function Segmented<T extends string>({
   label,
   options,
@@ -496,6 +512,7 @@ export function AudioLibrary<T extends AudioLibraryAsset>({
   const audioRef = useRef<HTMLAudioElement>(null);
 
   const counts = useMemo(() => analysisCounts(assets), [assets]);
+  const narrow = useNarrowLayout();
   const visible = useMemo(
     () => filterByAnalysis(assets, analysisFilter),
     [assets, analysisFilter],
@@ -665,6 +682,54 @@ export function AudioLibrary<T extends AudioLibraryAsset>({
         <div className="overflow-hidden rounded-[var(--radius-card)] border border-sand/25">
           <div className="grid lg:grid-cols-[minmax(0,1fr)_22rem]">
             <div className="max-h-[34rem] overflow-auto">
+              {narrow ? (
+                <ul className="divide-y divide-sand/15">
+                  {visible.map((asset) => {
+                    const length = durationSeconds(asset);
+                    const isCurrent = asset.id === current?.id;
+                    const isPlaying = isCurrent && playingLoaded;
+                    return (
+                      <li
+                        key={asset.id}
+                        className={`flex items-center gap-2 px-2 py-2 ${isCurrent ? "bg-sea/10" : ""}`}
+                      >
+                        <label
+                          className="inline-flex shrink-0 items-center justify-center max-sm:-m-3 max-sm:min-h-11 max-sm:min-w-11"
+                        >
+                          <Checkbox
+                            aria-label={`Select ${asset.name}`}
+                            checked={selectedIds.has(asset.id)}
+                            onChange={(event) =>
+                              onToggleSelected(asset.id, event.target.checked)
+                            }
+                          />
+                        </label>
+                        <IconButton
+                          aria-label={`${isPlaying ? "Pause" : "Play"} ${asset.name}`}
+                          onClick={() => toggle(asset)}
+                        >
+                          {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+                        </IconButton>
+                        <button
+                          type="button"
+                          aria-current={isCurrent ? "true" : undefined}
+                          onClick={() => {
+                            if (!isCurrent) load(asset);
+                          }}
+                          className="min-w-0 flex-1 rounded-md py-1 text-left outline-none focus-visible:ring-1 focus-visible:ring-sea"
+                        >
+                          <span className="block truncate font-medium text-text-primary">
+                            {asset.name}
+                          </span>
+                          <span className="block text-[11px] tabular-nums text-text-secondary">
+                            {formatClock(length)}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-dark-sand/80 text-left text-[11px] uppercase tracking-wide text-text-secondary backdrop-blur">
                   <tr>
@@ -782,6 +847,7 @@ export function AudioLibrary<T extends AudioLibraryAsset>({
                   })}
                 </tbody>
               </table>
+)}
             </div>
             {current ? (
               <Detail

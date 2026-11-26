@@ -33,3 +33,22 @@ for (const name of ['localStorage', 'sessionStorage'] as const) {
     });
   }
 }
+
+// jsdom has no matchMedia. The audio list reads the phone breakpoint, so tests get the desktop
+// layout unless they stub the query themselves (gaulatti/alcantara#668).
+if (!window.matchMedia) {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
+}
