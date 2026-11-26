@@ -683,7 +683,7 @@ export function AudioLibrary<T extends AudioLibraryAsset>({
                     <th className="hidden px-2 py-2 text-right font-semibold md:table-cell">
                       Peak
                     </th>
-                    <th className="px-2 py-2 font-semibold">Analysis</th>
+                    <th className="hidden px-2 py-2 font-semibold sm:table-cell">Analysis</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -728,7 +728,7 @@ export function AudioLibrary<T extends AudioLibraryAsset>({
                             )}
                           </IconButton>
                         </td>
-                        <td className="min-w-0 px-2 py-2">
+                        <td className="min-w-0 max-sm:max-w-0 px-2 py-2">
                           <p className="truncate font-medium text-text-primary">
                             {asset.name}
                           </p>
@@ -769,7 +769,7 @@ export function AudioLibrary<T extends AudioLibraryAsset>({
                         >
                           {formatSigned(finished?.truePeakDbtp)}
                         </td>
-                        <td className="px-2 py-2">
+                        <td className="hidden px-2 py-2 sm:table-cell">
                           <AnalysisPill analysis={asset.analysis} />
                         </td>
                       </tr>
