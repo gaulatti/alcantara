@@ -19,6 +19,7 @@ describe('BroadcastDestinationsController coverage', () => {
     service as unknown as BroadcastDestinationsService,
     {} as never,
     keys as never,
+    {} as never,
   );
   const teamRequest = {
     user: { sub: 'operator-1', authorization: { teamId: 7 } },
@@ -111,6 +112,9 @@ describe('BroadcastDestinationsController coverage', () => {
       jest.doMock('./broadcast-ingest.service', () => ({
         BroadcastIngestService: undefined,
       }));
+      jest.doMock('./destination-test.service', () => ({
+        DestinationTestService: undefined,
+      }));
       jest.doMock('./broadcast-destination-keys.service', () => ({
         BroadcastDestinationKeysService: undefined,
       }));
@@ -119,6 +123,7 @@ describe('BroadcastDestinationsController coverage', () => {
           BroadcastDestinationsController: new (...args: never[]) => unknown;
         };
       expect(Reflect.getMetadata('design:paramtypes', Isolated)).toEqual([
+        Object,
         Object,
         Object,
         Object,

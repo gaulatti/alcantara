@@ -203,7 +203,8 @@ jobs:
         if: *verify-code
         run: |
           pnpm --dir frontend run typecheck
-          pnpm --dir frontend run test:coverage
+          # Retries once only when the sole failure is vitest's worker RPC timeout; see .github/scripts/frontend-tests.mjs.
+          node .github/scripts/frontend-tests.mjs
       - name: Test and build infrastructure
         if: *verify-code
         run: |

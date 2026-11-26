@@ -457,6 +457,11 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     programSongPlayback,
     rotation.activeItemId ?? null,
   );
+  // A row shows "On air" only for a song the engine has confirmed (gaulatti/alcantara#609).
+  const confirmedLiveLeaf =
+    engineReady && programSongPlayback?.telemetryStale !== true
+      ? liveLeaf
+      : null;
   const next = nextUp({
     sequence: rotation,
     queue: songQueue,
@@ -531,7 +536,9 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
             }
           >
             <div className="console-log-summary flex flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0 flex-1">
+              {/* A 12rem basis lets the playout modes wrap below on a phone instead of squeezing this text
+                  into a one-word column. */}
+              <div className="min-w-0 flex-[1_1_12rem]">
                 {timedBlockOnAir && activeLog ? (
                   <>
                     <strong>{activeLog.name}</strong>
@@ -798,7 +805,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     }}
                     view={addingFillers ? "full" : "queue"}
                     rotationLabel="Filler rotation"
-                    liveItemId={liveLeaf?.id ?? null}
+                    liveItemId={confirmedLiveLeaf?.id ?? null}
                     nextItemId={next?.itemId ?? null}
                   />
                 </div>
@@ -1034,6 +1041,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
       <PlaybackBar
         sequence={rotation}
         programSongPlayback={programSongPlayback}
+        engineUnconfirmed={!engineReady}
         onChange={(next) => {
           /* v8 ignore start -- PlaybackBar renders only in the timed block, where its sequence-change controls are hidden, so this save callback is never invoked */
           void Promise.resolve(onSaveSongSequence(next)).catch((cause) =>
@@ -1085,6 +1093,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
           onTake={takeNext}
           onTakeOffAir={onTakeOffAir}
           keysEnabled={!findingSong}
+          engineUnavailable={engineReady ? null : engineUnavailableLabel(palazzo)}
+          confirmedItemId={confirmedLiveLeaf?.id ?? null}
           onListen={
             monitor
               ? () =>

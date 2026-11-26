@@ -52,6 +52,7 @@ const permissionOf = (key: string): string => {
 
 const ctx = { principal: principalWith('alcantara:access' as never) };
 
+const INSTANT_TEAM = { user: { authorization: { teamId: 7 } } };
 const STINGER_TEAM = { user: { authorization: { teamId: 7 } } };
 
 function build() {
@@ -73,7 +74,11 @@ function build() {
     remove: jest.fn().mockResolvedValue({ deletedStingerId: 7 }),
   };
   const specs = [
-    ...new InstantsMcpTools(programs as never, radio as never).specs(),
+    ...new InstantsMcpTools(
+      programs as never,
+      radio as never,
+      { teamId: 7 } as never,
+    ).specs(),
     ...new StingersMcpTools(
       stingers as never,
       programs as never,
@@ -159,7 +164,9 @@ describe('instant writes return what the controller returns', () => {
       volume: 0.5,
       enabled: false,
     };
-    const expected = asRest(await controllers.instants.createInstant(body));
+    const expected = asRest(
+      await controllers.instants.createInstant(body, INSTANT_TEAM),
+    );
     const result = await run('instant_create_instant', {
       name: 'Station id',
       audio_url: 'https://cdn.example/a.mp3',
@@ -183,7 +190,11 @@ describe('instant writes return what the controller returns', () => {
 
   it('instant_update_instant leaves out what was not given', async () => {
     const { programs, controllers, run } = build();
-    await controllers.instants.updateInstant('8', { volume: 0.3 });
+    await controllers.instants.updateInstant(
+      '8',
+      { volume: 0.3 },
+      INSTANT_TEAM,
+    );
     const result = await run('instant_update_instant', {
       instant_id: 8,
       volume: 0.3,
@@ -191,7 +202,11 @@ describe('instant writes return what the controller returns', () => {
     expect(programs.updateInstant.mock.calls[1]).toEqual(
       programs.updateInstant.mock.calls[0],
     );
-    expect(programs.updateInstant).toHaveBeenLastCalledWith(8, { volume: 0.3 });
+    expect(programs.updateInstant).toHaveBeenLastCalledWith(
+      8,
+      { volume: 0.3 },
+      7,
+    );
     expect(rebuilt(result)).toEqual(asRest(instantRow()));
     await run('instant_update_instant', {
       instant_id: 8,
@@ -199,11 +214,15 @@ describe('instant writes return what the controller returns', () => {
       audio_url: 'https://cdn.example/b.mp3',
       enabled: false,
     });
-    expect(programs.updateInstant).toHaveBeenLastCalledWith(8, {
-      name: 'N',
-      audioUrl: 'https://cdn.example/b.mp3',
-      enabled: false,
-    });
+    expect(programs.updateInstant).toHaveBeenLastCalledWith(
+      8,
+      {
+        name: 'N',
+        audioUrl: 'https://cdn.example/b.mp3',
+        enabled: false,
+      },
+      7,
+    );
   });
 
   it('instant_update_instant flags a change that shows on air', async () => {
@@ -252,13 +271,13 @@ describe('instant_play_instant and instant_stop_all_instants', () => {
   it('play reaches the service for the program and answers what the controller answers', async () => {
     const { programs, controllers, run, plan, specs } = build();
     const expected = asRest(
-      await controllers.instants.playInstant('8', 'main'),
+      await controllers.instants.playInstant('8', INSTANT_TEAM, 'main'),
     );
     const result = await run('instant_play_instant', {
       instant_id: 8,
       program_id: 'main',
     });
-    expect(programs.playInstant).toHaveBeenLastCalledWith(8, 'main');
+    expect(programs.playInstant).toHaveBeenLastCalledWith(8, 'main', 7);
     expect(result).toEqual(expected);
     const plain = await plan('instant_play_instant', {
       instant_id: 8,

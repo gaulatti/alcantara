@@ -808,3 +808,44 @@ it("sends the custom address with a hand-added destination's first key, and refu
   });
   expect(within(renameDialog).getByRole("button", { name: "Rename" })).toBeEnabled();
 });
+
+// gaulatti/alcantara#384: the Test button asks the ingest whether it takes the saved key and says what it answered.
+it("tests a destination and reports accepted, refused, unreachable and a failed request", async () => {
+  render(<Broadcasts />);
+  await screen.findAllByRole("button", { name: /^Test / });
+  const test = () => screen.getAllByRole("button", { name: /^Test / })[0];
+  for (const [answer, text] of [
+    [{ result: "accepted" }, /accepted the key/],
+    [{ result: "refused", message: "BadName" }, /refused the key: BadName/],
+    [{ result: "unreachable" }, /could not be reached: no details/],
+  ] as const) {
+    api.post.mockResolvedValueOnce({ data: answer });
+    fireEvent.click(test());
+    expect((await screen.findAllByText(text))[0]).toBeInTheDocument();
+    await waitFor(() => expect(test()).toBeEnabled());
+  }
+  expect(api.post).toHaveBeenLastCalledWith(
+    expect.stringMatching(/^\/broadcast\/destinations\/.+\/test$/),
+  );
+  api.post.mockRejectedValueOnce(new Error("Too soon"));
+  fireEvent.click(test());
+  expect((await screen.findAllByText(/An unexpected error occurred/))[0]).toBeInTheDocument();
+});
+
+
+it("closes the start confirmation with Escape and starts nothing", async () => {
+  api.post.mockResolvedValue({
+    data: { commandId: "c", action: "reload", status: "ok", selectionVersion: "sel-1" },
+  });
+  await page();
+  fireEvent.click(checkbox("Primary platform"));
+  fireEvent.click(screen.getByRole("button", { name: /Reload while stopped/ }));
+  expect(await screen.findByText("Validated sel-1")).toBeInTheDocument();
+  fireEvent.click(checkbox("Backup platform"));
+  fireEvent.click(checkbox("Backup platform"));
+  fireEvent.click(screen.getByRole("button", { name: /Confirm Start/ }));
+  const dialog = await screen.findByRole("dialog", { name: "Confirm television Start" });
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(api.post).toHaveBeenCalledTimes(1);
+});
