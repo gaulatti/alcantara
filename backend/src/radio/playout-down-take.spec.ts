@@ -282,8 +282,45 @@ describe('RadioService refuses a take on a fresh playout-down report only', () =
       expect(lines).toEqual([
         'alcantara_radio_take_playout_unconfirmed_total{report="stale"} 0',
         'alcantara_radio_take_playout_unconfirmed_total{report="unknown"} 0',
+        'alcantara_radio_take_playout_unconfirmed_total{report="tv_leg"} 0',
       ]);
     }
+  });
+
+  // Yakko's #795 review: a simulcast program's own output airs the song on TV, so a radio playout report never
+  // refuses its take; it goes through, counted. A radio-only program is still refused.
+  it('lets a simulcast take through on a fresh down report, counted as tv_leg', async () => {
+    const simulcast = {
+      programState: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ type: 'both', radioSettings: { enabled: true } }),
+      },
+    };
+    const metrics = new RadioMetricsService();
+    const service = new RadioService(
+      simulcast as never,
+      {} as never,
+      {} as never,
+      metrics,
+      { teamId: 0 } as never,
+    );
+    service.setPlayoutReports(reporting('down'));
+    await expect(
+      service.refuseStartWhileEngineUnavailable('simulcast-1'),
+    ).resolves.toBeUndefined();
+    const text = metrics.render();
+    expect(
+      metricLine(text, 'alcantara_radio_take_playout_unconfirmed_total', 'report="tv_leg"'),
+    ).toBe('alcantara_radio_take_playout_unconfirmed_total{report="tv_leg"} 1');
+    expect(
+      metricLine(text, 'alcantara_radio_start_refused_total', 'reason="playout_down"'),
+    ).toBe('alcantara_radio_start_refused_total{reason="playout_down"} 0');
+    // An unknown program is not radio-only either: its take is not refused.
+    simulcast.programState.findUnique.mockResolvedValue(null);
+    await expect(
+      service.refuseStartWhileEngineUnavailable('missing'),
+    ).resolves.toBeUndefined();
   });
 
   it('ignores an unbounded report value in the counter', () => {

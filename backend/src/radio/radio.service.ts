@@ -384,6 +384,16 @@ export class RadioService {
     // counted, because a wrong refusal is dead air too. A program with no engine client is not judged here.
     const report = this.playoutReports?.playoutReport(programId) ?? null;
     if (report === 'down') {
+      // As for engine_unavailable (#609), only a radio-only program is refused: a simulcast program's own output
+      // plays the song on TV whatever its radio leg does, so its take goes through, counted (Yakko's #795 review).
+      const state = await this.prisma.programState.findUnique({
+        where: { programId },
+        select: { type: true },
+      });
+      if (state?.type !== 'radio') {
+        this.metrics.recordPlayoutUnconfirmedTake('tv_leg');
+        return;
+      }
       this.metrics.recordStartRefused('playout_down');
       throw new ConflictException({
         statusCode: 409,

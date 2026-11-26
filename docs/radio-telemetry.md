@@ -534,7 +534,8 @@ rundown song that was skipped and logged as not aired, and `playout_down` for an
 while Palazzo freshly reports its playout (Liquidsoap) down (the airing walk's D4; all exposed from 0),
 `alcantara_radio_take_playout_unconfirmed_total{report}` for an operator's take on a radio engine let through
 without a fresh playout report (`stale`: the last report was down but older than the idle watchdog plus the
-staleness window, 45 s by default, or the client no longer hears Palazzo; `unknown`: no report yet; both exposed
+staleness window, 45 s by default, or the client no longer hears Palazzo; `unknown`: no report yet; `tv_leg`: a
+fresh down report on a simulcast program, whose own output airs the take on TV, so it is never refused; all exposed
 from 0),
 `alcantara_radio_cursor_writes_total{result}` for the write of the playlist cursor
 after it advanced (`succeeded`, `failed`: the database refused or timed out and

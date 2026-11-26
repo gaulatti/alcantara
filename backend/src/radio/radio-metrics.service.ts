@@ -139,10 +139,15 @@ const START_REFUSAL_REASONS: StartRefusalReason[] = [
 
 /**
  * A take let through although the last playout report was down (D4): the report is older than its freshness window
- * (`stale`), or the engine's client has no playout report yet (`unknown`). A wrong refusal is dead air too.
+ * (`stale`), or the engine's client has no playout report yet (`unknown`), or on a program with a TV leg, whose own output airs the take whatever its radio playout does
+ * (`tv_leg`, Yakko's #795 review). A wrong refusal is dead air too.
  */
-export type PlayoutUnconfirmedTake = 'stale' | 'unknown';
-const PLAYOUT_UNCONFIRMED_TAKES: PlayoutUnconfirmedTake[] = ['stale', 'unknown'];
+export type PlayoutUnconfirmedTake = 'stale' | 'unknown' | 'tv_leg';
+const PLAYOUT_UNCONFIRMED_TAKES: PlayoutUnconfirmedTake[] = [
+  'stale',
+  'unknown',
+  'tv_leg',
+];
 
 export type SongQueueActionResult =
   | 'enqueued'
@@ -1053,7 +1058,7 @@ export class RadioMetricsService {
       );
     }
     lines.push(
-      '# HELP alcantara_radio_take_playout_unconfirmed_total Operator takes on a radio engine let through without a fresh playout report: the last report was down but stale, or there was no report yet.',
+      '# HELP alcantara_radio_take_playout_unconfirmed_total Operator takes let through although playout was not freshly up: the last report was down but stale, there was no report yet, or the program has a TV leg that airs the take whatever its radio playout does.',
       '# TYPE alcantara_radio_take_playout_unconfirmed_total counter',
     );
     for (const report of PLAYOUT_UNCONFIRMED_TAKES) {
