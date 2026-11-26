@@ -8,7 +8,12 @@ const reanalysis = {
   ),
   request: jest.fn(async () => ({ requested: 2, skipped: [] })),
 };
-const tools = new SongReanalysisMcpTools(reanalysis as never);
+const tools = new SongReanalysisMcpTools(
+  reanalysis as never,
+  {
+    teamId: 7,
+  } as never,
+);
 const spec = tools.specs()[0];
 const ctx = {} as never;
 
@@ -56,7 +61,8 @@ describe('song_request_reanalysis (gaulatti/alcantara#235)', () => {
       result: { requested: 2, skipped: [] },
       audit: { target: '4,5' },
     });
-    expect(reanalysis.request).toHaveBeenCalledWith([4, 5], undefined);
+    expect(reanalysis.request).toHaveBeenCalledWith([4, 5], 7, undefined);
+    expect(reanalysis.onAir).toHaveBeenCalledWith([4, 5], 7);
   });
 
   it('names the rule in the plan and passes it on: previous is the way back that needs no deploy', async () => {
@@ -70,7 +76,7 @@ describe('song_request_reanalysis (gaulatti/alcantara#235)', () => {
     };
     expect(dflt.summary).toContain('on rule C2');
     await spec.run({ song_ids: [4], rule: 'previous' }, ctx);
-    expect(reanalysis.request).toHaveBeenLastCalledWith([4], 'previous');
+    expect(reanalysis.request).toHaveBeenLastCalledWith([4], 7, 'previous');
     expect(spec.shape.rule.safeParse('B').success).toBe(false);
     expect(spec.shape.rule.safeParse('previous').success).toBe(true);
     expect(spec.shape.rule.safeParse('C').success).toBe(true);
@@ -87,6 +93,9 @@ describe('SongReanalysisMcpTools dependency metadata', () => {
         MAX_REANALYSIS_BATCH: 25,
         REANALYSIS_RULES: ['C2', 'C', 'previous'],
       }));
+      jest.doMock('../../auth/pompeii.service', () => ({
+        PompeiiService: undefined,
+      }));
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const loaded = require('./song-reanalysis') as {
         SongReanalysisMcpTools: new (...args: never[]) => unknown;
@@ -95,8 +104,9 @@ describe('SongReanalysisMcpTools dependency metadata', () => {
         'design:paramtypes',
         loaded.SongReanalysisMcpTools,
       ) as Array<{ name: string }>;
-      expect(types.map((type) => type.name)).toEqual(['Object']);
+      expect(types.map((type) => type.name)).toEqual(['Object', 'Object']);
     });
     jest.dontMock('../../songs/song-reanalysis.service');
+    jest.dontMock('../../auth/pompeii.service');
   });
 });

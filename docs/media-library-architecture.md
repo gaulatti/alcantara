@@ -228,6 +228,8 @@ anything is queued. A stored success always
 passes the bounds the Palazzo client enforces on a song command
 (`validateSongSegue` and `validateSongLoudness`), with a missing cue checked as
 the file's own edge; anything else is recorded as a failure.
+Only the caller team's songs are queued (the station team over MCP; gaulatti/alcantara#122). Another team's song is
+listed as skipped, like one that is not found, and where it is on air is not reported.
 
 **States.** `pending` while a run holds the row (a ten minute lease), `success`
 with the measurements, `failed` with no measurements and a bounded `error` code:
