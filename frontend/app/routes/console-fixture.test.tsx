@@ -537,7 +537,7 @@ it("hands the radio desk its fixture data for every radio state", () => {
     ["?state=radio-not-configured", { palazzo: "unavailable" }],
     ["?state=radio-playout-down", { palazzo: "connected", playout: "down" }],
     ["?state=radio-continuous", { logs: [] }],
-    ["?state=radio-fallback", { logs: [], playback: null, output: "audible" }],
+    ["?state=radio-audio-off-rundown", { logs: [], playback: null, output: "audible" }],
     [
       "?state=radio-skipped",
       { skipped: ["fixture-cue-2"], active: ["fixture-cue-3"] },

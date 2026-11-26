@@ -549,6 +549,15 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     monitor: monitor ? monitor.state : "unavailable",
     outputSilent: output?.state === "silent",
     outputAudible: output?.state === "audible",
+    // D7: the desk knows of an instant airing and of a log block on air. Live input and scene audio are not reported
+    // to it, so it can never rule them out: it says "active" or "unknown", never "none".
+    otherAudio:
+      timedBlockOnAir ||
+      Object.values(instantPlayback).some(
+        (instant) => instant.endsAtMs === null || instant.endsAtMs > Date.now(),
+      )
+        ? "active"
+        : "unknown",
     playoutDown,
   };
   const recoveryControlsRef = useRef<HTMLDetailsElement>(null);
