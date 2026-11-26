@@ -213,8 +213,8 @@ function getSelectedItem(
 
   const baseIndex = getBaseIndex(sequence);
   if (sequence.mode === 'manual') {
-    /* v8 ignore next -- getBaseIndex returns 0 or a valid index, and items is non-empty here (checked above), so items[baseIndex] is always defined; the null fallback is defensive. */
-    return sequence.items[baseIndex] ?? null;
+    // getBaseIndex returns 0 or a valid index, and items is non-empty here (checked above).
+    return sequence.items[baseIndex];
   }
 
   const startedAt = sequence.startedAt ?? nowMs;
@@ -228,8 +228,8 @@ function getSelectedItem(
     nextIndex = sequence.items.length - 1;
   }
 
-  /* v8 ignore next -- nextIndex is wrapped when looping and clamped to the last item otherwise, and starts at a valid index, so it is always in range; the null fallback is defensive. */
-  return sequence.items[nextIndex] ?? null;
+  // nextIndex is wrapped when looping and clamped to the last item otherwise, so it is always in range.
+  return sequence.items[nextIndex];
 }
 
 export function getToniChyronSequenceSelectedItemId(
