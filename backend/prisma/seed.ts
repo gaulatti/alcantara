@@ -77,9 +77,22 @@ export async function seedLocalDatabase(
     ],
   };
 
+  // Compose re-runs this seed on every backend start. What an operator changed (rotations, show type, mixer, the
+  // on-air scene, the log pointer) is written only when the show is created by this run, never on a re-run: a
+  // show taken off air must not come back with a scene on air (Yakko's #800 review).
+  const existingShows = new Set(
+    (
+      await prisma.programState.findMany({
+        where: { programId: { in: ['main', 'tv-demo', 'radio-demo'] } },
+        select: { programId: true },
+      })
+    ).map((row) => row.programId),
+  );
+  const isNewShow = (programId: string) => !existingShows.has(programId);
+
   const mainProgram = await prisma.programState.upsert({
     where: { programId: 'main' },
-    update: { type: 'both', audioMixer: defaultAudioMixer as any },
+    update: {},
     create: {
       programId: 'main',
       type: 'both',
@@ -90,7 +103,7 @@ export async function seedLocalDatabase(
 
   const tvProgram = await prisma.programState.upsert({
     where: { programId: 'tv-demo' },
-    update: { type: 'tv', audioMixer: defaultAudioMixer as any },
+    update: {},
     create: {
       programId: 'tv-demo',
       type: 'tv',
@@ -100,7 +113,7 @@ export async function seedLocalDatabase(
 
   const radioProgram = await prisma.programState.upsert({
     where: { programId: 'radio-demo' },
-    update: { type: 'radio', audioMixer: defaultAudioMixer as any },
+    update: {},
     create: {
       programId: 'radio-demo',
       type: 'radio',
@@ -348,14 +361,18 @@ export async function seedLocalDatabase(
     loop: false,
     startedAt: 0,
   };
-  await prisma.programState.update({
-    where: { id: mainProgram.id },
-    data: { songSequence: songSequence as any },
-  });
-  await prisma.programState.update({
-    where: { id: radioProgram.id },
-    data: { songSequence: radioSongSequence as any },
-  });
+  if (isNewShow('main')) {
+    await prisma.programState.update({
+      where: { id: mainProgram.id },
+      data: { songSequence: songSequence as any },
+    });
+  }
+  if (isNewShow('radio-demo')) {
+    await prisma.programState.update({
+      where: { id: radioProgram.id },
+      data: { songSequence: radioSongSequence as any },
+    });
+  }
 
   const demoLayout = await prisma.layout.upsert({
     where: { name: 'Local operator demo' },
@@ -412,7 +429,8 @@ export async function seedLocalDatabase(
       }),
     },
   });
-  for (const programStateId of [mainProgram.id, tvProgram.id]) {
+  for (const program of [mainProgram, tvProgram]) {
+    const programStateId = program.id;
     await prisma.programScene.upsert({
       where: {
         programStateId_sceneId: {
@@ -420,7 +438,7 @@ export async function seedLocalDatabase(
           sceneId: previewScene.id,
         },
       },
-      update: { position: 9001 },
+      update: {},
       create: { programStateId, sceneId: previewScene.id, position: 9001 },
     });
     await prisma.programScene.upsert({
@@ -430,17 +448,19 @@ export async function seedLocalDatabase(
           sceneId: programScene.id,
         },
       },
-      update: { position: 9002 },
+      update: {},
       create: { programStateId, sceneId: programScene.id, position: 9002 },
     });
-    await prisma.programState.update({
-      where: { id: programStateId },
-      data: {
-        activeSceneId: programScene.id,
-        stagedSceneId: previewScene.id,
-        fadeToBlack: false,
-      },
-    });
+    if (isNewShow(program.programId)) {
+      await prisma.programState.update({
+        where: { id: programStateId },
+        data: {
+          activeSceneId: programScene.id,
+          stagedSceneId: previewScene.id,
+          fadeToBlack: false,
+        },
+      });
+    }
   }
 
   const localMedia = await prisma.media.upsert({
@@ -616,7 +636,7 @@ export async function seedLocalDatabase(
           name: definition.name,
         },
       },
-      update: { items: definition.items as any, loop: false },
+      update: {},
       create: {
         programStateId: definition.program.id,
         name: definition.name,
@@ -624,10 +644,12 @@ export async function seedLocalDatabase(
         loop: false,
       },
     });
-    await prisma.programState.update({
-      where: { id: definition.program.id },
-      data: { activeFlightSequenceId: sequence.id },
-    });
+    if (isNewShow(definition.program.programId)) {
+      await prisma.programState.update({
+        where: { id: definition.program.id },
+        data: { activeFlightSequenceId: sequence.id },
+      });
+    }
   }
 
   const seededProfiles = [
