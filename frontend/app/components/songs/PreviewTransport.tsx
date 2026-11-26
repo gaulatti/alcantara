@@ -45,9 +45,9 @@ export function Transport({
       ? Math.max(0, position)
       : Math.min(Math.max(0, position), length);
   const percent = (seconds: number, total: number) => Math.max(0, Math.min(100, (seconds / total) * 100));
-  const seekTo = (seconds: number) => {
-    if (onSeek && length !== null)
-      onSeek(Math.max(0, Math.min(length, seconds)));
+  // Only the timeline seeks, and it renders only when the length is known, so the total comes in with the call.
+  const seekTo = (total: number, seconds: number) => {
+    if (onSeek) onSeek(Math.max(0, Math.min(total, seconds)));
   };
   const button =
     "inline-flex h-8 w-8 items-center justify-center rounded-full text-text-secondary hover:bg-sand/20 hover:text-text-primary disabled:pointer-events-none disabled:opacity-40";
@@ -93,16 +93,16 @@ export function Transport({
               onToggle();
             } else if (event.key === "ArrowRight") {
               event.preventDefault();
-              seekTo(clamped + SEEK_STEP_SECONDS);
+              seekTo(length, clamped + SEEK_STEP_SECONDS);
             } else if (event.key === "ArrowLeft") {
               event.preventDefault();
-              seekTo(clamped - SEEK_STEP_SECONDS);
+              seekTo(length, clamped - SEEK_STEP_SECONDS);
             }
           }}
           onClick={(event) => {
             const box = event.currentTarget.getBoundingClientRect();
             if (!disabled && box.width > 0)
-              seekTo(((event.clientX - box.left) / box.width) * length);
+              seekTo(length, ((event.clientX - box.left) / box.width) * length);
           }}
           className="relative h-4 min-w-24 flex-1 cursor-pointer"
         >

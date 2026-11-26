@@ -253,7 +253,7 @@ export class ProgramController {
   }
 
   @Post(':programId/song-playback')
-  @Public()
+  @RequirePermission(ALCANTARA_PERMISSIONS.program.operate)
   async updateProgramSongPlaybackById(
     @Param('programId') programId: string,
     @Body()

@@ -33,3 +33,35 @@ test('the build context keeps the lockfile and leaves local secrets and installs
 test('the deploy builds the backend image from the repository root, where the lockfile is', () => {
   assert.match(deploy, /-f backend\/Dockerfile \\\n(?:\s+-t [^\n]+\\\n)+\s+\.\n/);
 });
+
+// gaulatti/alcantara#590: the development image (Compose) installs the same lockfile, so local runs use the
+// versions CI and production use.
+const devDockerfile = read('backend/Dockerfile.dev');
+const devIgnore = read('backend/Dockerfile.dev.dockerignore').split('\n').map((line) => line.trim());
+
+test('the development image installs with the frozen lockfile, never a floating install', () => {
+  const installs = devDockerfile.match(/^RUN pnpm install\b.*$/gm) ?? [];
+  assert.deepEqual(installs, ['RUN pnpm install --frozen-lockfile --ignore-scripts --filter backend']);
+  assert.doesNotMatch(devDockerfile, /--no-frozen-lockfile/);
+  const install = devDockerfile.indexOf('RUN pnpm install');
+  for (const copy of ['COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./', 'COPY backend/package.json backend/', 'COPY frontend/package.json frontend/', 'COPY infra/aws/package.json infra/aws/'])
+    assert.ok(devDockerfile.indexOf(copy) >= 0 && devDockerfile.indexOf(copy) < install, copy);
+});
+
+test('the development build context keeps the lockfile and leaves local secrets and installs out', () => {
+  for (const kept of ['!package.json', '!pnpm-lock.yaml', '!pnpm-workspace.yaml', '!backend/']) assert.ok(devIgnore.includes(kept), kept);
+  for (const left of ['*', 'backend/.env', 'backend/node_modules']) assert.ok(devIgnore.includes(left), left);
+});
+
+test('every Compose build of the development image uses the repository root', () => {
+  // compose.yml builds it for backend and alana-recording-fixture; the access fake builds it once.
+  for (const [file, expected] of [['compose.yml', 2], ['scripts/access-fake/compose.yml', 1]]) {
+    const compose = read(file);
+    const builds = [...compose.matchAll(/context: (\S+)\n\s+dockerfile: (\S+)/g)].filter(
+      (match) => match[2] === 'backend/Dockerfile.dev' || match[1] === './backend',
+    );
+    assert.equal(builds.length, expected, file);
+    for (const [, context, dockerfile] of builds) assert.deepEqual([context, dockerfile], ['.', 'backend/Dockerfile.dev'], file);
+    assert.doesNotMatch(compose, /context: \.\/backend\b/, file);
+  }
+});
