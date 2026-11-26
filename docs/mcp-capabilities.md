@@ -302,7 +302,7 @@ stopped, or the log moved to another cue is refused as `confirm_mismatch`; for
 | `program_deactivate_flight_sequence_by_id` | Stops the flight, cuts the song and clears the active sequence. |
 | `program_start_flight_by_id` | Starts the active sequence from cue 1 (a running one stops, cutting the song, and starts over); its cues then act on air by themselves. |
 | `program_stop_flight_by_id` | Stops the cues and cuts the song, turning the rotation to manual; the sequence stays active. |
-| `program_go_flight_by_id` | Runs the next cue at once; with no flight running it starts the active sequence. A clocked log cannot advance before its scheduled start. |
+| `program_go_flight_by_id` | Runs the next cue at once; with no flight running it starts the active sequence. A clocked log cannot advance before its scheduled start. Refused with on_air, dry run included, only while Palazzo freshly reports the playout of a radio-only program down (the take's rule, D4); a stale or missing report and a simulcast program go through, counted (#788). |
 | `program_reset_flight_by_id` | Stops, cuts the song, clears the position; restarts from cue 1 if it was running. |
 
 The answers are the console's (`{activeSequenceId}` or `{ok: true}`).

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
 import { FlightService, START_GRACE_MS } from '../../program/flight.service';
 import { ProgramService } from '../../program/program.service';
+import { RadioService } from '../../radio/radio.service';
 import { McpToolError, McpToolProvider, type McpToolSpec } from '../contract';
 import { loadProgramLive, whyNot, type ProgramLive } from './on-air';
 import {
@@ -116,16 +117,24 @@ function describe(sequence: SequenceRow): string {
  * capability refuses with on_air while the sequence is running, is the
  * active sequence, or is published and queued to start.
  */
+type AdvanceLive = FlightLive & {
+  playout: Awaited<ReturnType<RadioService['judgePlayout']>>;
+};
+
 @Injectable()
 @McpToolProvider()
 export class FlightMcpTools {
   constructor(
     private readonly flights: FlightService,
     private readonly programs: ProgramService,
+    private readonly radio: RadioService,
   ) {}
 
   /** The rundown desk's overrun for a log's cues, from the stored lengths of the program team's songs. */
-  private async overrunMs(programId: string, items: OverrunCue[]): Promise<number> {
+  private async overrunMs(
+    programId: string,
+    items: OverrunCue[],
+  ): Promise<number> {
     const songIds = [
       ...new Set(
         items.flatMap((cue) =>
@@ -546,16 +555,36 @@ export class FlightMcpTools {
         recoverable: false,
         call: (args) => this.flights.stop(args.program_id),
       }),
-      this.operate({
+      // #788 (MCP parity, item 2): Advance refuses by the take's rule (D4), judged on the same service path.
+      actionSpec<{ program_id: typeof programIdArg }, AdvanceLive>({
         name: 'program_go_flight_by_id',
         title: 'Advance the flight to the next cue',
         description:
-          'Runs the next cue of the running flight of a program at once (or, when no flight is running, starts the active sequence). A clocked log cannot advance before its scheduled start.',
+          'Runs the next cue of the running flight of a program at once (or, when no flight is running, starts the active sequence). A clocked log cannot advance before its scheduled start. Refused with on_air while Palazzo freshly reports the playout of a radio-only program down.',
+        permission: permissions.operate,
+        tier: 'A',
         shape: program,
-        summary: (args, loaded) =>
-          `Runs the next cue of program ${args.program_id} now (${position(loaded)}); with no flight running it starts the active sequence from cue 1. The cue acts on air at once and cannot be taken back. Live now: ${loaded.live.liveText}.`,
-        recoverable: false,
-        call: (args) => this.flights.go(args.program_id),
+        load: async (args) => ({
+          ...(await this.load(args.program_id)),
+          playout: await this.radio.judgePlayout(args.program_id),
+        }),
+        id: (args) => args.program_id,
+        label: (_args, loaded) => loaded.stamp,
+        plan: (args, loaded) => ({
+          summary: `Runs the next cue of program ${args.program_id} now (${position(loaded)}); with no flight running it starts the active sequence from cue 1. The cue acts on air at once and cannot be taken back. Live now: ${loaded.live.liveText}.`,
+          affects: this.affects(args.program_id, loaded.active),
+          recoverable: false,
+        }),
+        refuse: (_args, loaded) =>
+          loaded.playout === 'down'
+            ? 'Playout down: nothing can air. Nothing was advanced.'
+            : null,
+        onRefused: (_args, loaded) =>
+          this.radio.recordPlayoutVerdict(loaded.playout),
+        run: (args, loaded) => {
+          this.radio.recordPlayoutVerdict(loaded.playout);
+          return this.flights.go(args.program_id);
+        },
       }),
       this.operate({
         name: 'program_reset_flight_by_id',

@@ -80,9 +80,14 @@ export function buildFlight() {
     flights as never,
     f.templates as never,
   );
+  const radio = {
+    judgePlayout: jest.fn().mockResolvedValue(null),
+    recordPlayoutVerdict: jest.fn(),
+  };
   const specs = new FlightMcpTools(
     flights as never,
     f.programs as never,
+    radio as never,
   ).specs();
-  return { f, flights, controller, specs };
+  return { f, flights, radio, controller, specs };
 }

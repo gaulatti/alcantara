@@ -20,6 +20,7 @@ import { ManagedMetricsService } from '../observability/managed-metrics.service'
 import { RecipeMcpTools } from '../mcp/capabilities/recipes';
 import { RecipesController } from './recipes.controller';
 import { RecipesService } from './recipes.service';
+import { RadioService } from '../radio/radio.service';
 import { ARTIST_LABEL_LOOKUP } from './artist-label-lookup';
 import { OperatorChangeModule } from '../operator-change/operator-change.module';
 import { ArtistLabelsModule } from '../artist-labels/artist-labels.module';
@@ -59,6 +60,14 @@ class PompeiiStubModule {}
 })
 class MetricsStubModule {}
 
+// The radio service is global in the application; the flight MCP tools judge playout on it.
+@Global()
+@Module({
+  providers: [{ provide: RadioService, useValue: {} }],
+  exports: [RadioService],
+})
+class RadioStubModule {}
+
 describe('ProgramModule wiring', () => {
   const removeListener = jest.fn();
   const fakeProgramService = {
@@ -78,6 +87,7 @@ describe('ProgramModule wiring', () => {
       imports: [
         TicketsModule,
         MetricsStubModule,
+        RadioStubModule,
         ProgramModule,
         ConsumerModule,
         PompeiiStubModule,

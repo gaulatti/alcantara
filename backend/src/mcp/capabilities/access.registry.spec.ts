@@ -248,7 +248,10 @@ describe('access capabilities through the registry', () => {
     expect(text).not.toContain(BEARER);
     // Every call carried the caller's own bearer and said it came from MCP.
     for (const call of accessCall.mock.calls) {
-      const request = (call as unknown[])[1] as { access?: object; bearer_token?: string };
+      const request = (call as unknown[])[1] as {
+        access?: object;
+        bearer_token?: string;
+      };
       expect(request.access ?? request).toMatchObject({
         bearer_token: BEARER,
         via_client: 'mcp',
