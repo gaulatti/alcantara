@@ -28,7 +28,11 @@ function build() {
       { teamId: 7 } as never,
     ).specs(),
     ...new ScenesMcpTools(f.scenes as never, f.programs as never).specs(),
-    ...new LayoutsMcpTools(f.layouts as never, f.programs as never).specs(),
+    ...new LayoutsMcpTools(
+      f.layouts as never,
+      f.programs as never,
+      { teamId: 7 } as never,
+    ).specs(),
     ...new MediaGroupsMcpTools(f.groups as never, f.programs as never).specs(),
   ];
   return { f, spec: (name: string) => specNamed(specs, name) };
@@ -310,7 +314,7 @@ describe('layout_remove', () => {
       { kind: 'layout', id: '2', name: layout.name },
     ]);
     await spec('layout_remove').run(args, ctx);
-    expect(f.layouts.remove).toHaveBeenCalledWith(2);
+    expect(f.layouts.remove).toHaveBeenCalledWith(2, 7);
   });
 
   it.each([
