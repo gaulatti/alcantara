@@ -142,7 +142,6 @@ export interface ProgramPlayingTrack {
 export class ProgramService implements OnModuleInit, OnModuleDestroy {
   private static readonly DEFAULT_PROGRAM_ID = 'main';
   private static readonly BROADCAST_SETTINGS_ID = 1;
-  private static readonly SONG_PLAYBACK_MAX_BACKWARD_DRIFT_MS = 450;
   private broadcastSettingsColumnsEnsured = false;
   private eventSubjects = new Map<string, Subject<any>>();
   private readonly topicVersionByProgramId: Record<
@@ -794,24 +793,27 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     return value;
   }
 
-  async updateBroadcastSettings(data: {
-    enabled?: boolean;
-    startTime?: string | null;
-    mixerChannels?: unknown;
-    mainMasterVolume?: number;
-    songMasterVolume?: number;
-    instantMasterVolume?: number;
-    streamMasterVolume?: number;
-    sceneInstantMasterVolume?: number;
-    songMuted?: boolean;
-    instantMuted?: boolean;
-    streamMuted?: boolean;
-    sceneInstantMuted?: boolean;
-    songSolo?: boolean;
-    instantSolo?: boolean;
-    streamSolo?: boolean;
-    sceneInstantSolo?: boolean;
-  }, teamId = 0) {
+  async updateBroadcastSettings(
+    data: {
+      enabled?: boolean;
+      startTime?: string | null;
+      mixerChannels?: unknown;
+      mainMasterVolume?: number;
+      songMasterVolume?: number;
+      instantMasterVolume?: number;
+      streamMasterVolume?: number;
+      sceneInstantMasterVolume?: number;
+      songMuted?: boolean;
+      instantMuted?: boolean;
+      streamMuted?: boolean;
+      sceneInstantMuted?: boolean;
+      songSolo?: boolean;
+      instantSolo?: boolean;
+      streamSolo?: boolean;
+      sceneInstantSolo?: boolean;
+    },
+    teamId = 0,
+  ) {
     const currentRaw = await this.ensureBroadcastSettings();
     // One row for the whole installation (gaulatti/alcantara#122): only its own team may change it. `0` means no team
     // is configured, which production refuses.
@@ -2137,47 +2139,6 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private normalizeSongPlaybackToken(value: unknown): string {
-    return typeof value === 'string' ? value.trim() : '';
-  }
-
-  private normalizeSongPlaybackAudioUrl(value: unknown): string {
-    return typeof value === 'string' ? value.trim() : '';
-  }
-
-  private normalizeSongPlaybackProgress(value: unknown): number {
-    if (typeof value !== 'number' || !Number.isFinite(value)) {
-      throw new BadRequestException('progress must be a finite number');
-    }
-    return Math.max(0, Math.min(1, value));
-  }
-
-  private normalizeSongPlaybackCurrentTimeMs(value: unknown): number {
-    if (typeof value !== 'number' || !Number.isFinite(value)) {
-      throw new BadRequestException('currentTimeMs must be a finite number');
-    }
-    return Math.max(0, Math.round(value));
-  }
-
-  private normalizeSongPlaybackDurationMs(value: unknown): number | null {
-    if (value === null || value === undefined) {
-      return null;
-    }
-    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-      throw new BadRequestException(
-        'durationMs must be a positive number or null',
-      );
-    }
-    return Math.round(value);
-  }
-
-  private normalizeSongPlaybackPlaying(value: unknown): boolean {
-    if (typeof value !== 'boolean') {
-      throw new BadRequestException('isPlaying must be a boolean');
-    }
-    return value;
-  }
-
   async updateProgramAudioMeter(
     data:
       | {
@@ -2275,129 +2236,6 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     return {
       ...playback,
       version: this.getProgramTopicVersion(normalizedProgramId, 'songPlayback'),
-    };
-  }
-
-  /**
-   * The authorized POST /program/:programId/song-playback (gaulatti/alcantara#612). Counted by result
-   * so its remaining callers, if any, show in alcantara_program_song_playback_writes_total.
-   */
-  async updateProgramSongPlayback(
-    data:
-      | {
-          token?: string;
-          audioUrl?: string;
-          progress?: number;
-          currentTimeMs?: number;
-          durationMs?: number | null;
-          isPlaying?: boolean;
-        }
-      | null
-      | undefined,
-    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
-  ) {
-    try {
-      const result = await this.applyProgramSongPlayback(data, programId);
-      this.metrics?.recordSongPlaybackWrite('accepted');
-      return result;
-    } catch (error) {
-      this.metrics?.recordSongPlaybackWrite('failed');
-      throw error;
-    }
-  }
-
-  private async applyProgramSongPlayback(
-    data:
-      | {
-          token?: string;
-          audioUrl?: string;
-          progress?: number;
-          currentTimeMs?: number;
-          durationMs?: number | null;
-          isPlaying?: boolean;
-        }
-      | null
-      | undefined,
-    programId: string,
-  ) {
-    const normalizedProgramId = this.normalizeProgramId(programId);
-    await this.getProgramStateRecord(normalizedProgramId);
-
-    if (!data || typeof data !== 'object') {
-      throw new BadRequestException('song playback payload must be an object');
-    }
-
-    const token = this.normalizeSongPlaybackToken(data.token);
-    const audioUrl = this.normalizeSongPlaybackAudioUrl(data.audioUrl);
-    const progress = this.normalizeSongPlaybackProgress(data.progress);
-    let currentTimeMs = this.normalizeSongPlaybackCurrentTimeMs(
-      data.currentTimeMs,
-    );
-    const durationMs = this.normalizeSongPlaybackDurationMs(data.durationMs);
-    const isPlaying = this.normalizeSongPlaybackPlaying(data.isPlaying);
-
-    if (durationMs !== null) {
-      currentTimeMs = Math.min(currentTimeMs, durationMs);
-    }
-
-    const previousPlayback =
-      this.programSongPlaybackByProgramId.get(normalizedProgramId) ?? null;
-    if (
-      previousPlayback &&
-      previousPlayback.token &&
-      token &&
-      previousPlayback.token === token &&
-      previousPlayback.audioUrl === audioUrl &&
-      previousPlayback.isPlaying
-    ) {
-      const backwardDriftMs = previousPlayback.currentTimeMs - currentTimeMs;
-      if (
-        backwardDriftMs > ProgramService.SONG_PLAYBACK_MAX_BACKWARD_DRIFT_MS
-      ) {
-        return {
-          ...previousPlayback,
-          version: this.getProgramTopicVersion(
-            normalizedProgramId,
-            'songPlayback',
-          ),
-        };
-      }
-    }
-
-    const playback = {
-      token,
-      audioUrl,
-      progress,
-      currentTimeMs,
-      durationMs,
-      isPlaying,
-      updatedAt: new Date().toISOString(),
-    };
-
-    this.programSongPlaybackByProgramId.set(normalizedProgramId, playback);
-
-    if (
-      isPlaying &&
-      audioUrl &&
-      (!previousPlayback ||
-        previousPlayback.token !== token ||
-        previousPlayback.audioUrl !== audioUrl)
-    ) {
-      await this.forwardSongToRadio(normalizedProgramId, audioUrl);
-    }
-
-    const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
-      type: 'song_playback_update',
-      programId: normalizedProgramId,
-      playback,
-    });
-
-    return {
-      ...playback,
-      version:
-        broadcastPayload && typeof broadcastPayload.version === 'number'
-          ? broadcastPayload.version
-          : this.getProgramTopicVersion(normalizedProgramId, 'songPlayback'),
     };
   }
 
@@ -4062,17 +3900,6 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
   private async forwardStopInstantsToRadio(programId: string): Promise<void> {
     if (!(await this.isRadioCapable(programId))) return;
     await this.radioService.stopAllInstants(programId);
-  }
-
-  private async forwardSongToRadio(
-    programId: string,
-    audioUrl: string,
-  ): Promise<void> {
-    if (!(await this.isRadioCapable(programId))) return;
-    const result = await this.radioService.playSong(programId, audioUrl);
-    if (!result.ok) {
-      throw new BadGatewayException('Palazzo rejected the song command');
-    }
   }
 
   private async forwardStopSongToRadio(programId: string): Promise<void> {

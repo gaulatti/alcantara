@@ -66,7 +66,6 @@ function build() {
     getProgramSongPlayback: jest.fn().mockResolvedValue({ version: 7 }),
     getProgramSceneInstantPlayback: jest.fn().mockResolvedValue({ version: 8 }),
     updateProgramAudioMeter: jest.fn().mockResolvedValue(undefined),
-    updateProgramSongPlayback: jest.fn().mockResolvedValue(undefined),
   };
   const flightService = {
     handleSongEnded: jest.fn().mockResolvedValue(undefined),
@@ -545,7 +544,6 @@ describe('ProgramRealtimeService client messages', () => {
     await deliver(ctx, program, json({ type: 'other' }));
     await deliver(ctx, program, json({}));
     expect(ctx.programService.updateProgramAudioMeter).not.toHaveBeenCalled();
-    expect(ctx.programService.updateProgramSongPlayback).not.toHaveBeenCalled();
     expect(ctx.flightService.handleSongEnded).not.toHaveBeenCalled();
   });
 
@@ -591,15 +589,13 @@ describe('ProgramRealtimeService client messages', () => {
       client('control'),
       json({ type: 'song_playback_update', playback }),
     );
-    expect(ctx.programService.updateProgramSongPlayback).not.toHaveBeenCalled();
+    expect(ctx.programService.updateProgramAudioMeter).not.toHaveBeenCalled();
+    expect(ctx.flightService.handleSongEnded).not.toHaveBeenCalled();
   });
 
   it('swallows rejected telemetry updates', async () => {
     const ctx = build();
     ctx.programService.updateProgramAudioMeter.mockRejectedValue(
-      new Error('x'),
-    );
-    ctx.programService.updateProgramSongPlayback.mockRejectedValue(
       new Error('x'),
     );
     await expect(

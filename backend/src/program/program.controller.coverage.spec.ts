@@ -25,7 +25,6 @@ function build() {
     'enqueueProgramSong',
     'reorderProgramSongQueue',
     'removeQueuedProgramSong',
-    'updateProgramSongPlayback',
     'getState',
     'addSceneToProgram',
     'removeSceneFromProgram',
@@ -146,18 +145,12 @@ describe('ProgramController delegation', () => {
     }
   });
 
-  it('delegates audio meter and song playback updates with the program id last', async () => {
+  it('delegates audio meter and audio bus updates with the program id last', async () => {
     const { controller, program } = build();
     const meter = { song: 1 };
-    const playback = { token: 't', isPlaying: true };
     await controller.updateProgramAudioMeterById('p', meter);
-    await controller.updateProgramSongPlaybackById('p', playback);
     await controller.updateProgramAudioBusById('p', { songSequence: [] });
     expect(program.updateProgramAudioMeter).toHaveBeenCalledWith(meter, 'p');
-    expect(program.updateProgramSongPlayback).toHaveBeenCalledWith(
-      playback,
-      'p',
-    );
     expect(program.updateProgramAudioBus).toHaveBeenCalledWith(
       { songSequence: [] },
       'p',
