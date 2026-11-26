@@ -4491,6 +4491,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       positionMs = Math.max(0, now - s.startedAt);
     }
     const pos = Math.min(positionMs, s.durationMs);
+    // A promoted song's start is on its way: Palazzo accepted it and starts it itself, so until the stale window has
+    // passed it is not "Status delayed" (the radio desk's walk 4, a flash at a gapless handoff).
+    const heardAt =
+      s.authoritativeUpdatedAt ?? (s.promoted ? s.startedAt : null);
     return {
       token: s.token,
       audioUrl: s.audioUrl,
@@ -4505,8 +4509,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       updatedAt: new Date(now).toISOString(),
       telemetryStale:
         this.isRadioCapable(programId) &&
-        (s.authoritativeUpdatedAt === null ||
-          now - s.authoritativeUpdatedAt > 15_000),
+        (heardAt === null || now - heardAt > 15_000),
       introStatus: s.introStatus,
       introFailureReason: s.introFailureReason,
       queueEntryId: s.queueEntryId,

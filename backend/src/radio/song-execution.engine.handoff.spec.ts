@@ -395,6 +395,27 @@ describe('next-song announcement and handoff', () => {
     expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 1 });
   });
 
+  // The radio desk's walk 4: "Status delayed / No live clock" flashed once at a gapless handoff.
+  it('does not call a promoted song stale while its start is on its way', async () => {
+    const h = harness();
+    await onAir(h);
+
+    // The ending song's end arrives before the next song's start, as Palazzo can send them.
+    h.engine.handlePalazzoEvent(PROGRAM, {
+      type: 'track.ended',
+      data: { playbackRequestId: h.palazzo.current!.id },
+    });
+    for (let j = 0; j < 60; j += 1) await Promise.resolve();
+
+    expect(h.engine.getPlaybackState(PROGRAM)).toMatchObject({
+      audioUrl: SONGS[1].url,
+      telemetryStale: false,
+    });
+    // A start that never comes is still reported stale after the window.
+    jest.advanceTimersByTime(16_000);
+    expect(h.engine.getPlaybackState(PROGRAM)?.telemetryStale).toBe(true);
+  });
+
   it('accepts the announced start under overlap and records one start and one end per song', async () => {
     const h = harness();
     const store = asRunStore();
