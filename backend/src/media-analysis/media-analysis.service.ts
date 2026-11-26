@@ -37,6 +37,13 @@ export const MAX_WAIT_MS = 10 * 60_000;
 export const IDLE_POLL_MS = 60_000;
 /** Deadline for one file, covering the probe and the measurement. */
 export const ANALYSIS_TIMEOUT_MS = 180_000;
+/** The first run when a stopped process left work behind: sooner, since that work was already running. */
+export const RESUME_DELAY_MS = 60_000;
+/**
+ * Interrupted runs of one source that cost no attempt. After these an interruption counts, so a file that takes the
+ * process down with it cannot be retried for ever.
+ */
+export const MAX_HAND_BACKS = 3;
 /** A claimed run that has not finished by then is treated as interrupted. */
 export const LEASE_MS = 10 * 60_000;
 /** Runs per source before a failure is final. */
@@ -224,7 +231,46 @@ export class MediaAnalysisService
         ? 'Media analysis is scheduled at lowered priority'
         : 'Media analysis is scheduled; nice is not installed, so it runs at normal priority',
     );
-    this.schedule(START_DELAY_MS);
+    const handedBack = await this.handBackClaims();
+    this.schedule(handedBack > 0 ? RESUME_DELAY_MS : START_DELAY_MS);
+  }
+
+  /**
+   * Hands back the claims a stopped process left, so a restart does not leave them waiting out their lease
+   * (gaulatti/alcantara#587). One backend analyses at a time: a deploy stops the old container before the new one
+   * starts, and a deploy candidate schedules nothing. Returns how many rows were handed back; a database error is
+   * logged and the lease then runs out as before.
+   */
+  async handBackClaims(now = new Date()): Promise<number> {
+    const claimed = { claimedAt: { not: null } };
+    try {
+      const refunded = await this.prisma.mediaAssetAnalysis.updateMany({
+        where: {
+          ...claimed,
+          attempts: { gt: 0 },
+          interruptions: { lt: MAX_HAND_BACKS },
+        },
+        data: {
+          claimedAt: null,
+          nextAttemptAt: now,
+          attempts: { decrement: 1 },
+          interruptions: { increment: 1 },
+        },
+      });
+      // What is still claimed has used its free interruptions: due now, with the attempt spent.
+      const spent = await this.prisma.mediaAssetAnalysis.updateMany({
+        where: claimed,
+        data: { claimedAt: null, nextAttemptAt: now },
+      });
+      this.metrics.recordInterrupted('handed_back', refunded.count);
+      this.metrics.recordInterrupted('attempt_spent', spent.count);
+      return refunded.count + spent.count;
+    } catch (error) {
+      this.logger.warn(
+        `Media analysis could not hand back interrupted runs (${errorCause(error)}); their lease runs out`,
+      );
+      return 0;
+    }
   }
 
   onModuleDestroy(): void {
@@ -356,10 +402,10 @@ export class MediaAnalysisService
     if (previousAttempts >= MAX_ATTEMPTS) {
       // The last run was claimed and never finished, so the failure is final.
       if (
-        await this.settle(
-          candidate,
-          this.failure(candidate, 'interrupted', now),
-        )
+        await this.settle(candidate, {
+          ...this.failure(candidate, 'interrupted', now),
+          claimedAt: null,
+        })
       ) {
         this.finish(candidate, 'failure', startedAt, 'interrupted');
       }
@@ -511,6 +557,7 @@ export class MediaAnalysisService
         },
         data: {
           attempts: result.previousAttempts,
+          claimedAt: null,
           nextAttemptAt: new Date(now.getTime() + RETRY_BACKOFF_MS[0]),
         },
       });
@@ -615,6 +662,8 @@ export class MediaAnalysisService
       status: keepsResult(candidate) ? 'success' : 'pending',
       attempts,
       nextAttemptAt: new Date(now.getTime() + LEASE_MS),
+      claimedAt: now,
+      ...(candidate.sourceChanged ? { interruptions: 0 } : {}),
       sourceUrl: candidate.sourceUrl,
     };
     try {
@@ -657,7 +706,12 @@ export class MediaAnalysisService
         sourceUrl: candidate.sourceUrl,
         status: keepsResult(candidate) ? 'success' : 'pending',
       },
-      data,
+      // The run is over, whatever it found; a good result also clears the interruptions before it.
+      data: {
+        ...data,
+        claimedAt: null,
+        ...(data.error === null ? { interruptions: 0 } : {}),
+      },
     });
   }
 

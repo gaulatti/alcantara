@@ -69,7 +69,7 @@ jobs:
       CLOUSEAU_ENGINE_SHA: ${{ needs.resolve-clouseau.outputs.sha }}
       CLOUSEAU_ENGINE_DIGEST: ${{ needs.resolve-clouseau.outputs.digest }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     permissions:
       contents: read
     needs: resolve-clouseau
@@ -145,9 +145,32 @@ jobs:
       - name: Typecheck backend source and specs
         if: *verify-code
         run: pnpm --dir backend exec tsc --noEmit -p tsconfig.json
+      - name: Install ffmpeg as the production image does
+        if: *verify-code
+        # gaulatti/alcantara#82: the runner's apt ffmpeg (8.0.1) is not production's, and the cue fixtures
+        # failed on it. These shims run ffmpeg and ffprobe from the base image and package that
+        # backend/Dockerfile uses, so the fixtures test the version production runs (8.1.3 at 2026-11-26).
+        run: |
+          docker build -q -t alcantara-ci-ffmpeg - <<EOF
+          FROM node:$(cat .nvmrc)-alpine
+          RUN apk add --no-cache ffmpeg
+          EOF
+          bin="$RUNNER_TEMP/ffmpeg-bin"
+          mkdir -p "$bin"
+          for tool in ffmpeg ffprobe; do
+            printf '#!/bin/sh\nexec docker run --rm -i --network none -u "$(id -u):$(id -g)" -v /tmp:/tmp -w /tmp alcantara-ci-ffmpeg %s "$@"\n' "$tool" > "$bin/$tool"
+            chmod +x "$bin/$tool"
+            "$bin/$tool" -hide_banner -version | sed -n 1p
+          done
+          echo "$bin" >> "$GITHUB_PATH"
       - name: Run backend tests with source coverage
         if: *verify-code
         id: coverage
+        # gaulatti/alcantara#82: the PostgreSQL integration and migration specs (and the ffmpeg
+        # fixtures) skip without these, so the coverage run must see the CI database.
+        env:
+          DATABASE_URL: postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci?schema=public
+          ALCANTARA_MIGRATION_TEST_DATABASE_URL: postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci?schema=public
         run: pnpm --dir backend run test:coverage
       - name: Enforce 100% line and branch coverage
         if: *verify-code
@@ -174,6 +197,13 @@ jobs:
       - name: Build backend
         if: *verify-code
         run: pnpm --dir backend run build
+      - name: Typecheck the frontend and run its tests with the coverage ratchet
+        # gaulatti/alcantara#404 follow-up: the thresholds in frontend/vitest.config.ts fail this
+        # step when a change drops frontend coverage, and the typecheck catches what vitest does not.
+        if: *verify-code
+        run: |
+          pnpm --dir frontend run typecheck
+          pnpm --dir frontend run test:coverage
       - name: Test and build infrastructure
         if: *verify-code
         run: |

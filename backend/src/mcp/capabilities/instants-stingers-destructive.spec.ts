@@ -37,7 +37,11 @@ function build() {
       radio as never,
       { teamId: 7 } as never,
     ).specs(),
-    ...new StingersMcpTools(stingers as never, programs as never).specs(),
+    ...new StingersMcpTools(
+      stingers as never,
+      programs as never,
+      { teamId: 7 } as never,
+    ).specs(),
   ];
   return {
     programs,
@@ -291,7 +295,7 @@ describe('stinger_delete_stinger', () => {
       result: { deletedStingerId: 7 },
       audit: { target: '7' },
     });
-    expect(b.stingers.remove).toHaveBeenCalledWith(7);
+    expect(b.stingers.remove).toHaveBeenCalledWith(7, 7);
   });
 
   it('reports an unknown stinger as not_found', async () => {

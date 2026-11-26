@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
+import { PompeiiService } from '../../auth/pompeii.service';
 import { LayoutsService } from '../../layouts/layouts.service';
 import { ProgramService } from '../../program/program.service';
 import { McpToolError, McpToolProvider, type McpToolSpec } from '../contract';
@@ -37,11 +38,15 @@ export class LayoutsMcpTools {
   constructor(
     private readonly layouts: LayoutsService,
     private readonly programs: ProgramService,
+    private readonly pompeii: PompeiiService,
   ) {}
 
   /** The layout with its scenes (not_found when absent) and where they are live. */
   private async layoutInUse(layoutId: number) {
-    const layout = (await this.layouts.findOne(layoutId)) as LayoutRow | null;
+    const layout = (await this.layouts.findOne(
+      layoutId,
+      this.pompeii.teamId,
+    )) as LayoutRow | null;
     if (!layout) throw new McpToolError('not_found', 'Layout not found');
     const sceneIds = layout.scenes.map((scene) => scene.id);
     const listed = await listPrograms(this.programs);
@@ -66,7 +71,7 @@ export class LayoutsMcpTools {
         description: 'Lists every layout by name, as the console loads them.',
         permission: permissions.read,
         shape: {},
-        run: () => this.layouts.findAll(),
+        run: () => this.layouts.findAll(this.pompeii.teamId),
       }),
       readSpec({
         name: 'layout_find_one',
@@ -75,7 +80,10 @@ export class LayoutsMcpTools {
         permission: permissions.read,
         shape: { layout_id: rowIdArg },
         run: async (args) => {
-          const layout = await this.layouts.findOne(args.layout_id);
+          const layout = await this.layouts.findOne(
+            args.layout_id,
+            this.pompeii.teamId,
+          );
           if (!layout) throw new McpToolError('not_found', 'Layout not found');
           return layout;
         },
@@ -99,11 +107,14 @@ export class LayoutsMcpTools {
           recoverable: true,
         }),
         run: (args) =>
-          this.layouts.create({
-            name: args.name,
-            componentType: args.component_type,
-            settings: args.settings,
-          }),
+          this.layouts.create(
+            {
+              name: args.name,
+              componentType: args.component_type,
+              settings: args.settings,
+            },
+            this.pompeii.teamId,
+          ),
       }),
       actionSpec({
         name: 'layout_update',
@@ -130,11 +141,15 @@ export class LayoutsMcpTools {
         }),
         onAir: (_args, { onAirIn }) => onAirIn.length > 0,
         run: (args) =>
-          this.layouts.update(args.layout_id, {
-            name: args.name,
-            componentType: args.component_type,
-            settings: args.settings,
-          }),
+          this.layouts.update(
+            args.layout_id,
+            {
+              name: args.name,
+              componentType: args.component_type,
+              settings: args.settings,
+            },
+            this.pompeii.teamId,
+          ),
       }),
       actionSpec({
         name: 'layout_remove',
@@ -171,7 +186,7 @@ export class LayoutsMcpTools {
               'conflict',
               `Layout ${layout.id} is used by ${layout.scenes.length} scene(s); delete or move them first.`,
             );
-          return this.layouts.remove(args.layout_id);
+          return this.layouts.remove(args.layout_id, this.pompeii.teamId);
         },
       }),
     ];

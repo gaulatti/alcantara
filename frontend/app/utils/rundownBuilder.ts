@@ -158,10 +158,9 @@ export function timelineLayout(
       anchors.push({ index, seconds: cue.clockOffsetSeconds });
     }
     const leftMs = row.startMs ?? drawCursor;
-    const unknown = row.durationMs == null;
-    const widthMs = unknown
-      ? UNKNOWN_DISPLAY_MS
-      : Math.max(0, row.durationMs ?? 0);
+    const knownMs = row.durationMs;
+    const unknown = knownMs == null;
+    const widthMs = knownMs == null ? UNKNOWN_DISPLAY_MS : Math.max(0, knownMs);
     if (unknown) unknownCount += 1;
     else contentMs += widthMs;
     laid.push({

@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   OperatorChangeRecorder,
   SCENE_CHANGE_FIELDS,
@@ -6,6 +10,7 @@ import {
 } from '../operator-change/operator-change-recorder';
 import { PrismaService } from '../prisma.service';
 import { ProgramService } from '../program/program.service';
+import { forTeam } from '../tenancy/scoped-prisma';
 
 @Injectable()
 export class ScenesService {
@@ -16,15 +21,27 @@ export class ScenesService {
     private readonly recorder: OperatorChangeRecorder,
   ) {}
 
-  async findAll() {
-    return this.prisma.scene.findMany({
+  /**
+   * The rows of one team (gaulatti/alcantara#122). `0` means no team is configured, which production refuses, and
+   * sees every row, as elsewhere. The layout included with a scene is not scoped here.
+   */
+  private db(
+    teamId: number,
+  ): Pick<PrismaService, 'scene' | 'layout' | 'externalSource'> {
+    return teamId > 0
+      ? (forTeam(this.prisma, teamId) as unknown as PrismaService)
+      : this.prisma;
+  }
+
+  async findAll(teamId = 0) {
+    return this.db(teamId).scene.findMany({
       include: { layout: true },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async findOne(id: number) {
-    return this.prisma.scene.findUnique({
+  async findOne(id: number, teamId = 0) {
+    return this.db(teamId).scene.findUnique({
       where: { id },
       include: { layout: true },
     });
@@ -36,9 +53,9 @@ export class ScenesService {
     chyronText?: string;
     metadata?: any;
     externalSourceId?: string;
-  }) {
-    await this.validateExternalSourceReference(data.layoutId, data.externalSourceId, data.metadata);
-    const scene = await this.prisma.scene.create({
+  }, teamId = 0) {
+    await this.validateExternalSourceReference(data.layoutId, data.externalSourceId, data.metadata, teamId);
+    const scene = await this.db(teamId).scene.create({
       data: {
         name: data.name,
         layoutId: data.layoutId,
@@ -60,6 +77,7 @@ export class ScenesService {
       metadata?: any;
       externalSourceId?: string | null;
     },
+    teamId = 0,
   ) {
     const actor = this.recorder.actor();
     const updateData: any = {};
@@ -69,12 +87,12 @@ export class ScenesService {
     if (data.metadata !== undefined)
       updateData.metadata = JSON.stringify(data.metadata);
     if (data.externalSourceId !== undefined) updateData.externalSourceId = data.externalSourceId;
-    const existing = await this.prisma.scene.findUnique({ where: { id } });
+    const existing = await this.db(teamId).scene.findUnique({ where: { id } });
     if (!existing) throw new BadRequestException('Scene not found');
-    await this.validateExternalSourceReference(data.layoutId ?? existing.layoutId, data.externalSourceId === undefined ? existing.externalSourceId ?? undefined : data.externalSourceId ?? undefined, data.metadata);
+    await this.validateExternalSourceReference(data.layoutId ?? existing.layoutId, data.externalSourceId === undefined ? existing.externalSourceId ?? undefined : data.externalSourceId ?? undefined, data.metadata, teamId);
 
     this.cancelModoItalianoBracketDraw(id);
-    const scene = await this.prisma.scene.update({
+    const scene = await this.db(teamId).scene.update({
       where: { id },
       data: updateData,
       include: { layout: true },
@@ -101,8 +119,8 @@ export class ScenesService {
     return scene;
   }
 
-  async updateChyron(id: number, chyronText: string) {
-    const scene = await this.prisma.scene.update({
+  async updateChyron(id: number, chyronText: string, teamId = 0) {
+    const scene = await this.db(teamId).scene.update({
       where: { id },
       data: { chyronText },
       include: { layout: true },
@@ -119,8 +137,8 @@ export class ScenesService {
     return scene;
   }
 
-  async drawModoItalianoBracket(id: number, data: { componentType?: string; seed?: number }) {
-    const scene = await this.findOne(id);
+  async drawModoItalianoBracket(id: number, data: { componentType?: string; seed?: number }, teamId = 0) {
+    const scene = await this.findOne(id, teamId);
     if (!scene) {
       throw new BadRequestException('Scene not found');
     }
@@ -174,17 +192,17 @@ export class ScenesService {
     }
 
     const timer = setTimeout(() => {
-      void this.completeModoItalianoBracketDraw(id, componentType, now, shuffledSongIds[0]);
+      void this.completeModoItalianoBracketDraw(id, componentType, now, shuffledSongIds[0], teamId);
     }, durationSeconds * 1000);
     this.modoItalianoBracketDraws.set(id, { timer, drawId: now });
     return { drawId: now, durationSeconds, sceneId: id };
   }
 
-  async voteModoItalianoBracket(id: number, data: { componentType?: string; matchId?: number; voterId?: string; songId?: number | null }) {
+  async voteModoItalianoBracket(id: number, data: { componentType?: string; matchId?: number; voterId?: string; songId?: number | null }, teamId = 0) {
     const matchId = Number(data.matchId);
     const voterId = typeof data.voterId === 'string' ? data.voterId.trim() : '';
     if (!Number.isInteger(matchId) || matchId < 1 || matchId > 15 || !voterId) throw new BadRequestException('Invalid vote');
-    const scene = await this.findOne(id);
+    const scene = await this.findOne(id, teamId);
     if (!scene) throw new BadRequestException('Scene not found');
     const componentType = this.resolveBracketComponentType(data.componentType, scene);
     const metadata = this.parseMetadata(scene.metadata);
@@ -212,13 +230,17 @@ export class ScenesService {
       nextBracket.votingWinnerId = winnerId;
       nextBracket.votingResultStartedAt = Date.now();
     }
-    return this.persistSceneMetadata(id, { ...metadata, [componentType]: nextBracket });
+    return this.persistSceneMetadata(id, { ...metadata, [componentType]: nextBracket }, teamId);
   }
 
   // Neutrally named entry points for callers outside this module (the MCP
   // capabilities), so they need not carry the brand-bearing method names.
-  drawBracket(id: number, data: { componentType?: string; seed?: number }) {
-    return this.drawModoItalianoBracket(id, data);
+  drawBracket(
+    id: number,
+    data: { componentType?: string; seed?: number },
+    teamId = 0,
+  ) {
+    return this.drawModoItalianoBracket(id, data, teamId);
   }
 
   voteBracket(
@@ -229,21 +251,23 @@ export class ScenesService {
       voterId?: string;
       songId?: number | null;
     },
+    teamId = 0,
   ) {
-    return this.voteModoItalianoBracket(id, data);
+    return this.voteModoItalianoBracket(id, data, teamId);
   }
 
   openBracketVoting(
     id: number,
     data: { componentType?: string; matchId?: number },
+    teamId = 0,
   ) {
-    return this.openModoItalianoBracketVoting(id, data);
+    return this.openModoItalianoBracketVoting(id, data, teamId);
   }
 
-  async openModoItalianoBracketVoting(id: number, data: { componentType?: string; matchId?: number }) {
+  async openModoItalianoBracketVoting(id: number, data: { componentType?: string; matchId?: number }, teamId = 0) {
     const matchId = Number(data.matchId);
     if (!Number.isInteger(matchId) || matchId < 1 || matchId > 15) throw new BadRequestException('Invalid match');
-    const scene = await this.findOne(id);
+    const scene = await this.findOne(id, teamId);
     if (!scene) throw new BadRequestException('Scene not found');
     const componentType = this.resolveBracketComponentType(data.componentType, scene);
     const metadata = this.parseMetadata(scene.metadata);
@@ -258,7 +282,7 @@ export class ScenesService {
         votingWinnerId: null,
         votingResultStartedAt: null,
       },
-    });
+    }, teamId);
   }
 
   private async completeModoItalianoBracketDraw(
@@ -266,11 +290,12 @@ export class ScenesService {
     componentType: string,
     drawId: number,
     selectedSongId: number,
+    teamId: number,
   ) {
     const activeDraw = this.modoItalianoBracketDraws.get(sceneId);
     if (!activeDraw || activeDraw.drawId !== drawId) return;
     this.modoItalianoBracketDraws.delete(sceneId);
-    const scene = await this.findOne(sceneId);
+    const scene = await this.findOne(sceneId, teamId);
     if (!scene) return;
     const metadata = this.parseMetadata(scene.metadata);
     const bracket = metadata[componentType] && typeof metadata[componentType] === 'object' ? metadata[componentType] as Record<string, unknown> : {};
@@ -283,7 +308,7 @@ export class ScenesService {
     await this.persistSceneMetadata(sceneId, {
       ...metadata,
       [componentType]: { ...bracket, matches },
-    });
+    }, teamId);
     const programIds = await this.programService.getProgramIdsByAssignedScene(sceneId);
     for (const programId of programIds) {
       this.programService.broadcastUpdate(programId, { type: 'modoitaliano_bracket_draw_end', sceneId, componentType, drawId });
@@ -326,8 +351,8 @@ export class ScenesService {
     this.modoItalianoBracketDraws.delete(sceneId);
   }
 
-  private async persistSceneMetadata(id: number, metadata: Record<string, unknown>) {
-    const scene = await this.prisma.scene.update({ where: { id }, data: { metadata: JSON.stringify(metadata) }, include: { layout: true } });
+  private async persistSceneMetadata(id: number, metadata: Record<string, unknown>, teamId: number) {
+    const scene = await this.db(teamId).scene.update({ where: { id }, data: { metadata: JSON.stringify(metadata) }, include: { layout: true } });
     const programIds = await this.programService.getProgramIdsByAssignedScene(id);
     for (const programId of programIds) this.programService.broadcastUpdate(programId, { type: 'scene_update', programId, scene });
     return scene;
@@ -372,13 +397,13 @@ export class ScenesService {
     return Number.isFinite(duration) && duration > 0 ? Math.floor(duration) : Number.isFinite(fallbackDuration) && fallbackDuration > 0 ? Math.floor(fallbackDuration) : 5;
   }
 
-  private async validateExternalSourceReference(layoutId: number, sourceId: string | undefined, metadata: unknown) {
-    const layout = await this.prisma.layout.findUnique({ where: { id: layoutId }, select: { componentType: true } });
+  private async validateExternalSourceReference(layoutId: number, sourceId: string | undefined, metadata: unknown, teamId: number) {
+    const layout = await this.db(teamId).layout.findUnique({ where: { id: layoutId }, select: { componentType: true } });
     if (!layout) throw new BadRequestException('Layout not found');
     if (layout.componentType !== 'video-stream') return;
     if (containsSourceUrl(metadata)) throw new BadRequestException('Video stream scenes reference externalSourceId, not a URL');
     if (!sourceId) throw new BadRequestException('Video stream scenes require externalSourceId');
-    const source = await this.prisma.externalSource.findFirst({ where: { id: sourceId, revokedAt: null }, select: { id: true } });
+    const source = await this.db(teamId).externalSource.findFirst({ where: { id: sourceId, revokedAt: null }, select: { id: true } });
     if (!source) throw new BadRequestException('External source not found');
   }
 
@@ -399,7 +424,11 @@ export class ScenesService {
     return shuffled;
   }
 
-  async remove(id: number) {
+  async remove(id: number, teamId = 0) {
+    // Another team's scene must be refused before anything is cleared from a program.
+    if (teamId > 0 && !(await this.findOne(id, teamId))) {
+      throw new NotFoundException('Scene not found');
+    }
     const assignedProgramIds =
       await this.programService.getProgramIdsByAssignedScene(id);
     const clearedProgramIds = await this.programService.clearActiveScene(id);
@@ -409,7 +438,7 @@ export class ScenesService {
       });
     }
 
-    const deleted = await this.prisma.scene.delete({
+    const deleted = await this.db(teamId).scene.delete({
       where: { id },
     });
 

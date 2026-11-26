@@ -13,6 +13,7 @@ import {
   OperatorChangeRecorder,
   summarizeChange,
 } from '../operator-change/operator-change-recorder';
+import { forTeam } from '../tenancy/scoped-prisma';
 import { STINGER_CHANGE_FIELDS } from '../operator-change/library-change-fields';
 
 interface StingerInput {
@@ -29,25 +30,35 @@ export class StingersService {
     private readonly recorder: OperatorChangeRecorder,
   ) {}
 
-  async findAll() {
-    return this.prisma.stinger.findMany({
+  /**
+   * The rows of one team (gaulatti/alcantara#122), stingers and their media assets. `0` means no team is configured,
+   * which production refuses, and sees every row, as elsewhere.
+   */
+  private db(teamId: number): PrismaService {
+    return teamId > 0
+      ? (forTeam(this.prisma, teamId) as unknown as PrismaService)
+      : this.prisma;
+  }
+
+  async findAll(teamId = 0) {
+    return this.db(teamId).stinger.findMany({
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
     });
   }
 
-  async findOne(id: number) {
-    const stinger = await this.prisma.stinger.findUnique({ where: { id } });
+  async findOne(id: number, teamId = 0) {
+    const stinger = await this.db(teamId).stinger.findUnique({ where: { id } });
     if (!stinger) {
       throw new NotFoundException('Stinger not found');
     }
     return stinger;
   }
 
-  async create(data: StingerInput) {
+  async create(data: StingerInput, teamId = 0) {
     const name = this.toRequiredTrimmedString(data.name, 'name');
     const videoUrl = this.toRequiredTrimmedString(data.videoUrl, 'videoUrl');
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.db(teamId).$transaction(async (tx) => {
       const stinger = await tx.stinger.create({
         data: {
           name,
@@ -57,13 +68,14 @@ export class StingersService {
         },
       });
       await syncTransitionAsset(tx, stinger);
-      return tx.stinger.findUniqueOrThrow({ where: { id: stinger.id } });
+      // findUniqueOrThrow is refused on the team-scoped client; the row was just written.
+      return (await tx.stinger.findUnique({ where: { id: stinger.id } }))!;
     });
   }
 
-  async update(id: number, data: StingerInput) {
+  async update(id: number, data: StingerInput, teamId = 0) {
     const actor = this.recorder.actor();
-    const previous = await this.findOne(id);
+    const previous = await this.findOne(id, teamId);
 
     const updateData: Record<string, unknown> = {};
 
@@ -87,16 +99,16 @@ export class StingersService {
     }
 
     if (Object.keys(updateData).length === 0) {
-      return this.findOne(id);
+      return this.findOne(id, teamId);
     }
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.db(teamId).$transaction(async (tx) => {
       const stinger = await tx.stinger.update({
         where: { id },
         data: updateData,
       });
       await syncTransitionAsset(tx, stinger);
-      return tx.stinger.findUniqueOrThrow({ where: { id } });
+      return (await tx.stinger.findUnique({ where: { id } }))!;
     });
     // The change is final; recording who made it never blocks it (gaulatti/alcantara#236).
     await this.recorder.record({
@@ -115,9 +127,9 @@ export class StingersService {
     return result;
   }
 
-  async remove(id: number) {
-    await this.findOne(id);
-    await this.prisma.$transaction(async (tx) => {
+  async remove(id: number, teamId = 0) {
+    await this.findOne(id, teamId);
+    await this.db(teamId).$transaction(async (tx) => {
       await tx.stinger.delete({ where: { id } });
       await deleteMediaAsset(tx, MediaAssetKind.TRANSITION, id);
     });

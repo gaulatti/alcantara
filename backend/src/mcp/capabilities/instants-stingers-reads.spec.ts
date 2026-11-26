@@ -38,7 +38,11 @@ const specs = [
     {} as never,
     { teamId: 7 } as never,
   ).specs(),
-  ...new StingersMcpTools(services.stingers as never, {} as never).specs(),
+  ...new StingersMcpTools(
+    services.stingers as never,
+    {} as never,
+    { teamId: 7 } as never,
+  ).specs(),
 ];
 const controllers = {
   instants: new InstantsController(services.programs as never),
@@ -65,6 +69,7 @@ beforeEach(() => {
 });
 
 const INSTANT_TEAM = { user: { authorization: { teamId: 7 } } };
+const STINGER_TEAM = { user: { authorization: { teamId: 7 } } };
 
 describe('appendix A read rows of ticket #217', () => {
   it('lists the rows of these areas in the tsv, and no others', () => {
@@ -149,7 +154,7 @@ describe('instant and stinger reads return what the controller returns', () => {
   it('stinger_list_stingers', async () => {
     const result = await run('stinger_list_stingers', {});
     expect(rebuilt(result)).toEqual(
-      asRest(await controllers.stingers.listStingers()),
+      asRest(await controllers.stingers.listStingers(STINGER_TEAM)),
     );
     expect(result).toMatchObject([
       {

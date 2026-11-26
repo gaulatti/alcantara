@@ -13,7 +13,7 @@ describe('instant and stinger provider decorator metadata under unresolved circu
       ).toEqual([Object, Object, Object]);
       expect(
         Reflect.getMetadata('design:paramtypes', StingersMcpTools),
-      ).toEqual([Object, Object]);
+      ).toEqual([Object, Object, Object]);
     });
   });
 });
