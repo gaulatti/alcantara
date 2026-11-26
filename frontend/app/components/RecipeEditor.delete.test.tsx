@@ -202,3 +202,27 @@ it("shows a refusal's reason, and a stale revision as changed elsewhere", async 
   fireEvent.click(screen.getByRole("button", { name: "Delete Unused" }));
   await screen.findByText(/Changed elsewhere/);
 });
+
+it("shows the message of a delete that fails for another reason", async () => {
+  stubApi({
+    remove: new Response(JSON.stringify({ message: "Delete service is down" }), { status: 500 }),
+  });
+  await open();
+  fireEvent.click(screen.getByRole("button", { name: "Delete Unused" }));
+  await screen.findByText("Delete service is down");
+});
+
+it("shows a delete that is rejected with a plain value, not an Error", async () => {
+  stubApi();
+  const listFetch = vi.mocked(globalThis.fetch);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init?: RequestInit) => {
+      if (init?.method === "DELETE") throw "Network dropped";
+      return listFetch(input, init);
+    }),
+  );
+  await open();
+  fireEvent.click(screen.getByRole("button", { name: "Delete Unused" }));
+  await screen.findByText("Network dropped");
+});
