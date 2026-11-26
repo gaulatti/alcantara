@@ -6,6 +6,7 @@ import {
   OnModuleInit,
   Inject,
   forwardRef,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { SongExecutionEngine } from './song-execution.engine';
@@ -23,6 +24,7 @@ import type {
   PalazzoUnavailableStatus,
 } from './palazzo-contract';
 import { PalazzoMachineClient } from './palazzo-machine.client';
+import { RadioService } from './radio.service';
 
 const RADIO_PROGRAM_TYPES = ['radio', 'both'];
 
@@ -63,10 +65,13 @@ export class PalazzoRadioTelemetryService
     private readonly metrics: RadioMetricsService,
     private readonly machineClient: PalazzoMachineClient,
     private readonly overlaps: ProgramBusOverlapDetector,
+    /** Reads this service's playout reports to judge a take (D4); bound here, since the engine depends on it. */
+    @Optional() private readonly radio?: RadioService,
   ) {}
 
   async onModuleInit(): Promise<void> {
     this.engine.setPalazzoTelemetry(this);
+    this.radio?.setPlayoutReports(this);
     if (isDeployCandidate()) {
       this.logger.log('Deploy candidate: no Palazzo telemetry is started');
       return;
@@ -167,6 +172,11 @@ export class PalazzoRadioTelemetryService
   async currentState(programId: string): Promise<PalazzoPlaybackState | null> {
     const client = this.clients.get(programId);
     return client ? client.currentState() : null;
+  }
+
+  /** The program's playout report for a take (D4), or null when the program has no engine client. */
+  playoutReport(programId: string): 'up' | 'down' | 'stale' | 'unknown' | null {
+    return this.clients.get(programId)?.playoutReport() ?? null;
   }
 
   getStatus(programId: string): PalazzoProgramStatus | null {
