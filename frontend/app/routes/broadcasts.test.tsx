@@ -849,3 +849,18 @@ it("closes the start confirmation with Escape and starts nothing", async () => {
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(api.post).toHaveBeenCalledTimes(1);
 });
+
+it("closes the retire confirmation and the add dialog with Escape, sending nothing", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  await page();
+  fireEvent.click(screen.getAllByRole("button", { name: /^Retire$/ })[0]);
+  const retireDialog = await screen.findByRole("dialog", { name: "Confirm retire" });
+  fireEvent.keyDown(retireDialog, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Confirm retire" })).toBeNull());
+  expect(api.post).not.toHaveBeenCalledWith("/broadcast/destinations/primary/retire");
+
+  fireEvent.click(screen.getByRole("button", { name: /Add destination/ }));
+  const addDialog = await screen.findByRole("dialog", { name: "Add destination" });
+  fireEvent.keyDown(addDialog, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add destination" })).toBeNull());
+});
