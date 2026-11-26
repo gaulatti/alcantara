@@ -56,7 +56,7 @@ Disabled native controls remain inert while allowing hover help.
 Audio preset tooltips explain their target dB level; Mute, Solo, and Stop all
 explain their effect on Program. The `audio` fixture includes these controls;
 ordinary Director and Library fixtures exercise the shared buttons.
-`/console-fixture?state=button-help` isolates a labeled action, icon action, and
+`/console-fixture?state=focus-ring` shows plain links in the app and in a console with the one global `:focus-visible` ring from `app.css` (#688): `--focus-ring`, which the consoles set to their ready colour, falling back to `--app-sea`; no link sets its own ring. `/console-fixture?state=button-help` isolates a labeled action, icon action, and
 disabled action for keyboard and hover review.
 
 ## Control grammar

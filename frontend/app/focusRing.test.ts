@@ -17,3 +17,22 @@ it('keeps the console colour by setting the ring token, and has no scoped copies
   expect(read('components/BroadcastConsole.css')).not.toMatch(/:is\(button, input, select, a, summary\):focus-visible/);
   expect(read('components/BroadcastConsole.css')).not.toMatch(/:is\(button, input\):focus-visible/);
 });
+
+// #688: links rely on that one rule; a link that cancels the outline for its own ring is a per-link fix.
+it('has no link that cancels the shared outline with its own focus style', async () => {
+  const { readdirSync, statSync } = await import('node:fs');
+  const files: string[] = [];
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) walk(path);
+      else if (path.endsWith('.tsx') && !path.includes('.test.')) files.push(path);
+    }
+  };
+  walk(__dirname);
+  const offenders = files.filter((path) =>
+    /<(a|Link|NavLink)\b[^>]*\b(focus-visible:)?outline-none/.test(readFileSync(path, 'utf8')),
+  );
+  expect(files.length).toBeGreaterThan(100);
+  expect(offenders).toEqual([]);
+});
