@@ -24,6 +24,7 @@ import { UNTRUSTED_NOTE, type McpPrincipal } from '../contract';
 import { McpRegistry } from '../mcp-registry.service';
 import { MCP_READ_LIMITS, MCP_WAIT_MAX_SECONDS } from '../mcp.constants';
 import { McpChangeFeed } from './mcp-change.feed';
+import { PompeiiService } from '../../auth/pompeii.service';
 import { McpRadioReadTools } from './radio-read.tools';
 import { noRecorder } from '../../operator-change/operator-change-recorder.testing';
 
@@ -366,6 +367,7 @@ async function harness() {
   );
   const asRun = new AsRunService(prisma, { teamId: 0 } as never);
   const songs = new SongsService(prisma, noRecorder());
+  const pompeii = { teamId: 0 };
   const statuses = new Map<string, unknown>([
     [
       PROGRAM,
@@ -401,6 +403,7 @@ async function harness() {
       { provide: RadioService, useValue: radio },
       { provide: AsRunService, useValue: asRun },
       { provide: SongsService, useValue: songs },
+      { provide: PompeiiService, useValue: pompeii },
     ],
   }).compile();
   await module.init();
@@ -432,6 +435,7 @@ async function harness() {
 
   let snapshotSequence = 0;
   return {
+    pompeii,
     module,
     state,
     rows,
@@ -1510,6 +1514,20 @@ describe('MCP radio read tools', () => {
       );
       expectNoCredentials(answer.body);
       expect(answer.text).not.toContain('media.test');
+    });
+
+    it("asks for the station team's songs, for a search and for one song (#122)", async () => {
+      h.pompeii.teamId = 7;
+      const search = jest.spyOn(h.songs, 'findAll');
+      const one = jest
+        .spyOn(h.songs, 'findOne')
+        .mockRejectedValue(new NotFoundException('Song not found'));
+      const { run } = h.session(ALL);
+      await run('search_songs', { query: 'o' });
+      expect(search).toHaveBeenLastCalledWith(expect.anything(), 7);
+      const answer = await run('get_song', { song_id: 1 });
+      expect(one).toHaveBeenCalledWith(1, undefined, 7);
+      expect(answer.isError).toBe(true);
     });
 
     it('searches with the default limit, finds no analyses for songs without an asset, and refuses a bad query or limit', async () => {
