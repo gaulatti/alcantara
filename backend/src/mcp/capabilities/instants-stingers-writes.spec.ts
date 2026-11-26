@@ -52,6 +52,8 @@ const permissionOf = (key: string): string => {
 
 const ctx = { principal: principalWith('alcantara:access' as never) };
 
+const STINGER_TEAM = { user: { authorization: { teamId: 7 } } };
+
 function build() {
   const programs = {
     ...fakeServices().programs,
@@ -72,7 +74,11 @@ function build() {
   };
   const specs = [
     ...new InstantsMcpTools(programs as never, radio as never).specs(),
-    ...new StingersMcpTools(stingers as never, programs as never).specs(),
+    ...new StingersMcpTools(
+      stingers as never,
+      programs as never,
+      { teamId: 7 } as never,
+    ).specs(),
   ];
   const controllers = {
     instants: new InstantsController(programs as never),
@@ -323,12 +329,15 @@ describe('stinger writes return what the controller returns', () => {
   it('stinger_create_stinger and stinger_update_stinger', async () => {
     const { stingers, controllers, run, plan } = build();
     const expected = asRest(
-      await controllers.stingers.createStinger({
-        name: 'N',
-        videoUrl: 'https://cdn.example/v.webm',
-        cutPointMs: 500,
-        enabled: false,
-      }),
+      await controllers.stingers.createStinger(
+        {
+          name: 'N',
+          videoUrl: 'https://cdn.example/v.webm',
+          cutPointMs: 500,
+          enabled: false,
+        },
+        STINGER_TEAM,
+      ),
     );
     const created = await run('stinger_create_stinger', {
       name: 'N',
@@ -343,7 +352,11 @@ describe('stinger writes return what the controller returns', () => {
     expect(created).toMatchObject({
       untrusted: { name: stinger.name, videoUrl: stinger.videoUrl },
     });
-    await controllers.stingers.updateStinger('7', { cutPointMs: 250 });
+    await controllers.stingers.updateStinger(
+      '7',
+      { cutPointMs: 250 },
+      STINGER_TEAM,
+    );
     const updated = await run('stinger_update_stinger', {
       stinger_id: 7,
       cut_point_ms: 250,

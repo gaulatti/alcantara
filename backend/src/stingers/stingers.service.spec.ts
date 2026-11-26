@@ -16,7 +16,7 @@ describe('StingersService canonical asset writes', () => {
       stinger: {
         create: jest.fn().mockResolvedValue({ ...transition, assetId: null }),
         update: jest.fn().mockResolvedValue(transition),
-        findUniqueOrThrow: jest.fn().mockResolvedValue(transition),
+        findUnique: jest.fn().mockResolvedValue(transition),
       },
       mediaAsset: { upsert: jest.fn(), deleteMany: jest.fn() },
     };

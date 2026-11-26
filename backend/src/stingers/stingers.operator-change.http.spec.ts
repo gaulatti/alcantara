@@ -33,11 +33,11 @@ describe('PUT /stingers/:id records its actor', () => {
 
   beforeEach(async () => {
     metrics = new ManagedMetricsService();
+    let stored = row;
     prisma = {
       stinger: {
-        findUnique: jest.fn(async () => row),
-        update: jest.fn(async () => ({ ...row, enabled: false })),
-        findUniqueOrThrow: jest.fn(async () => ({ ...row, enabled: false })),
+        findUnique: jest.fn(async () => stored),
+        update: jest.fn(async () => (stored = { ...row, enabled: false })),
       },
       $transaction: jest.fn((work: (tx: unknown) => unknown) => work(prisma)),
       operatorChangeRecord: { create: jest.fn(async () => ({})) },
@@ -55,7 +55,11 @@ describe('PUT /stingers/:id records its actor', () => {
     app = module.createNestApplication({ logger: false });
     // The authenticated user the real auth guard would have put on the request.
     app.use((req: { user?: unknown }, _res: unknown, next: () => void) => {
-      req.user = { sub: 'user-1', principalId: 'principal-console' };
+      req.user = {
+        sub: 'user-1',
+        principalId: 'principal-console',
+        authorization: { teamId: 0 },
+      };
       next();
     });
     app.useGlobalInterceptors(app.get(ActorContextInterceptor));

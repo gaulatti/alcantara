@@ -6,10 +6,13 @@ import {
   Param,
   Post,
   Put,
+  Req,
 } from '@nestjs/common';
 import { StingersService } from './stingers.service';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { RequirePermission } from '../auth/require-permission.decorator';
+
+type TeamRequest = { user: { authorization: { teamId: number } } };
 
 @Controller('stingers')
 @RequirePermission(ALCANTARA_PERMISSIONS.stinger.read)
@@ -17,8 +20,8 @@ export class StingersController {
   constructor(private readonly stingersService: StingersService) {}
 
   @Get()
-  async listStingers() {
-    return this.stingersService.findAll();
+  async listStingers(@Req() request: TeamRequest) {
+    return this.stingersService.findAll(request.user.authorization.teamId);
   }
 
   @Post()
@@ -31,8 +34,9 @@ export class StingersController {
       cutPointMs?: number;
       enabled?: boolean;
     },
+    @Req() request: TeamRequest,
   ) {
-    return this.stingersService.create(data);
+    return this.stingersService.create(data, request.user.authorization.teamId);
   }
 
   @Put(':stingerId')
@@ -46,13 +50,24 @@ export class StingersController {
       cutPointMs?: number;
       enabled?: boolean;
     },
+    @Req() request: TeamRequest,
   ) {
-    return this.stingersService.update(Number(stingerId), data);
+    return this.stingersService.update(
+      Number(stingerId),
+      data,
+      request.user.authorization.teamId,
+    );
   }
 
   @Delete(':stingerId')
   @RequirePermission(ALCANTARA_PERMISSIONS.stinger.manage)
-  async deleteStinger(@Param('stingerId') stingerId: string) {
-    return this.stingersService.remove(Number(stingerId));
+  async deleteStinger(
+    @Param('stingerId') stingerId: string,
+    @Req() request: TeamRequest,
+  ) {
+    return this.stingersService.remove(
+      Number(stingerId),
+      request.user.authorization.teamId,
+    );
   }
 }

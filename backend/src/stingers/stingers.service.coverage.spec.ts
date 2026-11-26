@@ -8,7 +8,7 @@ function build() {
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
-      findUniqueOrThrow: jest.fn(),
+      findUnique: jest.fn(),
     },
     mediaAsset: { upsert: jest.fn(), deleteMany: jest.fn() },
   };
@@ -55,7 +55,7 @@ describe('StingersService', () => {
   it('creates with defaults for cutPointMs and enabled', async () => {
     const { service, tx } = build();
     tx.stinger.create.mockResolvedValue({ ...row, assetId: null });
-    tx.stinger.findUniqueOrThrow.mockResolvedValue(row);
+    tx.stinger.findUnique.mockResolvedValue(row);
     await expect(
       service.create({ name: ' Wipe ', videoUrl: ' https://x/y.webm ' }),
     ).resolves.toBe(row);
@@ -72,7 +72,7 @@ describe('StingersService', () => {
   it('creates honoring explicit cutPointMs and enabled=false', async () => {
     const { service, tx } = build();
     tx.stinger.create.mockResolvedValue({ ...row, assetId: null });
-    tx.stinger.findUniqueOrThrow.mockResolvedValue(row);
+    tx.stinger.findUnique.mockResolvedValue(row);
     await service.create({
       name: 'a',
       videoUrl: 'b',
@@ -102,7 +102,7 @@ describe('StingersService', () => {
     const { service, prisma, tx } = build();
     prisma.stinger.findUnique.mockResolvedValue(row);
     tx.stinger.update.mockResolvedValue(row);
-    tx.stinger.findUniqueOrThrow.mockResolvedValue({ ...row, name: 'New' });
+    tx.stinger.findUnique.mockResolvedValue({ ...row, name: 'New' });
     await expect(
       service.update(4, {
         name: ' New ',
@@ -122,7 +122,7 @@ describe('StingersService', () => {
     const { service, prisma, tx } = build();
     prisma.stinger.findUnique.mockResolvedValue(row);
     tx.stinger.update.mockResolvedValue(row);
-    tx.stinger.findUniqueOrThrow.mockResolvedValue(row);
+    tx.stinger.findUnique.mockResolvedValue(row);
     await service.update(4, { cutPointMs: 9 });
     expect(tx.stinger.update).toHaveBeenCalledWith({
       where: { id: 4 },
