@@ -509,6 +509,9 @@ started, ended, failed, and mismatched intro lifecycle events,
 not load (`timeout`, `other`; both exposed from 0),
 `alcantara_radio_song_queue_actions_total{result}` for enqueue, claim, release, remove,
 reorder, consume, cursor persistence, rejection, and persistence failure,
+`alcantara_radio_start_refused_total{reason}` for an operator's take or start refused
+before anything was saved (`engine_unavailable`: a radio-only program whose engine is
+disabled or has no settings, gaulatti/alcantara#609; exposed from 0),
 `alcantara_radio_cursor_writes_total{result}` for the write of the playlist cursor
 after it advanced (`succeeded`, `failed`: the database refused or timed out and
 the next song is not delayed, `conflict`: the stored sequence was edited

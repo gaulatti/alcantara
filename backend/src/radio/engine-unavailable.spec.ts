@@ -95,6 +95,71 @@ describe('RadioService.refuseStartWhileEngineUnavailable', () => {
   });
 });
 
+describe('alcantara_radio_start_refused_total', () => {
+  const count = (metrics: RadioMetricsService) => {
+    const line = metrics
+      .render()
+      .split('\n')
+      .find((row) =>
+        row.startsWith(
+          'alcantara_radio_start_refused_total{reason="engine_unavailable"} ',
+        ),
+      );
+    return Number(line?.split(' ')[1]);
+  };
+
+  it('counts a refusal by its bounded reason, and nothing for an allowed start', async () => {
+    const metrics = new RadioMetricsService();
+    const refusing = new RadioService(
+      {
+        programState: {
+          findUnique: jest
+            .fn()
+            .mockResolvedValue({
+              type: 'radio',
+              radioSettings: { enabled: false },
+            }),
+        },
+      } as any,
+      {} as any,
+      {} as any,
+      metrics,
+    );
+    expect(count(metrics)).toBe(0);
+    await refusing
+      .refuseStartWhileEngineUnavailable('station')
+      .catch(() => undefined);
+    expect(count(metrics)).toBe(1);
+    const allowing = new RadioService(
+      {
+        programState: {
+          findUnique: jest
+            .fn()
+            .mockResolvedValue({
+              type: 'radio',
+              radioSettings: { enabled: true },
+            }),
+        },
+      } as any,
+      {} as any,
+      {} as any,
+      metrics,
+    );
+    await allowing.refuseStartWhileEngineUnavailable('station');
+    expect(count(metrics)).toBe(1);
+    expect(metrics.render()).toContain(
+      '# TYPE alcantara_radio_start_refused_total counter',
+    );
+  });
+
+  it('ignores a reason outside the bounded set', () => {
+    const metrics = new RadioMetricsService();
+    metrics.recordStartRefused('anything' as never);
+    expect(count(metrics)).toBe(0);
+    expect(metrics.render()).not.toContain('reason="anything"');
+  });
+});
+
 describe('startsSongPlayback', () => {
   it('is true when a different song becomes active, or an idle manual rotation turns automatic', () => {
     expect(

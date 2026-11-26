@@ -306,6 +306,7 @@ export class RadioService {
       select: { type: true, radioSettings: { select: { enabled: true } } },
     });
     if (state?.type === 'radio' && state.radioSettings?.enabled !== true) {
+      this.metrics.recordStartRefused('engine_unavailable');
       throw new ConflictException({
         statusCode: 409,
         error: 'Conflict',
