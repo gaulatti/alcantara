@@ -166,11 +166,15 @@ it("requests or mutes the microphone and camera, and disables those without a tr
   expect(onCommand).toHaveBeenLastCalledWith({ type: "media", device: "camera", enabled: true });
 });
 
-it("mutes the microphone and camera when they are live, and disables them when the guest has no such track", () => {
+it("mutes the microphone and camera when they are live, after a plain-words confirmation, and disables them when the guest has no such track", () => {
   const { onCommand } = renderStrip();
   fireEvent.click(screen.getByRole("button", { name: "Mute mic" }));
+  expect(screen.getByRole("group", { name: "Confirm" })).toHaveTextContent("Mute Lucía Ferrer's microphone? They are asked to switch it off.");
+  expect(onCommand).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Mute microphone" }));
   expect(onCommand).toHaveBeenLastCalledWith({ type: "media", device: "microphone", enabled: false });
   fireEvent.click(screen.getByRole("button", { name: "Mute camera" }));
+  fireEvent.click(screen.getByRole("button", { name: "Turn off camera" }));
   expect(onCommand).toHaveBeenLastCalledWith({ type: "media", device: "camera", enabled: false });
   cleanup();
 
@@ -267,6 +271,7 @@ it("replaces, removes and revokes the session from the footer", () => {
   const handlers = renderStrip();
   fireEvent.click(screen.getByRole("button", { name: "Replace link" }));
   fireEvent.click(screen.getByRole("button", { name: "Remove session" }));
+  fireEvent.click(screen.getByRole("button", { name: "Remove from call" }));
   fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
   expect(handlers.onReplace).toHaveBeenCalledTimes(1);
   expect(handlers.onRemove).toHaveBeenCalledTimes(1);
@@ -304,4 +309,34 @@ it("clears a wrap hold that is still running when the strip unmounts, and ignore
     vi.advanceTimersByTime(HOLD_MS);
   });
   expect(onCommand).not.toHaveBeenCalled();
+});
+
+it("keeps a guest in the call when the removal is not confirmed, and says what removing does", () => {
+  const handlers = renderStrip();
+  fireEvent.click(screen.getByRole("button", { name: "Remove session" }));
+  expect(screen.getByRole("group", { name: "Confirm" })).toHaveTextContent(
+    "Remove Lucía Ferrer from the call? They drop off now. Their link still works until it expires, so they can rejoin.",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Keep" }));
+  expect(handlers.onRemove).not.toHaveBeenCalled();
+  expect(screen.queryByRole("group", { name: "Confirm" })).toBeNull();
+});
+
+it("says in plain words whether the guest's audio and video are sent", () => {
+  renderStrip({
+    tracks: [
+      { sid: "m", source: "microphone", muted: true },
+      { sid: "c", source: "camera", muted: false },
+    ],
+  });
+  const av = screen.getByLabelText("Audio and video");
+  expect(av).toHaveTextContent("Audio muted");
+  expect(av).toHaveTextContent("Video on");
+});
+
+it("says audio and video are not sent when the guest has no such track", () => {
+  renderStrip({ tracks: [] });
+  const av = screen.getByLabelText("Audio and video");
+  expect(av).toHaveTextContent("Audio not sent");
+  expect(av).toHaveTextContent("Video not sent");
 });

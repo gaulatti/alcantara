@@ -278,7 +278,7 @@ it("shows this program's slots and each guest's state", async () => {
   expect(screen.getByText("1/6 slots assigned")).toBeVisible();
   // A participant without an invitation of this program is not shown.
   expect(screen.queryByText("Ghost")).not.toBeInTheDocument();
-  expect(within(card()).getByText("Connected")).toBeVisible();
+  expect(within(card()).getByText("Live")).toBeVisible();
   expect(within(card()).getByText("Latest cue:")).toBeVisible();
   expect(button(/Request camera/)).toBeEnabled();
   expect(button(/Mute mic/)).toBeEnabled();
@@ -374,7 +374,14 @@ it("reports a manual refresh that fails", async () => {
 it("creates a private link for a named guest and copies it", async () => {
   const calls = serve();
   const writeText = vi.fn().mockResolvedValue(undefined);
-  vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+  const write = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText, write } });
+  vi.stubGlobal(
+    "ClipboardItem",
+    class {
+      constructor(readonly items: Record<string, unknown>) {}
+    },
+  );
   render(<CallsRoute />);
   await screen.findByText("Ada", { selector: "h3" });
   const create = screen.getByRole("button", { name: /Create private link/ });
@@ -387,7 +394,7 @@ it("creates a private link for a named guest and copies it", async () => {
   });
   fireEvent.click(create);
   expect(
-    await screen.findByText("Guest slot 2 is ready. Copy the private URL now."),
+    await screen.findByText("Guest slot 2 is ready. The private link is copied: send it to the guest."),
   ).toBeVisible();
   expect(bodyOf(calls, "/webrtc/invitations")).toEqual({
     programId: "main show",
@@ -402,6 +409,24 @@ it("creates a private link for a named guest and copies it", async () => {
     expect(status()).toHaveTextContent("Private invitation copied."),
   );
   expect(writeText).toHaveBeenCalledWith(url);
+});
+
+it("keeps the new link on screen when the browser refuses the copy", async () => {
+  const calls = serve();
+  vi.stubGlobal("navigator", { ...navigator, clipboard: undefined });
+  render(<CallsRoute />);
+  await screen.findByText("Ada", { selector: "h3" });
+  fireEvent.change(screen.getByPlaceholderText("Fictional guest"), {
+    target: { value: "Grace" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /Create private link/ }));
+  expect(
+    await screen.findByText(
+      "Guest slot 2 is ready. Copy the private link below and send it to the guest.",
+    ),
+  ).toBeVisible();
+  expect(screen.getByText(`${window.location.origin}/guest/secret-2`)).toBeVisible();
+  expect(bodyOf(calls, "/webrtc/invitations")).toMatchObject({ displayName: "Grace" });
 });
 
 it("blocks a seventh slot", async () => {
@@ -498,6 +523,7 @@ it("sends media, cue and message commands to the guest", async () => {
     ]),
   );
   fireEvent.click(button(/Mute mic/));
+  fireEvent.click(within(card()).getByRole("button", { name: "Mute microphone" }));
   await waitFor(() => expect(sent()).toHaveLength(2));
   expect(sent()[1]).toEqual({
     type: "media",
@@ -550,7 +576,7 @@ it("disables controls a guest cannot take", async () => {
   serve();
   render(<CallsRoute />);
   await screen.findByText("Ada", { selector: "h3" });
-  expect(within(card()).getByText("Not joined")).toBeVisible();
+  expect(within(card()).getByText("Dropped")).toBeVisible();
   expect(button(/Mute camera/)).toBeDisabled();
   expect(button(/Mute mic/)).toBeDisabled();
   expect(button("Cue live")).toBeDisabled();
@@ -574,7 +600,7 @@ it("shows a reconnecting guest muted in returns, with a muted microphone", async
   serve();
   render(<CallsRoute />);
   await screen.findByText("Ada", { selector: "h3" });
-  expect(within(card()).getByText("Reconnecting")).toBeVisible();
+  expect(within(card()).getByText("Connecting")).toBeVisible();
   expect(routing(/Muted in returns/)).toBeVisible();
   expect(button(/Request mic/)).toBeVisible();
   expect(button(/Mute camera/)).toBeVisible();
@@ -606,6 +632,7 @@ it("replaces and revokes a link, and removes a guest session", async () => {
   ).toBeVisible();
   await waitFor(() => expect(button(/Remove session/)).toBeEnabled());
   fireEvent.click(button(/Remove session/));
+  fireEvent.click(within(card()).getByRole("button", { name: "Remove from call" }));
   await waitFor(() =>
     expect(
       calls.some(
@@ -636,6 +663,7 @@ it("replaces and revokes a link, and removes a guest session", async () => {
   expect(await screen.findByText("Already revoked")).toBeVisible();
   await waitFor(() => expect(button(/Remove session/)).toBeEnabled());
   fireEvent.click(button(/Remove session/));
+  fireEvent.click(within(card()).getByRole("button", { name: "Remove from call" }));
   expect(await screen.findByText("Not in room")).toBeVisible();
 });
 
@@ -689,7 +717,7 @@ it("asks for a second confirmation before talking to a guest cued live", async (
   serve();
   render(<CallsRoute />);
   await screen.findByText("Ada", { selector: "h3" });
-  expect(within(card()).getByText("Cued live")).toBeVisible();
+  expect(within(card()).getByText("Live · cued")).toBeVisible();
   expect(screen.getByText("1 guest cued live")).toBeVisible();
   expect(within(card()).getByText(/on the output only through a scene/)).toBeVisible();
   expect(button(/Hold · talk/)).toBeDisabled();
@@ -760,12 +788,20 @@ it("reports a talkback that fails with something other than an error as a plain 
 });
 
 it("shows an invited slot whose guest has not joined yet", async () => {
-  invitations = [invitation()];
-  participants = [participant({ invitationId: "unknown", identity: "ghost", name: "Ghost" })];
+  invitations = [invitation({ status: "available" })];
+  participants = [];
   serve();
   render(<CallsRoute />);
-  expect(await screen.findByText("Ada · not joined")).toBeVisible();
+  expect(await screen.findByText("Ada · Invited")).toBeVisible();
   expect(screen.getByText("1/6 slots assigned")).toBeVisible();
+});
+
+it("shows a guest who was in the call and left as Left, with the link still usable", async () => {
+  invitations = [invitation({ status: "active" })];
+  participants = [];
+  serve();
+  render(<CallsRoute />);
+  expect(await screen.findByText("Ada · Left")).toBeVisible();
 });
 
 it("does not start a second guest's talkback while the first is being set up", async () => {
