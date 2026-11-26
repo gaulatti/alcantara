@@ -217,3 +217,19 @@ it("reorders chyrons by drag and drop, ignoring a drop on itself or without a dr
   fireEvent.drop(rowOf(top()[2]));
   expect(changes).toHaveLength(count);
 });
+
+it("takes a nested chyron on an editor that has no take handler, keeping the change", async () => {
+  const { last } = editor(
+    root(
+      [
+        block("one", "One", [leaf("one-a", "First")]),
+        block("two", "Two", [leaf("two-a", "Second")]),
+      ],
+      { activeItemId: null },
+    ),
+  );
+  await act(async () => {
+    fireEvent.click(screen.getAllByRole("button", { name: "Take" })[1]);
+  });
+  expect(last().activeItemId).toBeTruthy();
+});

@@ -1,3 +1,7 @@
+import {
+  AutomationEngineUnavailableError,
+  isRadioOnlyEngineOff,
+} from '../radio/engine-availability';
 import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   BadRequestException,
@@ -17,14 +21,20 @@ import {
   summarizeChange,
 } from '../operator-change/operator-change-recorder';
 import { PrismaService } from '../prisma.service';
+import { PompeiiService } from '../auth/pompeii.service';
+import { forTeam } from '../tenancy/scoped-prisma';
 import type { Prisma } from '@prisma/client';
 import { ProgramService } from './program.service';
-import { RadioMetricsService } from '../radio/radio-metrics.service';
+import {
+  RadioMetricsService,
+  type LogSongScopePath,
+} from '../radio/radio-metrics.service';
 import { generateRadioLog, parseRadioLogRules } from './radio-log-generator';
 import { fillRadioRundown, parseFillerRules } from './radio-rundown-filler';
 import type {
   FlightCue,
   FlightCueKind,
+  FlightCueOutcome,
   FlightRecipeUse,
   FlightRuntimeState,
   FlightSequence,
@@ -32,6 +42,12 @@ import type {
 
 /** How late a published log may start: the scheduler skips one later than this. */
 export const START_GRACE_MS = 5000;
+
+/**
+ * gaulatti/alcantara#719: how long past its due time a timed-block cue that failed
+ * while the engine was unavailable may still air. Past it the cue is skipped.
+ */
+export const ENGINE_OUTAGE_GRACE_MS = 60_000;
 
 const FLIGHT_CUE_KINDS: Set<FlightCueKind> = new Set([
   'scene',
@@ -258,6 +274,8 @@ function deepPatch(
 export class FlightService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(FlightService.name);
   private readonly runtimes = new Map<string, FlightRuntimeState>();
+  /** Programs whose engine is unavailable now, as handleEngineAvailability reports it. */
+  private readonly enginesDown = new Set<string>();
   private scheduleTimer: ReturnType<typeof setInterval> | null = null;
   private scheduleTickRunning = false;
   private readonly cueOperations = new Map<string, Promise<unknown>>();
@@ -283,7 +301,37 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     private readonly programService: ProgramService,
     private readonly metrics: RadioMetricsService,
     private readonly recorder: OperatorChangeRecorder,
+    private readonly pompeii: PompeiiService,
   ) {}
+
+  private readonly refusedSongScopes = new Set<string>();
+
+  /**
+   * The songs a program's logs, recipes and cues may read (gaulatti/alcantara#122): its team's, all of them when no
+   * station team is configured, and none (`null`, counted) when the program has no team.
+   */
+  async programSongDb(
+    path: LogSongScopePath,
+    programId: string,
+  ): Promise<PrismaService | null> {
+    if (this.pompeii.teamId === 0) return this.prisma;
+    const program = await this.prisma.program.findUnique({
+      where: { programId },
+      select: { teamId: true },
+    });
+    if (program?.teamId && program.teamId > 0) {
+      return forTeam(this.prisma, program.teamId) as unknown as PrismaService;
+    }
+    this.metrics.recordLogSongScopeRefusal(path);
+    const key = `${path}|${programId}`;
+    if (!this.refusedSongScopes.has(key)) {
+      this.refusedSongScopes.add(key);
+      this.logger.warn(
+        `Program ${programId} has no team; ${path} reads no songs`,
+      );
+    }
+    return null;
+  }
 
   async onModuleInit(): Promise<void> {
     if (isDeployCandidate()) {
@@ -312,16 +360,55 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     this.runtimes.clear();
   }
 
-  async listFlightSequences(
-    programId: string,
-  ): Promise<Omit<FlightSequence, 'programStateId'>[]> {
+  async listFlightSequences(programId: string): Promise<
+    (Omit<FlightSequence, 'programStateId'> & {
+      cueOutcomes: FlightCueOutcome[];
+    })[]
+  > {
     const state = await this.getProgramStateRecord(programId);
     const sequences = await this.prisma.flightSequence.findMany({
       where: { programStateId: state.id },
       orderBy: { createdAt: 'asc' },
     });
+    const outcomes = await this.cueOutcomesBySequence(
+      sequences.map((seq) => seq.id),
+    );
 
-    return sequences.map((seq) => this.toFlightSequence(seq));
+    return sequences.map((seq) => ({
+      ...this.toFlightSequence(seq),
+      cueOutcomes: outcomes.get(seq.id) ?? [],
+    }));
+  }
+
+  /**
+   * gaulatti/alcantara#726: the cues of these rundowns that were logged as not aired, from the
+   * as-run rows written for them, so the rundown shows them as skipped instead of played.
+   */
+  private async cueOutcomesBySequence(
+    sequenceIds: number[],
+  ): Promise<Map<number, FlightCueOutcome[]>> {
+    const bySequence = new Map<number, FlightCueOutcome[]>();
+    if (sequenceIds.length === 0) return bySequence;
+    const rows = await this.prisma.asRunRecord.findMany({
+      where: {
+        flightSequenceId: { in: sequenceIds },
+        flightCueId: { not: null },
+        state: 'not-aired',
+      },
+      select: { flightSequenceId: true, flightCueId: true, endReason: true },
+      orderBy: { at: 'asc' },
+    });
+    for (const row of rows) {
+      const list = bySequence.get(row.flightSequenceId!) ?? [];
+      if (!list.some((outcome) => outcome.cueId === row.flightCueId))
+        list.push({
+          cueId: row.flightCueId!,
+          state: 'not-aired',
+          reason: row.endReason,
+        });
+      bySequence.set(row.flightSequenceId!, list);
+    }
+    return bySequence;
   }
 
   async generateTaggedLog(
@@ -352,31 +439,34 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         );
       const rules = parseRadioLogRules(data.rules);
       const labelIds = [...new Set(rules.slots.map((slot) => slot.labelId))];
+      const songDb = await this.programSongDb('generate', programId);
       const [labels, songs, previous] = await Promise.all([
         this.prisma.mediaLabel.findMany({
           where: { id: { in: labelIds } },
           select: { id: true, name: true },
         }),
-        this.prisma.song.findMany({
-          where: {
-            enabled: true,
-            audioUrl: { not: '' },
-            asset: { labels: { some: { labelId: { in: labelIds } } } },
-          },
-          select: {
-            id: true,
-            artist: true,
-            durationMs: true,
-            asset: {
+        songDb
+          ? songDb.song.findMany({
+              where: {
+                enabled: true,
+                audioUrl: { not: '' },
+                asset: { labels: { some: { labelId: { in: labelIds } } } },
+              },
               select: {
-                labels: {
-                  where: { labelId: { in: labelIds } },
-                  select: { labelId: true, position: true },
+                id: true,
+                artist: true,
+                durationMs: true,
+                asset: {
+                  select: {
+                    labels: {
+                      where: { labelId: { in: labelIds } },
+                      select: { labelId: true, position: true },
+                    },
+                  },
                 },
               },
-            },
-          },
-        }),
+            })
+          : [],
         this.prisma.flightSequence.findMany({
           where: {
             programStateId: state.id,
@@ -438,27 +528,32 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       const contentIds = items.flatMap((cue) =>
         cue.songId ? [cue.songId] : [],
       );
+      const songDb = await this.programSongDb('generate', programId);
       const [label, songs, previous] = await Promise.all([
         this.prisma.mediaLabel.findUnique({ where: { id: rules.labelId } }),
-        this.prisma.song.findMany({
-          where: {
-            enabled: true,
-            audioUrl: { not: '' },
-            OR: [
-              { id: { in: contentIds } },
-              { asset: { labels: { some: { labelId: rules.labelId } } } },
-            ],
-          },
-          select: {
-            id: true,
-            artist: true,
-            title: true,
-            durationMs: true,
-            asset: {
-              select: { labels: { select: { labelId: true, position: true } } },
-            },
-          },
-        }),
+        songDb
+          ? songDb.song.findMany({
+              where: {
+                enabled: true,
+                audioUrl: { not: '' },
+                OR: [
+                  { id: { in: contentIds } },
+                  { asset: { labels: { some: { labelId: rules.labelId } } } },
+                ],
+              },
+              select: {
+                id: true,
+                artist: true,
+                title: true,
+                durationMs: true,
+                asset: {
+                  select: {
+                    labels: { select: { labelId: true, position: true } },
+                  },
+                },
+              },
+            })
+          : [],
         this.prisma.flightSequence.findMany({
           where: {
             programStateId: state.id,
@@ -499,7 +594,9 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       typeof value !== 'string' ||
       !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00(?:\.000)?Z$/.test(value)
     ) {
-      throw new BadRequestException('scheduledAt must be an ISO time');
+      throw new BadRequestException(
+        'scheduledAt must be a whole minute, ISO time',
+      );
     }
     const parsed = new Date(value);
     if (
@@ -662,11 +759,23 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         ),
       ),
     ];
+    const songDb = songIds.length
+      ? await this.programSongDb('validate', programId)
+      : null;
+    const readSongs = async () =>
+      songDb
+        ? await songDb.song.findMany({
+            where: { id: { in: songIds } },
+            select: {
+              id: true,
+              enabled: true,
+              audioUrl: true,
+              durationMs: true,
+            },
+          })
+        : [];
     const [songs, instants] = await Promise.all([
-      this.prisma.song.findMany({
-        where: { id: { in: songIds } },
-        select: { id: true, enabled: true, audioUrl: true, durationMs: true },
-      }),
+      readSongs(),
       this.prisma.instant.findMany({
         where: { id: { in: instantIds } },
         select: { id: true, enabled: true, audioUrl: true },
@@ -677,11 +786,16 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       instants.map((instant) => [instant.id, instant]),
     );
     const issues: string[] = [];
+    // Warnings never block a start: a song of unknown length still plays, but
+    // the block's later times are estimates around it.
+    const warnings: string[] = [];
     for (const [index, cue] of items.entries()) {
       if (cue.songId) {
         const song = playableSongs.get(cue.songId);
         if (!song?.enabled || !song.audioUrl.trim())
           issues.push(`Item ${index + 1}: song unavailable`);
+        else if (song.durationMs == null)
+          warnings.push(`Item ${index + 1}: song duration unknown`);
       }
       for (const id of [cue.instantId, cue.voiceTrackInstantId]) {
         if (!id) continue;
@@ -690,7 +804,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
           issues.push(`Item ${index + 1}: audio clip unavailable`);
       }
     }
-    return { programId, ready: issues.length === 0, issues };
+    return { programId, ready: issues.length === 0, issues, warnings };
   }
 
   async preflightFlightSequence(programId: string, sequenceId: number) {
@@ -1493,8 +1607,26 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         await this.programService.stopProgramSongForTimedBlock(programId);
       await this.executeCue(programId, cue);
     } catch (err) {
+      if (err instanceof AutomationEngineUnavailableError) {
+        // Nothing can air until the engine is back: end the block rather than run it silently.
+        await this.stop(programId, { flightDriven: true });
+        this.programService.broadcastUpdate(programId, {
+          type: 'radio_log_cue_failed',
+          sequenceId: runtime.sequenceId,
+          cueId: cue.id,
+          reason: err.reason,
+        });
+        return;
+      }
       console.error(`Flight cue execution failed (${cue.kind})`, err);
       if (runtime.scheduledAtMs !== null) {
+        if (
+          this.enginesDown.has(programId) ||
+          runtime.engineRetry?.index === index
+        ) {
+          this.holdForEngine(runtime, index, generation);
+          return;
+        }
         this.metrics.recordRadioLogResult('cue-failed');
         await this.stop(programId, { flightDriven: true });
         this.programService.broadcastUpdate(programId, {
@@ -1504,6 +1636,11 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         });
         return;
       }
+    }
+    if (runtime.engineRetry) {
+      if (runtime.engineRetry.index === index)
+        this.metrics.recordRadioLogResult('cue-retried');
+      runtime.engineRetry = undefined;
     }
 
     if (runtime.generation !== generation || !runtime.isRunning) {
@@ -1552,6 +1689,98 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     }
 
     void this.advance(programId, generation);
+  }
+
+  /**
+   * Engine availability as the song engine sees it (#719): it freezes on an outage
+   * and calls here on each change. A cue held through the outage is retried as soon
+   * as the engine is back, while its grace lasts.
+   */
+  handleEngineAvailability(programId: string, available: boolean): void {
+    if (!available) {
+      this.enginesDown.add(programId);
+      return;
+    }
+    this.enginesDown.delete(programId);
+    const runtime = this.runtimes.get(programId);
+    const retry = runtime?.engineRetry;
+    if (!runtime?.isRunning || !retry) return;
+    this.clearTimer(runtime);
+    void this.executeCueAtIndex(programId, retry.index, runtime.generation);
+  }
+
+  /**
+   * A timed-block cue failed with the engine unavailable (#719). It waits for the
+   * engine: retried when it is back within ENGINE_OUTAGE_GRACE_MS of its due time
+   * (a fixed-time cue's clock time, otherwise when it first failed), skipped past it.
+   * The block never stops for this.
+   */
+  private holdForEngine(
+    runtime: FlightRuntimeState,
+    index: number,
+    generation: number,
+  ): void {
+    const cue = runtime.items[index];
+    const dueAt =
+      cue.clockOffsetSeconds !== undefined
+        ? runtime.scheduledAtMs! + cue.clockOffsetSeconds * 1000
+        : runtime.engineRetry?.index === index
+          ? runtime.engineRetry.dueAt
+          : Date.now();
+    runtime.engineRetry = { index, dueAt };
+    this.clearTimer(runtime);
+    runtime.timer = setTimeout(
+      () => {
+        const current = this.runtimes.get(runtime.programId);
+        if (
+          current !== runtime ||
+          current.generation !== generation ||
+          !current.isRunning ||
+          current.engineRetry?.index !== index
+        )
+          return;
+        void this.skipAfterOutage(current, index, generation);
+      },
+      Math.max(0, dueAt + ENGINE_OUTAGE_GRACE_MS - Date.now()),
+    );
+  }
+
+  private async skipAfterOutage(
+    runtime: FlightRuntimeState,
+    index: number,
+    generation: number,
+  ): Promise<void> {
+    const cue = runtime.items[index];
+    runtime.engineRetry = undefined;
+    runtime.timer = null;
+    this.metrics.recordRadioLogResult('cue-skipped');
+    if (cue.kind === 'playSong' && typeof cue.songId === 'number') {
+      try {
+        await this.prisma.asRunRecord.create({
+          data: {
+            programId: runtime.programId,
+            songId: cue.songId,
+            state: 'not-aired',
+            endReason: 'engine_unavailable',
+            at: new Date(),
+            // gaulatti/alcantara#726: the rundown shows this cue as skipped, not played.
+            flightSequenceId: runtime.sequenceId,
+            flightCueId: cue.id,
+          },
+        });
+      } catch (err) {
+        this.logger.error(
+          `Could not log a skipped cue as not aired for ${runtime.programId}`,
+          err,
+        );
+      }
+    }
+    this.programService.broadcastUpdate(runtime.programId, {
+      type: 'radio_log_cue_skipped',
+      sequenceId: runtime.sequenceId,
+      cueId: cue.id,
+    });
+    await this.advance(runtime.programId, generation);
   }
 
   private armTimedClip(runtime: FlightRuntimeState): void {
@@ -1748,9 +1977,10 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     } | null = null;
 
     if (typeof cue.songId === 'number') {
-      const song = await this.prisma.song.findUnique({
-        where: { id: cue.songId },
-      });
+      const songDb = await this.programSongDb('cue', programId);
+      const song = songDb
+        ? await songDb.song.findUnique({ where: { id: cue.songId } })
+        : null;
       if (song?.enabled && song.audioUrl.trim()) {
         selectedSong = song;
         const itemId = createId('song');
@@ -1778,6 +2008,25 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
 
     if (!selectedSong) {
       throw new BadRequestException('scheduled song is unavailable');
+    }
+    // gaulatti/alcantara#609: with a radio-only program's engine off, a rundown song would only
+    // start a local timeline that plays nowhere. It is skipped and logged as not aired instead.
+    if (await isRadioOnlyEngineOff(this.prisma, programId)) {
+      this.metrics.recordStartRefused('automation_engine_unavailable');
+      const runtime = this.runtimes.get(programId);
+      await this.prisma.asRunRecord.create({
+        data: {
+          programId,
+          songId: selectedSong.id,
+          state: 'not-aired',
+          endReason: 'engine_unavailable',
+          at: new Date(),
+          // gaulatti/alcantara#726: the rundown shows this cue as skipped, not played.
+          flightSequenceId: runtime?.sequenceId ?? null,
+          flightCueId: runtime ? cue.id : null,
+        },
+      });
+      throw new AutomationEngineUnavailableError();
     }
     if (!this.isClockedLogRunning(programId)) {
       await this.programService.updateProgramAudioBus(

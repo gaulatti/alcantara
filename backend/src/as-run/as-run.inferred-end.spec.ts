@@ -89,6 +89,10 @@ function memoryStore(songs: CatalogSong[]) {
       ),
     },
     song: {
+      findUnique: jest.fn(({ where }: { where: { id: number } }) => {
+        const song = songs.find((s) => s.id === where.id);
+        return Promise.resolve(song ? { id: song.id, assetId: null } : null);
+      }),
       findFirst: jest.fn(
         ({
           where,
@@ -167,6 +171,7 @@ describe('AsRunService inferred ends', () => {
     radioMetrics = { recordRadioLogResult: jest.fn() };
     service = new AsRunService(
       store.prisma as unknown as PrismaService,
+      { teamId: 0 } as never,
       undefined,
       radioMetrics as unknown as RadioMetricsService,
     );
@@ -521,6 +526,7 @@ describe('as-run log for a scripted engine session', () => {
     const { engine, radioService } = sessionEngine();
     const asRun = new AsRunService(
       store.prisma as unknown as PrismaService,
+      { teamId: 0 } as never,
       engine,
     );
     asRun.onModuleInit();

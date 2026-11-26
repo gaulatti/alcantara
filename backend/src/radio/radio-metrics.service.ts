@@ -16,7 +16,10 @@ export type PalazzoEventIgnoreReason =
  * field, never the unknown value.
  */
 export type PalazzoUnknownField =
-  'availability' | 'status' | 'intro-status' | 'withdrawn-reason';
+  | 'availability'
+  | 'status'
+  | 'intro-status'
+  | 'withdrawn-reason';
 
 export type PalazzoMachineOperation =
   | 'song-play'
@@ -58,9 +61,15 @@ export type PalazzoMachineResult =
  * (Palazzo was playing; nothing to do), `unavailable` (no state could be read).
  */
 export type EngineResyncTrigger =
-  'foreign_ended' | 'watchdog' | 'command_failed';
+  | 'foreign_ended'
+  | 'watchdog'
+  | 'command_failed';
 export type EngineResyncResult =
-  'resumed' | 'resumed_no_command' | 'playing' | 'unavailable' | 'undecided';
+  | 'resumed'
+  | 'resumed_no_command'
+  | 'playing'
+  | 'unavailable'
+  | 'undecided';
 /**
  * Engine paths that degrade instead of failing (#237): Palazzo state unreadable
  * at resync, radio settings unreadable when advancing the bumper sequence, a
@@ -113,6 +122,18 @@ export type IntroTransitionResult =
   | 'failed'
   | 'ignored-mismatch';
 
+/**
+ * Why a song start was refused before anything was saved (gaulatti/alcantara#609): an operator's
+ * take or start (`engine_unavailable`), or a rundown's song (`automation_engine_unavailable`).
+ */
+export type StartRefusalReason =
+  | 'engine_unavailable'
+  | 'automation_engine_unavailable';
+const START_REFUSAL_REASONS: StartRefusalReason[] = [
+  'engine_unavailable',
+  'automation_engine_unavailable',
+];
+
 export type SongQueueActionResult =
   | 'enqueued'
   | 'claimed'
@@ -143,6 +164,22 @@ export type AnalysisDropResult =
   | 'not-analyzed'
   | 'lookup-failed';
 
+export type AsRunScopePath = 'attribute' | 'export' | 'summary' | 'list';
+
+export type SimilarityScopePath =
+  | 'propose'
+  | 'decisions'
+  | 'coverage'
+  | 'export'
+  | 'upload';
+
+export type LogSongScopePath =
+  | 'generate'
+  | 'validate'
+  | 'cue'
+  | 'recipe'
+  | 'recovery';
+
 export type SimilarityActionResult =
   | 'selected'
   | 'fallback-no-candidate'
@@ -152,7 +189,11 @@ export type SimilarityActionResult =
 
 /** Outcome of announcing the next song to Palazzo (contract palazzo#40 §5). */
 export type NextAnnouncementResult =
-  'accepted' | 'not_ready' | 'rejected' | 'unsupported' | 'withdrawn';
+  | 'accepted'
+  | 'not_ready'
+  | 'rejected'
+  | 'unsupported'
+  | 'withdrawn';
 
 /** How the engine moved from one song to the next at an accepted end. */
 export type HandoffPath = 'preloaded' | 'command' | 'race_replaced';
@@ -213,7 +254,9 @@ const isBumperSeries = (path: BumperPath, result: BumperResult): boolean =>
   !(path === 'announced' && (result === 'failed' || result === 'retried'));
 
 export type SnapshotReconciliationResult =
-  'accepted' | 'instance-mismatch' | 'instance-conflict';
+  | 'accepted'
+  | 'instance-mismatch'
+  | 'instance-conflict';
 
 export interface RadioMetricsSnapshot {
   connectionsByState: Record<string, number>;
@@ -269,6 +312,8 @@ const RADIO_LOG_RESULTS = [
   'started',
   'start-failed',
   'cue-failed',
+  'cue-retried',
+  'cue-skipped',
   'preflight-failed',
   'poll-failed',
 ] as const;
@@ -407,6 +452,29 @@ const NEXT_ANNOUNCEMENT_RESULTS: NextAnnouncementResult[] = [
 
 const HANDOFF_PATHS: HandoffPath[] = ['preloaded', 'command', 'race_replaced'];
 
+const AS_RUN_SCOPE_PATHS: AsRunScopePath[] = [
+  'attribute',
+  'export',
+  'summary',
+  'list',
+];
+
+const SIMILARITY_SCOPE_PATHS: SimilarityScopePath[] = [
+  'propose',
+  'decisions',
+  'coverage',
+  'export',
+  'upload',
+];
+
+const LOG_SONG_SCOPE_PATHS: LogSongScopePath[] = [
+  'generate',
+  'validate',
+  'cue',
+  'recipe',
+  'recovery',
+];
+
 const SIMILARITY_ACTION_RESULTS: SimilarityActionResult[] = [
   'selected',
   'fallback-no-candidate',
@@ -460,6 +528,8 @@ export class RadioMetricsService {
   private readonly connectionsByState = new Map<string, number>();
   private reconnectAttempts = 0;
   private reconnectFailures = 0;
+  /** Event streams aborted after PALAZZO_EVENT_IDLE_MS without a byte (gaulatti/alcantara#734). */
+  private eventStreamIdleDisconnects = 0;
   private readonly snapshotReconciliation = new Map<string, number>();
   private readonly eventsIgnored = new Map<string, number>();
   private readonly unknownValues = new Map<string, number>();
@@ -472,9 +542,13 @@ export class RadioMetricsService {
   private readonly introTransitions = new Map<string, number>();
   private readonly songRequestFailures = new Map<string, number>();
   private readonly songQueueActions = new Map<string, number>();
+  private readonly startRefusals = new Map<string, number>();
   private songQueueDepth = 0;
   private readonly highRotationActions = new Map<string, number>();
   private readonly similarityActions = new Map<string, number>();
+  private readonly asRunScopeRefusals = new Map<string, number>();
+  private readonly similarityScopeRefusals = new Map<string, number>();
+  private readonly logSongScopeRefusals = new Map<string, number>();
   private readonly analysisDrops = new Map<string, number>();
   private readonly cueGroups = new Map<string, number>();
   private readonly nextAnnouncements = new Map<string, number>();
@@ -505,6 +579,10 @@ export class RadioMetricsService {
 
   recordReconnectFailure(): void {
     this.reconnectFailures += 1;
+  }
+
+  recordEventStreamIdleDisconnect(): void {
+    this.eventStreamIdleDisconnects += 1;
   }
 
   recordSnapshotReconciliation(result: SnapshotReconciliationResult): void {
@@ -575,6 +653,12 @@ export class RadioMetricsService {
     );
   }
 
+  /** An operator's take or start refused before anything was saved, by bounded reason. */
+  recordStartRefused(reason: StartRefusalReason): void {
+    if (!START_REFUSAL_REASONS.includes(reason)) return;
+    this.startRefusals.set(reason, (this.startRefusals.get(reason) ?? 0) + 1);
+  }
+
   recordSongQueueAction(result: SongQueueActionResult): void {
     if (!SONG_QUEUE_ACTION_RESULTS.includes(result)) return;
     this.songQueueActions.set(
@@ -592,6 +676,30 @@ export class RadioMetricsService {
     this.highRotationActions.set(
       result,
       (this.highRotationActions.get(result) ?? 0) + 1,
+    );
+  }
+
+  recordAsRunScopeRefusal(path: AsRunScopePath): void {
+    if (!AS_RUN_SCOPE_PATHS.includes(path)) return;
+    this.asRunScopeRefusals.set(
+      path,
+      (this.asRunScopeRefusals.get(path) ?? 0) + 1,
+    );
+  }
+
+  recordSimilarityScopeRefusal(path: SimilarityScopePath): void {
+    if (!SIMILARITY_SCOPE_PATHS.includes(path)) return;
+    this.similarityScopeRefusals.set(
+      path,
+      (this.similarityScopeRefusals.get(path) ?? 0) + 1,
+    );
+  }
+
+  recordLogSongScopeRefusal(path: LogSongScopePath): void {
+    if (!LOG_SONG_SCOPE_PATHS.includes(path)) return;
+    this.logSongScopeRefusals.set(
+      path,
+      (this.logSongScopeRefusals.get(path) ?? 0) + 1,
     );
   }
 
@@ -791,6 +899,9 @@ export class RadioMetricsService {
       '# HELP alcantara_palazzo_reconnect_failures_total Palazzo SSE reconnect failures.',
       '# TYPE alcantara_palazzo_reconnect_failures_total counter',
       `alcantara_palazzo_reconnect_failures_total ${this.reconnectFailures}`,
+      '# HELP alcantara_palazzo_event_stream_idle_disconnects_total Palazzo event streams dropped after 30 s without an event, then reconnected.',
+      '# TYPE alcantara_palazzo_event_stream_idle_disconnects_total counter',
+      `alcantara_palazzo_event_stream_idle_disconnects_total ${this.eventStreamIdleDisconnects}`,
       '# HELP alcantara_palazzo_snapshot_reconciliation_total Palazzo snapshot reconciliation results.',
       '# TYPE alcantara_palazzo_snapshot_reconciliation_total counter',
     );
@@ -882,6 +993,15 @@ export class RadioMetricsService {
       );
     }
     lines.push(
+      '# HELP alcantara_radio_start_refused_total Song starts refused before anything was saved, by bounded reason (operator or rundown automation).',
+      '# TYPE alcantara_radio_start_refused_total counter',
+    );
+    for (const reason of START_REFUSAL_REASONS) {
+      lines.push(
+        `alcantara_radio_start_refused_total{reason="${reason}"} ${this.startRefusals.get(reason) ?? 0}`,
+      );
+    }
+    lines.push(
       '# HELP alcantara_radio_song_queue_depth Total queued song entries across radio-capable programs.',
       '# TYPE alcantara_radio_song_queue_depth gauge',
       `alcantara_radio_song_queue_depth ${this.songQueueDepth}`,
@@ -896,12 +1016,39 @@ export class RadioMetricsService {
       );
     }
     lines.push(
+      '# HELP alcantara_as_run_scope_refusals_total As-run song reads refused because the program has no team, by bounded path.',
+      '# TYPE alcantara_as_run_scope_refusals_total counter',
+    );
+    for (const path of AS_RUN_SCOPE_PATHS) {
+      lines.push(
+        `alcantara_as_run_scope_refusals_total{path="${path}"} ${this.asRunScopeRefusals.get(path) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_log_song_scope_refusals_total Log, recipe, cue and recovery song reads refused because the program has no team, by bounded path.',
+      '# TYPE alcantara_log_song_scope_refusals_total counter',
+    );
+    for (const path of LOG_SONG_SCOPE_PATHS) {
+      lines.push(
+        `alcantara_log_song_scope_refusals_total{path="${path}"} ${this.logSongScopeRefusals.get(path) ?? 0}`,
+      );
+    }
+    lines.push(
       '# HELP alcantara_radio_similarity_total Similarity picker outcomes by bounded result.',
       '# TYPE alcantara_radio_similarity_total counter',
     );
     for (const result of SIMILARITY_ACTION_RESULTS) {
       lines.push(
         `alcantara_radio_similarity_total{result="${result}"} ${this.similarityActions.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_similarity_scope_refusals_total Similarity reads refused because the program has no team, by bounded path.',
+      '# TYPE alcantara_similarity_scope_refusals_total counter',
+    );
+    for (const path of SIMILARITY_SCOPE_PATHS) {
+      lines.push(
+        `alcantara_similarity_scope_refusals_total{path="${path}"} ${this.similarityScopeRefusals.get(path) ?? 0}`,
       );
     }
     lines.push(

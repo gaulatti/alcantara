@@ -538,8 +538,9 @@ it("checks and publishes with ⌘↵ only when the check passes on the saved rev
     .mockResolvedValueOnce({
       ready: false,
       issues: ["Station ident has no audio"],
+      warnings: [],
     })
-    .mockResolvedValueOnce({ ready: true, issues: [] });
+    .mockResolvedValueOnce({ ready: true, issues: [], warnings: [] });
   vi.mocked(publishFlightSequence).mockImplementation(async (_program, id) =>
     block({ id, revision: 5, publishedAt: "2026-11-17T09:00:00Z" }),
   );

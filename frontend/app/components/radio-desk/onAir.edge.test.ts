@@ -44,4 +44,25 @@ describe("deriveOnAir with missing details", () => {
     const view = deriveOnAir({ ...base, next: { title: "Copper Season", artist: "The Paper Hours", durationMs: null } });
     expect(view.next).toMatchObject({ title: "Copper Season", detail: "The Paper Hours" });
   });
+
+  it("shows an engine whose first status has not answered as Checking engine, neutral, not unavailable", () => {
+    const view = deriveOnAir({
+      ...base,
+      engine: { ...base.engine, connected: false, unknown: true },
+    });
+    expect(view.chips.find((chip) => chip.id === "engine")).toEqual({
+      id: "engine",
+      tone: "idle",
+      label: "Checking engine",
+      title: "Waiting for the engine's first status.",
+    });
+  });
+
+  it("lets an answered status win over the unknown flag", () => {
+    const view = deriveOnAir({
+      ...base,
+      engine: { ...base.engine, connected: true, unknown: true },
+    });
+    expect(view.chips.find((chip) => chip.id === "engine")?.label).toBe("Engine ready");
+  });
 });

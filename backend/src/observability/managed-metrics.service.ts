@@ -201,8 +201,8 @@ const OPERATOR_CHANGE_TARGETS = new Set([
 const OPERATOR_CHANGE_RESULTS = new Set(['recorded', 'failed']);
 /** gaulatti/alcantara#424: a recipe use previewed or built (`issues`: built, with something to fix). */
 const RECIPE_EXPANSION_RESULTS = new Set(['ok', 'issues', 'rejected']);
-/** gaulatti/alcantara#612: authorized song-playback writes, to see whether anything still calls them. */
-const SONG_PLAYBACK_WRITE_RESULTS = new Set(['accepted', 'failed']);
+/** gaulatti/alcantara#612: calls to the song-playback write route, to see whether anything still makes them. */
+const SONG_PLAYBACK_WRITE_RESULTS = new Set(['accepted', 'refused']);
 /** gaulatti/alcantara#424: a use rebuilt after its recipe changed, left on air, or lost to a concurrent edit. */
 const RECIPE_REBUILD_RESULTS = new Set(['rebuilt', 'skipped', 'conflict']);
 /** gaulatti/alcantara#465: a recipe delete, or why it was refused. */
@@ -447,7 +447,7 @@ export class ManagedMetricsService {
     });
     this.songPlaybackWrites = new Counter({
       name: 'alcantara_program_song_playback_writes_total',
-      help: 'Authorized POST /program/:programId/song-playback writes, by result. Exposed from 0.',
+      help: 'Calls to POST /program/:programId/song-playback, by result. Exposed from 0.',
       labelNames: ['result'],
       registers: [this.registry],
     });
@@ -692,6 +692,26 @@ export class ManagedMetricsService {
     this.dependencyDuration.observe(labels, Math.max(0, seconds));
   }
 
+  /**
+   * gaulatti/alcantara#122. The gauge exists only while there is a value, because an unlabelled gauge would
+   * otherwise be scraped as 0 before anything was read.
+   */
+  setMediaAssetsWithoutTeam(count: number | null): void {
+    const name = 'alcantara_media_assets_without_team';
+    if (count === null) {
+      this.registry.removeSingleMetric(name);
+      return;
+    }
+    const gauge =
+      (this.registry.getSingleMetric(name) as Gauge | undefined) ??
+      new Gauge({
+        name,
+        help: 'Media assets with no team, at the last successful read.',
+        registers: [this.registry],
+      });
+    gauge.set(count);
+  }
+
   recordJob(job: string, result: string): void {
     const normalizedJob = bounded(job, JOBS);
     const normalizedResult = bounded(result, JOB_RESULTS);
@@ -927,6 +947,39 @@ export class ManagedMetricsService {
       state: bounded(state, RECORDING_STATES),
       result: bounded(result, RECORDING_RESULTS),
     });
+  }
+
+  /**
+   * gaulatti/alcantara#122: the two counts that gate the radio's song scoping. The gauges exist only while
+   * there is a value, because an unlabelled gauge would otherwise be scraped as 0 before anything was read.
+   */
+  setRadioScopePreflight(
+    counts: {
+      radioProgramsWithoutTeam: number;
+      librarySongsWithoutTeam: number;
+    } | null,
+  ): void {
+    for (const [name, help, value] of [
+      [
+        'alcantara_radio_programs_without_team',
+        'Radio programs with no team, at the last successful read.',
+        counts?.radioProgramsWithoutTeam,
+      ],
+      [
+        'alcantara_library_songs_without_team',
+        'Library songs with no team, at the last successful read.',
+        counts?.librarySongsWithoutTeam,
+      ],
+    ] as const) {
+      if (value === undefined) {
+        this.registry.removeSingleMetric(name);
+        continue;
+      }
+      const gauge =
+        (this.registry.getSingleMetric(name) as Gauge | undefined) ??
+        new Gauge({ name, help, registers: [this.registry] });
+      gauge.set(value);
+    }
   }
 
   async render(radioMetrics: string): Promise<string> {

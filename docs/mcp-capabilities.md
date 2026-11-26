@@ -259,7 +259,7 @@ titles) are user text and sit under `untrusted`.
 | Capability | Permission | Answers like |
 |---|---|---|
 | `program_list_flight_sequences_by_id` | `flight.read` | `GET /program/:programId/flight` (every sequence with its cues, schedule, publication state, revision and `isRunning`) |
-| `program_preflight_flight_sequence_by_id` | `flight.read` | `GET /program/:programId/flight/:sequenceId/preflight` (`ready` and the `issues` found; a sequence with no scheduled start is `invalid`) |
+| `program_preflight_flight_sequence_by_id` | `flight.read` | `GET /program/:programId/flight/:sequenceId/preflight` (`ready`, the `issues` found, and `warnings` that never block a start, such as a song of unknown duration, under `untrusted` like every `warnings` field; a sequence with no scheduled start is `invalid`) |
 | `program_list_recipes_by_id` | `flight.read` | `GET /program/:programId/recipes` (each rundown recipe with its scenes, transition, hold, enabled steps and revision; gaulatti/alcantara#424) |
 | `program_expand_recipe_by_id` | `flight.read` | `POST /program/:programId/recipes/:recipeId/expand` (the cues one use would add for a song, and its issues; writes nothing) |
 
@@ -486,6 +486,10 @@ guest). A guest link is created and replaced in the console only. The four
   `radio_stop_all_instants`) confirm against the program's live stamp, like
   the program actions. `radio_play_instant` accepts `instant_id` as the
   console sends it; the route does not use it.
+- `radio_play_song` and `program_update_program_audio_bus_by_id` go through
+  the same engine check as their routes (#609): while a radio-only program's
+  engine is off, a manual song, or an audio-bus write that would start a song,
+  is refused with `conflict` before anything plays or is saved.
 - `webrtc_update_return` sets every field of the return feed: a field not
   given goes to its default (program, master, 1, not muted, 0 ms), exactly as
   the console's route does. The dry run shows the resulting values.

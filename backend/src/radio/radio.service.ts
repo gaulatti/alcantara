@@ -14,6 +14,9 @@ import {
   type CueGroupShape,
 } from './radio-metrics.service';
 import { PrismaService } from '../prisma.service';
+import { PompeiiService } from '../auth/pompeii.service';
+import { forTeam } from '../tenancy/scoped-prisma';
+import { isRadioOnlyEngineOff } from './engine-availability';
 import { ActorContext } from '../auth/actor-context';
 import { radioSettingsChangeSummary } from '../operator-change/operator-change-summary';
 import {
@@ -69,26 +72,28 @@ export interface RadioMixerPayload {
  * unknown (a timeout or a network error carries no answer).
  */
 /**
- * What a failed Palazzo command tells the operator. An engine that could not be reached did not
- * reject anything, so the message says which happened: unreachable, an answer that could not be read,
- * or a refusal (found in the engine-outage walk, where a song stop during an outage read
- * "Palazzo rejected the song stop").
+ * What a failed Palazzo command tells the operator. Only an answer from Palazzo that refuses the command reads as
+ * "rejected". A command Alcántara refused before sending (a rejection with no HTTP status: the address is not
+ * approved or the program ID is invalid), a server or gateway error, no answer, and an answer that does not
+ * confirm the command each say so (found in the engine-outage walk, gaulatti/alcantara#703).
  */
 export function palazzoCommandFailure(
   action: string,
   error: unknown,
 ): BadGatewayException {
-  const reason =
-    error instanceof PalazzoMachineError ? error.reason : 'unavailable';
+  const machine = error instanceof PalazzoMachineError ? error : null;
+  const reason = machine?.reason ?? 'unavailable';
+  const status = machine?.status;
+  let message = `Palazzo rejected the ${action}`;
   if (reason === 'unavailable')
-    return new BadGatewayException(
-      `Palazzo could not be reached; the ${action} was not confirmed`,
-    );
-  if (reason === 'malformed')
-    return new BadGatewayException(
-      `Palazzo's answer to the ${action} could not be read`,
-    );
-  return new BadGatewayException(`Palazzo rejected the ${action}`);
+    message = `Palazzo did not answer; the ${action} was not confirmed`;
+  else if (reason === 'malformed')
+    message = `Palazzo's answer to the ${action} did not confirm it`;
+  else if (reason === 'rejected' && status === undefined)
+    message = `The ${action} was not sent to Palazzo: Alcántara refused it`;
+  else if (status !== undefined && status >= 500)
+    message = `Palazzo answered the ${action} with an error; it was not confirmed`;
+  return new BadGatewayException(message);
 }
 
 export class PalazzoInstantRefusedException extends BadGatewayException {
@@ -106,7 +111,30 @@ export class RadioService {
     private readonly palazzo: PalazzoMachineClient,
     private readonly config: ConfigService,
     private readonly metrics: RadioMetricsService,
+    private readonly pompeii: PompeiiService,
   ) {}
+
+  /**
+   * The songs the program's recovery filler may use (gaulatti/alcantara#122): its team's, all of them when no station
+   * team is configured, and none (counted) when the program has no team.
+   */
+  private async recoverySongDb(
+    programId: string,
+  ): Promise<PrismaService | null> {
+    if (this.pompeii.teamId === 0) return this.prisma;
+    const program = await this.prisma.program.findUnique({
+      where: { programId },
+      select: { teamId: true },
+    });
+    if (program?.teamId && program.teamId > 0) {
+      return forTeam(this.prisma, program.teamId) as unknown as PrismaService;
+    }
+    this.metrics.recordLogSongScopeRefusal('recovery');
+    this.logger.warn(
+      `Program ${programId} has no team; recovery reads no songs`,
+    );
+    return null;
+  }
 
   async getRecoveryStatus(programId: string) {
     const settings = await this.requireRadioSettings(programId);
@@ -168,10 +196,13 @@ export class RadioService {
       );
     }
     const settings = await this.requireRadioSettings(programId);
-    const songs = await this.prisma.song.findMany({
-      where: { id: { in: songIds } },
-      select: { id: true, enabled: true, audioUrl: true },
-    });
+    const songDb = await this.recoverySongDb(programId);
+    const songs = songDb
+      ? await songDb.song.findMany({
+          where: { id: { in: songIds } },
+          select: { id: true, enabled: true, audioUrl: true },
+        })
+      : [];
     const byId = new Map(songs.map((song) => [song.id, song]));
     const ordered = songIds.map((id) => byId.get(id));
     if (ordered.some((song) => !song?.enabled || !song.audioUrl.trim()))
@@ -321,6 +352,25 @@ export class RadioService {
       where: { programId_leg: { programId, leg: 'radio' } },
     });
     return leg?.pendingVersionId ?? leg?.activeVersionId ?? null;
+  }
+
+  /**
+   * gaulatti/alcantara#609: a radio-only program plays only through its playout engine. While
+   * that engine is disabled (or has no settings), a take or start would play nowhere, so it is
+   * refused with 409 and `reason: "engine_unavailable"`. TV and simulcast programs, whose program
+   * output plays songs itself, are not affected.
+   */
+  async refuseStartWhileEngineUnavailable(programId: string): Promise<void> {
+    if (await isRadioOnlyEngineOff(this.prisma, programId)) {
+      this.metrics.recordStartRefused('engine_unavailable');
+      throw new ConflictException({
+        statusCode: 409,
+        error: 'Conflict',
+        reason: 'engine_unavailable',
+        message:
+          'The radio engine is off (disabled in settings), so nothing was taken.',
+      });
+    }
   }
 
   async getRadioSettings(programId: string) {
@@ -893,8 +943,10 @@ export class RadioService {
 
   async stopSong(programId: string): Promise<void> {
     const settings = await this.requireRadioSettings(programId);
+    // Outside the try: a missing address is Alcántara's configuration, not a Palazzo failure.
+    const url = this.palazzoUrl(settings);
     try {
-      await this.palazzo.stopSong(this.palazzoUrl(settings), programId);
+      await this.palazzo.stopSong(url, programId);
     } catch (error) {
       this.logMachineFailure('stopSong', programId, error);
       throw palazzoCommandFailure('song stop', error);
@@ -930,12 +982,9 @@ export class RadioService {
     mixer: RadioMixerPayload,
   ): Promise<void> {
     const settings = await this.requireRadioSettings(programId);
+    const url = this.palazzoUrl(settings);
     try {
-      await this.palazzo.updateMixer(
-        this.palazzoUrl(settings),
-        programId,
-        mixer,
-      );
+      await this.palazzo.updateMixer(url, programId, mixer);
     } catch (error) {
       this.logMachineFailure('updateMixer', programId, error);
       throw palazzoCommandFailure('radio mixer update', error);
@@ -957,8 +1006,9 @@ export class RadioService {
 
   async stopAllInstants(programId: string): Promise<void> {
     const settings = await this.requireRadioSettings(programId);
+    const url = this.palazzoUrl(settings);
     try {
-      await this.palazzo.stopInstants(this.palazzoUrl(settings), programId);
+      await this.palazzo.stopInstants(url, programId);
     } catch (error) {
       this.logMachineFailure('stopAllInstants', programId, error);
       throw palazzoCommandFailure('instant stop', error);

@@ -6,6 +6,12 @@ import { ManagedMetricsService } from './managed-metrics.service';
 type MetricRequest = { method: string; routeOptions?: { url?: string } };
 type MetricReply = { statusCode: number; elapsedTime: number };
 
+/**
+ * The write route that is to be retired (gaulatti/alcantara#612). It is counted here, from the response, because a
+ * call a guard refuses never reaches the controller.
+ */
+export const SONG_PLAYBACK_WRITE_ROUTE = '/program/:programId/song-playback';
+
 /** A request that matched no route (a 404, or a scanner's path): one fixed label. */
 export const UNMATCHED_ROUTE = 'unmatched';
 
@@ -18,7 +24,8 @@ export function routeGroupOf(request: MetricRequest): string {
   const pattern = request.routeOptions?.url;
   if (!pattern) return UNMATCHED_ROUTE;
   const first = pattern.split('/').filter(Boolean)[0] ?? '';
-  if (!first || first.startsWith(':') || first.startsWith('*')) return UNMATCHED_ROUTE;
+  if (!first || first.startsWith(':') || first.startsWith('*'))
+    return UNMATCHED_ROUTE;
   return first;
 }
 
@@ -40,7 +47,16 @@ export class HttpMetricsHook implements OnModuleInit {
     // A context with no HTTP adapter (a worker, or a test module) serves no requests to count.
     if (!this.adapter.httpAdapter) return;
     const instance = this.adapter.httpAdapter.getInstance() as
-      | { addHook?: (name: string, handler: (request: MetricRequest, reply: MetricReply, done: () => void) => void) => void }
+      | {
+          addHook?: (
+            name: string,
+            handler: (
+              request: MetricRequest,
+              reply: MetricReply,
+              done: () => void,
+            ) => void,
+          ) => void;
+        }
       | undefined;
     // Production runs on Fastify. Another adapter (an Express test app) gets no response hook rather
     // than failing start-up: counting requests must never stop the app from starting.
@@ -55,6 +71,14 @@ export class HttpMetricsHook implements OnModuleInit {
         reply.statusCode,
         reply.elapsedTime / 1000,
       );
+      if (
+        request.method === 'POST' &&
+        request.routeOptions?.url === SONG_PLAYBACK_WRITE_ROUTE
+      ) {
+        this.metrics.recordSongPlaybackWrite(
+          reply.statusCode < 300 ? 'accepted' : 'refused',
+        );
+      }
       done();
     });
   }

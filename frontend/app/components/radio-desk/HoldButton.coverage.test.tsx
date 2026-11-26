@@ -7,7 +7,7 @@ import { HoldButton } from "./HoldButton";
 // anywhere but never from inside a field, and a global hold released early by its modifier.
 
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+  vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance", "setTimeout", "clearTimeout"] });
 });
 afterEach(() => {
   cleanup();
@@ -88,4 +88,56 @@ it("releasing the period ends a global hold that the period started", async () =
   fireEvent.keyUp(window, { key: ".", code: "Period" });
   await advance(700);
   expect(onConfirm).not.toHaveBeenCalled();
+});
+
+it("hides the quick-press hint after 2.5 seconds", async () => {
+  const onConfirm = vi.fn();
+  render(<HoldButton label="Stop" hint="Hold to stop." holdMs={600} onConfirm={onConfirm}>Stop</HoldButton>);
+  const button = screen.getByRole("button", { name: "Stop" });
+  fireEvent.keyDown(button, { key: "Enter" });
+  fireEvent.keyUp(button, { key: "Enter" });
+  expect(screen.getByRole("status")).toBeInTheDocument();
+  await advance(2_499);
+  expect(screen.getByRole("status")).toBeInTheDocument();
+  await advance(1);
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+});
+
+it("ignores a disabled control's global key, and other keys on release", async () => {
+  const onConfirm = vi.fn();
+  const globalKey = (event: KeyboardEvent) => event.key === "h" && event.altKey;
+  render(<HoldButton label="Stop" hint="Hold to stop." holdMs={600} onConfirm={onConfirm} disabled globalKey={globalKey}>Stop</HoldButton>);
+  fireEvent.keyDown(window, { key: "h", altKey: true });
+  await advance(700);
+  expect(onConfirm).not.toHaveBeenCalled();
+});
+
+it("keeps a global hold running when an unrelated key is released", async () => {
+  const onConfirm = vi.fn();
+  const globalKey = (event: KeyboardEvent) => event.key === "h" && event.altKey;
+  render(<HoldButton label="Stop" hint="Hold to stop." holdMs={600} onConfirm={onConfirm} globalKey={globalKey}>Stop</HoldButton>);
+  fireEvent.keyDown(window, { key: "h", altKey: true });
+  await advance(300);
+  fireEvent.keyUp(window, { key: "x" });
+  await advance(400);
+  expect(onConfirm).toHaveBeenCalledTimes(1);
+});
+
+it("releasing the global key itself ends the hold early", async () => {
+  const onConfirm = vi.fn();
+  const globalKey = (event: KeyboardEvent) => event.key === "h" && event.altKey;
+  render(<HoldButton label="Stop" hint="Hold to stop." holdMs={600} onConfirm={onConfirm} globalKey={globalKey}>Stop</HoldButton>);
+  fireEvent.keyDown(window, { key: "h", altKey: true });
+  await advance(300);
+  fireEvent.keyUp(window, { key: "h", altKey: true });
+  await advance(700);
+  expect(onConfirm).not.toHaveBeenCalled();
+});
+
+it("labels itself from the label when it has no children, and styles the danger tone", () => {
+  render(<HoldButton label="Delete" hint="Hold to delete." holdMs={600} onConfirm={vi.fn()} tone="danger" />);
+  const button = screen.getByRole("button", { name: "Delete" });
+  expect(button).toHaveTextContent("Delete");
+  expect(button.className).toContain("text-terracotta");
+  expect(screen.getByTestId("hold-fill").className).toContain("bg-terracotta/50");
 });

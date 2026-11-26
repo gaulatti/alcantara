@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { MediaAssetKind } from '@prisma/client';
 import { MediaAssetsReconciliationService } from './media-assets-reconciliation.service';
 
@@ -90,6 +91,7 @@ function buildService() {
     },
   };
   const prisma = {
+    $executeRaw: jest.fn().mockResolvedValue(0),
     $transaction: jest.fn((operation: (client: typeof tx) => unknown) =>
       operation(tx),
     ),
@@ -200,7 +202,10 @@ describe('MediaAssetsReconciliationService', () => {
 
   it('records bounded startup success and failure without serving stale data', async () => {
     const success = buildService();
+    const logged = jest.spyOn(Logger.prototype, 'log').mockImplementation();
     await success.service.onApplicationBootstrap();
+    expect(logged).toHaveBeenCalledWith('Media asset teams filled: 0');
+    logged.mockRestore();
     expect(success.metrics.recordJob).toHaveBeenCalledWith(
       'media-asset-reconciliation',
       'success',

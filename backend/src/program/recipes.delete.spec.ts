@@ -61,6 +61,7 @@ function setup(sequences: Sequence[] = []) {
     },
   };
   const flights = {
+    programSongDb: jest.fn(async () => prisma),
     updateFlightSequence: jest.fn(async () => ({ revision: 9 })),
   };
   const metrics = { recordRecipeDelete: jest.fn() };

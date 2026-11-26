@@ -7,7 +7,7 @@ import {
   within,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 import type { ComponentProps } from "react";
 import { readFileSync } from "node:fs";
@@ -581,7 +581,7 @@ it("treats every unreachable or refused status endpoint as unverified", async ()
     "alert",
   );
   expect(screen.getByText("Stream unverified")).toBeVisible();
-  expect(screen.getByText("Engine unavailable")).toBeVisible();
+  expect(await screen.findByText("Engine unavailable")).toBeVisible();
   expect(screen.getByText("Output unverified")).toBeVisible();
   expect(screen.getByText("No level sample")).toBeVisible();
   expect(screen.getByText("No prepared recovery playlist")).toBeInTheDocument();
@@ -613,7 +613,87 @@ it("treats every unreachable or refused status endpoint as unverified", async ()
         .mock.calls.some(([url]) => String(url).includes("/palazzo-status")),
     ).toBe(true),
   );
-  expect(screen.getByText("Engine unavailable")).toBeVisible();
+  expect(await screen.findByText("Engine unavailable")).toBeVisible();
+});
+
+// The #734 walk: a page reload left the desk reading "Engine unavailable" for seconds while the engine was fine, only
+// because its first engine status had not answered yet. Unknown reads as unknown until an answer, a failure included.
+it("reads Checking engine, never Engine unavailable, until the first engine status answers", async () => {
+  let answer: (response: Response) => void = () => undefined;
+  radioApi({
+    "/palazzo-status": () => undefined,
+  });
+  vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+    if (String(input).includes("/palazzo-status"))
+      return new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    return new Response("null", { status: 404 });
+  });
+  vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+  mount(liveProps());
+  const strip = screen.getByRole("region", { name: "On air" });
+  const chip = await within(strip).findByText("Checking engine");
+  expect(chip.closest("[data-tone]")).toHaveAttribute("data-tone", "idle");
+  expect(within(strip).queryByText(/Engine unavailable/)).toBeNull();
+
+  // The answer decides: here the engine really is unavailable.
+  answer(json({ ...props().fixtureData!.palazzo, connection: "unavailable" }));
+  expect(await within(strip).findByText(/Engine unavailable/)).toBeVisible();
+  expect(within(strip).queryByText("Checking engine")).toBeNull();
+});
+
+// gaulatti/alcantara#706: six seconds without a fresh output sample turn audible output into Output unverified and
+// dim the on-air clock; a fresh sample restores both. Display only.
+describe("output unverified after six seconds without a sample", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("moves from detected to unverified as time passes, and back with a fresh sample, on the same desk", async () => {
+    const start = Date.parse("2026-11-26T12:00:00Z");
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime(start);
+    let sampledAt = start - 5_000;
+    radioApi({
+      "/status": () => json({ running: true, uptime: 60_000 }),
+      "/palazzo-status": () => json(props().fixtureData!.palazzo),
+      "/output-confidence": () =>
+        json({
+          state: "audible",
+          expectedAudio: true,
+          outputRms: 0.2,
+          lastSampleAt: new Date(sampledAt).toISOString(),
+          quietForMs: null,
+        }),
+      "/recovery": () =>
+        json({ preparedVersion: null, automation: null, connection: "connected" }),
+    });
+    vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+    const p = liveProps();
+    mount(p);
+    expect(await screen.findByText("Engine audio detected")).toBeVisible();
+    const strip = screen.getByRole("region", { name: "On air" });
+    expect(within(strip).getByText("On air")).toBeVisible();
+    expect(within(strip).getByTestId("on-air-clock")).not.toHaveAttribute("data-dimmed");
+
+    // The desk re-reads freshness every second: at 2 s the last sample is 7 s old (a poll at 2 s still answers
+    // that old sample), so the output reads unverified with no fresh answer.
+    await act(async () => {
+      vi.advanceTimersByTime(2_100);
+    });
+    expect(screen.getByText("Output unverified")).toBeVisible();
+    expect(screen.queryByText("Engine audio detected")).toBeNull();
+    expect(within(strip).getByText("Unverified")).toBeVisible();
+    expect(within(strip).getByTestId("on-air-clock")).toHaveAttribute("data-dimmed", "true");
+
+    // The next air-plan poll brings a fresh sample.
+    sampledAt = Date.now();
+    await act(async () => {
+      vi.advanceTimersByTime(2_000);
+    });
+    expect(await screen.findByText("Engine audio detected")).toBeVisible();
+    expect(within(strip).getByText("On air")).toBeVisible();
+    expect(within(strip).getByTestId("on-air-clock")).not.toHaveAttribute("data-dimmed");
+  });
 });
 
 it("names every output confidence state", () => {
@@ -698,6 +778,83 @@ it("describes each event of the on-air rundown and its timing", () => {
   expect(screen.getByText(/ON AIR · Revision 1/)).toBeVisible();
 });
 
+// gaulatti/alcantara#726: a cue the as-run logged as not aired shows as skipped, never played.
+it("shows a not-aired cue as skipped with its reason, and keeps aired cues played", () => {
+  const p = props();
+  const log = onAirLog(p);
+  log.scheduledAt = new Date(Date.now() - 120_000).toISOString();
+  log.activeItemId = "cue-4";
+  log.items = [
+    { id: "cue-1", kind: "playSong", songId: 1, clockOffsetSeconds: 0 },
+    { id: "cue-2", kind: "playSong", songId: 1, clockOffsetSeconds: 60 },
+    { id: "cue-3", kind: "playSong", songId: 1 },
+    { id: "cue-4", kind: "playSong", songId: 1 },
+    { id: "cue-5", kind: "playSong", songId: 1 },
+  ];
+  log.cueOutcomes = [
+    { cueId: "cue-2", state: "not-aired", reason: "engine_unavailable" },
+    { cueId: "cue-3", state: "not-aired", reason: null },
+  ];
+  mount(p);
+  const rows = within(
+    screen.getByRole("list", { name: "On-air rundown" }),
+  ).getAllByRole("listitem");
+  expect(rows[0]).toHaveTextContent("PLAYED");
+  expect(rows[0]).toHaveAttribute("data-skipped", "false");
+  expect(rows[1]).toHaveTextContent("SKIPPED");
+  expect(rows[1]).not.toHaveTextContent("PLAYED");
+  expect(rows[1]).toHaveAttribute("data-skipped", "true");
+  expect(rows[1]).toHaveAttribute("data-played", "false");
+  const reason = within(rows[1]).getByLabelText(
+    "Skipped: not aired, the engine was unavailable",
+  );
+  expect(reason).toHaveAttribute(
+    "title",
+    "not aired, the engine was unavailable",
+  );
+  expect(within(rows[2]).getByLabelText("Skipped: not aired")).toHaveTextContent(
+    "SKIPPED",
+  );
+  expect(rows[3]).toHaveTextContent("NOW");
+  expect(rows[4]).toHaveTextContent("NEXT");
+});
+
+it("names an unknown not-aired reason as the as-run logged it", () => {
+  const p = props();
+  const log = onAirLog(p);
+  log.scheduledAt = new Date(Date.now() - 60_000).toISOString();
+  log.activeItemId = "cue-2";
+  log.items = [
+    { id: "cue-1", kind: "playSong", songId: 1, clockOffsetSeconds: 0 },
+    { id: "cue-2", kind: "playSong", songId: 1 },
+  ];
+  log.cueOutcomes = [
+    { cueId: "cue-1", state: "not-aired", reason: "audio_missing" },
+  ];
+  mount(p);
+  expect(
+    screen.getByLabelText("Skipped: not aired (audio_missing)"),
+  ).toBeVisible();
+});
+
+it("marks rows by position when the backend sends no cue outcomes", () => {
+  const p = props();
+  const log = onAirLog(p);
+  log.scheduledAt = new Date(Date.now() - 60_000).toISOString();
+  log.activeItemId = "cue-2";
+  log.items = [
+    { id: "cue-1", kind: "playSong", songId: 1, clockOffsetSeconds: 0 },
+    { id: "cue-2", kind: "playSong", songId: 1 },
+  ];
+  delete log.cueOutcomes;
+  mount(p);
+  const rows = within(
+    screen.getByRole("list", { name: "On-air rundown" }),
+  ).getAllByRole("listitem");
+  expect(rows[0]).toHaveTextContent("PLAYED");
+  expect(screen.queryByText("SKIPPED")).toBeNull();
+});
+
 it("reorders and removes events in the persisted log, and reloads it after a refused change", async () => {
   const p = props();
   const log = onAirLog(p);
@@ -755,6 +912,112 @@ it("reloads the log from the API after a command when it is live", async () => {
       loads,
     ),
   );
+});
+
+// gaulatti/alcantara#707: a command failure shows as the alert and enters the session log; when the engine
+// reconnects the alert clears and the log keeps the entry.
+it("clears a command failure when the engine reconnects, and keeps it in the session log", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    let connection = "unavailable";
+    radioApi({
+      "/status": () => json({ running: true, uptime: 60_000 }),
+      "/palazzo-status": () => json({ ...props().fixtureData!.palazzo, connection }),
+      "/output-confidence": () => json(props().fixtureData!.output),
+      "/recovery": () => json({ preparedVersion: null, automation: null, connection: "connected" }),
+    });
+    vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+    const p = liveProps();
+    // A rotation change the engine cannot take while it is away.
+    p.onSaveSongSequence = vi.fn().mockRejectedValue(new Error("Fictional engine away"));
+    mount(p);
+    fireEvent.click(await screen.findByRole("button", { name: /^Loop playlist: / }));
+    expect(
+      await screen.findByText("Fictional engine away", { selector: '[role="alert"]' }),
+    ).toBeVisible();
+    const log = screen.getByLabelText("Session log");
+    expect(within(log).getByText("Session log (1)")).toBeInTheDocument();
+    expect(log).toHaveTextContent("Fictional engine away");
+
+    // The next status poll finds the engine connected again.
+    connection = "connected";
+    await act(async () => {
+      vi.advanceTimersByTime(8_000);
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Fictional engine away", { selector: '[role="alert"]' }),
+      ).toBeNull(),
+    );
+    expect(screen.getByLabelText("Session log")).toHaveTextContent("Fictional engine away");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+// gaulatti/alcantara#713 review: the engine's first status answer is not a reconnect, so it clears nothing.
+it("keeps a command failure from before the engine's first status answer", async () => {
+  let answerStatus: (response: Response) => void = () => {};
+  radioApi({
+    "/status": () => json({ running: true, uptime: 60_000 }),
+    "/palazzo-status": (() =>
+      new Promise<Response>((resolve) => {
+        answerStatus = resolve;
+      })) as never,
+    "/output-confidence": () => json(props().fixtureData!.output),
+    "/recovery": () => json({ preparedVersion: null, automation: null, connection: "connected" }),
+  });
+  vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+  const p = liveProps();
+  p.onSaveSongSequence = vi.fn().mockRejectedValue(new Error("Fictional early failure"));
+  mount(p);
+  fireEvent.click(await screen.findByRole("button", { name: /^Loop playlist: / }));
+  expect(
+    await screen.findByText("Fictional early failure", { selector: '[role="alert"]' }),
+  ).toBeVisible();
+  await act(async () => {
+    answerStatus(json({ ...props().fixtureData!.palazzo, connection: "connected" }));
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  expect(
+    screen.getByText("Fictional early failure", { selector: '[role="alert"]' }),
+  ).toBeVisible();
+});
+
+// gaulatti/alcantara#713 review: the same failure again is one line with a count.
+it("collapses a repeated identical failure into one session-log line with a count", async () => {
+  vi.mocked(flight.stopFlight).mockRejectedValue(new Error("Fictional same failure"));
+  mount();
+  const stop = screen.getByRole("button", { name: "Stop rundown / Take Off Air" });
+  fireEvent.click(stop);
+  await screen.findByText("Fictional same failure", { selector: '[role="alert"]' });
+  fireEvent.click(stop);
+  await waitFor(() =>
+    expect(within(screen.getByLabelText("Session log")).getAllByRole("listitem")).toHaveLength(1),
+  );
+  const [entry] = within(screen.getByLabelText("Session log")).getAllByRole("listitem");
+  await waitFor(() => expect(entry).toHaveTextContent("Fictional same failure (×2)"));
+  expect(within(screen.getByLabelText("Session log")).getByText("Session log (1)")).toBeInTheDocument();
+});
+
+it("keeps only the latest twenty command failures in the session log, newest first", async () => {
+  let attempt = 0;
+  vi.mocked(flight.stopFlight).mockImplementation(async () => {
+    attempt += 1;
+    throw new Error(`Fictional failure ${attempt}`);
+  });
+  mount();
+  const stop = screen.getByRole("button", { name: "Stop rundown / Take Off Air" });
+  for (let index = 0; index < 22; index += 1) {
+    fireEvent.click(stop);
+    await screen.findByText(`Fictional failure ${index + 1}`, { selector: '[role="alert"]' });
+  }
+  const entries = within(screen.getByLabelText("Session log")).getAllByRole("listitem");
+  expect(entries).toHaveLength(20);
+  expect(entries[0]).toHaveTextContent("Fictional failure 22");
+  expect(entries[19]).toHaveTextContent("Fictional failure 3");
 });
 
 it("reports an unnamed log command failure", async () => {
@@ -1018,12 +1281,59 @@ it("starts and stops the recovery session through Palazzo", async () => {
     expect.stringContaining("/radio/radio-demo/recovery/start"),
     { method: "POST" },
   );
-  fireEvent.click(stop);
-  expect(await screen.findByText("Prepared for next session")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Configure" })).toHaveAttribute(
-    "href",
-    "/radio-settings",
+  // Stopping clears program audio: a click only explains, a 0.6 s hold stops (gaulatti/alcantara#693).
+  fireEvent.pointerDown(stop);
+  fireEvent.pointerUp(stop);
+  expect(
+    screen.getByText("Hold to stop the session (0.6 s). Program audio stops."),
+  ).toBeInTheDocument();
+  expect(transport).not.toHaveBeenCalledWith(
+    expect.stringContaining("/radio/radio-demo/recovery/stop"),
+    expect.anything(),
   );
+  await hold(stop);
+  expect(await screen.findByText("Prepared for next session")).toBeInTheDocument();
+  expect(
+    transport.mock.calls.filter(([url]) =>
+      String(url).includes("/radio/radio-demo/recovery/stop"),
+    ),
+  ).toHaveLength(1);
+  const configure = screen.getByRole("link", { name: "Configure" });
+  expect(configure).toHaveAttribute("href", "/radio-settings");
+  // Keyboard focus shows a ring: the link has no border or background, so without these classes it has no focus indicator.
+  expect(configure.className).toContain("focus-visible:ring-2");
+  expect(configure.className).toContain("focus-visible:ring-sea");
+});
+
+// gaulatti/alcantara#693 review: one stop while one is on its way. A second hold sends nothing.
+it("sends one recovery stop while one is on its way, however often Stop session is held", async () => {
+  const p = props();
+  p.fixtureData!.recovery = {
+    preparedVersion: "v4",
+    automation: { actualState: "running", filler: { activeVersion: "v4", ready: true } },
+    connection: "connected",
+  } as never;
+  let answerStop: (response: Response) => void = () => {};
+  const transport = radioApi({
+    "/recovery/stop": (() =>
+      new Promise<Response>((resolve) => {
+        answerStop = resolve;
+      })) as never,
+  });
+  mount(p);
+  const stop = screen.getByRole("button", { name: "Stop session" });
+  await hold(stop);
+  await hold(stop);
+  const stops = () =>
+    transport.mock.calls.filter(([url]) =>
+      String(url).includes("/radio/radio-demo/recovery/stop"),
+    );
+  expect(stops()).toHaveLength(1);
+  await act(async () => {
+    answerStop(json({ preparedVersion: "v4", automation: null, connection: "connected" }));
+  });
+  expect(await screen.findByText("Prepared for next session")).toBeInTheDocument();
+  expect(stops()).toHaveLength(1);
 });
 
 it("reports recovery commands Palazzo refused or could not receive", async () => {
@@ -1631,4 +1941,131 @@ it("says On air only for an engine-confirmed song, and refuses Take while the en
   expect(screen.queryByText("On air")).not.toBeInTheDocument();
   expect(screen.getByText("Not confirmed")).toBeVisible();
   expect(screen.getByText(/Take is unavailable until the engine is back/)).toBeVisible();
+});
+
+// gaulatti/alcantara#694: dead air shows in the on-air strip, and the alarm names the action that cures it for
+// the recovery state the desk knows.
+describe("dead air", () => {
+  const deadAir = (
+    recovery: NonNullable<ReturnType<typeof props>["fixtureData"]>["recovery"],
+  ) => {
+    const p = props();
+    p.fixtureData!.output.state = "silent" as never;
+    p.fixtureData!.recovery = recovery;
+    return p;
+  };
+
+  it("leads the on-air strip with a dead-air chip", () => {
+    mount(deadAir({ preparedVersion: null, automation: null, connection: "connected" }));
+    expect(
+      within(screen.getByRole("region", { name: "On air" })).getByText("Dead air"),
+    ).toBeVisible();
+  });
+
+  it("leaves Dead air the only coloured chip on the strip: the good chips render neutral", () => {
+    mount(deadAir({ preparedVersion: null, automation: null, connection: "connected" }));
+    const strip = screen.getByRole("region", { name: "On air" });
+    const tone = (label: string) =>
+      within(strip).getByText(label).closest("[data-tone]")?.getAttribute("data-tone");
+    expect(tone("Dead air")).toBe("bad");
+    expect(tone("Stream verified")).toBe("idle");
+    expect(tone("Engine ready")).toBe("idle");
+  });
+
+  it("says to take the silent song off air and prepare a playlist when none is prepared", () => {
+    mount(deadAir({ preparedVersion: null, automation: null, connection: "connected" }));
+    const alarm = screen.getByRole("alert", { name: "Dead air" });
+    expect(alarm).toHaveTextContent(
+      "Hold Stop to take the silent song off air. No recovery playlist is prepared.",
+    );
+    expect(within(alarm).getByRole("link", { name: "Prepare a recovery playlist" })).toHaveAttribute(
+      "href",
+      "/radio-settings",
+    );
+  });
+
+  it("says to take the silent song off air, then start the prepared fallback, and opens recovery", () => {
+    mount(deadAir({ preparedVersion: "v4", automation: null, connection: "connected" }));
+    const alarm = screen.getByRole("alert", { name: "Dead air" });
+    expect(alarm).toHaveTextContent(
+      "Hold Stop to take the silent song off air, then Start with fallback.",
+    );
+    const controls = screen.getByLabelText("Recovery controls") as HTMLDetailsElement;
+    // jsdom has no scrollIntoView; the button opens the controls and brings them into view.
+    const scrolled = vi.fn();
+    controls.scrollIntoView = scrolled;
+    expect(controls.open).toBe(false);
+    fireEvent.click(within(alarm).getByRole("button", { name: "Go to recovery" }));
+    expect(controls.open).toBe(true);
+    expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
+  });
+
+  it("says the bound playlist plays once the silent song is off air", () => {
+    mount(
+      deadAir({
+        preparedVersion: "v4",
+        automation: { actualState: "running", filler: { activeVersion: "v4", ready: true } },
+        connection: "connected",
+      } as never),
+    );
+    expect(screen.getByRole("alert", { name: "Dead air" })).toHaveTextContent(
+      "Hold Stop to take the silent song off air. The recovery playlist is bound and plays once the queue runs dry.",
+    );
+  });
+
+  it("claims nothing about a playlist while the recovery status is unknown or the engine unavailable", () => {
+    for (const recovery of [
+      null,
+      { preparedVersion: "v4", automation: null, connection: "unavailable" },
+      { preparedVersion: null, automation: null, connection: "unavailable" },
+    ]) {
+      const view = mount(deadAir(recovery as never));
+      const alarm = screen.getByRole("alert", { name: "Dead air" });
+      expect(alarm).toHaveTextContent(
+        "Hold Stop to take the silent song off air. The recovery status is unavailable: check the engine before relying on the fallback.",
+      );
+      expect(alarm).not.toHaveTextContent(/prepared|Start with fallback/);
+      expect(within(alarm).queryByRole("button", { name: "Go to recovery" })).toBeNull();
+      expect(within(alarm).queryByRole("link")).toBeNull();
+      view.unmount();
+    }
+  });
+
+  it("clears the chip and the alarm on the same desk when audio returns", async () => {
+    let state = "silent";
+    radioApi({
+      "/status": () => json({ running: true, uptime: 60_000 }),
+      "/palazzo-status": () => json(props().fixtureData!.palazzo),
+      "/output-confidence": () =>
+        json({
+          state,
+          expectedAudio: true,
+          outputRms: state === "silent" ? 0 : 0.2,
+          lastSampleAt: new Date().toISOString(),
+          quietForMs: state === "silent" ? 12_000 : null,
+        }),
+      "/recovery": () =>
+        json({ preparedVersion: "v4", automation: null, connection: "connected" }),
+    });
+    vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+    mount(liveProps());
+    const strip = screen.getByRole("region", { name: "On air" });
+    expect(await within(strip).findByText("Dead air")).toBeVisible();
+    expect(screen.getByRole("alert", { name: "Dead air" })).toBeVisible();
+    // The next air-plan poll reads audible output.
+    state = "audible";
+    await waitFor(() => expect(within(strip).queryByText("Dead air")).toBeNull(), {
+      timeout: 4_000,
+    });
+    expect(screen.queryByRole("alert", { name: "Dead air" })).toBeNull();
+    expect(screen.getByText("Engine audio detected")).toBeVisible();
+  });
+
+  it("shows no dead-air alarm while the output is audible", () => {
+    mount(props());
+    expect(screen.queryByRole("alert", { name: "Dead air" })).toBeNull();
+    expect(
+      within(screen.getByRole("region", { name: "On air" })).queryByText("Dead air"),
+    ).toBeNull();
+  });
 });

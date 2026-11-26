@@ -1,4 +1,4 @@
-import { HttpException, HttpStatus } from '@nestjs/common';
+import { ConflictException, HttpException, HttpStatus } from '@nestjs/common';
 /* eslint-disable @typescript-eslint/no-unsafe-member-access -- the services are exercised through loosely typed fakes and answers are untyped JSON. */
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
 import { BroadcastDestinationsController } from '../../broadcast-destinations/broadcast-destinations.controller';
@@ -113,6 +113,7 @@ function build() {
       prepareRecoveryPlaylist: answers(recovery),
       setRecoveryAutomation: answers(recovery),
       stopSong: answers(undefined),
+      refuseStartWhileEngineUnavailable: answers(undefined),
       playInstant: answers(undefined),
       stopAllInstants: answers(undefined),
       getPalazzoStatus: answers({ running: true, uptime: null }),
@@ -583,6 +584,29 @@ describe('radio writes', () => {
     );
   });
 
+  it('refuses a manual song while the radio engine is off, and plays nothing (gaulatti/alcantara#609)', async () => {
+    const b = build();
+    b.s.radio.refuseStartWhileEngineUnavailable.mockRejectedValueOnce(
+      new ConflictException({
+        statusCode: 409,
+        error: 'Conflict',
+        reason: 'engine_unavailable',
+        message:
+          'The radio engine is off (disabled in settings), so nothing was taken.',
+      }),
+    );
+    await expect(
+      b.run('radio_play_song', {
+        program_id: 'main',
+        audio_url: 'https://cdn.example/a.mp3',
+      }),
+    ).rejects.toMatchObject({ code: 'conflict' });
+    expect(b.s.radio.refuseStartWhileEngineUnavailable).toHaveBeenCalledWith(
+      'main',
+    );
+    expect(b.s.engine.handleManualSong).not.toHaveBeenCalled();
+  });
+
   it('the manual song and instant routes reach the console services', async () => {
     const b = build();
     await parity(
@@ -606,7 +630,10 @@ describe('radio writes', () => {
           durationMs: 1000,
           songId: 5,
         }),
-      [b.s.engine.handleManualSong],
+      [
+        b.s.radio.refuseStartWhileEngineUnavailable,
+        b.s.engine.handleManualSong,
+      ],
     );
     await parity(
       b,
