@@ -491,6 +491,13 @@ route list, so it marks a route the list does not name yet. `status_class` is `2
 | `alcantara_media_analysis_duration_seconds`    | `result`                            | Wall time of one audio asset analysis          |
 | `alcantara_media_analysis_backlog_assets`      | none                                | Audio assets still waiting for analysis        |
 | `alcantara_media_analysis_interrupted_runs_total` | `outcome`                        | Claims a stopped process left, found at start  |
+| `alcantara_program_song_playback_writes_total` | `result`                            | Song-playback writes through `POST /program/:programId/song-playback` |
+
+`alcantara_program_song_playback_writes_total{result}` counts writes through
+`POST /program/:programId/song-playback`: `accepted` (the playback state was
+stored and broadcast) and `failed` (the write threw). Both are exported from
+startup at zero. A long run at zero shows that no client still uses the route
+(gaulatti/alcantara#612).
 
 `alcantara_media_analyses_total{result}` counts audio asset analysis runs:
 `success` (measurements stored), `retry` (failed and scheduled again) and

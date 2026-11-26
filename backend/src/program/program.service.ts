@@ -2276,6 +2276,10 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /**
+   * The authorized POST /program/:programId/song-playback (gaulatti/alcantara#612). Counted by result
+   * so its remaining callers, if any, show in alcantara_program_song_playback_writes_total.
+   */
   async updateProgramSongPlayback(
     data:
       | {
@@ -2289,6 +2293,30 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       | null
       | undefined,
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    try {
+      const result = await this.applyProgramSongPlayback(data, programId);
+      this.metrics?.recordSongPlaybackWrite('accepted');
+      return result;
+    } catch (error) {
+      this.metrics?.recordSongPlaybackWrite('failed');
+      throw error;
+    }
+  }
+
+  private async applyProgramSongPlayback(
+    data:
+      | {
+          token?: string;
+          audioUrl?: string;
+          progress?: number;
+          currentTimeMs?: number;
+          durationMs?: number | null;
+          isPlaying?: boolean;
+        }
+      | null
+      | undefined,
+    programId: string,
   ) {
     const normalizedProgramId = this.normalizeProgramId(programId);
     await this.getProgramStateRecord(normalizedProgramId);
