@@ -1,5 +1,5 @@
 import { TooltipButton } from "./BleeckerButtons";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Select } from "@gaulatti/bleecker";
 import { apiUrl } from "../utils/apiBaseUrl";
 import {
@@ -162,6 +162,9 @@ interface RecoveryStatus {
   connection: "connected" | "unavailable";
 }
 
+/** The command failures the Radio desk keeps for this session, newest first (gaulatti/alcantara#707). */
+const SESSION_LOG_LIMIT = 20;
+
 export const RadioPanel: React.FC<RadioPanelProps> = ({
   fixtureData,
   programId,
@@ -219,7 +222,19 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   const [addSongId, setAddSongId] = useState("");
   const [logBusy, setLogBusy] = useState(false);
   const [logLoadError, setLogLoadError] = useState<string | null>(null);
-  const [queueError, setQueueError] = useState<string | null>(null);
+  // A command failure shows as the desk's alert and is kept in this session's log; the alert clears when the
+  // engine reconnects, the log entry stays (gaulatti/alcantara#707).
+  const [queueError, setQueueErrorState] = useState<string | null>(null);
+  const [sessionLog, setSessionLog] = useState<
+    Array<{ at: number; message: string }>
+  >([]);
+  const setQueueError = (message: string | null) => {
+    setQueueErrorState(message);
+    if (message)
+      setSessionLog((entries) =>
+        [{ at: Date.now(), message }, ...entries].slice(0, SESSION_LOG_LIMIT),
+      );
+  };
   const [output, setOutput] = useState<OutputConfidence | null>(
     fixtureData?.output ?? null,
   );
@@ -451,6 +466,12 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
 
   const monitor = useRadioMonitor();
   const [findingSong, setFindingSong] = useState(false);
+  // The engine coming back (#707): a command failure from while it was away no longer describes the desk.
+  const engineWasReady = useRef(engineReady);
+  useEffect(() => {
+    if (engineReady && !engineWasReady.current) setQueueErrorState(null);
+    engineWasReady.current = engineReady;
+  }, [engineReady]);
   const leaves = rotationLeaves(rotation.items);
   const liveLeaf = onAirLeaf(
     leaves,
@@ -596,6 +617,23 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                 {playoutError || queueError || logLoadError}
               </p>
             )}
+            {sessionLog.length > 0 ? (
+              <details
+                aria-label="Session log"
+                className="px-4 pb-3 text-xs text-text-secondary"
+              >
+                <summary>Session log ({sessionLog.length})</summary>
+                <ol className="mt-1 space-y-0.5">
+                  {sessionLog.map((entry, index) => (
+                    // One line per entry, its time first: the alert above stays the only place the failure
+                    // text stands alone.
+                    <li key={`${entry.at}-${index}`}>
+                      {`${new Date(entry.at).toLocaleTimeString()} · ${entry.message}`}
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            ) : null}
             {songCatalogLoadError && (
               <div
                 role="alert"

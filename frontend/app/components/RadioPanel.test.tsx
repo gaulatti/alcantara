@@ -757,6 +757,65 @@ it("reloads the log from the API after a command when it is live", async () => {
   );
 });
 
+// gaulatti/alcantara#707: a command failure shows as the alert and enters the session log; when the engine
+// reconnects the alert clears and the log keeps the entry.
+it("clears a command failure when the engine reconnects, and keeps it in the session log", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    let connection = "unavailable";
+    radioApi({
+      "/status": () => json({ running: true, uptime: 60_000 }),
+      "/palazzo-status": () => json({ ...props().fixtureData!.palazzo, connection }),
+      "/output-confidence": () => json(props().fixtureData!.output),
+      "/recovery": () => json({ preparedVersion: null, automation: null, connection: "connected" }),
+    });
+    vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+    const p = liveProps();
+    // A rotation change the engine cannot take while it is away.
+    p.onSaveSongSequence = vi.fn().mockRejectedValue(new Error("Fictional engine away"));
+    mount(p);
+    fireEvent.click(await screen.findByRole("button", { name: /^Loop playlist: / }));
+    expect(
+      await screen.findByText("Fictional engine away", { selector: '[role="alert"]' }),
+    ).toBeVisible();
+    const log = screen.getByLabelText("Session log");
+    expect(within(log).getByText("Session log (1)")).toBeInTheDocument();
+    expect(log).toHaveTextContent("Fictional engine away");
+
+    // The next status poll finds the engine connected again.
+    connection = "connected";
+    await act(async () => {
+      vi.advanceTimersByTime(8_000);
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Fictional engine away", { selector: '[role="alert"]' }),
+      ).toBeNull(),
+    );
+    expect(screen.getByLabelText("Session log")).toHaveTextContent("Fictional engine away");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("keeps only the latest twenty command failures in the session log, newest first", async () => {
+  let attempt = 0;
+  vi.mocked(flight.stopFlight).mockImplementation(async () => {
+    attempt += 1;
+    throw new Error(`Fictional failure ${attempt}`);
+  });
+  mount();
+  const stop = screen.getByRole("button", { name: "Stop rundown / Take Off Air" });
+  for (let index = 0; index < 22; index += 1) {
+    fireEvent.click(stop);
+    await screen.findByText(`Fictional failure ${index + 1}`, { selector: '[role="alert"]' });
+  }
+  const entries = within(screen.getByLabelText("Session log")).getAllByRole("listitem");
+  expect(entries).toHaveLength(20);
+  expect(entries[0]).toHaveTextContent("Fictional failure 22");
+  expect(entries[19]).toHaveTextContent("Fictional failure 3");
+});
+
 it("reports an unnamed log command failure", async () => {
   vi.mocked(flight.stopFlight).mockRejectedValue("engine gone");
   mount();
