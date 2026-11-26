@@ -931,3 +931,125 @@ it("shows a single-feed return when it arrives and waits again when it leaves", 
   expect(attached).toEqual(["attach", "detach"]);
   expect(screen.getByText("Waiting for selected return feed")).toBeVisible();
 });
+// gaulatti/alcantara#624 (guest.tsx deep routes): the paths that need the call's state traced to reach.
+
+it("shows a refusal's whole answer when its JSON names no message", async () => {
+  joinAnswer = () =>
+    Response.json({ reason: "fictional-refusal" }, { status: 400 });
+  openPage();
+  await preflight();
+  fireEvent.click(joinButton());
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    '{"reason":"fictional-refusal"}',
+  );
+  expect(joinButton()).toBeEnabled();
+});
+
+it("sends no heartbeat and no command receipt for a join answer without a session token", async () => {
+  joinAnswer = () =>
+    Response.json({
+      serverUrl: "wss://livekit.example",
+      token: "fictional-guest-token",
+      sessionToken: "",
+      displayName: "Ada",
+      programId: "main",
+      participantIdentity: "guest-ada",
+      returnVideo: "program",
+      returnAudioBus: "aux-2",
+    });
+  await joined();
+  await director({ id: "c-1", type: "message", text: "Fictional note" });
+  expect(await screen.findByText("Fictional note")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: /Acknowledge/ }));
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  expect(
+    fetchCalls.filter(
+      (call) =>
+        call.url.endsWith("/webrtc/session/heartbeat") ||
+        call.url.includes("/webrtc/commands/"),
+    ),
+  ).toEqual([]);
+});
+
+it("rejoins the studio with the session it kept after the session ended", async () => {
+  await joined();
+  emit("connectionStateChanged", "disconnected");
+  expect(await screen.findByText("The studio session ended.")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Rejoin the studio" }));
+  await screen.findByText("Ada · main · program video · aux-2 mix-minus");
+  const joins = fetchCalls.filter((call) => call.url.endsWith("/webrtc/join"));
+  expect(joins).toHaveLength(2);
+  expect(joins[1].body).toEqual({
+    invitation: "inv-1.secret",
+    sessionToken: "session-1",
+  });
+  expect(lk.state.rooms).toHaveLength(2);
+});
+
+it("switches the device in the earlier room while it still reports connected after a refused rejoin", async () => {
+  await joined();
+  const earlier = room();
+  fireEvent.click(screen.getByRole("button", { name: /Leave/ }));
+  expect(await screen.findByText("You left the studio.")).toBeVisible();
+  // LiveKit finishes disconnecting on its own time: until then the room still reports connected.
+  earlier.state = "connected";
+  joinAnswer = () => new Response("", { status: 409 });
+  fireEvent.click(screen.getByRole("button", { name: "Rejoin the studio" }));
+  const camera = await screen.findByDisplayValue("Front camera");
+  const opened = getUserMedia.mock.calls.length;
+  fireEvent.change(camera, { target: { value: "cam-2" } });
+  await waitFor(() =>
+    expect(earlier.switched).toEqual([["videoinput", "cam-2"]]),
+  );
+  // The switch went to the room; the local camera was not opened again.
+  expect(getUserMedia.mock.calls).toHaveLength(opened);
+});
+
+it("asks for any camera when the microphone is switched before a camera was chosen", async () => {
+  getUserMedia.mockImplementationOnce(async () =>
+    stream([track("video")], [track("audio", "mic-1")]),
+  );
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: {
+      getUserMedia,
+      enumerateDevices: vi.fn(async () =>
+        devices([
+          { kind: "audioinput", deviceId: "mic-1", label: "Headset" },
+          { kind: "audioinput", deviceId: "mic-2", label: "Desk mic" },
+        ]),
+      ),
+    },
+  });
+  openPage();
+  await screen.findByText("4g · 12 Mbps · 40 ms RTT");
+  fireEvent.change(screen.getByDisplayValue("Headset"), {
+    target: { value: "mic-2" },
+  });
+  await waitFor(() =>
+    expect(getUserMedia).toHaveBeenLastCalledWith({
+      video: true,
+      audio: { deviceId: { exact: "mic-2" }, echoCancellation: true },
+    }),
+  );
+});
+
+it("enables nothing and sends no answer for a media request that names no device", async () => {
+  // The notice it shows today cannot be dismissed; gaulatti/alcantara#672 stops showing it.
+  await joined();
+  const sentBefore = fetchCalls.length;
+  const callsBefore = room().calls.length;
+  await director({ id: "c-2", type: "media", enabled: true });
+  fireEvent.click(await screen.findByRole("button", { name: "Accept" }));
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  expect(room().calls).toHaveLength(callsBefore);
+  expect(
+    fetchCalls
+      .slice(sentBefore)
+      .filter((call) => call.url.includes("/webrtc/commands/")),
+  ).toEqual([]);
+});
