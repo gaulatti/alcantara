@@ -2181,3 +2181,24 @@ describe("dead air", () => {
     ).toBeNull();
   });
 });
+
+// A rotation that failed to load is an error with a Retry, never the empty rotation (the desk read a restarting backend as
+// an empty filler rotation).
+it("shows a rotation that failed to load as an error with Retry, not as an empty rotation", async () => {
+  const onRetryRotation = vi.fn();
+  const p = props();
+  p.fixtureData!.logs = [];
+  mount({ ...p, rotationLoadError: true, onRetryRotation });
+  expect(screen.getByText("Couldn't load the rotation")).toBeVisible();
+  expect(screen.queryByText(/is empty/)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(onRetryRotation).toHaveBeenCalledOnce();
+});
+
+it("says a truly empty rotation is empty, and offers no load error", () => {
+  const p = props();
+  p.fixtureData!.logs = [];
+  mount({ ...p, songSequence: { mode: "manual", items: [], activeItemId: null, intervalMs: 0, loop: false, startedAt: 0 }, rotationLoadError: false });
+  expect(screen.getByText("Filler rotation is empty")).toBeVisible();
+  expect(screen.queryByText("Couldn't load the rotation")).toBeNull();
+});

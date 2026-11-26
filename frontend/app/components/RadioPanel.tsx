@@ -86,6 +86,9 @@ interface RadioPanelProps {
   programId: string;
   playoutError?: string | null;
   songSequence: any;
+  /** The rotation could not be read: show the error, never the empty rotation (the rotation was not loaded). */
+  rotationLoadError?: boolean;
+  onRetryRotation?: () => void;
   songQueue: ProgramSongQueueEntry[];
   songCatalog: SongCatalogItem[];
   programSongPlayback: ProgramSongPlaybackState | null;
@@ -186,6 +189,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   programId,
   playoutError,
   songSequence,
+  rotationLoadError = false,
+  onRetryRotation,
   songQueue,
   onSaveSongSequence,
   onTakeSelection,
@@ -891,44 +896,52 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                       onReorder={onReorderSongQueue}
                     />
                   )}
-                  <ProgramSongSequenceEditor
-                    sequence={rotation}
-                    songCatalog={songCatalog}
-                    programSongPlayback={programSongPlayback}
-                    onChange={(next) => {
-                      void Promise.resolve(onSaveSongSequence(next)).catch(
-                        (cause) =>
-                          setQueueError(
-                            cause instanceof Error
-                              ? cause.message
-                              : "Rotation was not changed",
-                          ),
-                      );
-                    }}
-                    onTakeSelection={
-                      onTakeSelection
-                        ? (next) => runRotation(() => onTakeSelection(next))
-                        : undefined
-                    }
-                    onQueueItem={(itemId) => {
-                      // The editor fires and forgets; a refused add is shown
-                      // here, as a refused rotation change is (#194). A new
-                      // add clears the last refusal first.
-                      setQueueError(null);
-                      void Promise.resolve(onQueueSong(itemId)).catch(
-                        (cause) =>
-                          setQueueError(
-                            cause instanceof Error
-                              ? cause.message
-                              : "Play Next was not changed",
-                          ),
-                      );
-                    }}
-                    view={addingFillers ? "full" : "queue"}
-                    rotationLabel="Filler rotation"
-                    liveItemId={confirmedLiveLeaf?.id ?? null}
-                    nextItemId={next?.itemId ?? null}
-                  />
+                  {rotationLoadError ? (
+                    <div role="alert" className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-16 text-center">
+                      <p className="text-sm font-medium text-text-primary">Couldn't load the rotation</p>
+                      <p className="text-xs text-text-secondary">The backend did not answer. The rotation will load again once it does.</p>
+                      {onRetryRotation ? <Button variant="secondary" onClick={onRetryRotation}>Retry</Button> : null}
+                    </div>
+                  ) : (
+                    <ProgramSongSequenceEditor
+                      sequence={rotation}
+                      songCatalog={songCatalog}
+                      programSongPlayback={programSongPlayback}
+                      onChange={(next) => {
+                        void Promise.resolve(onSaveSongSequence(next)).catch(
+                          (cause) =>
+                            setQueueError(
+                              cause instanceof Error
+                                ? cause.message
+                                : "Rotation was not changed",
+                            ),
+                        );
+                      }}
+                      onTakeSelection={
+                        onTakeSelection
+                          ? (next) => runRotation(() => onTakeSelection(next))
+                          : undefined
+                      }
+                      onQueueItem={(itemId) => {
+                        // The editor fires and forgets; a refused add is shown
+                        // here, as a refused rotation change is (#194). A new
+                        // add clears the last refusal first.
+                        setQueueError(null);
+                        void Promise.resolve(onQueueSong(itemId)).catch(
+                          (cause) =>
+                            setQueueError(
+                              cause instanceof Error
+                                ? cause.message
+                                : "Play Next was not changed",
+                            ),
+                        );
+                      }}
+                      view={addingFillers ? "full" : "queue"}
+                      rotationLabel="Filler rotation"
+                      liveItemId={confirmedLiveLeaf?.id ?? null}
+                      nextItemId={next?.itemId ?? null}
+                    />
+                  )}
                 </div>
               )}
             </div>
