@@ -573,7 +573,7 @@ describe('ProgramRealtimeService client messages', () => {
     ]);
   });
 
-  it('forwards song playback from program clients only', async () => {
+  it('ignores song playback reports from every client role', async () => {
     const ctx = build();
     const playback = { token: 't' };
     await deliver(
@@ -591,10 +591,7 @@ describe('ProgramRealtimeService client messages', () => {
       client('control'),
       json({ type: 'song_playback_update', playback }),
     );
-    expect(ctx.programService.updateProgramSongPlayback.mock.calls).toEqual([
-      [playback, 'p'],
-      [{ type: 'song_playback_update', token: 'u' }, 'p'],
-    ]);
+    expect(ctx.programService.updateProgramSongPlayback).not.toHaveBeenCalled();
   });
 
   it('swallows rejected telemetry updates', async () => {

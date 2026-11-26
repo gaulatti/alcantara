@@ -818,6 +818,11 @@ model MediaAssetAnalysis {
   attempts               Int        @default(0)
   /// When a claimed run's lease ends or a failed run may be retried; null when settled.
   nextAttemptAt          DateTime?
+  /// When the running process claimed the row; null when no run holds it. A process that starts finds the claims a
+  /// stopped one left and hands them back (gaulatti/alcantara#587).
+  claimedAt              DateTime?
+  /// Claims of the current source handed back because their process stopped; reset by a success or a new request.
+  interruptions          Int        @default(0)
   /// The source URL the row describes; a different MediaAsset.sourceUrl means the row is stale.
   sourceUrl              String?
   createdAt              DateTime   @default(now())

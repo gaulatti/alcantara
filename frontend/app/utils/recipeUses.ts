@@ -21,7 +21,6 @@ export type RundownRow =
 
 export function groupRundown(items: FlightCue[]): RundownRow[] {
   const rows: RundownRow[] = [];
-  const runsPerUse = new Map<string, number>();
   let index = 0;
   while (index < items.length) {
     const tag = items[index].recipeUse;
@@ -42,11 +41,15 @@ export function groupRundown(items: FlightCue[]): RundownRow[] {
       end,
       partial: false,
     });
-    runsPerUse.set(tag.useId, (runsPerUse.get(tag.useId) ?? 0) + 1);
     index = end;
   }
+  // A use is partial when more than one run of its cues made it into the rundown. Counting the rows
+  // directly means no lookup can miss: every use row is one of the rows counted.
   return rows.map((row) =>
-    row.kind === "use" && (runsPerUse.get(row.useId) ?? 0) > 1 ? { ...row, partial: true } : row,
+    row.kind === "use" &&
+    rows.filter((other) => other.kind === "use" && other.useId === row.useId).length > 1
+      ? { ...row, partial: true }
+      : row,
   );
 }
 

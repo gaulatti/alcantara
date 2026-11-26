@@ -78,7 +78,11 @@ const specs = [
     {} as never,
     { teamId: 7 } as never,
   ).specs(),
-  ...new MediaMcpTools(services.media as never, {} as never).specs(),
+  ...new MediaMcpTools(
+    services.media as never,
+    {} as never,
+    { teamId: 7 } as never,
+  ).specs(),
   ...new MediaAssetsMcpTools(services.assets as never, {} as never).specs(),
   ...new SimilarityMcpTools(services.similarity as never).specs(),
 ];
@@ -101,6 +105,7 @@ beforeEach(() => {
 });
 
 const SONG_TEAM = { user: { authorization: { teamId: 7 } } };
+const MEDIA_TEAM = { user: { authorization: { teamId: 7 } } };
 
 describe('song reads return what the controller returns', () => {
   it('song_find_all, with the console defaults and the filters it passes on', async () => {
@@ -188,17 +193,23 @@ describe('song reads return what the controller returns', () => {
 describe('media reads', () => {
   it('media_find_all and media_find_one', async () => {
     expect(rebuilt(await run('media_find_all', {}))).toEqual(
-      asRest(await controllers.media.findAll()),
+      asRest(await controllers.media.findAll(MEDIA_TEAM)),
     );
-    expect(services.media.findAll).toHaveBeenNthCalledWith(1, {
-      search: undefined,
-      sortBy: undefined,
-      sortOrder: undefined,
-      page: 1,
-      limit: 50,
-    });
+    expect(services.media.findAll).toHaveBeenNthCalledWith(
+      1,
+      {
+        search: undefined,
+        sortBy: undefined,
+        sortOrder: undefined,
+        page: 1,
+        limit: 50,
+      },
+      7,
+    );
     const one = await run('media_find_one', { media_id: 11 });
-    expect(rebuilt(one)).toEqual(asRest(await controllers.media.findOne('11')));
+    expect(rebuilt(one)).toEqual(
+      asRest(await controllers.media.findOne('11', MEDIA_TEAM)),
+    );
     expect(one).toMatchObject({
       id: 11,
       untrusted: { name: media.name, imageUrl: media.imageUrl },

@@ -71,3 +71,10 @@ it("has no timeline when the length is unknown, and nothing to step to without h
   expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
 });
+
+it("ignores the arrow keys on a timeline that has no seek handler", () => {
+  setup({ playing: false, position: 30, onSeek: undefined });
+  const slider = screen.getByRole("slider");
+  expect(() => fireEvent.keyDown(slider, { key: "ArrowRight" })).not.toThrow();
+  expect(slider).toBeInTheDocument();
+});

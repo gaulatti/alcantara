@@ -49,6 +49,7 @@ describe('catalogue, preference and ticket contracts through Fastify HTTP', () =
     },
     {
       path: 'media',
+      scoped: true,
       controller: MediaController,
       token: MediaService,
       service: methods(['findAll', 'findOne', 'create', 'update', 'remove']),
@@ -60,6 +61,7 @@ describe('catalogue, preference and ticket contracts through Fastify HTTP', () =
     },
     {
       path: 'media-groups',
+      scoped: true,
       controller: MediaGroupsController,
       token: MediaGroupsService,
       service: methods(['findAll', 'findOne', 'create', 'update', 'remove']),
@@ -81,6 +83,7 @@ describe('catalogue, preference and ticket contracts through Fastify HTTP', () =
     },
     {
       path: 'stingers',
+      scoped: true,
       controller: StingersController,
       token: StingersService,
       service: methods(['findAll', 'create', 'update', 'remove']),

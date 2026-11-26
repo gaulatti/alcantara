@@ -34,6 +34,7 @@ const upload = {
 };
 
 const SONG_TEAM = { user: { authorization: { teamId: 7 } } };
+const MEDIA_TEAM = { user: { authorization: { teamId: 7 } } };
 
 function build() {
   const programs = fakeServices().programs;
@@ -69,7 +70,11 @@ function build() {
       programs as never,
       { teamId: 7 } as never,
     ).specs(),
-    ...new MediaMcpTools(services.media as never, programs as never).specs(),
+    ...new MediaMcpTools(
+      services.media as never,
+      programs as never,
+      { teamId: 7 } as never,
+    ).specs(),
     ...new MediaAssetsMcpTools(
       services.assets as never,
       programs as never,
@@ -179,10 +184,13 @@ describe('media writes', () => {
   it('media_create and media_update', async () => {
     const { services, controllers, run, plan } = build();
     const created = asRest(
-      await controllers.media.create({
-        name: 'N',
-        imageUrl: 'https://x/y.png',
-      }),
+      await controllers.media.create(
+        {
+          name: 'N',
+          imageUrl: 'https://x/y.png',
+        },
+        MEDIA_TEAM,
+      ),
     );
     expect(
       rebuilt(
@@ -192,7 +200,7 @@ describe('media writes', () => {
     expect(services.media.create.mock.calls[1]).toEqual(
       services.media.create.mock.calls[0],
     );
-    await controllers.media.update('11', { name: 'M' });
+    await controllers.media.update('11', { name: 'M' }, MEDIA_TEAM);
     const updated = await run('media_update', { media_id: 11, name: 'M' });
     expect(services.media.update.mock.calls[1]).toEqual(
       services.media.update.mock.calls[0],
