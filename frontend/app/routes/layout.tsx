@@ -106,7 +106,7 @@ const NAVIGATION_ICONS: Record<string, ReactNode> = {
 interface ShellLinkProps {
   children: ReactNode;
   className?: string;
-  item: { href: string; external?: boolean; active?: boolean };
+  item: { href: string; label?: string; external?: boolean; active?: boolean };
   onClick?: () => void;
 }
 
@@ -122,7 +122,7 @@ function renderAppLink({ children, className, item, onClick }: ShellLinkProps) {
   /* v8 ignore stop */
 
   return (
-    <Link to={item.href} className={className} onClick={onClick} aria-current={item.active ? 'page' : undefined}>
+    <Link to={item.href} className={className} onClick={onClick} aria-label={item.label} aria-current={item.active ? 'page' : undefined}>
       {children}
     </Link>
   );
@@ -597,8 +597,6 @@ function ConsoleShell() {
         group: 'Navigation',
         icon: <Eye size={16} />,
         onSelect: () => {
-          /* v8 ignore next -- callbacks in this route run only in the browser, where a window always exists */
-          if (typeof window === 'undefined') return;
           window.open('/preview', '_blank', 'noopener,noreferrer');
         }
       }] : []),
@@ -609,8 +607,6 @@ function ConsoleShell() {
         group: 'Programs',
         icon: <Radio size={16} />,
         onSelect: () => {
-          /* v8 ignore next -- callbacks in this route run only in the browser, where a window always exists */
-          if (typeof window === 'undefined') return;
           openSelectedProgramOutput();
         }
       },

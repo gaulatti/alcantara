@@ -229,7 +229,9 @@ export function PlaybackBar({
   return (
     <div className="playback-dock shrink-0 bg-dark-sand/95 shadow-[0_-10px_28px_rgba(0,0,0,0.45)] backdrop-blur supports-[backdrop-filter]:bg-dark-sand/90">
       <div className="playback-bar flex flex-wrap items-center justify-between gap-2 border-t border-sand/30 bg-dark-sand/85 px-3 py-2 sm:px-4 sm:py-3 md:flex-nowrap">
-        <div className="order-2 flex items-center gap-2 md:order-none">
+        {/* On a phone these controls wrap, so the feedback pill takes its own line instead of
+            running off the dock's edge; from md up they stay on one line. */}
+        <div className="order-2 flex flex-wrap items-center gap-2 md:order-none md:flex-nowrap">
           {logTransport ? (
             <>
               <Button

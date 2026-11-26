@@ -301,3 +301,19 @@ describe("TapePanel failures", () => {
     expect(screen.getByRole("button", { name: /Download MP4/ })).toBeEnabled();
   });
 });
+
+describe("TapePanel polling", () => {
+  it("asks for the tape status again every two and a half seconds", async () => {
+    vi.mocked(fetchTapeStatus).mockReset();
+    vi.mocked(fetchTapeStatus).mockResolvedValue(status("idle"));
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      render(<TapePanel programId="radio-1" />);
+      await waitFor(() => expect(fetchTapeStatus).toHaveBeenCalledTimes(1));
+      vi.advanceTimersByTime(2_500);
+      await waitFor(() => expect(fetchTapeStatus).toHaveBeenCalledTimes(2));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
