@@ -2231,6 +2231,20 @@ describe("dead air", () => {
     }
   });
 
+  // A zero fader is the desk's own cause even when a recovery playlist is prepared: the recovery advice must not
+  // replace the fader, or the operator would start a playlist while the fader still silences the song.
+  it("names a zero fader before the recovery advice, even when a recovery playlist is prepared", () => {
+    const p = deadAir({ preparedVersion: "v9", automation: null, connection: "connected" });
+    p.mixer = { ...p.mixer, song: { ...p.mixer.song, volume: 0, muted: false } };
+    mount(p);
+    const alarm = screen.getByRole("alert", { name: "Dead air" });
+    expect(alarm).toHaveTextContent(
+      "The Music fader is down on this desk: raise it to put the song back on air.",
+    );
+    expect(alarm).not.toHaveTextContent(/recovery playlist/i);
+    expect(alarm).not.toHaveTextContent(/Hold Stop/);
+  });
+
   it("says to take the silent song off air and prepare a playlist when none is prepared", () => {
     mount(deadAir({ preparedVersion: null, automation: null, connection: "connected" }));
     const alarm = screen.getByRole("alert", { name: "Dead air" });
