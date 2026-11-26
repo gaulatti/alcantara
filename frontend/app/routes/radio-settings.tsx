@@ -99,6 +99,8 @@ export default function RadioSettingsRoute() {
   const [instants, setInstants] = useState<InstantOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
+  // The save's result stays on the form, not only in the toast that can scroll out of view.
+  const [settingsSaved, setSettingsSaved] = useState(false);
   const [savingConsumers, setSavingConsumers] = useState(false);
 
   const load = useCallback(async () => {
@@ -136,6 +138,7 @@ export default function RadioSettingsRoute() {
 
   const saveSettings = async (current: RadioSettings) => {
     setSavingSettings(true);
+    setSettingsSaved(false);
     try {
       const response = await fetch(apiUrl(`/radio/${encodeURIComponent(programId)}/settings`), {
         method: 'PUT',
@@ -145,6 +148,7 @@ export default function RadioSettingsRoute() {
       if (!response.ok) throw new Error(`Radio settings were not saved (${response.status})`);
       setSettings((await response.json()) as RadioSettings);
       setSettingsExist(true);
+      setSettingsSaved(true);
       showAlert('Radio distribution settings saved.', 'success');
     } catch (error) {
       showAlert(error instanceof Error ? error.message : 'Radio settings were not saved.', 'error');
@@ -292,6 +296,11 @@ export default function RadioSettingsRoute() {
               <Button loading={savingSettings} onClick={() => void saveSettings(settings)}>
                 <Save size={15} /> Save radio settings
               </Button>
+              {settingsSaved ? (
+                <span role='status' className='text-sm text-text-secondary'>
+                  Radio settings saved.
+                </span>
+              ) : null}
             </div>
           </Card>
 
