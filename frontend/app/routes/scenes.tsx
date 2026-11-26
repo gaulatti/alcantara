@@ -73,14 +73,16 @@ export default function ScenesAdmin() {
 
   const [sort, setSort] = useState<SortState>({ field: 'name', order: 'asc' });
 
-  const openCreateModal = () => {
+  // The default layout is the first one; it is passed to the create handler where that handler is rendered.
+  const defaultLayout = layouts.at(0);
+  const openCreateModal = (layoutId: number) => {
     setEditingScene(null);
     setNameInput('');
-    // The Create button and the empty-list action only render once a layout exists.
-    setLayoutIdInput(layouts[0].id);
+    setLayoutIdInput(layoutId);
     setError('');
     setShowModal(true);
   };
+  const createScene = defaultLayout ? () => openCreateModal(defaultLayout.id) : undefined;
 
   const openEditModal = (scene: SceneSummary) => {
     setEditingScene(scene);
@@ -191,7 +193,7 @@ export default function ScenesAdmin() {
         <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
           <SectionHeader title='Scenes' description='Create and manage scenes.' />
           <div className='flex flex-wrap items-center gap-3'>
-            <Button onClick={openCreateModal} disabled={layouts.length === 0}>
+            <Button onClick={createScene} disabled={!createScene}>
               <Plus size={16} />
               Create Scene
             </Button>
@@ -215,7 +217,7 @@ export default function ScenesAdmin() {
             status={status}
             onRetry={() => void load()}
             errorTitle='Failed to load scenes'
-            empty={{ title: 'No scenes yet', description: 'Create your first scene.', action: <Button onClick={openCreateModal}>Create Scene</Button> }}
+            empty={{ title: 'No scenes yet', description: 'Create your first scene.', action: createScene ? <Button onClick={createScene}>Create Scene</Button> : null }}
             sort={sort}
             onSortChange={setSort}
           />
