@@ -767,8 +767,10 @@ describe('MCP radio read tools against a fake Palazzo and the console endpoints'
       const answer = await h.call('get_queue');
       const bus = (await h.consoleGet(`/program/${PROGRAM}/audio-bus`)).body;
       expect(bus.songQueue).toHaveLength(2);
+      expect(bus.sequenceVersion).toEqual(expect.any(String));
       expect(answer.body).toEqual({
         program_id: PROGRAM,
+        sequence_version: bus.sequenceVersion,
         entries: bus.songQueue.map((entry: any, i: number) => ({
           entry_id: entry.id,
           item_id: entry.itemId,

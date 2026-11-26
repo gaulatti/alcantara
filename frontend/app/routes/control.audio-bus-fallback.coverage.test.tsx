@@ -85,7 +85,7 @@ it("starts from an empty rotation when the stored audio bus has no song sequence
   fireEvent.click(await screen.findByRole("button", { name: "Add songs" }));
   const sheet = await screen.findByRole("dialog");
   const saves = server.requests("PUT /program/main/audio-bus").length;
-  fireEvent.click(within(sheet).getAllByRole("button", { name: "Add to queue" })[0]);
+  fireEvent.click(within(sheet).getAllByRole("button", { name: /^Add .+ to the playlist$/ })[0]);
   await waitFor(() => expect(server.requests("PUT /program/main/audio-bus").length).toBe(saves + 1));
   const sent = server.requests("PUT /program/main/audio-bus").at(-1) as { songSequence: { items: Array<{ title: string }>; mode: string } };
   expect(sent.songSequence.mode).toBe("manual");

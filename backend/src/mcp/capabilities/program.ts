@@ -751,6 +751,12 @@ export class ProgramMcpTools {
         shape: {
           program_id: programIdArg,
           song_sequence: z.record(z.string(), z.unknown()).optional(),
+          sequence_version: z
+            .string()
+            .optional()
+            .describe(
+              'Required with song_sequence: the sequence_version that get_queue gave for the rotation this one was made from.',
+            ),
           mixer_settings: z.record(z.string(), z.unknown()).optional(),
         },
         summary: (args, live) =>
@@ -766,10 +772,16 @@ export class ProgramMcpTools {
             data,
             args.program_id,
           );
-          return this.programs.updateProgramAudioBus(data, args.program_id);
+          return this.programs.updateProgramAudioBus(
+            { ...data, ...present({ sequenceVersion: args.sequence_version }) },
+            args.program_id,
+            'mcp',
+          );
         },
         result: (raw, args) => ({
           program_id: args.program_id,
+          sequence_version: (raw as { sequenceVersion: string })
+            .sequenceVersion,
           mixerSettings: (raw as { mixerSettings: unknown }).mixerSettings,
           version: (raw as { version: number }).version,
         }),

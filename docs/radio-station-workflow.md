@@ -72,7 +72,9 @@ runs dry, the silent song comes off air first: hold Stop, then **Start with fall
 prepared (**Go to recovery** opens Recovery & session), or **Prepare a recovery playlist** when none is. When one
 is already bound, it plays once the queue runs dry. While the recovery status is unknown or the engine is
 unavailable, the alarm says to take the silent song off air and check the engine, and claims nothing about a
-playlist. The `state=radio-dead-air` fixture shows this state.
+playlist. When the desk itself silenced the song, the alarm says so first: with the Music channel muted it reads
+"Music is muted on this desk" with **Unmute music**, and with the Music or Output fader at zero it names the fader to
+raise, never "hold Stop", which would leave the silence on air. The `state=radio-dead-air` fixture shows this state.
 
 **Engine audio detected** measures Palazzo's post-master mix before Icecast.
 **Listen** returns Icecast audio through Palazzo and Alcántara's
@@ -142,6 +144,27 @@ check a rename makes (a scene or fade to black, a running log, a playing song or
 the program only while it is still off air. It is also refused, 409 "Its filler is on air. Stop it before deleting.",
 while its filler is on air, by the rule a rename uses ([program-filler.md](program-filler.md)). A delete of an off-air program removes its rows, stops its song engine's
 timers, any armed rundown timer and its Palazzo telemetry client, and drops what they held for it. It sends no command.
+
+## Saving the rotation
+
+`PUT /program/:programId/audio-bus` with a `songSequence` replaces the whole stored rotation, so a save names the
+rotation it was made from. `GET /program/:programId/audio-bus`, the save's answer and the `audio_bus_update` and
+snapshot messages carry `sequenceVersion`: a hash of the playlist and mode. The cursor is left out, so a song ending
+does not change it. The engine also stores the mode: a Stop in autoplay or shuffle leaves it manual, which is a new
+version, sent with the queue update that carries the stopped sequence. The save sends it back as `sequenceVersion`.
+
+| The save sends | Console HTTP | MCP |
+| --- | --- | --- |
+| the current version | written | written |
+| another version, or `null` (its load failed) | 409 | 409 |
+| no version | written, unless it would cut 3 or more songs to 1 or none: 409 | 409 |
+
+The refusal is "The rotation changed or didn't load: reload before saving". Over MCP, `get_queue` gives
+`sequence_version`. A save of the mixer alone, scheduled rundown automation, leaf removal and Play Next need none.
+
+`alcantara_song_sequence_saves_total{result}` counts operator saves: `versioned`, `unversioned`, `refused_missing`,
+`refused_stale` and `refused_emptying`. The console accepts a save with no version only because the installed pilot
+sends none; once the pilot is re-synced and `unversioned` stays flat, those saves will be refused too.
 
 ## As-run log and royalty export
 
@@ -317,6 +340,29 @@ subscribers only.
   `replaced`. The
   two filtered exports add up to the default one. The `inferred` parameter is
   rejected with `format=csv`.
+
+## Play Next claims and playback IDs
+
+The engine claims the Play Next head before commanding it: the entry is saved as active with a newly minted
+playback ID, and that ID is the one sent to Palazzo. Palazzo's playout journal never replays a playback ID; a
+command that repeats one is answered `duplicate: true` and airs nothing. So:
+
+- **An ID is sent once per process.** The engine remembers the playback IDs it sent (the last 128). A claimed head
+  under one of them (a Play Next song that aired and was cut, or a re-send that aired nothing) is dropped from the
+  queue and counted as `stale-claim-dropped`, and the next queued entry plays, else an automatic rotation continues,
+  else the desk stops. It is never sent again, so the watchdog cannot loop on it.
+- **A claim saved before a restart is sent once.** Its command may have been lost in the restart, so the restarted
+  engine sends it, as before: it airs exactly once. If it had already aired, Palazzo answers `duplicate: true` and
+  nothing plays; the watchdog then finds the ID already sent and drops the entry. A `duplicate: true` answer alone
+  is not a failure: the client retries a song command under the same key, so it can also mean the first attempt was
+  accepted and is airing.
+- **Take now and Stop give the claim back.** A Take now that replaces a Play Next song on air releases its claim
+  (`preempted`), as Stop and a failed command already did; the entry stays at the head and airs again after the
+  taken song, under a new playback ID.
+- **A song that ends normally is consumed** as before.
+
+Walk part 4 (2026-11-26) found the gap: after a Take now over a Play Next song, the engine re-sent the claim's ID at
+the next end, Palazzo aired nothing while the desk said On air with Dead air, and every watchdog resume re-sent it.
 
 ## Gapless handoff: announcing the next song
 

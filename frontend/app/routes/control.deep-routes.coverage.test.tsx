@@ -173,7 +173,7 @@ async function addCatalogSongFromSheet() {
   const sheet = await screen.findByRole("dialog");
   const saves = server.requests("PUT /program/main/audio-bus").length;
   fireEvent.click(
-    within(sheet).getAllByRole("button", { name: "Add to queue" })[0],
+    within(sheet).getAllByRole("button", { name: /^Add .+ to the playlist$/ })[0],
   );
   await waitFor(() =>
     expect(server.requests("PUT /program/main/audio-bus").length).toBe(
