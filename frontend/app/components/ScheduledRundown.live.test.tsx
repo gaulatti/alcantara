@@ -1026,7 +1026,7 @@ it("says the block returns to what was playing before, not to continuous fillers
   stubLibrary();
   renderRundown();
   await openBlock();
-  fireEvent.click(screen.getByRole("button", { name: /New block/ }));
+  fireEvent.click(screen.getByRole("button", { name: /New timed block/ }));
   expect(await screen.findByText(/returns to what was playing before/)).toBeVisible();
   expect(screen.queryByText(/returns to continuous fillers/)).toBeNull();
 });
