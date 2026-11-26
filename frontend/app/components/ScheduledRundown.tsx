@@ -94,8 +94,12 @@ export default function ScheduledRundown({
     ready: boolean;
     issues: string[];
     warnings: string[];
+    engine?: "ready" | "not-configured" | "disabled" | "not-radio";
     forRevision?: string;
   } | null>(null);
+  // A block for a show whose radio is not set up, or is off, would air nothing (the rundown-building walk; D1).
+  const radioNotSetUp =
+    preflight?.engine === "not-configured" || preflight?.engine === "disabled";
   const [inspector, setInspector] = useState<"event" | "fillers" | "build">(
     "event",
   );
@@ -240,8 +244,22 @@ export default function ScheduledRundown({
         ...result,
         forRevision: `${updated.id}:${updated.revision}`,
       });
-      if (result.ready)
-        showAlert("All scheduled audio is available.", "success");
+      if (result.ready) {
+        const notSetUp =
+          result.engine === "not-configured" || result.engine === "disabled";
+        // The warnings sit below the block; the toast says they are there (B2).
+        const others = result.warnings.length - (notSetUp ? 1 : 0);
+        const more =
+          others > 0
+            ? ` ${others} warning${others === 1 ? "" : "s"}: check before air.`
+            : "";
+        showAlert(
+          notSetUp
+            ? `All scheduled audio is available, but radio isn't set up for this show: it won't air until it is.${more}`
+            : `All scheduled audio is available.${more}`,
+          notSetUp || others > 0 ? "warning" : "success",
+        );
+      }
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -264,13 +282,25 @@ export default function ScheduledRundown({
       setLogs((current) =>
         current.map((log) => (log.id === published.id ? published : log)),
       );
-      setPreflight({
-        ready: true,
-        issues: [],
-        warnings: [],
-        forRevision: `${published.id}:${published.revision}`,
-      });
-      showAlert("Rundown published for automatic start.", "success");
+      // Read the published revision's check again rather than assume it: its warnings, and whether the show's
+      // radio is set up, still hold after publishing.
+      let after: Awaited<ReturnType<typeof preflightFlightSequence>> | null;
+      try {
+        after = (await preflightFlightSequence(programId, published.id)) ?? null;
+      } catch {
+        after = null;
+      }
+      setPreflight(
+        after
+          ? { ...after, forRevision: `${published.id}:${published.revision}` }
+          : null,
+      );
+      if (after?.engine === "not-configured" || after?.engine === "disabled")
+        showAlert(
+          "Rundown published, but radio isn't set up for this show: it won't air until it is.",
+          "warning",
+        );
+      else showAlert("Rundown published for automatic start.", "success");
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -572,7 +602,11 @@ export default function ScheduledRundown({
           </div>
           {preflight && (
             <div className="rundown-sequence-heading" role="status">
-              {preflight.ready ? (
+              {preflight.ready && radioNotSetUp ? (
+                <span className="console-status" data-tone="warning">
+                  <AlertTriangle size={13} /> Audio checked · radio not set up
+                </span>
+              ) : preflight.ready ? (
                 <span className="console-status" data-tone="ready">
                   <CheckCircle2 size={13} /> Audio checked · ready for air
                 </span>
@@ -591,7 +625,7 @@ export default function ScheduledRundown({
               {preflight.warnings.length > 0 && (
                 <div>
                   <span className="console-status" data-tone="warning">
-                    <AlertTriangle size={13} /> Times are estimates
+                    <AlertTriangle size={13} /> Check before air
                   </span>
                   <ul aria-label="Preflight warnings">
                     {preflight.warnings.map((warning) => (

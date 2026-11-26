@@ -526,7 +526,10 @@ it("warns before publishing a block whose content overruns a fixed start", async
     await screen.findByText("Rundown published for automatic start."),
   ).toBeVisible();
   expect(publishFlightSequence).toHaveBeenCalledWith("radio-demo", 7, 3);
-  expect(preflightFlightSequence).not.toHaveBeenCalled();
+  // Plain Publish does not gate on Check; it reads the published revision's check once, afterwards, so the desk
+  // never assumes it ready (D1).
+  expect(preflightFlightSequence).toHaveBeenCalledTimes(1);
+  expect(preflightFlightSequence).toHaveBeenCalledWith("radio-demo", 7);
 });
 
 it("checks and publishes with ⌘↵ only when the check passes on the saved revision", async () => {
