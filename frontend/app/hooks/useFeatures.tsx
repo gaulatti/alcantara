@@ -86,5 +86,6 @@ export function Can({ feature, level = 'C', children, fallback = null }: { featu
 
   if (loading) return null;
 
+  /* v8 ignore next -- hasFeature always returns true while feature gating is disabled (see hasFeature above), so the fallback arm cannot run; it becomes reachable again when gating is restored. */
   return hasFeature(feature, level) ? <>{children}</> : <>{fallback}</>;
 }
