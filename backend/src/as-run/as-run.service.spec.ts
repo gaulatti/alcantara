@@ -58,6 +58,7 @@ describe('AsRunService', () => {
     };
     service = new AsRunService(
       prisma as unknown as PrismaService,
+      { teamId: 0 } as never,
       undefined,
       radioMetrics as unknown as RadioMetricsService,
     );
@@ -95,6 +96,7 @@ describe('AsRunService', () => {
       const standInEngine = {} as SongExecutionEngine;
       const s = new AsRunService(
         prisma as unknown as PrismaService,
+        { teamId: 0 } as never,
         standInEngine,
         radioMetrics as unknown as RadioMetricsService,
       );
@@ -108,6 +110,7 @@ describe('AsRunService', () => {
       } as unknown as SongExecutionEngine;
       const s1 = new AsRunService(
         prisma as unknown as PrismaService,
+        { teamId: 0 } as never,
         standInEngine1,
         radioMetrics as unknown as RadioMetricsService,
       );
@@ -119,6 +122,7 @@ describe('AsRunService', () => {
       } as unknown as SongExecutionEngine;
       const s2 = new AsRunService(
         prisma as unknown as PrismaService,
+        { teamId: 0 } as never,
         standInEngine2,
         radioMetrics as unknown as RadioMetricsService,
       );
@@ -134,6 +138,7 @@ describe('AsRunService', () => {
 
       const s = new AsRunService(
         prisma as unknown as PrismaService,
+        { teamId: 0 } as never,
         standInEngine,
         radioMetrics as unknown as RadioMetricsService,
       );
@@ -181,6 +186,7 @@ describe('AsRunService', () => {
 
       const s = new AsRunService(
         prisma as unknown as PrismaService,
+        { teamId: 0 } as never,
         standInEngine,
         radioMetrics as unknown as RadioMetricsService,
       );

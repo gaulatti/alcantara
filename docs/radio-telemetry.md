@@ -581,6 +581,11 @@ an already-playing queue head and resume without losing or duplicating it.
 
 `alcantara_radio_similarity_total{result}` counts similarity picker outcomes with the bounded results `selected`, `fallback-no-candidate`, `fallback-no-embedding`, `shadow-recorded` and `decision-persistence-failed`. It is silent while every station is `off`. Labels never include songs, artists, URLs or program IDs. See [song-similarity.md](song-similarity.md).
 
+As-run reads only the songs and media assets of the program's team (gaulatti/alcantara#122).
+`alcantara_as_run_scope_refusals_total{path}` counts reads refused because the
+program has no team, with `path` one of `attribute`, `export`, `summary` and `list`.
+A refused attribution is still recorded, without a song or asset. It should stay at `0`.
+
 Similarity reads only the songs of the program's team (gaulatti/alcantara#122).
 `alcantara_similarity_scope_refusals_total{path}` counts reads refused because the
 program has no team, with `path` one of `propose`, `decisions`, `coverage`, `export`

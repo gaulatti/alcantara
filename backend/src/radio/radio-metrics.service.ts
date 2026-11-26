@@ -164,6 +164,8 @@ export type AnalysisDropResult =
   | 'not-analyzed'
   | 'lookup-failed';
 
+export type AsRunScopePath = 'attribute' | 'export' | 'summary' | 'list';
+
 export type SimilarityScopePath =
   | 'propose'
   | 'decisions'
@@ -443,6 +445,13 @@ const NEXT_ANNOUNCEMENT_RESULTS: NextAnnouncementResult[] = [
 
 const HANDOFF_PATHS: HandoffPath[] = ['preloaded', 'command', 'race_replaced'];
 
+const AS_RUN_SCOPE_PATHS: AsRunScopePath[] = [
+  'attribute',
+  'export',
+  'summary',
+  'list',
+];
+
 const SIMILARITY_SCOPE_PATHS: SimilarityScopePath[] = [
   'propose',
   'decisions',
@@ -522,6 +531,7 @@ export class RadioMetricsService {
   private songQueueDepth = 0;
   private readonly highRotationActions = new Map<string, number>();
   private readonly similarityActions = new Map<string, number>();
+  private readonly asRunScopeRefusals = new Map<string, number>();
   private readonly similarityScopeRefusals = new Map<string, number>();
   private readonly analysisDrops = new Map<string, number>();
   private readonly cueGroups = new Map<string, number>();
@@ -650,6 +660,14 @@ export class RadioMetricsService {
     this.highRotationActions.set(
       result,
       (this.highRotationActions.get(result) ?? 0) + 1,
+    );
+  }
+
+  recordAsRunScopeRefusal(path: AsRunScopePath): void {
+    if (!AS_RUN_SCOPE_PATHS.includes(path)) return;
+    this.asRunScopeRefusals.set(
+      path,
+      (this.asRunScopeRefusals.get(path) ?? 0) + 1,
     );
   }
 
@@ -971,6 +989,15 @@ export class RadioMetricsService {
     for (const result of HIGH_ROTATION_ACTION_RESULTS) {
       lines.push(
         `alcantara_radio_high_rotation_actions_total{result="${result}"} ${this.highRotationActions.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_as_run_scope_refusals_total As-run song reads refused because the program has no team, by bounded path.',
+      '# TYPE alcantara_as_run_scope_refusals_total counter',
+    );
+    for (const path of AS_RUN_SCOPE_PATHS) {
+      lines.push(
+        `alcantara_as_run_scope_refusals_total{path="${path}"} ${this.asRunScopeRefusals.get(path) ?? 0}`,
       );
     }
     lines.push(

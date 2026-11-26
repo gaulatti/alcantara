@@ -8,9 +8,14 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { Subscription } from 'rxjs';
+import { PompeiiService } from '../auth/pompeii.service';
 import { PrismaService } from '../prisma.service';
+import { forTeam } from '../tenancy/scoped-prisma';
 import { SongExecutionEngine } from '../radio/song-execution.engine';
-import { RadioMetricsService } from '../radio/radio-metrics.service';
+import {
+  RadioMetricsService,
+  type AsRunScopePath,
+} from '../radio/radio-metrics.service';
 import {
   AS_RUN_ACTOR_VIAS,
   AS_RUN_END_REASONS,
@@ -66,12 +71,41 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
   private readonly bootedAt = Date.now();
   private subscription?: Subscription;
   private readonly recordChains = new Map<string, Promise<void>>();
+  private readonly refused = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly pompeii: PompeiiService,
     @Optional() private readonly engine?: SongExecutionEngine,
     @Optional() private readonly radioMetrics?: RadioMetricsService,
   ) {}
+
+  /**
+   * The songs and media assets a program's as-run may read (gaulatti/alcantara#122): its team's, all of them when no
+   * station team is configured, and none (`null`, counted) when the program has no team.
+   */
+  private async teamDb(
+    path: AsRunScopePath,
+    programId: string,
+  ): Promise<PrismaService | null> {
+    if (this.pompeii.teamId === 0) return this.prisma;
+    const program = await this.prisma.program.findUnique({
+      where: { programId },
+      select: { teamId: true },
+    });
+    if (program?.teamId && program.teamId > 0) {
+      return forTeam(this.prisma, program.teamId) as unknown as PrismaService;
+    }
+    this.radioMetrics?.recordAsRunScopeRefusal(path);
+    const key = `${path}|${programId}`;
+    if (!this.refused.has(key)) {
+      this.refused.add(key);
+      this.logger.warn(
+        `Program ${programId} has no team; as-run ${path} reads no songs or media assets`,
+      );
+    }
+    return null;
+  }
 
   onModuleInit(): void {
     const engine = this.engine;
@@ -399,6 +433,7 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
     songId: number | null;
     assetId: string | null;
   }> {
+    const db = await this.teamDb('attribute', event.programId);
     // The engine knows which song it commanded for this playback; two songs can share an audio address.
     const commanded = event.playbackRequestId
       ? this.engine?.songIdForPlayback?.(
@@ -406,8 +441,8 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
           event.playbackRequestId,
         )
       : null;
-    if (commanded) {
-      const song = await this.prisma.song.findUnique({
+    if (commanded && db) {
+      const song = await db.song.findUnique({
         where: { id: commanded },
         select: { id: true, assetId: true },
       });
@@ -415,25 +450,29 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (event.url) {
-      const songByUrl = await this.prisma.song.findFirst({
-        where: { audioUrl: event.url },
-        select: { id: true, assetId: true },
-      });
+      const songByUrl = db
+        ? await db.song.findFirst({
+            where: { audioUrl: event.url },
+            select: { id: true, assetId: true },
+          })
+        : null;
       if (songByUrl) {
         return { songId: songByUrl.id, assetId: songByUrl.assetId };
       }
 
-      const assetByUrl = await this.prisma.mediaAsset.findFirst({
-        where: { sourceUrl: event.url },
-        select: { id: true },
-      });
+      const assetByUrl = db
+        ? await db.mediaAsset.findFirst({
+            where: { sourceUrl: event.url },
+            select: { id: true },
+          })
+        : null;
       if (assetByUrl) {
         return { songId: null, assetId: assetByUrl.id };
       }
     }
 
-    if (event.title && event.artist) {
-      const songByMetadata = await this.prisma.song.findFirst({
+    if (event.title && event.artist && db) {
+      const songByMetadata = await db.song.findFirst({
         where: { title: event.title, artist: event.artist },
         select: { id: true, assetId: true },
       });
@@ -577,6 +616,8 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
 
     const lines = [header];
 
+    const songs = await this.teamDb('export', programId);
+
     // #237: read in pages, resolving each page's songs once.
     for await (const records of this.recordPages({
       programId,
@@ -591,8 +632,8 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
             ),
         ),
       );
-      if (missing.length) {
-        for (const song of await this.prisma.song.findMany({
+      if (missing.length && songs) {
+        for (const song of await songs.song.findMany({
           where: { id: { in: missing } },
           select: { id: true, title: true, artist: true },
         }))
@@ -758,15 +799,19 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
       ),
     );
 
-    const songs = songIds.length
-      ? await this.prisma.song.findMany({
+    const db =
+      songIds.length || assetIds.length
+        ? await this.teamDb('summary', programId)
+        : null;
+    const songs = db
+      ? await db.song.findMany({
           where: { id: { in: songIds } },
           select: { id: true, title: true, artist: true },
         })
       : [];
 
-    const assets = assetIds.length
-      ? await this.prisma.mediaAsset.findMany({
+    const assets = db
+      ? await db.mediaAsset.findMany({
           where: { id: { in: assetIds } },
           select: { id: true, name: true },
         })
@@ -813,8 +858,9 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
           .filter((id): id is number => typeof id === 'number'),
       ),
     );
-    const songs = songIds.length
-      ? await this.prisma.song.findMany({
+    const db = songIds.length ? await this.teamDb('list', programId) : null;
+    const songs = db
+      ? await db.song.findMany({
           where: { id: { in: songIds } },
           select: { id: true, title: true, artist: true },
         })

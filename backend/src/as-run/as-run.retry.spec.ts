@@ -64,6 +64,7 @@ describe('AsRunService record retry (#256)', () => {
     subject = new Subject<AsRunTrackEvent>();
     service = new AsRunService(
       prisma as unknown as PrismaService,
+      { teamId: 0 } as never,
       {
         trackEvents$: subject.asObservable(),
       } as unknown as SongExecutionEngine,

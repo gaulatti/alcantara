@@ -22,7 +22,11 @@ function build(commanded: number | null, deleted: number[] = []) {
     mediaAsset: { findFirst: jest.fn(async () => null) },
   };
   const engine = { songIdForPlayback: jest.fn(() => commanded) };
-  const service = new AsRunService(prisma as never, engine as never);
+  const service = new AsRunService(
+    prisma as never,
+    { teamId: 0 } as never,
+    engine as never,
+  );
   const resolve = (playbackRequestId: string | null) =>
     service.resolveSongAndAsset({
       programId: 'radio-demo',

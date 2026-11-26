@@ -537,7 +537,7 @@ async function build() {
     radioMetrics,
     noRecorder(),
   );
-  const asRun = new AsRunService(prisma);
+  const asRun = new AsRunService(prisma, { teamId: 0 } as never);
   const songs = new SongsService(prisma, noRecorder());
   const status = {
     programId: PROGRAM,
