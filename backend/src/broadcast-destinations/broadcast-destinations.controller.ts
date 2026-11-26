@@ -14,6 +14,7 @@ import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { BroadcastDestinationsService } from './broadcast-destinations.service';
 import { BroadcastDestinationKeysService } from './broadcast-destination-keys.service';
 import { BroadcastIngestService } from './broadcast-ingest.service';
+import { DestinationTestService } from './destination-test.service';
 
 type AuthorizedRequest = { user: { sub: string } };
 type TeamRequest = {
@@ -26,6 +27,7 @@ export class BroadcastDestinationsController {
     private readonly service: BroadcastDestinationsService,
     private readonly ingest: BroadcastIngestService,
     private readonly keys: BroadcastDestinationKeysService,
+    private readonly testing: DestinationTestService,
   ) {}
 
   @Get('destinations')
@@ -65,6 +67,22 @@ export class BroadcastDestinationsController {
     @Req() request: TeamRequest,
   ) {
     return this.ingest.issue(
+      destinationId,
+      request.user.sub,
+      request.user.authorization.teamId,
+    );
+  }
+
+  /** Asks the destination's ingest whether it accepts the saved key, sending no media. */
+  @Post('destinations/:destinationId/test')
+  @RequirePermission(ALCANTARA_PERMISSIONS.broadcast.manage)
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  testDestination(
+    @Param('destinationId') destinationId: string,
+    @Req() request: TeamRequest,
+  ) {
+    return this.testing.test(
       destinationId,
       request.user.sub,
       request.user.authorization.teamId,

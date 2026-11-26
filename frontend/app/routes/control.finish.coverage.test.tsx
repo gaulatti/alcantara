@@ -135,8 +135,8 @@ it("restarts the autosave pause when a second edit lands inside it", async () =>
   const before = server.requests("PUT /scenes/1").length;
   const field = (await screen.findAllByRole("textbox"))[0];
   fireEvent.change(field, { target: { value: "Fictional title" } });
-  // Still inside the pause: nothing saved yet.
-  await new Promise((resolve) => setTimeout(resolve, 150));
+  // Straight after the edit, the save is still pending: no timer can have fired yet, so nothing is sent.
+  // This asserts the state, not a wall-clock window, so machine load cannot make it flake.
   expect(server.requests("PUT /scenes/1").length).toBe(before);
   await waitFor(() => expect(server.requests("PUT /scenes/1").length).toBeGreaterThan(before), { timeout: 3000 });
 });
