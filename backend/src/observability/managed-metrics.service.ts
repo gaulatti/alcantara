@@ -213,6 +213,8 @@ const RECIPE_DELETE_RESULTS = new Set([
   'conflict',
 ]);
 const SCENE_HANDOFF_RESULTS = new Set(['success', 'failure']);
+/** gaulatti/alcantara#122: a program another team owns, or one nobody owns. */
+const PROGRAM_TEAM_CHECK_RESULTS = new Set(['refused', 'unowned']);
 const PREFERENCE_ACTIONS = new Set([
   'read',
   'write',
@@ -344,6 +346,7 @@ export class ManagedMetricsService {
   private readonly recipeRebuilds: Counter<string>;
   private readonly recipeDeletes: Counter<string>;
   private readonly sceneHandoffs: Counter<string>;
+  private readonly programTeamChecks: Counter<string>;
   private readonly jobLastSuccess: Gauge<string>;
   private readonly preferenceOperations: Counter<string>;
   private readonly broadcastDestinationOperations: Counter<string>;
@@ -471,6 +474,14 @@ export class ManagedMetricsService {
       labelNames: ['result'],
       registers: [this.registry],
     });
+    this.programTeamChecks = new Counter({
+      name: 'alcantara_program_team_checks_total',
+      help: 'Requests naming a program of another team (refused) or of no team (unowned). Exposed from 0.',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    for (const result of PROGRAM_TEAM_CHECK_RESULTS)
+      this.programTeamChecks.inc({ result }, 0);
     this.sceneHandoffs = new Counter({
       name: 'alcantara_scene_handoffs_total',
       help: 'Atomic Program and Preview scene handoff persistence outcomes.',
@@ -759,6 +770,12 @@ export class ManagedMetricsService {
     this.operatorChangeRecords.inc({
       target: bounded(target, OPERATOR_CHANGE_TARGETS),
       result: bounded(result, OPERATOR_CHANGE_RESULTS),
+    });
+  }
+
+  recordProgramTeamCheck(result: 'refused' | 'unowned'): void {
+    this.programTeamChecks.inc({
+      result: bounded(result, PROGRAM_TEAM_CHECK_RESULTS),
     });
   }
 

@@ -34,3 +34,10 @@ ORDER BY p."programId";
 ```
 
 The owner assigns the team of each listed program by hand. Until then, readers that need a team for such a program use their own fallback, for example the recipes' caller team (#464).
+
+## Program team checks
+
+A request or MCP tool that names a program acts only on a program of the caller's team (gaulatti/alcantara#122): the
+path, query or body `programId`, `main` for the routes that name none, and an MCP `program_id`. Another team's program
+answers 404 `Program not found` (MCP `not_found`). A program with no team stays usable. Station team `0` (local and
+test) is not checked. `alcantara_program_team_checks_total{result}` counts `refused` and `unowned`, both exported at 0.
