@@ -15,6 +15,7 @@
     var(--app-sea) 62%,
     var(--app-persgray-50)
   );
+  --focus-ring: var(--console-ready);
   --console-preview: var(--app-accent-yellow);
   --console-live: color-mix(
     in srgb,
@@ -470,10 +471,6 @@
   z-index: 1;
   color: var(--console-live);
   font-size: 12px;
-}
-.broadcast-console :is(button, input, select, a, summary):focus-visible {
-  outline: 2px solid var(--console-ready);
-  outline-offset: 2px;
 }
 .switcher-console {
   border-bottom: 1px solid var(--console-border);
@@ -1120,10 +1117,6 @@
 .tv-audio-transport {
   position: sticky;
   bottom: 0;
-}
-.tv-audio-workspace :is(button, input):focus-visible {
-  outline: 2px solid var(--console-ready);
-  outline-offset: 2px;
 }
 @media (max-width: 1279px) {
   .tv-audio-workspace {
