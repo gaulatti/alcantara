@@ -2059,7 +2059,7 @@ it("says On air only for an engine-confirmed song, and refuses Take while the en
 // the recovery state the desk knows.
 // Advance answers on the rundown's feedback line when it goes through, and names the failure when it does not.
 it("confirms an advanced rundown on screen, and shows the refusal when it fails", async () => {
-  vi.mocked(flight.goFlight).mockResolvedValue(undefined);
+  vi.mocked(flight.goFlight).mockResolvedValue({ ok: true } as never);
   const p = props();
   mount(p);
   fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
@@ -2072,7 +2072,7 @@ it("confirms an advanced rundown on screen, and shows the refusal when it fails"
 
 // Advance pressed while the engine's feedback is stale says the command is only sent, not that it took.
 it("says Sent and waits for the engine when Advance is pressed while its feedback is stale", async () => {
-  vi.mocked(flight.goFlight).mockResolvedValue(undefined);
+  vi.mocked(flight.goFlight).mockResolvedValue({ ok: true } as never);
   const p = props();
   p.programSongPlayback = { ...p.programSongPlayback!, telemetryStale: true };
   mount(p);
