@@ -273,6 +273,9 @@ it("loads the scheduled block, every page of the song catalog and the rotation s
   expect(within(blocks).getAllByRole("option")[1]).toHaveTextContent("Draft");
   expect(screen.getByText(/DRAFT · Revision 3 · 2 events/)).toBeVisible();
   expect(screen.getByText(/0 fillers · 00:00 unfilled/)).toBeVisible();
+  expect(screen.getByRole("button", { name: /Check & publish/ })).toHaveClass(
+    "bg-sea",
+  );
 });
 
 it("tolerates an empty rotation and library payloads that are not lists", async () => {
@@ -317,6 +320,11 @@ it("shows how to start when the program has no scheduled block", async () => {
   ).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Check" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
+  // Disabled, Check & publish no longer wears the primary styling (the walk's polish).
+  const checkAndPublish = screen.getByRole("button", { name: /Check & publish/ });
+  expect(checkAndPublish).toBeDisabled();
+  expect(checkAndPublish).not.toHaveClass("bg-sea");
+  expect(checkAndPublish).toHaveClass("bg-white");
 });
 
 it("creates a draft block only for a future start", async () => {
@@ -325,11 +333,11 @@ it("creates a draft block only for a future start", async () => {
   vi.mocked(createFlightSequence).mockResolvedValue(created);
   renderRundown();
   await openBlock();
-  fireEvent.click(screen.getByRole("button", { name: /New block/ }));
+  fireEvent.click(screen.getByRole("button", { name: /New timed block/ }));
   const start = await screen.findByLabelText("New block");
 
   fireEvent.change(start, { target: { value: "2000-01-01T10:00" } });
-  fireEvent.click(screen.getByRole("button", { name: "Create rundown" }));
+  fireEvent.click(screen.getByRole("button", { name: "Create timed block" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Choose a future start time.",
   );
@@ -337,7 +345,7 @@ it("creates a draft block only for a future start", async () => {
 
   vi.mocked(fetchFlightSequences).mockResolvedValue([block(), created]);
   fireEvent.change(start, { target: { value: "2099-01-01T10:00" } });
-  fireEvent.click(screen.getByRole("button", { name: "Create rundown" }));
+  fireEvent.click(screen.getByRole("button", { name: "Create timed block" }));
   await waitFor(() =>
     expect(createFlightSequence).toHaveBeenCalledWith(
       "radio-demo",
@@ -361,11 +369,11 @@ it("reports a block that could not be created", async () => {
   vi.mocked(createFlightSequence).mockRejectedValue(new Error("Overlaps"));
   renderRundown();
   await openBlock();
-  fireEvent.click(screen.getByRole("button", { name: /New block/ }));
+  fireEvent.click(screen.getByRole("button", { name: /New timed block/ }));
   fireEvent.change(await screen.findByLabelText("New block"), {
     target: { value: "2099-01-01T10:00" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Create rundown" }));
+  fireEvent.click(screen.getByRole("button", { name: "Create timed block" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Overlaps");
 });
 
@@ -975,7 +983,7 @@ it("closes the record and new-block dialogs with Escape", async () => {
   const recording = await screen.findByText("Recording over Harbor Light");
   fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   await waitFor(() => expect(recording).not.toBeInTheDocument());
-  fireEvent.click(screen.getByRole("button", { name: /New block/ }));
+  fireEvent.click(screen.getByRole("button", { name: /New timed block/ }));
   const start = await screen.findByLabelText("New block");
   fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   await waitFor(() => expect(start).not.toBeInTheDocument());
