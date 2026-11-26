@@ -199,3 +199,34 @@ describe('SourcesRoute preview availability', () => {
     expect(connectMock).not.toHaveBeenCalled();
   });
 });
+
+describe('SourcesRoute preview check left before it answers', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  // A check that answers after the page is gone must not set state on it: each answer is refused or accepted silently.
+  async function leaveBeforeAnswer(answer: Response) {
+    let respond: (response: Response) => void = () => undefined;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => { respond = resolve; })));
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { unmount } = render(<SourcesRoute initialSources={[source]} />);
+    unmount();
+    respond(answer);
+    await new Promise((done) => setTimeout(done, 0));
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
+  }
+
+  it('ignores a config answer that is refused after the page is left', async () => {
+    await leaveBeforeAnswer(json({}, 500));
+  });
+
+  it('ignores a config answer that has LiveKit disabled after the page is left', async () => {
+    await leaveBeforeAnswer(json({ livekit: { enabled: false } }));
+  });
+});
