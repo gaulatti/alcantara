@@ -164,6 +164,13 @@ export type AnalysisDropResult =
   | 'not-analyzed'
   | 'lookup-failed';
 
+export type SimilarityScopePath =
+  | 'propose'
+  | 'decisions'
+  | 'coverage'
+  | 'export'
+  | 'upload';
+
 export type SimilarityActionResult =
   | 'selected'
   | 'fallback-no-candidate'
@@ -436,6 +443,14 @@ const NEXT_ANNOUNCEMENT_RESULTS: NextAnnouncementResult[] = [
 
 const HANDOFF_PATHS: HandoffPath[] = ['preloaded', 'command', 'race_replaced'];
 
+const SIMILARITY_SCOPE_PATHS: SimilarityScopePath[] = [
+  'propose',
+  'decisions',
+  'coverage',
+  'export',
+  'upload',
+];
+
 const SIMILARITY_ACTION_RESULTS: SimilarityActionResult[] = [
   'selected',
   'fallback-no-candidate',
@@ -505,6 +520,7 @@ export class RadioMetricsService {
   private songQueueDepth = 0;
   private readonly highRotationActions = new Map<string, number>();
   private readonly similarityActions = new Map<string, number>();
+  private readonly similarityScopeRefusals = new Map<string, number>();
   private readonly analysisDrops = new Map<string, number>();
   private readonly cueGroups = new Map<string, number>();
   private readonly nextAnnouncements = new Map<string, number>();
@@ -628,6 +644,14 @@ export class RadioMetricsService {
     this.highRotationActions.set(
       result,
       (this.highRotationActions.get(result) ?? 0) + 1,
+    );
+  }
+
+  recordSimilarityScopeRefusal(path: SimilarityScopePath): void {
+    if (!SIMILARITY_SCOPE_PATHS.includes(path)) return;
+    this.similarityScopeRefusals.set(
+      path,
+      (this.similarityScopeRefusals.get(path) ?? 0) + 1,
     );
   }
 
@@ -947,6 +971,15 @@ export class RadioMetricsService {
     for (const result of SIMILARITY_ACTION_RESULTS) {
       lines.push(
         `alcantara_radio_similarity_total{result="${result}"} ${this.similarityActions.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_similarity_scope_refusals_total Similarity reads refused because the program has no team, by bounded path.',
+      '# TYPE alcantara_similarity_scope_refusals_total counter',
+    );
+    for (const path of SIMILARITY_SCOPE_PATHS) {
+      lines.push(
+        `alcantara_similarity_scope_refusals_total{path="${path}"} ${this.similarityScopeRefusals.get(path) ?? 0}`,
       );
     }
     lines.push(

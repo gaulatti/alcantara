@@ -67,8 +67,11 @@ export class RadioController {
 
   @Post(':programId/similarity/embeddings')
   @RequirePermission(ALCANTARA_PERMISSIONS.radio.manage)
-  async similarityUpload(@Body() body: unknown) {
-    return this.songSimilarity.storeEmbeddings(body);
+  async similarityUpload(
+    @Param('programId') programId: string,
+    @Body() body: unknown,
+  ) {
+    return this.songSimilarity.storeEmbeddings(body, programId);
   }
 
   @Get(':programId/settings')

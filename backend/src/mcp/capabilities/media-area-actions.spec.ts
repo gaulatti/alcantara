@@ -318,12 +318,17 @@ describe('media asset and label writes', () => {
 describe('radio_similarity_upload', () => {
   it('stores what the controller stores and answers the same', async () => {
     const { services, controllers, run, plan } = build();
-    const expected = asRest(await controllers.radio.similarityUpload(upload));
+    const expected = asRest(
+      await controllers.radio.similarityUpload('main', upload),
+    );
     const result = await run('radio_similarity_upload', {
       program_id: 'main',
       upload,
     });
-    expect(services.similarity.storeEmbeddings.mock.calls[1]).toEqual([upload]);
+    expect(services.similarity.storeEmbeddings.mock.calls[1]).toEqual([
+      upload,
+      'main',
+    ]);
     expect(rebuilt(result)).toEqual(expected);
     expect(
       await plan('radio_similarity_upload', { program_id: 'main', upload }),
