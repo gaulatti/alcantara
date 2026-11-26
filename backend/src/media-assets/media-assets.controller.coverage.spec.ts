@@ -5,13 +5,14 @@ import { IS_PUBLIC_KEY } from '../auth/public.decorator';
 import { REQUIRED_PERMISSION_KEY } from '../auth/require-permission.decorator';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { ProgramService } from '../program/program.service';
+import { PompeiiService } from '../auth/pompeii.service';
 import { PrismaService } from '../prisma.service';
 import { MediaAssetsController } from './media-assets.controller';
 import { MediaAssetsModule } from './media-assets.module';
 import { MediaAssetsReconciliationService } from './media-assets-reconciliation.service';
 import { MediaAssetsService } from './media-assets.service';
 
-const authorization = { permissions: ['*'] };
+const authorization = { permissions: ['*'], teamId: 7 };
 const request = { user: { authorization } };
 
 function build() {
@@ -188,8 +189,11 @@ describe('MediaAssetsController (coverage)', () => {
 // this module asks for its service.
 @Global()
 @Module({
-  providers: [{ provide: ProgramService, useValue: {} }],
-  exports: [ProgramService],
+  providers: [
+    { provide: ProgramService, useValue: {} },
+    { provide: PompeiiService, useValue: { teamId: 0 } },
+  ],
+  exports: [ProgramService, PompeiiService],
 })
 class ProgramStubModule {}
 

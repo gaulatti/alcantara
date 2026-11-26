@@ -104,6 +104,11 @@ runs `ffmpeg` and `ffprobe` from the image `backend/Dockerfile` builds from (the
 CI sets both URLs on the coverage step, so none of these skip there. Locally, use the `pgvector/pgvector:pg17`
 image CI uses (a migration needs the `vector` extension), migrate it, and export both URLs.
 
+These specs share one database and run in parallel, so a spec must not change shared
+tables or leave rows behind: run schema-changing SQL on copies in a schema of its own,
+inside a transaction that is rolled back, as `program-table.migration` and
+`library-team-backfill.migration` do (gaulatti/alcantara#678).
+
 ## Deployment
 
 The production image installs exactly the versions in the workspace `pnpm-lock.yaml`,

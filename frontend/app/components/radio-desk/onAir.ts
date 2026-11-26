@@ -5,8 +5,16 @@ import type { StatePillTone } from "./primitives";
 // ProgramSongPlaybackState and the status the desk already polls; a state the desk cannot know is
 // shown as unverified or unavailable, never as a good one.
 
-/** "unconfirmed": the desk has a song playing, but the engine is not connected to confirm it (#609). */
-export type OnAirState = "on-air" | "off-air" | "delayed" | "unconfirmed";
+/**
+ * "unconfirmed": the desk has a song playing, but the engine is not connected to confirm it (#609).
+ * "unverified": the engine is connected, but no fresh output level arrived for a few seconds (#706).
+ */
+export type OnAirState =
+  | "on-air"
+  | "off-air"
+  | "delayed"
+  | "unconfirmed"
+  | "unverified";
 
 export interface OnAirChip {
   id: "output" | "stream" | "engine" | "monitor";
@@ -41,6 +49,8 @@ export interface OnAirView {
 
 export interface OnAirInput {
   playback: ProgramSongPlaybackState | null;
+  /** No fresh output level sample for OUTPUT_SAMPLE_UNVERIFIED_MS (#706): display only. */
+  outputUnverified?: boolean;
   next: NextUp | null;
   mode: "manual" | "autoplay" | "shuffle";
   /** null when the stream status is unknown. */
@@ -93,6 +103,8 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
   // Only the engine confirms that a song is on air (gaulatti/alcantara#609).
   const unconfirmed = live && !input.engine.connected;
   const stale = live && !unconfirmed && playback?.telemetryStale === true;
+  const unverified =
+    live && !unconfirmed && !stale && input.outputUnverified === true;
   const hasLength =
     live &&
     typeof playback?.durationMs === "number" &&
@@ -159,14 +171,18 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
         ? "unconfirmed"
         : stale
           ? "delayed"
-          : "on-air",
+          : unverified
+            ? "unverified"
+            : "on-air",
     label: !live
       ? "Off air"
       : unconfirmed
         ? "Not confirmed"
         : stale
           ? "Status delayed"
-          : "On air",
+          : unverified
+            ? "Unverified"
+            : "On air",
     title: live ? (playback!.title || "Title unavailable") : null,
     artist: live ? (playback!.artist || "Artist unavailable") : null,
     elapsedMs: clampedElapsed,

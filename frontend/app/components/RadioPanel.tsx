@@ -31,6 +31,7 @@ import { RadioOutputPlayer } from "./RadioOutputPlayer";
 import { PlaybackBar } from "./PlaybackBar";
 import { useRadioMonitor } from "./RadioMonitor";
 import { HoldButton } from "./radio-desk/HoldButton";
+import { isOutputSampleUnverified } from "./radio-desk/outputFreshness";
 import { deriveOnAir } from "./radio-desk/onAir";
 import { OnAirStrip } from "./radio-desk/OnAirStrip";
 import { PlaySongNow } from "./radio-desk/PlaySongNow";
@@ -162,6 +163,9 @@ interface RecoveryStatus {
   connection: "connected" | "unavailable";
 }
 
+/** The command failures the Radio desk keeps for this session, newest first (gaulatti/alcantara#707). */
+const SESSION_LOG_LIMIT = 20;
+
 export const RadioPanel: React.FC<RadioPanelProps> = ({
   fixtureData,
   programId,
@@ -219,7 +223,28 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   const [addSongId, setAddSongId] = useState("");
   const [logBusy, setLogBusy] = useState(false);
   const [logLoadError, setLogLoadError] = useState<string | null>(null);
-  const [queueError, setQueueError] = useState<string | null>(null);
+  // A command failure shows as the desk's alert and is kept in this session's log; the alert clears when the
+  // engine reconnects, the log entry stays (gaulatti/alcantara#707).
+  const [queueError, setQueueErrorState] = useState<string | null>(null);
+  const [sessionLog, setSessionLog] = useState<
+    Array<{ at: number; message: string; count: number }>
+  >([]);
+  const setQueueError = (message: string | null) => {
+    setQueueErrorState(message);
+    if (message)
+      setSessionLog((entries) =>
+        // The same failure again is one line with a count, not a second line.
+        entries[0]?.message === message
+          ? [
+              { at: Date.now(), message, count: entries[0].count + 1 },
+              ...entries.slice(1),
+            ]
+          : [{ at: Date.now(), message, count: 1 }, ...entries].slice(
+              0,
+              SESSION_LOG_LIMIT,
+            ),
+      );
+  };
   const [output, setOutput] = useState<OutputConfidence | null>(
     fixtureData?.output ?? null,
   );
@@ -290,7 +315,12 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     }
   }, [programId]);
 
+  // One recovery command at a time: a second start or stop while one is on its way sends nothing
+  // (gaulatti/alcantara#693 review). A ref, so two calls from one render cannot both pass.
+  const recoveryInFlight = useRef(false);
   const commandRecovery = async (action: "start" | "stop") => {
+    if (recoveryInFlight.current) return;
+    recoveryInFlight.current = true;
     setRecoveryBusy(true);
     setRecoveryError(null);
     try {
@@ -308,6 +338,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
         cause instanceof Error ? cause.message : "Recovery command failed.",
       );
     } finally {
+      recoveryInFlight.current = false;
       setRecoveryBusy(false);
     }
   };
@@ -428,14 +459,23 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   const currentLogIndex = activeLog?.isRunning
     ? activeLog.items.findIndex((item) => item.id === activeLog.activeItemId)
     : -1;
+  // Freshness is re-read every second, so an output whose samples stop goes unverified without a new answer (#706).
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(tick);
+  }, []);
+  const outputUnverified = isOutputSampleUnverified(output, now);
   const outputTone =
     output?.state === "silent" || output?.state === "unavailable"
       ? "live"
-      : output?.state === "audible"
+      : output?.state === "audible" && !outputUnverified
         ? "ready"
         : "warning";
   const outputLabel =
-    output?.state === "audible"
+    outputUnverified
+      ? "Output unverified"
+      : output?.state === "audible"
       ? "Engine audio detected"
       : output?.state === "silent"
         ? "Expected audio is silent"
@@ -451,6 +491,17 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
 
   const monitor = useRadioMonitor();
   const [findingSong, setFindingSong] = useState(false);
+  // The engine coming back (#707): a command failure from while it was away no longer describes the desk.
+  // Only a known "not connected" turning into "connected" counts: before the first status answer the engine's
+  // state is unknown, so the first answer clears nothing.
+  const engineKnownReady = palazzo ? engineReady : null;
+  const engineWasReady = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (engineKnownReady === null) return;
+    if (engineKnownReady && engineWasReady.current === false)
+      setQueueErrorState(null);
+    engineWasReady.current = engineKnownReady;
+  }, [engineKnownReady]);
   const leaves = rotationLeaves(rotation.items);
   const liveLeaf = onAirLeaf(
     leaves,
@@ -469,6 +520,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   });
   const onAirView = deriveOnAir({
     playback: programSongPlayback,
+    outputUnverified,
     next,
     mode: rotation.mode,
     streamRunning: stream === null ? null : isLive,
@@ -604,6 +656,23 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                 {playoutError || queueError || logLoadError}
               </p>
             )}
+            {sessionLog.length > 0 ? (
+              <details
+                aria-label="Session log"
+                className="px-4 pb-3 text-xs text-text-secondary"
+              >
+                <summary>Session log ({sessionLog.length})</summary>
+                <ol className="mt-1 space-y-0.5">
+                  {sessionLog.map((entry, index) => (
+                    // One line per entry, its time first: the alert above stays the only place the failure
+                    // text stands alone.
+                    <li key={`${entry.at}-${index}`}>
+                      {`${new Date(entry.at).toLocaleTimeString()} · ${entry.message}${entry.count > 1 ? ` (×${entry.count})` : ""}`}
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            ) : null}
             {songCatalogLoadError && (
               <div
                 role="alert"
@@ -1077,18 +1146,25 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   >
                     Start with fallback
                   </Button>
-                  <Button
-                    type="button"
-                    size="xs"
-                    variant="destructive"
-                    onClick={() => void commandRecovery("stop")}
+                  {/* Stopping the session clears program audio, so it is held like Stop and Stop all
+                      (gaulatti/alcantara#693): a click only explains. */}
+                  <HoldButton
+                    label="Stop session"
+                    hint="Hold to stop the session (0.6 s). Program audio stops."
+                    tone="danger"
+                    // Re-checked when the hold completes: the session may have stopped, or a command
+                    // started, while the control was held.
+                    onConfirm={() => {
+                      if (!recoveryBusy && recovery?.automation?.filler.ready)
+                        void commandRecovery("stop");
+                    }}
                     disabled={
                       recoveryBusy || !recovery?.automation?.filler.ready
                     }
                   >
-                    Stop session
-                  </Button>
-                  <Link to="/radio-settings">Configure</Link>
+                    Hold · stop session
+                  </HoldButton>
+                  <Link to="/radio-settings" className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sea">Configure</Link>
                 </div>
                 {recoveryError && <p role="alert">{recoveryError}</p>}
               </div>

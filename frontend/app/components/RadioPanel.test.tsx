@@ -616,6 +616,59 @@ it("treats every unreachable or refused status endpoint as unverified", async ()
   expect(screen.getByText("Engine unavailable")).toBeVisible();
 });
 
+// gaulatti/alcantara#706: six seconds without a fresh output sample turn audible output into Output unverified and
+// dim the on-air clock; a fresh sample restores both. Display only.
+describe("output unverified after six seconds without a sample", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("moves from detected to unverified as time passes, and back with a fresh sample, on the same desk", async () => {
+    const start = Date.parse("2026-11-26T12:00:00Z");
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime(start);
+    let sampledAt = start - 5_000;
+    radioApi({
+      "/status": () => json({ running: true, uptime: 60_000 }),
+      "/palazzo-status": () => json(props().fixtureData!.palazzo),
+      "/output-confidence": () =>
+        json({
+          state: "audible",
+          expectedAudio: true,
+          outputRms: 0.2,
+          lastSampleAt: new Date(sampledAt).toISOString(),
+          quietForMs: null,
+        }),
+      "/recovery": () =>
+        json({ preparedVersion: null, automation: null, connection: "connected" }),
+    });
+    vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+    const p = liveProps();
+    mount(p);
+    expect(await screen.findByText("Engine audio detected")).toBeVisible();
+    const strip = screen.getByRole("region", { name: "On air" });
+    expect(within(strip).getByText("On air")).toBeVisible();
+    expect(within(strip).getByTestId("on-air-clock")).not.toHaveAttribute("data-dimmed");
+
+    // The desk re-reads freshness every second: at 2 s the last sample is 7 s old (a poll at 2 s still answers
+    // that old sample), so the output reads unverified with no fresh answer.
+    await act(async () => {
+      vi.advanceTimersByTime(2_100);
+    });
+    expect(screen.getByText("Output unverified")).toBeVisible();
+    expect(screen.queryByText("Engine audio detected")).toBeNull();
+    expect(within(strip).getByText("Unverified")).toBeVisible();
+    expect(within(strip).getByTestId("on-air-clock")).toHaveAttribute("data-dimmed", "true");
+
+    // The next air-plan poll brings a fresh sample.
+    sampledAt = Date.now();
+    await act(async () => {
+      vi.advanceTimersByTime(2_000);
+    });
+    expect(await screen.findByText("Engine audio detected")).toBeVisible();
+    expect(within(strip).getByText("On air")).toBeVisible();
+    expect(within(strip).getByTestId("on-air-clock")).not.toHaveAttribute("data-dimmed");
+  });
+});
+
 it("names every output confidence state", () => {
   const cases: [string, string][] = [
     ["idle", "Output idle"],
@@ -755,6 +808,112 @@ it("reloads the log from the API after a command when it is live", async () => {
       loads,
     ),
   );
+});
+
+// gaulatti/alcantara#707: a command failure shows as the alert and enters the session log; when the engine
+// reconnects the alert clears and the log keeps the entry.
+it("clears a command failure when the engine reconnects, and keeps it in the session log", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    let connection = "unavailable";
+    radioApi({
+      "/status": () => json({ running: true, uptime: 60_000 }),
+      "/palazzo-status": () => json({ ...props().fixtureData!.palazzo, connection }),
+      "/output-confidence": () => json(props().fixtureData!.output),
+      "/recovery": () => json({ preparedVersion: null, automation: null, connection: "connected" }),
+    });
+    vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+    const p = liveProps();
+    // A rotation change the engine cannot take while it is away.
+    p.onSaveSongSequence = vi.fn().mockRejectedValue(new Error("Fictional engine away"));
+    mount(p);
+    fireEvent.click(await screen.findByRole("button", { name: /^Loop playlist: / }));
+    expect(
+      await screen.findByText("Fictional engine away", { selector: '[role="alert"]' }),
+    ).toBeVisible();
+    const log = screen.getByLabelText("Session log");
+    expect(within(log).getByText("Session log (1)")).toBeInTheDocument();
+    expect(log).toHaveTextContent("Fictional engine away");
+
+    // The next status poll finds the engine connected again.
+    connection = "connected";
+    await act(async () => {
+      vi.advanceTimersByTime(8_000);
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Fictional engine away", { selector: '[role="alert"]' }),
+      ).toBeNull(),
+    );
+    expect(screen.getByLabelText("Session log")).toHaveTextContent("Fictional engine away");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+// gaulatti/alcantara#713 review: the engine's first status answer is not a reconnect, so it clears nothing.
+it("keeps a command failure from before the engine's first status answer", async () => {
+  let answerStatus: (response: Response) => void = () => {};
+  radioApi({
+    "/status": () => json({ running: true, uptime: 60_000 }),
+    "/palazzo-status": (() =>
+      new Promise<Response>((resolve) => {
+        answerStatus = resolve;
+      })) as never,
+    "/output-confidence": () => json(props().fixtureData!.output),
+    "/recovery": () => json({ preparedVersion: null, automation: null, connection: "connected" }),
+  });
+  vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+  const p = liveProps();
+  p.onSaveSongSequence = vi.fn().mockRejectedValue(new Error("Fictional early failure"));
+  mount(p);
+  fireEvent.click(await screen.findByRole("button", { name: /^Loop playlist: / }));
+  expect(
+    await screen.findByText("Fictional early failure", { selector: '[role="alert"]' }),
+  ).toBeVisible();
+  await act(async () => {
+    answerStatus(json({ ...props().fixtureData!.palazzo, connection: "connected" }));
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  expect(
+    screen.getByText("Fictional early failure", { selector: '[role="alert"]' }),
+  ).toBeVisible();
+});
+
+// gaulatti/alcantara#713 review: the same failure again is one line with a count.
+it("collapses a repeated identical failure into one session-log line with a count", async () => {
+  vi.mocked(flight.stopFlight).mockRejectedValue(new Error("Fictional same failure"));
+  mount();
+  const stop = screen.getByRole("button", { name: "Stop rundown / Take Off Air" });
+  fireEvent.click(stop);
+  await screen.findByText("Fictional same failure", { selector: '[role="alert"]' });
+  fireEvent.click(stop);
+  await waitFor(() =>
+    expect(within(screen.getByLabelText("Session log")).getAllByRole("listitem")).toHaveLength(1),
+  );
+  const [entry] = within(screen.getByLabelText("Session log")).getAllByRole("listitem");
+  await waitFor(() => expect(entry).toHaveTextContent("Fictional same failure (×2)"));
+  expect(within(screen.getByLabelText("Session log")).getByText("Session log (1)")).toBeInTheDocument();
+});
+
+it("keeps only the latest twenty command failures in the session log, newest first", async () => {
+  let attempt = 0;
+  vi.mocked(flight.stopFlight).mockImplementation(async () => {
+    attempt += 1;
+    throw new Error(`Fictional failure ${attempt}`);
+  });
+  mount();
+  const stop = screen.getByRole("button", { name: "Stop rundown / Take Off Air" });
+  for (let index = 0; index < 22; index += 1) {
+    fireEvent.click(stop);
+    await screen.findByText(`Fictional failure ${index + 1}`, { selector: '[role="alert"]' });
+  }
+  const entries = within(screen.getByLabelText("Session log")).getAllByRole("listitem");
+  expect(entries).toHaveLength(20);
+  expect(entries[0]).toHaveTextContent("Fictional failure 22");
+  expect(entries[19]).toHaveTextContent("Fictional failure 3");
 });
 
 it("reports an unnamed log command failure", async () => {
@@ -1018,12 +1177,59 @@ it("starts and stops the recovery session through Palazzo", async () => {
     expect.stringContaining("/radio/radio-demo/recovery/start"),
     { method: "POST" },
   );
-  fireEvent.click(stop);
-  expect(await screen.findByText("Prepared for next session")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Configure" })).toHaveAttribute(
-    "href",
-    "/radio-settings",
+  // Stopping clears program audio: a click only explains, a 0.6 s hold stops (gaulatti/alcantara#693).
+  fireEvent.pointerDown(stop);
+  fireEvent.pointerUp(stop);
+  expect(
+    screen.getByText("Hold to stop the session (0.6 s). Program audio stops."),
+  ).toBeInTheDocument();
+  expect(transport).not.toHaveBeenCalledWith(
+    expect.stringContaining("/radio/radio-demo/recovery/stop"),
+    expect.anything(),
   );
+  await hold(stop);
+  expect(await screen.findByText("Prepared for next session")).toBeInTheDocument();
+  expect(
+    transport.mock.calls.filter(([url]) =>
+      String(url).includes("/radio/radio-demo/recovery/stop"),
+    ),
+  ).toHaveLength(1);
+  const configure = screen.getByRole("link", { name: "Configure" });
+  expect(configure).toHaveAttribute("href", "/radio-settings");
+  // Keyboard focus shows a ring: the link has no border or background, so without these classes it has no focus indicator.
+  expect(configure.className).toContain("focus-visible:ring-2");
+  expect(configure.className).toContain("focus-visible:ring-sea");
+});
+
+// gaulatti/alcantara#693 review: one stop while one is on its way. A second hold sends nothing.
+it("sends one recovery stop while one is on its way, however often Stop session is held", async () => {
+  const p = props();
+  p.fixtureData!.recovery = {
+    preparedVersion: "v4",
+    automation: { actualState: "running", filler: { activeVersion: "v4", ready: true } },
+    connection: "connected",
+  } as never;
+  let answerStop: (response: Response) => void = () => {};
+  const transport = radioApi({
+    "/recovery/stop": (() =>
+      new Promise<Response>((resolve) => {
+        answerStop = resolve;
+      })) as never,
+  });
+  mount(p);
+  const stop = screen.getByRole("button", { name: "Stop session" });
+  await hold(stop);
+  await hold(stop);
+  const stops = () =>
+    transport.mock.calls.filter(([url]) =>
+      String(url).includes("/radio/radio-demo/recovery/stop"),
+    );
+  expect(stops()).toHaveLength(1);
+  await act(async () => {
+    answerStop(json({ preparedVersion: "v4", automation: null, connection: "connected" }));
+  });
+  expect(await screen.findByText("Prepared for next session")).toBeInTheDocument();
+  expect(stops()).toHaveLength(1);
 });
 
 it("reports recovery commands Palazzo refused or could not receive", async () => {
