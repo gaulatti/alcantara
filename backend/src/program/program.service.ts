@@ -165,6 +165,10 @@ export function startsSongPlayback(
   );
 }
 
+/** The refusal of a rename onto the id a deleted program's settings still hold (gaulatti/alcantara#122). */
+export const LEFTOVER_PROGRAM_ID_MESSAGE =
+  "That ID belongs to a deleted show's settings. Choose another ID.";
+
 @Injectable()
 export class ProgramService implements OnModuleInit, OnModuleDestroy {
   private static readonly DEFAULT_PROGRAM_ID = 'main';
@@ -1583,6 +1587,15 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       if (existingTarget) {
         throw new ConflictException('Target program id already exists');
       }
+      // A deleted program leaves its Program row (team and branding) behind. Nothing is removed as a side effect of
+      // a rename: the id is refused instead.
+      const leftover = await this.prisma.program.findUnique({
+        where: { programId: next },
+        select: { programId: true },
+      });
+      if (leftover) {
+        throw new ConflictException(LEFTOVER_PROGRAM_ID_MESSAGE);
+      }
     }
 
     const effectiveType = programType ?? existingSource.type;
@@ -1605,10 +1618,23 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       Object.assign(updateData, this.programTemplateUpdateData(template));
     }
 
-    await this.prisma.programState.update({
+    const updateState = this.prisma.programState.update({
       where: { id: existingSource.id },
       data: updateData,
     });
+    if (current === next) {
+      await updateState;
+    } else {
+      // gaulatti/alcantara#122: the Program row carries the program's team and branding, so it is renamed with the
+      // program, or the renamed program would belong to no team.
+      await this.prisma.$transaction([
+        this.prisma.program.updateMany({
+          where: { programId: current },
+          data: { programId: next },
+        }),
+        updateState,
+      ]);
+    }
     this.programTeams?.invalidate(current);
     this.programTeams?.invalidate(next);
     await recorder.record({

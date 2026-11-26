@@ -566,6 +566,16 @@ it("keeps the dialog open with a message when a save or a sync is refused", asyn
   );
   await attempt(
     () =>
+      (routes["PUT /program/news"] = () =>
+        json(
+          { statusCode: 409, message: "That ID belongs to a deleted show's settings. Choose another ID." },
+          409,
+        )),
+    () => {},
+    "That ID belongs to a deleted show's settings. Choose another ID.",
+  );
+  await attempt(
+    () =>
       (routes["PUT /program/news"] = () => new Response("", { status: 500 })),
     () => {},
     "Failed to save show (HTTP 500). Nothing was saved.",

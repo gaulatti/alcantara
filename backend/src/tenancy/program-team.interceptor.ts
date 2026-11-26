@@ -24,8 +24,12 @@ const MAIN_PROGRAM_ROUTES = new Set([
   '/program/song/off-air',
   '/program/reload',
 ]);
-/** Routes whose program id may be left out of the body, and then means `main`. */
-const BODY_DEFAULTS_TO_MAIN = new Set(['/auth/realtime-ticket']);
+/** Routes whose program id may be left out, and then means `main`. */
+const DEFAULTS_TO_MAIN = new Set([
+  '/auth/realtime-ticket',
+  '/instants/:instantId/play',
+  '/instants/stop-all',
+]);
 /** Creating a program names one that does not exist yet. */
 const NAMES_A_NEW_PROGRAM = new Set(['/program']);
 
@@ -45,7 +49,7 @@ export function programIdsOf(request: ProgramRequest): string[] {
   ].filter((id): id is string => typeof id === 'string' && id.trim() !== '');
   if (
     MAIN_PROGRAM_ROUTES.has(route) ||
-    (BODY_DEFAULTS_TO_MAIN.has(route) && named.length === 0)
+    (DEFAULTS_TO_MAIN.has(route) && named.length === 0)
   ) {
     named.push('main');
   }
@@ -69,10 +73,14 @@ export class ProgramTeamInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest<ProgramRequest>();
     const teamId = request.user?.authorization?.teamId;
     if (typeof teamId !== 'number') return next.handle();
-    for (const programId of programIdsOf(request)) {
-      if (!(await this.access.allows(programId, teamId))) {
-        throw new NotFoundException('Program not found');
-      }
+    // Together, so that during a database blip a request waits at most one lookup timeout.
+    const allowed = await Promise.all(
+      programIdsOf(request).map((programId) =>
+        this.access.allows(programId, teamId),
+      ),
+    );
+    if (allowed.includes(false)) {
+      throw new NotFoundException('Program not found');
     }
     return next.handle();
   }

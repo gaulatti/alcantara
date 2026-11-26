@@ -35,6 +35,35 @@ describe('programIdsOf', () => {
 });
 
 describe('ProgramTeamInterceptor', () => {
+  it('looks several programs up together, so a hung database costs one timeout', async () => {
+    const waiting: (() => void)[] = [];
+    const access = {
+      allows: jest.fn(
+        () => new Promise<boolean>((done) => waiting.push(() => done(true))),
+      ),
+    };
+    const interceptor = new ProgramTeamInterceptor(access as never);
+    const request = {
+      params: { programId: 'a' },
+      body: { programId: 'b' },
+      user: { authorization: { teamId: 7 } },
+    };
+    const handled = interceptor.intercept(
+      {
+        getType: () => 'http',
+        switchToHttp: () => ({ getRequest: () => request }),
+      } as never,
+      { handle: () => 'handled' as never },
+    );
+    // Both lookups are under way before either has answered.
+    expect(access.allows.mock.calls).toEqual([
+      ['a', 7],
+      ['b', 7],
+    ]);
+    waiting.forEach((answer) => answer());
+    await expect(handled).resolves.toBe('handled');
+  });
+
   it('does not check what is not HTTP', async () => {
     const access = { allows: jest.fn() };
     const interceptor = new ProgramTeamInterceptor(access as never);

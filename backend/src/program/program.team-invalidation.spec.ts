@@ -16,7 +16,11 @@ describe('program changes forget the remembered team', () => {
         update: jest.fn().mockResolvedValue({}),
         delete: jest.fn().mockResolvedValue({}),
       },
-      program: { upsert: jest.fn().mockResolvedValue({}) },
+      program: {
+        upsert: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
       $transaction: jest.fn((operations: Promise<unknown>[]) =>
         Promise.all(operations),
       ),

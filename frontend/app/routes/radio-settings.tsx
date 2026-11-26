@@ -18,6 +18,16 @@ interface RadioSettings {
   enabled: boolean;
 }
 
+/** The draft a show with no radio settings starts from; saving it creates the settings (PUT upserts). */
+const blankRadioSettings = (): RadioSettings => ({
+  palazzoUrl: '',
+  bumperEnabled: false,
+  bumperInterval: null,
+  bumperInstantIds: [],
+  bumperMode: null,
+  enabled: false,
+});
+
 interface InstantOption {
   id: number;
   name: string;
@@ -82,6 +92,8 @@ function normalizeConsumer(value: any): ConsumerDraft {
 export default function RadioSettingsRoute() {
   const [programId] = useGlobalProgramId();
   const [settings, setSettings] = useState<RadioSettings | null>(null);
+  // A show with no radio settings loads as a blank draft; the first save creates them.
+  const [settingsExist, setSettingsExist] = useState(true);
   const [consumers, setConsumers] = useState<ConsumerDraft[]>([]);
   const [publishing, setPublishing] = useState<'enabled' | 'blocked-local' | null>(null);
   const [instants, setInstants] = useState<InstantOption[]>([]);
@@ -102,7 +114,9 @@ export default function RadioSettingsRoute() {
       if (!consumersResponse.ok) throw new Error(`Now-playing delivery failed (${consumersResponse.status})`);
       if (!instantsResponse.ok) throw new Error(`Audio clips failed (${instantsResponse.status})`);
       if (!publishingResponse.ok) throw new Error(`Now-playing publishing state failed (${publishingResponse.status})`);
-      setSettings((await settingsResponse.json()) as RadioSettings);
+      const savedSettings = (await settingsResponse.json()) as RadioSettings | null;
+      setSettingsExist(savedSettings !== null);
+      setSettings(savedSettings ?? blankRadioSettings());
       const consumerPayload = await consumersResponse.json();
       setConsumers(Array.isArray(consumerPayload) ? consumerPayload.map(normalizeConsumer) : []);
       const publishingPayload = (await publishingResponse.json()) as { publishing?: unknown };
@@ -130,6 +144,7 @@ export default function RadioSettingsRoute() {
       });
       if (!response.ok) throw new Error(`Radio settings were not saved (${response.status})`);
       setSettings((await response.json()) as RadioSettings);
+      setSettingsExist(true);
       showAlert('Radio distribution settings saved.', 'success');
     } catch (error) {
       showAlert(error instanceof Error ? error.message : 'Radio settings were not saved.', 'error');
@@ -194,7 +209,16 @@ export default function RadioSettingsRoute() {
           }
         />
       ) : (
-        <><RecoveryPlaylistPanel programId={programId} /><SongSimilarityPanel programId={programId} /><BrandingSection programId={programId} /><div className='grid items-start gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]'>
+        <>
+          {!settingsExist ? (
+            <Card variant='outlined' padding='lg' className='space-y-2'>
+              <h2 className='text-lg font-semibold'>Radio isn&apos;t set up yet</h2>
+              <p className='text-sm text-text-secondary'>
+                This show has no radio distribution settings. Fill in the form below and save: saving creates them.
+              </p>
+            </Card>
+          ) : null}
+          <RecoveryPlaylistPanel programId={programId} /><SongSimilarityPanel programId={programId} /><BrandingSection programId={programId} /><div className='grid items-start gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]'>
           <Card variant='outlined' padding='lg' className='space-y-5'>
             <div>
               <h2 className='mt-1 text-xl font-semibold'>Radio playout</h2>

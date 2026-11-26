@@ -12,6 +12,12 @@ Every program has one `Program` row (`backend/prisma/schema.prisma`), and its `t
   - **A program that already has a team** is never changed.
   - **Re-running** the migration inserts and updates nothing.
 
+## Renaming a program
+
+The `Program` row is renamed with the program, so its team and branding stay with it. A deleted program leaves its
+row behind; renaming onto that id is refused with 409 (`That ID belongs to a deleted show's settings. Choose another
+ID.`), and nothing is removed.
+
 ## Programs still without a team
 
 After the deploy, this read-only query lists the programs the backfill couldn't assign, with how many distinct positive teams their attachments name:
@@ -38,11 +44,13 @@ The owner assigns the team of each listed program by hand. Until then, readers t
 ## Program team checks
 
 A request or MCP tool that names a program acts only on a program of the caller's team (gaulatti/alcantara#122): the
-path, query or body `programId`, `main` for the routes that name none, and an MCP `program_id`. Another team's program
+path, query or body `programId`, `main` for the routes that name none (including an instant played or stopped without
+a program), and an MCP `program_id`. Another team's program
 answers 404 `Program not found` (MCP `not_found`). A program with no team stays usable. Station team `0` (local and
 test) is not checked.
 
 A program's team is remembered for 30 seconds and forgotten when the program is created, renamed or deleted. A team
 lookup that fails, or takes more than a second, never blocks the request (Stop must work during a database blip); the
-last team read for the program still applies. `alcantara_program_team_checks_total{result}` counts `refused`, `unowned`
+last team read for the program still applies. The memory is per backend process: with more than one
+container, another one can be up to 30 seconds stale after a change. Production runs one. `alcantara_program_team_checks_total{result}` counts `refused`, `unowned`
 and `lookup-failed`, all exported at 0.

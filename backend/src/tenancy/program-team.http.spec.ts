@@ -63,6 +63,12 @@ class RoutesController {
     return { ok: true };
   }
 
+  @Post('instants/:instantId/play')
+  @RequirePermission(permission)
+  play() {
+    return { ok: true };
+  }
+
   @Post('program/off-air')
   @RequirePermission(permission)
   offAir() {
@@ -266,6 +272,30 @@ describe("programs of the caller's team", () => {
     await expect(run(other)).resolves.toMatchObject({ error: 'not_found' });
   });
 
+  it('checks main for an instant played or stopped without naming a program', async () => {
+    const setMain = async (teamId: number) => {
+      await prisma.program.upsert({
+        where: { programId: 'main' },
+        create: { programId: 'main', teamId },
+        update: { teamId },
+      });
+      app.get(ProgramTeamAccess).invalidate('main');
+    };
+    const play = '/instants/7/play';
+    await setMain(team + 1);
+    for (const url of [play, '/instants/stop-all']) {
+      await expect(call('POST', url)).resolves.toBe(404);
+      await expect(call('POST', url, {})).resolves.toBe(404);
+      // A named program is the one checked.
+      await expect(call('POST', url, { programId: mine })).resolves.toBe(201);
+      await expect(call('POST', `${url}?programId=${mine}`)).resolves.toBe(201);
+    }
+    await setMain(team);
+    await expect(call('POST', play)).resolves.toBe(201);
+    await expect(call('POST', '/instants/stop-all')).resolves.toBe(201);
+    if (ownedMain) await setMain(ownedMain.teamId!);
+  });
+
   it('lets an on-air command through when the team cannot be read, and counts it', async () => {
     const access = app.get(ProgramTeamAccess);
     const lookup = jest
@@ -307,6 +337,8 @@ describe("programs of the caller's team", () => {
       '/program/song/off-air',
       '/program/reload',
       '/auth/realtime-ticket',
+      '/instants/:instantId/play',
+      '/instants/stop-all',
       '/program',
     ]) {
       expect(inventory).toContain(`"${route}"`);
