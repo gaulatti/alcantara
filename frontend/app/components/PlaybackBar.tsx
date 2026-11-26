@@ -15,6 +15,7 @@ import {
   getProgramSongSequenceSelectedItemId,
   normalizeProgramSongSequence,
   shuffleProgramSongSequence,
+  programSongPlayOrder,
   type ProgramSongSequence,
 } from "../utils/programSequence";
 import type { ProgramSongPlaybackState } from "../models/broadcast";
@@ -193,8 +194,10 @@ export function PlaybackBar({
     stickyPlaybackItemId,
   ]);
 
+  // Previous and next walk the order that plays, which in shuffle is not the rows' order.
+  const playOrder = programSongPlayOrder(sequence);
   const runtimeActiveItemIndex = runtimeActiveItemId
-    ? sequence.items.findIndex((i) => i.id === runtimeActiveItemId)
+    ? playOrder.findIndex((i) => i.id === runtimeActiveItemId)
     : -1;
 
   useEffect(() => {
@@ -270,7 +273,7 @@ export function PlaybackBar({
                 onClick={() => {
                   if (runtimeActiveItemIndex > 0)
                     void activateItem(
-                      sequence.items[runtimeActiveItemIndex - 1].id,
+                      playOrder[runtimeActiveItemIndex - 1].id,
                     );
                 }}
                 className="transport-secondary flex h-8 w-8 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary disabled:opacity-30"
@@ -292,16 +295,16 @@ export function PlaybackBar({
                 onClick={() => {
                   if (!programSongPlayback?.isPlaying) {
                     const selection =
-                      runtimeActiveItemId ?? sequence.items[0]?.id ?? null;
+                      runtimeActiveItemId ?? playOrder[0]?.id ?? null;
                     if (selection) void activateItem(selection);
                   } else if (runtimeActiveItemId) {
-                    const idx = sequence.items.findIndex(
+                    const idx = playOrder.findIndex(
                       (i) => i.id === runtimeActiveItemId,
                     );
-                    if (idx < sequence.items.length - 1)
-                      void activateItem(sequence.items[idx + 1].id);
+                    if (idx < playOrder.length - 1)
+                      void activateItem(playOrder[idx + 1].id);
                     else if (sequence.loop !== false)
-                      void activateItem(sequence.items[0].id);
+                      void activateItem(playOrder[0].id);
                   }
                 }}
                 className="transport-primary flex h-10 w-10 items-center justify-center rounded-full border-0 bg-sea p-0 text-white shadow-lg transition-transform hover:translate-y-0 hover:scale-105 hover:bg-accent-blue active:scale-95"

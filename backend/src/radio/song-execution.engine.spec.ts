@@ -165,6 +165,7 @@ function createEngine(opts: {
     recordHighRotationFavorites: jest.fn(),
     recordAutomaticPrograms: jest.fn(),
     recordSimilarityAction: jest.fn(),
+    recordShufflePick: jest.fn(),
   };
   const engine = new SongExecutionEngine(
     radioService as unknown as RadioService,
@@ -777,6 +778,77 @@ describe('SongExecutionEngine authoritative playback', () => {
       'https://example.test/song-2.mp3',
     ]);
     expect(nowPlayingPublisher.publishStopped).toHaveBeenCalledTimes(1);
+  });
+
+  it('plays the shuffled order over the rows, each song once per cycle and across a restart, leaving the rows alone', async () => {
+    const song = (n: number) => ({
+      ...TWO_SONG_SEQUENCE.items[1],
+      id: `song-${n}`,
+      title: `Song ${n}`,
+      audioUrl: `https://example.test/song-${n}.mp3`,
+    });
+    const rows = [song(1), song(2), song(3), song(4)];
+    const shuffled = {
+      ...TWO_SONG_SEQUENCE,
+      mode: 'shuffle',
+      loop: true,
+      items: rows,
+      shuffleOrder: ['song-3', 'song-1', 'song-4', 'song-2'],
+      activeItemId: 'song-3',
+    };
+    const played = (radio: { playSong: jest.Mock }) =>
+      radio.playSong.mock.calls.map(
+        (call) => /song-(\d)/.exec(call[1] as string)![0],
+      );
+    const start = async (sequence: unknown) => {
+      const run = createEngine({ reconciled: true, radio: true });
+      run.setPersistedProgramState({ songSequence: sequence });
+      // The cursor is written back as the rotation advances.
+      Object.assign(run.prisma.programState, {
+        updateMany: jest.fn(({ data }: { data: { songSequence: unknown } }) => {
+          run.setPersistedProgramState(data);
+          return Promise.resolve({ count: 1 });
+        }),
+      });
+      run.engine.handleSequenceUpdated('radio-1', sequence);
+      run.engine.handlePalazzoSnapshot(
+        'radio-1',
+        idleSnapshot('palazzo-a', 'boot-1', 1),
+      );
+      await flush();
+      return run;
+    };
+    const end = async (run: Awaited<ReturnType<typeof start>>) => {
+      run.engine.handlePalazzoEvent('radio-1', {
+        type: 'track.ended',
+        data: {
+          playbackRequestId: run.radioService.playSong.mock.lastCall![4],
+        },
+      });
+      await flush(20);
+    };
+
+    const first = await start(shuffled);
+    await end(first);
+    expect(played(first.radioService)).toEqual(['song-3', 'song-1']);
+    // A restart mid-cycle reads what was persisted: the order, and the cursor on the song that was playing.
+    const stored = first.getPersistedProgramState().songSequence as {
+      items: Array<{ id: string }>;
+      shuffleOrder: string[];
+      activeItemId: string;
+    };
+    expect(stored.activeItemId).toBe('song-1');
+    expect(stored.shuffleOrder).toEqual(shuffled.shuffleOrder);
+    expect(stored.items.map((item) => item.id)).toEqual(
+      rows.map((item) => item.id),
+    );
+
+    // The restarted engine takes the rotation up after the song that aired.
+    const second = await start({ ...stored, activeItemId: 'song-4' });
+    await end(second);
+    await end(second);
+    expect(played(second.radioService)).toEqual(['song-4', 'song-2', 'song-3']);
+    expect(second.metrics.recordShufflePick).toHaveBeenCalledWith('shuffled');
   });
 
   it('uses a fresh idle shuffle clock instead of skipping the selected first item', async () => {

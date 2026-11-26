@@ -1480,7 +1480,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  private rememberSent(state: SongEngineState, playbackRequestId: string): void {
+  private rememberSent(
+    state: SongEngineState,
+    playbackRequestId: string,
+  ): void {
     const sent = (state.sentRequestIds ??= new Set<string>());
     sent.add(playbackRequestId);
     if (sent.size > MAX_ENDED_REQUEST_IDS) {
@@ -3730,7 +3733,13 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       // the same item as before.
       const resolved = resolveProgramSongLeaf(sequence, sequence.startedAt);
       if (!resolved) return null;
-      if (!resolved.highRotation) return resolved;
+      if (!resolved.highRotation) {
+        if (sequence.mode === 'shuffle')
+          this.metrics.recordShufflePick(
+            sequence.shuffleOrder?.length ? 'shuffled' : 'rows',
+          );
+        return resolved;
+      }
 
       if (state.rotationHistoryHealthy) {
         const eligibility = getHighRotationEligibility(

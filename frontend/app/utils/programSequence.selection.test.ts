@@ -133,7 +133,7 @@ describe('shuffle of a sequence', () => {
     const sequence = { mode: 'manual', activeItemId: null, items: [song('a'), song('b')] } as never;
     const output = shuffleProgramSongSequence(sequence, null, () => 0.999);
     expect(output.mode).toBe('shuffle');
-    expect(output.items.map((item) => item.id)).toEqual(['b', 'a']);
+    expect(output.shuffleOrder).toEqual(['b', 'a']);
     expect(output.activeItemId).toBe('b');
   });
 });

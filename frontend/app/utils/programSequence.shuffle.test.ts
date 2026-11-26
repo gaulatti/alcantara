@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 
-import { shuffleProgramSongSequence, type ProgramSongSequence } from './programSequence';
+import { normalizeProgramSongSequence, programSongPlayOrder, shuffleProgramSongSequence, type ProgramSongSequence } from './programSequence';
 
 function sequence(ids: string[], overrides: Partial<ProgramSongSequence> = {}): ProgramSongSequence {
   return {
@@ -18,19 +18,30 @@ test('anchors the active song and persists a no-repeat shuffle order', () => {
   const input = sequence(['a', 'b', 'c', 'd']);
   const output = shuffleProgramSongSequence(input, 'b', () => 0);
 
-  assert.deepEqual(output.items.map((item) => item.id), ['b', 'c', 'd', 'a']);
+  assert.deepEqual(output.shuffleOrder, ['b', 'c', 'd', 'a']);
+  // The rows are the operator's order, and stay so.
+  assert.equal(output.items, input.items);
   assert.equal(output.activeItemId, 'b');
   assert.equal(output.mode, 'shuffle');
   assert.equal(output.loop, false);
   assert.equal(output.startedAt, 1234);
-  assert.deepEqual(new Set(output.items.map((item) => item.id)), new Set(['a', 'b', 'c', 'd']));
 });
 
 test('guarantees a visible order change when random values retain the original order', () => {
   const input = sequence(['a', 'b', 'c'], { activeItemId: 'a' });
   const output = shuffleProgramSongSequence(input, 'a', () => 0.999999);
 
-  assert.deepEqual(output.items.map((item) => item.id), ['a', 'c', 'b']);
+  assert.deepEqual(output.shuffleOrder, ['a', 'c', 'b']);
+});
+
+test('walks the shuffled order, an item added since after it, and the rows when not in shuffle', () => {
+  const shuffled = shuffleProgramSongSequence(sequence(['a', 'b', 'c']), 'b', () => 0);
+  const added = { ...shuffled, items: [...shuffled.items, { ...shuffled.items[0], id: 'new' }] };
+  const ids = (value: ProgramSongSequence) => programSongPlayOrder(value).map((item) => item.id);
+  assert.deepEqual(ids(added), [...shuffled.shuffleOrder!, 'new']);
+  assert.deepEqual(ids({ ...added, mode: 'manual' }), ['a', 'b', 'c', 'new']);
+  assert.deepEqual(ids({ ...added, shuffleOrder: [] }), ['a', 'b', 'c', 'new']);
+  assert.deepEqual(normalizeProgramSongSequence({ ...shuffled, shuffleOrder: ['c', 7, 'a'] })!.shuffleOrder, ['c', 'a']);
 });
 
 test('does not mutate or replace a playlist that cannot be shuffled', () => {
@@ -43,5 +54,5 @@ test('selects the first shuffled item when an exhausted playlist has no cursor',
   const output = shuffleProgramSongSequence(input, null, () => 0);
 
   assert.equal(output.mode, 'shuffle');
-  assert.equal(output.activeItemId, output.items[0].id);
+  assert.equal(output.activeItemId, output.shuffleOrder![0]);
 });

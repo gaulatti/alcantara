@@ -9,19 +9,42 @@ describe('RadioMetricsService', () => {
     metrics.recordAnalysisDrop('https://media.example/song.mp3' as never);
 
     const rendered = metrics.render();
-    expect(rendered).toContain('# TYPE alcantara_radio_analysis_dropped_total counter');
-    expect(rendered).toContain('alcantara_radio_analysis_dropped_total{result="segue-invalid"} 2');
-    expect(rendered).toContain('alcantara_radio_analysis_dropped_total{result="loudness-invalid"} 1');
-    expect(rendered).toContain('alcantara_radio_analysis_dropped_total{result="segue-beyond-duration"} 0');
-    expect(rendered).toContain('alcantara_radio_analysis_dropped_total{result="ambiguous-match"} 0');
-    expect(rendered).toContain('alcantara_radio_analysis_dropped_total{result="segue-edge-bound"} 0');
+    expect(rendered).toContain(
+      '# TYPE alcantara_radio_analysis_dropped_total counter',
+    );
+    expect(rendered).toContain(
+      'alcantara_radio_analysis_dropped_total{result="segue-invalid"} 2',
+    );
+    expect(rendered).toContain(
+      'alcantara_radio_analysis_dropped_total{result="loudness-invalid"} 1',
+    );
+    expect(rendered).toContain(
+      'alcantara_radio_analysis_dropped_total{result="segue-beyond-duration"} 0',
+    );
+    expect(rendered).toContain(
+      'alcantara_radio_analysis_dropped_total{result="ambiguous-match"} 0',
+    );
+    expect(rendered).toContain(
+      'alcantara_radio_analysis_dropped_total{result="segue-edge-bound"} 0',
+    );
     // gaulatti/alcantara#255: a song sent with no analysis at all, exported at 0.
     for (const result of ['no-asset', 'not-analyzed', 'lookup-failed']) {
-      expect(rendered).toContain(`alcantara_radio_analysis_dropped_total{result="${result}"} 0`);
+      expect(rendered).toContain(
+        `alcantara_radio_analysis_dropped_total{result="${result}"} 0`,
+      );
     }
-    expect(rendered.split('\n').filter((line) => line.startsWith('alcantara_radio_analysis_dropped_total{'))).toHaveLength(8);
+    expect(
+      rendered
+        .split('\n')
+        .filter((line) =>
+          line.startsWith('alcantara_radio_analysis_dropped_total{'),
+        ),
+    ).toHaveLength(8);
     expect(rendered).not.toContain('media.example');
-    expect(metrics.snapshot().analysisDrops).toEqual({ 'segue-invalid': 2, 'loudness-invalid': 1 });
+    expect(metrics.snapshot().analysisDrops).toEqual({
+      'segue-invalid': 2,
+      'loudness-invalid': 1,
+    });
   });
 
   // gaulatti/alcantara#234: cue groups by shape, bounded, exported at 0.
@@ -232,5 +255,21 @@ describe('RadioMetricsService engine degraded paths', () => {
     expect(
       rendered.match(/^alcantara_radio_engine_degraded_total\{/gm),
     ).toHaveLength(4);
+  });
+
+  it('counts shuffle picks by the order followed, from 0', () => {
+    const metrics = new RadioMetricsService();
+    expect(metrics.render()).toContain(
+      'alcantara_radio_shuffle_picks_total{order="rows"} 0',
+    );
+    metrics.recordShufflePick('shuffled');
+    metrics.recordShufflePick('shuffled');
+    metrics.recordShufflePick('rows');
+    expect(metrics.render()).toContain(
+      'alcantara_radio_shuffle_picks_total{order="shuffled"} 2',
+    );
+    expect(metrics.render()).toContain(
+      'alcantara_radio_shuffle_picks_total{order="rows"} 1',
+    );
   });
 });

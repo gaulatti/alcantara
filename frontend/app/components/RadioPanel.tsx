@@ -680,7 +680,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     <small className="block">
                       No hourly log required · {rotation.items.length} songs
                       {rotation.mode === "shuffle"
-                        ? " · Shuffle pool; row order is not the next-song order"
+                        ? " · Shuffle on; Manual plays your row order"
                         : ""}
                     </small>
                     {nextLog && (

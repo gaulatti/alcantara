@@ -7,6 +7,7 @@ import type {
   ProgramSongSequence,
   ProgramSongSequenceItem,
 } from "../../utils/programSequence";
+import { programSongPlayOrder } from "../../utils/programSequence";
 import type { NextUp } from "./onAir";
 
 export type SongLeaf = Extract<ProgramSongSequenceItem, { kind: "preset" }>;
@@ -66,7 +67,8 @@ export function nextUp({
   queue: ProgramSongQueueEntry[];
   playback: ProgramSongPlaybackState | null;
 }): NextUpSong | null {
-  const leaves = rotationLeaves(sequence.items);
+  // In the order that plays, which in shuffle is not the rows' order.
+  const leaves = rotationLeaves(programSongPlayOrder(sequence));
   const byId = new Map(leaves.map((leaf) => [leaf.id, leaf]));
   const queued = queue.map((entry) => byId.get(entry.itemId)).find(Boolean);
   const describe = (leaf: SongLeaf, via: "queue" | "rotation"): NextUpSong => ({

@@ -1430,7 +1430,7 @@ it("shows the filler rotation with its Play Next queue, shuffle note and next ti
   p.programSongPlayback = { ...p.programSongPlayback!, queueEntryId: "queue-1" };
   mount(p);
   expect(
-    screen.getByText(/Shuffle pool; row order is not the next-song order/),
+    screen.getByText(/Shuffle on; Manual plays your row order/),
   ).toBeVisible();
   expect(screen.getByText(/Next timed block: First block/)).toBeVisible();
   expect(screen.getByRole("button", { name: "Shuffle playlist" })).toHaveAttribute("aria-pressed", "true");
