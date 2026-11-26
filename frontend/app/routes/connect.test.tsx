@@ -113,3 +113,31 @@ describe('Connect route meta', () => {
     ]);
   });
 });
+
+describe('Connect timing and unmount', () => {
+  it('stops saying Copied two seconds after a copy', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+      render(<Connect />);
+      fireEvent.click(within(screen.getByTestId('mcp-url')).getByRole('button', { name: 'Copy the MCP server URL' }));
+      await vi.waitFor(() => expect(screen.getByText('Copied')).toBeTruthy());
+      vi.advanceTimersByTime(2_000);
+      await vi.waitFor(() => expect(screen.queryByText('Copied')).toBeNull());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not apply capabilities that arrive after the page has gone', async () => {
+    let answerFetch!: (value: unknown) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise((resolve) => (answerFetch = resolve))));
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const view = render(<Connect />);
+    view.unmount();
+    answerFetch({ ok: true, status: 200, json: async () => ({ capabilities: rows }) });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
+  });
+});
