@@ -25,7 +25,11 @@ import {
   validateSongLoudness,
   validateSongSegue,
 } from './palazzo-machine.client';
-import { isLocalMediaUrl, localMediaEnvironment } from '../config/local-media';
+import {
+  describeAcceptedMediaUrl,
+  isLocalMediaUrl,
+  localMediaEnvironment,
+} from '../config/local-media';
 import type { PalazzoPlaybackState } from './palazzo-contract';
 import {
   MAX_WINDOW_SECONDS,
@@ -165,7 +169,9 @@ export class RadioService {
       try {
         url = new URL(downloadUrl);
       } catch {
-        throw new BadRequestException('recovery song has an invalid URL');
+        throw new BadRequestException(
+          `recovery song ${song!.id} has no absolute audio URL; it needs ${describeAcceptedMediaUrl(localMediaEnvironment(this.config))}`,
+        );
       }
       const isManagedBucketUrl =
         url.protocol === 'https:' &&
@@ -183,7 +189,7 @@ export class RadioService {
         !isLocalMediaUrl(url, localMediaEnvironment(this.config))
       ) {
         throw new BadRequestException(
-          'recovery audio must use the managed media bucket',
+          `recovery song ${song!.id} audio must be ${describeAcceptedMediaUrl(localMediaEnvironment(this.config))}`,
         );
       }
       const response = await fetch(downloadUrl, {
