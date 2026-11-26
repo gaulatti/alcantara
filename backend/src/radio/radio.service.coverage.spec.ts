@@ -240,6 +240,9 @@ describe('RadioService coverage', () => {
   });
 
   describe('prepareRecoveryPlaylist audio sources', () => {
+    // The refusal says what the audio must be, naming the variable, never the bucket itself.
+    const ACCEPTED =
+      'an https URL on the managed media bucket (MEDIA_S3_BUCKET), with no port or credentials';
     const withSong = (audioUrl: string) => {
       const ctx = build();
       ctx.prisma.song.findMany.mockResolvedValue([
@@ -251,7 +254,7 @@ describe('RadioService coverage', () => {
     it('rejects an unparsable URL', async () => {
       const { service } = withSong('not a url');
       await expect(service.prepareRecoveryPlaylist('p', [1])).rejects.toThrow(
-        'recovery song has an invalid URL',
+        `recovery song 1 has no absolute audio URL; it needs ${ACCEPTED}`,
       );
     });
 
@@ -265,7 +268,7 @@ describe('RadioService coverage', () => {
       const { service } = withSong(url);
       const fetchSpy = jest.spyOn(global, 'fetch');
       await expect(service.prepareRecoveryPlaylist('p', [1])).rejects.toThrow(
-        'recovery audio must use the managed media bucket',
+        `recovery song 1 audio must be ${ACCEPTED}`,
       );
       expect(fetchSpy).not.toHaveBeenCalled();
     });

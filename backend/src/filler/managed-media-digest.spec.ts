@@ -3,6 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
 import { readManagedMediaDigest } from './managed-media-digest';
 
+// gaulatti/alcantara#694 follow-up: a refusal says what the source must be, naming the variables, never their values.
+const BUCKET_ONLY =
+  'an https URL on the managed media bucket (MEDIA_S3_BUCKET), with no port or credentials';
+
 // gaulatti/alcantara#126: a filler source is read once from the managed media
 // bucket and identified by its SHA-256; nothing else is accepted.
 
@@ -57,26 +61,29 @@ describe('readManagedMediaDigest', () => {
   });
 
   it.each([
-    ['not a URL', 'radio filler source has an invalid URL'],
+    [
+      'not a URL',
+      `radio filler source has no absolute URL; it needs ${BUCKET_ONLY}`,
+    ],
     [
       'http://media-test.s3.amazonaws.com/a.mp3',
-      'radio filler source must use the managed media bucket',
+      `radio filler source must be ${BUCKET_ONLY}`,
     ],
     [
       'https://other.s3.amazonaws.com/a.mp3',
-      'radio filler source must use the managed media bucket',
+      `radio filler source must be ${BUCKET_ONLY}`,
     ],
     [
       'https://user@media-test.s3.amazonaws.com/a.mp3',
-      'radio filler source must use the managed media bucket',
+      `radio filler source must be ${BUCKET_ONLY}`,
     ],
     [
       'https://u:p@media-test.s3.amazonaws.com/a.mp3',
-      'radio filler source must use the managed media bucket',
+      `radio filler source must be ${BUCKET_ONLY}`,
     ],
     [
       'https://media-test.s3.amazonaws.com:8443/a.mp3',
-      'radio filler source must use the managed media bucket',
+      `radio filler source must be ${BUCKET_ONLY}`,
     ],
   ])('refuses %s without reading it', async (url, message) => {
     const fetch = jest.spyOn(globalThis, 'fetch');
@@ -84,6 +91,16 @@ describe('readManagedMediaDigest', () => {
       readManagedMediaDigest(url, config(), 'radio filler'),
     ).rejects.toThrow(message);
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('names the accepted media by variable, never by value', async () => {
+    const refusal = readManagedMediaDigest(
+      'https://other.s3.amazonaws.com/a.mp3',
+      config(),
+      'radio filler',
+    );
+    await expect(refusal).rejects.toThrow('MEDIA_S3_BUCKET');
+    await expect(refusal).rejects.not.toThrow('media-test');
   });
 
   it('reports an unreadable, missing, oversized or empty object', async () => {
@@ -157,6 +174,18 @@ describe('readManagedMediaDigest', () => {
       ).resolves.toBe(createHash('sha256').update('slate bytes').digest('hex'));
     });
 
+    it('names the local media store as accepted outside production', async () => {
+      await expect(
+        readManagedMediaDigest(
+          'https://other.example.com/slate.png',
+          config({ ...local, NODE_ENV: 'development' }),
+          'television filler',
+        ),
+      ).rejects.toThrow(
+        `television filler source must be ${BUCKET_ONLY}, or a URL under the local media store (LOCAL_MEDIA_PUBLIC_BASE_URL)`,
+      );
+    });
+
     it('refuses the local base in production and keeps only the bucket hosts', async () => {
       const fetch = serve(new Response('slate bytes'));
       const production = config({ ...local, NODE_ENV: 'production' });
@@ -164,7 +193,7 @@ describe('readManagedMediaDigest', () => {
         readManagedMediaDigest(LOCAL_URL, production, 'television filler'),
       ).rejects.toThrow(
         new BadRequestException(
-          'television filler source must use the managed media bucket',
+          `television filler source must be ${BUCKET_ONLY}`,
         ),
       );
       expect(fetch).not.toHaveBeenCalled();
