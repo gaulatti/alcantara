@@ -211,7 +211,13 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     expect(fillerPreparations.sort()).toEqual(
       ['radio', 'television']
         .flatMap((leg) =>
-          ['failed', 'profile-unavailable', 'ready', 'unavailable'].map(
+          [
+            'failed',
+            'no-team',
+            'profile-unavailable',
+            'ready',
+            'unavailable',
+          ].map(
             (result) =>
               `alcantara_filler_preparations_total{leg="${leg}",result="${result}"} ${
                 (leg === 'television' && result === 'ready') ||
