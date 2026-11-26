@@ -15,6 +15,7 @@
     var(--app-sea) 62%,
     var(--app-persgray-50)
   );
+  --focus-ring: var(--console-ready);
   --console-preview: var(--app-accent-yellow);
   --console-live: color-mix(
     in srgb,
@@ -470,10 +471,6 @@
   z-index: 1;
   color: var(--console-live);
   font-size: 12px;
-}
-.broadcast-console :is(button, input, select, a, summary):focus-visible {
-  outline: 2px solid var(--console-ready);
-  outline-offset: 2px;
 }
 .switcher-console {
   border-bottom: 1px solid var(--console-border);
@@ -1121,10 +1118,6 @@
   position: sticky;
   bottom: 0;
 }
-.tv-audio-workspace :is(button, input):focus-visible {
-  outline: 2px solid var(--console-ready);
-  outline-offset: 2px;
-}
 @media (max-width: 1279px) {
   .tv-audio-workspace {
     flex: none;
@@ -1244,4 +1237,41 @@
 .switcher-return-overlay[data-state="lost"] {
   background: color-mix(in srgb, var(--console-live) 82%, black);
   color: var(--console-text);
+}
+
+/* gaulatti/alcantara#610: on a phone the radio desk scrolls as one page. The on-air strip stays
+   at the top, the transport stays at the bottom, and every panel (rotation, cartwall, mixer,
+   recovery) sits in that single scroll instead of in boxes that scroll inside each other. */
+@media (max-width: 767px) {
+  .radio-console {
+    overflow-y: auto;
+  }
+  .radio-console-scroll {
+    flex: none;
+    overflow: visible;
+  }
+  .radio-workspace {
+    min-height: 0;
+  }
+  .radio-rundown {
+    height: auto;
+  }
+  .radio-rundown .h-full {
+    height: auto;
+  }
+  .radio-rundown .flex-1 {
+    flex: none;
+  }
+  .radio-rundown .overflow-auto,
+  .radio-rundown .overflow-hidden {
+    overflow: visible;
+  }
+  .radio-console > [aria-label="Radio transport"],
+  .radio-console > .playback-dock {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    /* Solid, so rows scrolling underneath never show through the controls. */
+    background: var(--app-deep-sea);
+  }
 }
