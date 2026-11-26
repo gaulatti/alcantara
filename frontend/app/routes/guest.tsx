@@ -80,6 +80,18 @@ export default function GuestRoute() {
   const telemetryRef = useRef({ quality, returnFeed, cameraEnabled, microphoneEnabled });
   telemetryRef.current = { quality, returnFeed, cameraEnabled, microphoneEnabled };
 
+  // Tells the studio the guest ended the call, so a stopped heartbeat is not counted as a drop. `keepalive` lets
+  // it go out while the page is closing.
+  const sayLeft = () => {
+    if (!sessionTokenRef.current) return;
+    void fetch(apiUrl('/webrtc/session/heartbeat'), {
+      method: 'POST',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionToken: sessionTokenRef.current, telemetry: { left: true } })
+    }).catch(() => undefined);
+  };
+
   const stopHeartbeat = () => {
     if (heartbeatRef.current !== null) window.clearInterval(heartbeatRef.current);
     heartbeatRef.current = null;
@@ -178,8 +190,11 @@ export default function GuestRoute() {
       }
     };
     void prepare();
+    window.addEventListener('pagehide', sayLeft);
     return () => {
       cancelled = true;
+      window.removeEventListener('pagehide', sayLeft);
+      if (heartbeatRef.current !== null) sayLeft();
       stopHeartbeat();
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
       roomRef.current?.disconnect();
@@ -457,6 +472,7 @@ export default function GuestRoute() {
   };
 
   const leave = () => {
+    sayLeft();
     stopHeartbeat();
     roomRef.current?.disconnect();
     setStatus('left');

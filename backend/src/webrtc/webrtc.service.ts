@@ -4,6 +4,8 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  type OnModuleDestroy,
+  type OnModuleInit,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -38,6 +40,7 @@ type CommandStatus = 'accepted' | 'rejected' | 'read' | 'acknowledged';
 
 const MAX_GUESTS = 6;
 const SESSION_LEASE_MS = 60_000;
+const LOST_CALL_SWEEP_MS = 30_000;
 const JOIN_TOKEN_TTL = '5m';
 /** What a guest's browser may report; the API counts success and an expired invitation itself. */
 const GUEST_FAILURES: readonly WebrtcJoinResult[] = [
@@ -53,12 +56,42 @@ function icePathFrom(value: unknown): WebrtcIcePath | null {
 }
 
 @Injectable()
-export class WebrtcService {
+export class WebrtcService implements OnModuleInit, OnModuleDestroy {
+  private lostCallSweep: ReturnType<typeof setInterval> | null = null;
+
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
     private readonly metrics: ManagedMetricsService,
   ) {}
+
+  onModuleInit() {
+    this.lostCallSweep = setInterval(() => {
+      // A database that is away is retried at the next sweep.
+      void this.countLostCalls().catch(() => undefined);
+    }, LOST_CALL_SWEEP_MS);
+    this.lostCallSweep.unref();
+  }
+
+  onModuleDestroy() {
+    if (this.lostCallSweep) clearInterval(this.lostCallSweep);
+    this.lostCallSweep = null;
+  }
+
+  /**
+   * Counts live calls whose heartbeat stopped without a leave: a guest who dropped and never came back. Clearing
+   * `liveSince` in the same statement counts each once, whoever else is sweeping.
+   */
+  async countLostCalls() {
+    const { count } = await this.prisma.guestInvitation.updateMany({
+      where: {
+        liveSince: { not: null },
+        activeSessionUntil: { lt: new Date() },
+      },
+      data: { liveSince: null },
+    });
+    this.metrics.recordWebrtcDrops(count);
+  }
 
   getPublicConfig() {
     return { enabled: this.hasConfiguration(), maxGuests: MAX_GUESTS };
@@ -162,6 +195,7 @@ export class WebrtcService {
           slotNumber: null,
           activeSessionId: null,
           activeSessionUntil: null,
+          liveSince: null,
           events: {
             create: {
               type: 'revoked',
@@ -345,24 +379,35 @@ export class WebrtcService {
   async heartbeat(sessionTokenValue: unknown, telemetryValue: unknown) {
     const session = await this.requireActiveSession(sessionTokenValue);
     const telemetry = this.normalizeTelemetry(telemetryValue);
+    // What the guest says about the call's life, apart from the telemetry stored for the desk.
+    const reported = telemetryValue as {
+      joined?: unknown;
+      iceTransport?: unknown;
+      dropped?: unknown;
+      left?: unknown;
+    } | null;
+    // Sent until a heartbeat gets through, which may be after the guest's network returns. Counted only while the
+    // call is still marked live, so a drop the sweep already counted is not counted again.
+    if (reported?.dropped === true) {
+      const { count } = await this.prisma.guestInvitation.updateMany({
+        where: { id: session.invitation.id, liveSince: { not: null } },
+        data: { liveSince: null },
+      });
+      this.metrics.recordWebrtcDrops(count);
+    }
     const activeSessionUntil = new Date(Date.now() + SESSION_LEASE_MS);
     await this.prisma.guestInvitation.update({
       where: { id: session.invitation.id },
       data: {
         activeSessionUntil,
+        ...(reported?.joined === true ? { liveSince: new Date() } : {}),
+        ...(reported?.left === true ? { liveSince: null } : {}),
         ...(telemetry
           ? { events: { create: { type: 'telemetry', details: telemetry } } }
           : {}),
       },
     });
     // The guest marks the first heartbeat of a connection, so one join is counted once.
-    const reported = telemetryValue as {
-      joined?: unknown;
-      iceTransport?: unknown;
-      dropped?: unknown;
-    } | null;
-    // Sent until a heartbeat gets through, which may be after the guest's network returns.
-    if (reported?.dropped === true) this.metrics.recordWebrtcDrop();
     if (reported?.joined === true) {
       this.metrics.recordWebrtcJoin('guest', 'success');
       const path = icePathFrom(reported.iceTransport);
@@ -534,6 +579,7 @@ export class WebrtcService {
       data: {
         activeSessionId: null,
         activeSessionUntil: null,
+        liveSince: null,
         events: {
           create: {
             type: 'removed',

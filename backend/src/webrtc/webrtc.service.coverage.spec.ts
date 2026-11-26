@@ -1269,6 +1269,7 @@ describe('WebrtcService coverage', () => {
         data: {
           activeSessionId: null,
           activeSessionUntil: null,
+          liveSince: null,
           events: {
             create: {
               type: 'removed',

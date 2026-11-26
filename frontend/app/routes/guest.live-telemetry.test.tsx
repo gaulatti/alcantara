@@ -399,6 +399,16 @@ it("reports a lost call with the first heartbeat that gets through, and no call 
   expect(await nextHeartbeat()).not.toHaveProperty("dropped");
 });
 
+it("says the guest left, on Leave and when the page closes", async () => {
+  await join();
+  window.dispatchEvent(new Event("pagehide"));
+  await waitFor(() => expect(heartbeats.at(-1)).toEqual({ left: true }));
+  const sent = heartbeats.length;
+  fireEvent.click(screen.getByRole("button", { name: /Leave/ }));
+  await waitFor(() => expect(heartbeats).toHaveLength(sent + 1));
+  expect(heartbeats.at(-1)).toEqual({ left: true });
+});
+
 const reportedFailures = () =>
   vi
     .mocked(fetch)

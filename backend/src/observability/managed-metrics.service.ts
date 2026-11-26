@@ -1035,8 +1035,8 @@ export class ManagedMetricsService {
     this.webrtcIcePaths.inc({ client, path });
   }
 
-  recordWebrtcDrop(): void {
-    this.webrtcDrops.inc();
+  recordWebrtcDrops(count: number): void {
+    this.webrtcDrops.inc(count);
   }
 
   recordProgramSseConnection(delta: 1 | -1): void {

@@ -108,16 +108,64 @@ describe('guest call reports', () => {
   });
 
   it('counts a dropped call from the heartbeat that reports it', async () => {
-    const { service, metrics } = setup();
+    const { service, prisma, metrics } = setup();
     const drops = async () =>
       /^alcantara_webrtc_drops_total (\d+)/m.exec(
         await metrics.render(''),
       )?.[1];
     expect(await drops()).toBe('0');
     const { sessionToken } = await service.redeemInvitation(token, undefined);
+    prisma.guestInvitation.updateMany.mockResolvedValueOnce({ count: 1 });
+    await service.heartbeat(sessionToken, { dropped: true });
+    expect(prisma.guestInvitation.updateMany).toHaveBeenLastCalledWith({
+      where: { id, liveSince: { not: null } },
+      data: { liveSince: null },
+    });
+    // Already counted (or never live): the row no longer says live.
+    prisma.guestInvitation.updateMany.mockResolvedValueOnce({ count: 0 });
     await service.heartbeat(sessionToken, { dropped: true });
     await service.heartbeat(sessionToken, { dropped: 'yes' });
     expect(await drops()).toBe('1');
+  });
+
+  it('marks a call live when it joins and no longer when the guest leaves', async () => {
+    const { service, prisma } = setup();
+    const { sessionToken } = await service.redeemInvitation(token, undefined);
+    const data = () => prisma.guestInvitation.update.mock.lastCall![0].data;
+    await service.heartbeat(sessionToken, { joined: true });
+    expect(data().liveSince).toBeInstanceOf(Date);
+    await service.heartbeat(sessionToken, { quality: 'good' });
+    expect(data()).not.toHaveProperty('liveSince');
+    await service.heartbeat(sessionToken, { left: true });
+    expect(data().liveSince).toBeNull();
+  });
+
+  it('sweeps for live calls whose heartbeat stopped, and keeps sweeping after a failure', async () => {
+    jest.useFakeTimers();
+    try {
+      const { service, prisma, metrics } = setup();
+      prisma.guestInvitation.updateMany
+        .mockRejectedValueOnce(new Error('down'))
+        .mockResolvedValue({ count: 2 });
+      service.onModuleInit();
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(prisma.guestInvitation.updateMany).toHaveBeenLastCalledWith({
+        where: {
+          liveSince: { not: null },
+          activeSessionUntil: { lt: expect.any(Date) as Date },
+        },
+        data: { liveSince: null },
+      });
+      expect(await metrics.render('')).toContain(
+        'alcantara_webrtc_drops_total 2\n',
+      );
+      service.onModuleDestroy();
+      service.onModuleDestroy();
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(prisma.guestInvitation.updateMany).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('stores and counts a failure the guest browser reports', async () => {
