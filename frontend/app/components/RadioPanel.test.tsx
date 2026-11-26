@@ -618,6 +618,43 @@ it("treats every unreachable or refused status endpoint as unverified", async ()
 
 // The #734 walk: a page reload left the desk reading "Engine unavailable" for seconds while the engine was fine, only
 // because its first engine status had not answered yet. Unknown reads as unknown until an answer, a failure included.
+// Wakko's #738 review: on a program switch this instance gets the new programId before it unmounts. An engine status
+// that answers late for the previous program must not set the new program's engine state.
+it("drops an engine status that answers for the program before a switch", async () => {
+  const pending: Record<string, (response: Response) => void> = {};
+  radioApi({});
+  vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    const match = /\/radio\/([^/]+)\/palazzo-status/.exec(url);
+    if (match)
+      return new Promise<Response>((resolve) => {
+        pending[match[1]] = resolve;
+      });
+    return new Response("null", { status: 404 });
+  });
+  vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+  const first = liveProps();
+  const view = mount({ ...first, programId: "radio-old" });
+  await waitFor(() => expect(pending["radio-old"]).toBeDefined());
+  view.rerender(
+    <MemoryRouter>
+      <RadioPanel {...first} programId="radio-new" />
+    </MemoryRouter>,
+  );
+  await waitFor(() => expect(pending["radio-new"]).toBeDefined());
+
+  // The old program answers late, as connected: it must not read as the new program's engine.
+  pending["radio-old"](json({ ...props().fixtureData!.palazzo, connection: "connected" }));
+  const strip = screen.getByRole("region", { name: "On air" });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(within(strip).getByText("Checking engine")).toBeVisible();
+  expect(within(strip).queryByText("Engine ready")).toBeNull();
+
+  // The new program's own answer decides.
+  pending["radio-new"](json({ ...props().fixtureData!.palazzo, connection: "unavailable" }));
+  expect(await within(strip).findByText(/Engine unavailable/)).toBeVisible();
+});
+
 it("reads Checking engine, never Engine unavailable, until the first engine status answers", async () => {
   let answer: (response: Response) => void = () => undefined;
   radioApi({

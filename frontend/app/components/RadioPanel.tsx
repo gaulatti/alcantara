@@ -285,20 +285,22 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     }
   }, [programId]);
 
+  // A program switch hands this instance the new programId for one render before control.tsx swaps in its loading
+  // screen (Wakko's #738 review). An engine status that answers late for the program before must not land here.
+  const currentProgramId = useRef(programId);
+  currentProgramId.current = programId;
   const fetchPalazzoStatus = useCallback(async () => {
+    let next: PalazzoStatus | null = null;
     try {
       const res = await fetch(
         apiUrl(`/radio/${encodeURIComponent(programId)}/palazzo-status`),
       );
-      if (res.ok) {
-        const data = await res.json();
-        setPalazzo(data || null);
-      } else {
-        setPalazzo(null);
-      }
+      if (res.ok) next = (await res.json()) || null;
     } catch {
-      setPalazzo(null);
+      next = null;
     }
+    if (currentProgramId.current !== programId) return;
+    setPalazzo(next);
     setPalazzoAnswered(true);
   }, [programId]);
 
