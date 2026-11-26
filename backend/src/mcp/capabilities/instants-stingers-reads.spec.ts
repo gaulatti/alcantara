@@ -33,7 +33,11 @@ const services = {
   stingers: { findAll: jest.fn() },
 };
 const specs = [
-  ...new InstantsMcpTools(services.programs as never, {} as never).specs(),
+  ...new InstantsMcpTools(
+    services.programs as never,
+    {} as never,
+    { teamId: 7 } as never,
+  ).specs(),
   ...new StingersMcpTools(
     services.stingers as never,
     {} as never,
@@ -64,6 +68,7 @@ beforeEach(() => {
   services.stingers.findAll.mockResolvedValue([stinger]);
 });
 
+const INSTANT_TEAM = { user: { authorization: { teamId: 7 } } };
 const STINGER_TEAM = { user: { authorization: { teamId: 7 } } };
 
 describe('appendix A read rows of ticket #217', () => {
@@ -109,15 +114,17 @@ describe('instant and stinger reads return what the controller returns', () => {
   it('instant_list_instants, for the default program and for another', async () => {
     const result = await run('instant_list_instants', {});
     expect(rebuilt(result)).toEqual(
-      asRest(await controllers.instants.listInstants()),
+      asRest(await controllers.instants.listInstants(INSTANT_TEAM)),
     );
     expect(services.programs.listInstants).toHaveBeenNthCalledWith(
       1,
       undefined,
+      7,
     );
     expect(services.programs.listInstants).toHaveBeenNthCalledWith(
       2,
       undefined,
+      7,
     );
     expect(result).toMatchObject([
       {
@@ -131,9 +138,17 @@ describe('instant and stinger reads return what the controller returns', () => {
       { id: 9, assignedSongId: 7 },
     ]);
     await run('instant_list_instants', { program_id: 'news' });
-    await controllers.instants.listInstants('news');
-    expect(services.programs.listInstants).toHaveBeenNthCalledWith(3, 'news');
-    expect(services.programs.listInstants).toHaveBeenNthCalledWith(4, 'news');
+    await controllers.instants.listInstants(INSTANT_TEAM, 'news');
+    expect(services.programs.listInstants).toHaveBeenNthCalledWith(
+      3,
+      'news',
+      7,
+    );
+    expect(services.programs.listInstants).toHaveBeenNthCalledWith(
+      4,
+      'news',
+      7,
+    );
   });
 
   it('stinger_list_stingers', async () => {

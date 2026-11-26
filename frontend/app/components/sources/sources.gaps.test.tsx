@@ -225,3 +225,10 @@ describe("SourcePreviewTile status", () => {
     expect(track.detach).toHaveBeenCalled();
   });
 });
+
+describe("SourceRow without a participant", () => {
+  it("says there is no participant when the source has none", () => {
+    render(<table><tbody><SourceRow onToggleSelect={vi.fn()} isSelected={false} source={source({ participantIdentity: null })} /></tbody></table>);
+    expect(screen.getByText("no participant")).toBeInTheDocument();
+  });
+});

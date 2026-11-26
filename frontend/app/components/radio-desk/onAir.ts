@@ -5,7 +5,8 @@ import type { StatePillTone } from "./primitives";
 // ProgramSongPlaybackState and the status the desk already polls; a state the desk cannot know is
 // shown as unverified or unavailable, never as a good one.
 
-export type OnAirState = "on-air" | "off-air" | "delayed";
+/** "unconfirmed": the desk has a song playing, but the engine is not connected to confirm it (#609). */
+export type OnAirState = "on-air" | "off-air" | "delayed" | "unconfirmed";
 
 export interface OnAirChip {
   id: "stream" | "engine" | "monitor";
@@ -22,7 +23,10 @@ export interface NextUp {
 
 export interface OnAirView {
   state: OnAirState;
-  /** "On air", "Off air", or "Status delayed" when the telemetry is stale. */
+  /**
+   * "On air" only when the engine is connected and its report is fresh; "Not confirmed" while the
+   * engine is not connected, "Status delayed" when the report is stale, otherwise "Off air".
+   */
   label: string;
   title: string | null;
   artist: string | null;
@@ -84,13 +88,15 @@ function introOf(playback: ProgramSongPlaybackState) {
 export function deriveOnAir(input: OnAirInput): OnAirView {
   const { playback } = input;
   const live = playback?.isPlaying === true;
-  const stale = live && playback?.telemetryStale === true;
+  // Only the engine confirms that a song is on air (gaulatti/alcantara#609).
+  const unconfirmed = live && !input.engine.connected;
+  const stale = live && !unconfirmed && playback?.telemetryStale === true;
   const hasLength =
     live &&
     typeof playback?.durationMs === "number" &&
     playback.durationMs > 0;
   const elapsed =
-    live && !stale ? Math.max(0, playback!.currentTimeMs) : null;
+    live && !stale && !unconfirmed ? Math.max(0, playback!.currentTimeMs) : null;
   const clampedElapsed =
     elapsed !== null && hasLength
       ? Math.min(elapsed, playback!.durationMs as number)
@@ -132,8 +138,20 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
   ];
 
   return {
-    state: !live ? "off-air" : stale ? "delayed" : "on-air",
-    label: !live ? "Off air" : stale ? "Status delayed" : "On air",
+    state: !live
+      ? "off-air"
+      : unconfirmed
+        ? "unconfirmed"
+        : stale
+          ? "delayed"
+          : "on-air",
+    label: !live
+      ? "Off air"
+      : unconfirmed
+        ? "Not confirmed"
+        : stale
+          ? "Status delayed"
+          : "On air",
     title: live ? (playback!.title || "Title unavailable") : null,
     artist: live ? (playback!.artist || "Artist unavailable") : null,
     elapsedMs: clampedElapsed,

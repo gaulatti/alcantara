@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { z } from 'zod';
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
+import { PompeiiService } from '../../auth/pompeii.service';
 import { ProgramService } from '../../program/program.service';
 import { RadioService } from '../../radio/radio.service';
 import { McpToolProvider, type McpToolSpec } from '../contract';
@@ -71,6 +72,7 @@ export class InstantsMcpTools {
   constructor(
     private readonly programs: ProgramService,
     private readonly radio: RadioService,
+    private readonly pompeii: PompeiiService,
   ) {}
 
   /** The instant and everything that plays, shows or rotates it. */
@@ -116,7 +118,10 @@ export class InstantsMcpTools {
   /** The instant as the console's list reports it, or not_found. */
   private async instantOf(instantId: number) {
     const found = (
-      (await this.programs.listInstants()) as unknown as InstantRow[]
+      (await this.programs.listInstants(
+        undefined,
+        this.pompeii.teamId,
+      )) as unknown as InstantRow[]
     ).find((row) => row.id === instantId);
     if (!found) throw new NotFoundException('Instant not found');
     return found;
@@ -132,7 +137,8 @@ export class InstantsMcpTools {
         permission: permissions.read,
         untrusted: INSTANT_UNTRUSTED,
         shape: { program_id: programIdArg.optional() },
-        run: (args) => this.programs.listInstants(args.program_id),
+        run: (args) =>
+          this.programs.listInstants(args.program_id, this.pompeii.teamId),
       }),
       actionSpec({
         name: 'instant_create_instant',
@@ -156,12 +162,15 @@ export class InstantsMcpTools {
           recoverable: true,
         }),
         run: (args) =>
-          this.programs.createInstant({
-            name: args.name,
-            audioUrl: args.audio_url,
-            volume: args.volume,
-            enabled: args.enabled,
-          }),
+          this.programs.createInstant(
+            {
+              name: args.name,
+              audioUrl: args.audio_url,
+              volume: args.volume,
+              enabled: args.enabled,
+            },
+            this.pompeii.teamId,
+          ),
       }),
       actionSpec({
         name: 'instant_update_instant',
@@ -207,6 +216,7 @@ export class InstantsMcpTools {
               volume: args.volume,
               enabled: args.enabled,
             }),
+            this.pompeii.teamId,
           ),
       }),
       actionSpec({
@@ -250,7 +260,8 @@ export class InstantsMcpTools {
               `instant ${args.instant_id} is in the bumper rotation of ${use.bumperOn.join(', ')}`,
             ],
           ]),
-        run: (args) => this.programs.deleteInstant(args.instant_id),
+        run: (args) =>
+          this.programs.deleteInstant(args.instant_id, this.pompeii.teamId),
       }),
       actionSpec({
         name: 'instant_play_instant',
@@ -281,7 +292,11 @@ export class InstantsMcpTools {
           recoverable: true,
         }),
         run: (args) =>
-          this.programs.playInstant(args.instant_id, args.program_id),
+          this.programs.playInstant(
+            args.instant_id,
+            args.program_id,
+            this.pompeii.teamId,
+          ),
       }),
       actionSpec({
         name: 'instant_stop_all_instants',
