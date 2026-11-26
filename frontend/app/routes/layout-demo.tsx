@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Button, Card } from '@gaulatti/bleecker';
 import { BroadcastLayout } from '../components';
 
@@ -12,20 +12,22 @@ const STAGE_HEIGHT = 1080;
 export default function BroadcastLayoutExample() {
   const [chyronText, setChyronText] = useState('');
   const [showChyron, setShowChyron] = useState(false);
-  const frameRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
+  const fitObserver = useRef<ResizeObserver | null>(null);
 
   // The stage is a fixed 1920x1080 canvas. It is scaled to the console's content column, and the
   // transform makes the frame the containing block of the stage's `position: fixed` widgets, so
-  // the QR code stays inside the frame instead of covering the sidebar.
-  useLayoutEffect(() => {
-    const frame = frameRef.current;
+  // the QR code stays inside the frame instead of covering the sidebar. React hands the frame over
+  // when it mounts, and null when it unmounts.
+  const frameRef = useCallback((frame: HTMLDivElement | null) => {
+    fitObserver.current?.disconnect();
+    fitObserver.current = null;
     if (!frame) return;
     const fit = () => setScale(Math.min(1, frame.clientWidth / STAGE_WIDTH));
     fit();
     const observer = new ResizeObserver(fit);
     observer.observe(frame);
-    return () => observer.disconnect();
+    fitObserver.current = observer;
   }, []);
 
   const displayChyron = (text: string) => {
