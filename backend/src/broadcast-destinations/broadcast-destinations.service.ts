@@ -125,14 +125,14 @@ export class BroadcastDestinationsService {
    */
   async setRetired(destinationId: string, retired: boolean) {
     validateDestinationId(destinationId);
-    if (!retired) {
-      const existing = await this.prisma.broadcastDestination.findUnique({
-        where: { id: destinationId },
-        select: { secretId: true },
-      });
-      if (ownsSecret(existing?.secretId)) {
-        await this.bringBackSecret(existing.secretId);
-      }
+    const existing = await this.prisma.broadcastDestination.findUnique({
+      where: { id: destinationId },
+      select: { secretId: true, retiredAt: true },
+    });
+    // A repeat of the state the row is already in touches no secret.
+    const changes = (existing?.retiredAt != null) !== retired;
+    if (!retired && changes && ownsSecret(existing?.secretId)) {
+      await this.bringBackSecret(existing.secretId);
     }
     let updated;
     try {
@@ -149,7 +149,7 @@ export class BroadcastDestinationsService {
       }
       throw error;
     }
-    if (retired && ownsSecret(updated?.secretId)) {
+    if (retired && changes && ownsSecret(updated?.secretId)) {
       await this.scheduleSecretDeletion(updated.secretId);
     }
     return updated;

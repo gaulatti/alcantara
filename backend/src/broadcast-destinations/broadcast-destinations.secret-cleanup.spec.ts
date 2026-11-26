@@ -10,8 +10,12 @@ import {
 const OURS =
   'arn:aws:secretsmanager:us-east-1:1:secret:alcantara/destinations/7/d1-AbC';
 
-function build(secretId: string | null, sharing = 0) {
-  const row = { id: 'd1', secretId, retiredAt: null };
+function build(
+  secretId: string | null,
+  sharing = 0,
+  retiredAt: Date | null = null,
+) {
+  const row = { id: 'd1', secretId, retiredAt };
   const prisma = {
     broadcastDestination: {
       findUnique: jest.fn().mockResolvedValue(row),
@@ -60,6 +64,11 @@ describe('retiring and restoring a destination and its secret', () => {
     for (const foreign of ['broadcast/youtube/key', null]) {
       const f = build(foreign);
       await f.service.setRetired('d1', true);
+      f.prisma.broadcastDestination.findUnique.mockResolvedValue({
+        id: 'd1',
+        secretId: foreign,
+        retiredAt: new Date(),
+      });
       await f.service.setRetired('d1', false);
       expect(f.secrets.scheduleDeletion).not.toHaveBeenCalled();
       expect(f.secrets.cancelDeletion).not.toHaveBeenCalled();
@@ -79,8 +88,19 @@ describe('retiring and restoring a destination and its secret', () => {
     ).not.toContain('alcantara/destinations');
   });
 
+  it('touches no secret when a retire or restore repeats the state the destination is in', async () => {
+    const retired = build(OURS, 0, new Date());
+    await retired.service.setRetired('d1', true);
+    const active = build(OURS);
+    await active.service.setRetired('d1', false);
+    for (const f of [retired, active]) {
+      expect(f.secrets.scheduleDeletion).not.toHaveBeenCalled();
+      expect(f.secrets.cancelDeletion).not.toHaveBeenCalled();
+    }
+  });
+
   it('cancels the deletion before restoring the row', async () => {
-    const f = build(OURS);
+    const f = build(OURS, 0, new Date());
     const order: string[] = [];
     f.secrets.cancelDeletion.mockImplementation(async () => {
       order.push('cancel');
@@ -96,12 +116,12 @@ describe('retiring and restoring a destination and its secret', () => {
   });
 
   it('refuses to restore when the key is gone, and when it cannot be brought back, leaving the row retired', async () => {
-    const gone = build(OURS);
+    const gone = build(OURS, 0, new Date());
     gone.secrets.cancelDeletion.mockResolvedValue('gone');
     await expect(gone.service.setRetired('d1', false)).rejects.toBeInstanceOf(
       ConflictException,
     );
-    const down = build(OURS);
+    const down = build(OURS, 0, new Date());
     down.secrets.cancelDeletion.mockRejectedValue(new Error('down'));
     await expect(down.service.setRetired('d1', false)).rejects.toBeInstanceOf(
       BadGatewayException,
