@@ -14,7 +14,10 @@ import {
   IconButton as BleeckerIconButton,
   type IconButtonProps,
 } from "@gaulatti/bleecker/components/icon-button";
-import { Tooltip } from "@gaulatti/bleecker/components/tooltip";
+import {
+  Tooltip,
+  type TooltipSide,
+} from "@gaulatti/bleecker/components/tooltip";
 
 function labelText(children: ReactNode): string {
   return Children.toArray(children)
@@ -61,8 +64,11 @@ function helpStyle(
 
 export const Button = forwardRef<
   HTMLButtonElement | HTMLAnchorElement,
-  ButtonProps
->(function Button(props, ref) {
+  ButtonProps & {
+    /** Where the help opens; "bottom" keeps it off a field just above the button. */
+    tooltipSide?: TooltipSide;
+  }
+>(function Button({ tooltipSide, ...props }, ref) {
   const content = buttonHelp(props);
   const button = (
     <BleeckerButton
@@ -73,7 +79,13 @@ export const Button = forwardRef<
       style={helpStyle(props.style, props.disabled || props.loading)}
     />
   );
-  return content ? <Tooltip content={content}>{button}</Tooltip> : button;
+  return content ? (
+    <Tooltip content={content} side={tooltipSide}>
+      {button}
+    </Tooltip>
+  ) : (
+    button
+  );
 });
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(

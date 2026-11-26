@@ -612,7 +612,8 @@ export default function ProgramsAdmin() {
           </div>
         </Modal>
 
-        <Modal isOpen={showModal} onClose={closeModal} title={editingProgramId ? 'Edit show' : 'Create show'}>
+        {/* Anchored to the top, not centered: picking Radio hides the TV fields, and a centered dialog moved the toggle just clicked about 100 px (the walk's polish). */}
+        <Modal isOpen={showModal} onClose={closeModal} title={editingProgramId ? 'Edit show' : 'Create show'} className='mt-[8vh] mb-auto'>
           <div className='space-y-5'>
             <div>
               <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Program ID</label>

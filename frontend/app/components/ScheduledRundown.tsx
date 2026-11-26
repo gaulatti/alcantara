@@ -1,7 +1,7 @@
-import { TooltipButton } from "./BleeckerButtons";
+// Button from BleeckerButtons directly: the same control the Bleecker alias resolves to, typed with tooltipSide.
+import { Button, TooltipButton } from "./BleeckerButtons";
 import {
   AlertContainer,
-  Button,
   Input,
   Modal,
   Select,
@@ -442,7 +442,7 @@ export default function ScheduledRundown({
             disabled={busy || dirty || !!fixtureData}
             onClick={() => setCreating(true)}
           >
-            <Plus size={14} /> New block
+            <Plus size={14} /> New timed block
           </Button>
         </div>
       </header>
@@ -529,6 +529,8 @@ export default function ScheduledRundown({
               </Button>
               <Button
                 size="xs"
+                // Disabled, the primary blue still read as the action to take (the walk's polish).
+                variant={canPublish ? "primary" : "secondary"}
                 disabled={!canPublish}
                 title="Save, check this revision and publish only if the check passes"
                 onClick={() => requestPublish("check")}
@@ -838,6 +840,7 @@ export default function ScheduledRundown({
                         <Button
                           size="xs"
                           variant="secondary"
+                          tooltipSide="bottom"
                           disabled={editLocked || busy || !!fixtureData}
                           onClick={() => setRecordIndex(editIndex)}
                         >
@@ -847,6 +850,7 @@ export default function ScheduledRundown({
                     <Button
                       size="xs"
                       variant="destructive"
+                      tooltipSide="bottom"
                       disabled={editLocked || busy}
                       onClick={remove}
                     >
@@ -890,7 +894,7 @@ export default function ScheduledRundown({
           returns to continuous fillers when its events finish.
         </p>
         <Button disabled={busy} onClick={() => void create()}>
-          Create rundown
+          Create timed block
         </Button>
       </Modal>
       <Modal
