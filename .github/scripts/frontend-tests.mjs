@@ -33,7 +33,13 @@ export async function runWithRetry(run, log = () => {}) {
   if (!onlyWorkerRpcTimeout(first.output)) return first.code;
   log('The only failure was the vitest worker RPC timeout, and every test file passed. Retrying once.');
   const second = await run();
-  return second.code;
+  if (second.code === 0) return 0;
+  if (!onlyWorkerRpcTimeout(second.output)) return second.code;
+  // Until the vitest 4 upgrade (which fixes this timeout upstream) lands, a second run that again fails
+  // only on the worker RPC timeout, with every test file passing and no threshold failure, passes with a
+  // warning instead of failing the PR.
+  log('::warning title=vitest worker RPC timeout::Both runs failed only on the vitest 3.2.7 worker RPC timeout, with every test file passing and no coverage threshold failure. Passing until the vitest 4 upgrade lands.');
+  return 0;
 }
 
 export function runFrontendCoverage() {

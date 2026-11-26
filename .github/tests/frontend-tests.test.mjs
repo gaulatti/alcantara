@@ -57,8 +57,20 @@ test('re-runs once after the timeout and reports the second attempt', async () =
   assert.equal(logs.length, 1);
 });
 
-test('fails with the second attempt when the retry also times out', async () => {
+test('passes with a warning when the retry again fails only on the timeout', async () => {
   const outputs = [{ code: 1, output: timeoutOnly() }, { code: 3, output: timeoutOnly() }];
+  const logs = [];
+  let calls = 0;
+  assert.equal(await runWithRetry(async () => outputs[calls++], (message) => logs.push(message)), 0);
+  assert.equal(calls, 2);
+  assert.match(logs[1], /::warning/);
+});
+
+test('fails with the second attempt when the retry fails for another reason', async () => {
+  const outputs = [
+    { code: 1, output: timeoutOnly() },
+    { code: 3, output: summary({ files: ' 1 failed | 280 passed (281)' }) },
+  ];
   let calls = 0;
   assert.equal(await runWithRetry(async () => outputs[calls++]), 3);
   assert.equal(calls, 2);
