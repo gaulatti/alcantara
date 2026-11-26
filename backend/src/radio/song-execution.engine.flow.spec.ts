@@ -1994,6 +1994,93 @@ describe('SongExecutionEngine Play Next after Take now', () => {
     expect(playedUrls(ctx)[1]).toBe('https://example.test/b.mp3');
   });
 
+  // gaulatti/alcantara#815: manual mode, where the watchdog otherwise never acts.
+  const restored = [
+    {
+      id: 'q1',
+      itemId: 'song-a',
+      enqueuedAt: 1,
+      active: true,
+      playbackRequestId: 'sent-before-restart',
+    },
+    { id: 'q2', itemId: 'song-b', enqueuedAt: 2 },
+  ];
+  const watch = async (ctx: ReturnType<typeof setup>) => {
+    for (let round = 0; round < 3; round += 1) {
+      await tick(ctx);
+      jest.advanceTimersByTime(NO_PLAYBACK_BOUND_MS);
+      await tick(ctx);
+    }
+  };
+  const manual = async (ctx: ReturnType<typeof setup>) => {
+    ctx.engine.handleSequenceUpdated('radio-1', {
+      ...(ctx.store.current!.songSequence as object),
+      mode: 'manual',
+    });
+  };
+
+  it('in manual mode, takes a restored duplicate off air once Palazzo reports nothing, drops it and starts nothing', async () => {
+    const ctx = setup();
+    accepting(ctx, { duplicate: true });
+    await startQueued(ctx, restored);
+    await manual(ctx);
+    expect(ctx.engine.getOnAirView('radio-1').playbackRequestId).toBe(
+      'sent-before-restart',
+    );
+
+    ctx.palazzo.state = idle(9);
+    await watch(ctx);
+
+    expect(ctx.engine.getOnAirView('radio-1').playbackRequestId).toBeNull();
+    expect(sentIds(ctx)).toEqual(['sent-before-restart']);
+    expect(ctx.store.current?.songQueue).toEqual([
+      expect.objectContaining({ id: 'q2' }),
+    ]);
+    expect(queueActions(ctx)).toContain('restart-duplicate-dropped');
+  });
+
+  it('in manual mode, blocks the queue when the dropped entry cannot be saved', async () => {
+    const ctx = setup();
+    accepting(ctx, { duplicate: true });
+    await startQueued(ctx, restored);
+    await manual(ctx);
+    ctx.palazzo.state = idle(9);
+    ctx.prisma.programState.update.mockRejectedValue(new Error('disk full'));
+    await watch(ctx);
+    expect(ctx.engine.getOnAirView('radio-1').playbackRequestId).toBeNull();
+    expect(stateOf(ctx.engine).queueBlocked).toBe(true);
+  });
+
+  it('in manual mode, leaves a duplicate that Palazzo reports on the air', async () => {
+    const ctx = setup();
+    accepting(ctx, { duplicate: true });
+    await startQueued(ctx, restored);
+    await manual(ctx);
+
+    ctx.palazzo.state = { ...idle(9), status: 'playing' } as never;
+    await watch(ctx);
+
+    expect(ctx.engine.getOnAirView('radio-1').playbackRequestId).toBe(
+      'sent-before-restart',
+    );
+    expect(queueActions(ctx)).not.toContain('restart-duplicate-dropped');
+  });
+
+  it('in manual mode, leaves a restored claim Palazzo accepted as new', async () => {
+    const ctx = setup();
+    accepting(ctx, {});
+    await startQueued(ctx, restored);
+    await manual(ctx);
+
+    ctx.palazzo.state = idle(9);
+    await watch(ctx);
+
+    expect(ctx.engine.getOnAirView('radio-1').playbackRequestId).toBe(
+      'sent-before-restart',
+    );
+    expect(queueActions(ctx)).not.toContain('restart-duplicate-dropped');
+  });
+
   it('drops a claimed head whose playback ID this process already sent, instead of sending it again', async () => {
     const ctx = setup();
     alreadySent(ctx, 'aired-and-cut');

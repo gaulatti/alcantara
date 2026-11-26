@@ -745,6 +745,8 @@ export class RadioService {
     ok: boolean;
     playbackRequestId?: string;
     introPlaybackId?: string | null;
+    /** Palazzo had already accepted this playback ID: not a failure, and not proof that anything airs. */
+    duplicate?: boolean;
   }> {
     const settings = await this.getRadioSettings(programId);
     if (!settings) {
@@ -798,6 +800,7 @@ export class RadioService {
         ok: true,
         playbackRequestId: result.playbackRequestId,
         introPlaybackId: result.introPlaybackId,
+        ...(result.duplicate ? { duplicate: true } : {}),
       };
     } catch (error) {
       this.logMachineFailure('playSong', programId, error);

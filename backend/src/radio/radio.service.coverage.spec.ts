@@ -783,6 +783,25 @@ describe('RadioService coverage', () => {
       });
     });
 
+    it("passes on Palazzo's duplicate answer, and nothing otherwise", async () => {
+      const { service, palazzo } = build();
+      palazzo.playSong.mockResolvedValueOnce({
+        playbackRequestId: 'x',
+        duplicate: true,
+      });
+      await expect(service.playSong('p', 'u')).resolves.toMatchObject({
+        ok: true,
+        duplicate: true,
+      });
+      palazzo.playSong.mockResolvedValueOnce({
+        playbackRequestId: 'x',
+        duplicate: false,
+      });
+      await expect(service.playSong('p', 'u')).resolves.not.toHaveProperty(
+        'duplicate',
+      );
+    });
+
     it('generates a request id when the argument is omitted', async () => {
       const { service, palazzo } = build();
       palazzo.playSong.mockResolvedValue({ playbackRequestId: 'x' });

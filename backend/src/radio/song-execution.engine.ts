@@ -271,6 +271,13 @@ interface ActiveSong {
   actor?: Actor | null;
   /** Promoted from an announcement: Palazzo started it, no command was sent. */
   promoted?: boolean;
+  /** Commanded for a Play Next claim saved before a restart, under the ID it was claimed with. */
+  restoredClaim?: boolean;
+  /**
+   * Palazzo answered that command as a duplicate: it may already have aired before the restart. Until Palazzo confirms
+   * it, the watchdog judges it even in manual mode (gaulatti/alcantara#815).
+   */
+  unconfirmedDuplicate?: boolean;
 }
 
 /**
@@ -1161,13 +1168,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     this.logger.warn(
       `Dropping Play Next entry ${entry.id} on ${programId}: its playback ${entry.playbackRequestId} was already sent and Palazzo never replays one; playing what follows`,
     );
-    void this.withQueueMutationLock(programId, async () => {
-      const persisted = await this.readQueueState(programId);
-      const queue = normalizeProgramSongQueue(persisted.songQueue);
-      const nextQueue = queue.filter((queued) => queued.id !== entry.id);
-      await this.persistQueue(programId, nextQueue);
-      this.applyPersistedQueue(programId, nextQueue, 'consumed');
-    })
+    void this.removeQueueEntry(programId, entry.id)
       .then(() => {
         state.transitioning = false;
         if (state.activeSong || state.frozen) return;
@@ -1182,6 +1183,43 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         )
           return;
         this.publishStopped(programId);
+      })
+      .catch((error) => {
+        this.blockQueueAfterPersistenceFailure(programId, error);
+      });
+  }
+
+  private removeQueueEntry(programId: string, entryId: string): Promise<void> {
+    return this.withQueueMutationLock(programId, async () => {
+      const persisted = await this.readQueueState(programId);
+      const queue = normalizeProgramSongQueue(persisted.songQueue);
+      const nextQueue = queue.filter((queued) => queued.id !== entryId);
+      await this.persistQueue(programId, nextQueue);
+      this.applyPersistedQueue(programId, nextQueue, 'consumed');
+    });
+  }
+
+  /**
+   * Manual mode: Palazzo answered a restored claim as a duplicate and then reported nothing on the air for the
+   * watchdog's bound, so it had aired before the restart. It is taken off air and its entry dropped. Manual mode stays
+   * an operator boundary: nothing else is started.
+   */
+  private dropUnairedRestoredClaim(
+    programId: string,
+    state: SongEngineState,
+    song: ActiveSong,
+  ): void {
+    this.logger.warn(
+      `Palazzo answered the restored Play Next claim ${song.playbackRequestId} on ${programId} as a duplicate and nothing aired; dropping it`,
+    );
+    this.metrics.recordSongQueueAction('restart-duplicate-dropped');
+    state.pendingRequestIds.delete(song.playbackRequestId);
+    state.activeSong = null;
+    state.transitioning = true;
+    this.publishStopped(programId);
+    void this.removeQueueEntry(programId, song.queueEntryId!)
+      .then(() => {
+        state.transitioning = false;
       })
       .catch((error) => {
         this.blockQueueAfterPersistenceFailure(programId, error);
@@ -1480,7 +1518,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  private rememberSent(state: SongEngineState, playbackRequestId: string): void {
+  private rememberSent(
+    state: SongEngineState,
+    playbackRequestId: string,
+  ): void {
     const sent = (state.sentRequestIds ??= new Set<string>());
     sent.add(playbackRequestId);
     if (sent.size > MAX_ENDED_REQUEST_IDS) {
@@ -1616,12 +1657,17 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       const automatic =
         state.sequence?.mode === 'autoplay' ||
         state.sequence?.mode === 'shuffle';
+      // A restored claim Palazzo answered as a duplicate, not yet confirmed: judged in manual mode too, or the desk
+      // shows it On air with nothing airing (gaulatti/alcantara#815).
+      const unconfirmed =
+        !!state.activeSong?.unconfirmedDuplicate &&
+        state.activeSong.authoritativeStartedAt === null;
       // A frozen engine or a stale stream: not ours to judge now. A command
       // sent restarts the bound (see pendingRequestIds.add), so a command
       // still pending while Palazzo reports no playback past the bound was
       // lost, and the idle report drops it.
       if (
-        !automatic ||
+        (!automatic && !unconfirmed) ||
         state.frozen ||
         !this.telemetry?.isReconciled(programId)
       ) {
@@ -1659,6 +1705,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       }
       if (now - state.noPlaybackSince < NO_PLAYBACK_BOUND_MS) continue;
       state.noPlaybackSince = null;
+      if (!automatic) {
+        this.dropUnairedRestoredClaim(programId, state, state.activeSong!);
+        continue;
+      }
       this.logger.warn(
         `Palazzo has reported nothing on the air on ${programId} for ${NO_PLAYBACK_BOUND_MS / 1000} s or more; resuming the rotation`,
       );
@@ -3927,6 +3977,13 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       highRotation: resolved.highRotation === true,
       cycleReset: !queueEntry && state.pendingCycleReset ? true : undefined,
       ...(promote ? { promoted: true } : {}),
+      // A head that was already claimed, not by this call and not under an ID this process sent, was claimed before a
+      // restart.
+      ...(!promote &&
+      queueEntry?.playbackRequestId &&
+      queueEntry.playbackRequestId !== claimedRequestId
+        ? { restoredClaim: true }
+        : {}),
     };
     state.pendingCycleReset = false;
 
@@ -4104,6 +4161,15 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       // A claim keeps the ID Alcantara sent; when Palazzo answers with its own, both are spent.
       if (result.playbackRequestId !== playbackRequestId)
         this.rememberSent(state, result.playbackRequestId);
+      const commanded = state.activeSong;
+      if (
+        result.duplicate &&
+        commanded?.restoredClaim &&
+        commanded.playbackRequestId === playbackRequestId
+      ) {
+        commanded.unconfirmedDuplicate = true;
+        state.noPlaybackSince = null;
+      }
       if (intro && state.activeSong?.playbackRequestId === playbackRequestId) {
         if (result.introPlaybackId === intro.playbackId) {
           state.activeSong.introPlaybackId = result.introPlaybackId;
