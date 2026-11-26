@@ -597,8 +597,6 @@ function ConsoleShell() {
         group: 'Navigation',
         icon: <Eye size={16} />,
         onSelect: () => {
-          /* v8 ignore next -- callbacks in this route run only in the browser, where a window always exists */
-          if (typeof window === 'undefined') return;
           window.open('/preview', '_blank', 'noopener,noreferrer');
         }
       }] : []),
@@ -609,8 +607,6 @@ function ConsoleShell() {
         group: 'Programs',
         icon: <Radio size={16} />,
         onSelect: () => {
-          /* v8 ignore next -- callbacks in this route run only in the browser, where a window always exists */
-          if (typeof window === 'undefined') return;
           openSelectedProgramOutput();
         }
       },
