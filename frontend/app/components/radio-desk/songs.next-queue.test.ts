@@ -35,4 +35,21 @@ describe("nextUp and the queue entry on air", () => {
     expect(nextUp({ sequence, queue, playback: airing(null, "a:playback") })).toMatchObject({ itemId: "c", via: "queue" });
     expect(nextUp({ sequence, queue, playback: null })).toMatchObject({ itemId: "c", via: "queue" });
   });
+
+  // A one-song rotation, asked on the desk's own terms: the only song is the one on air.
+  it("names the only rotation song as next when it is on air and nothing is queued (the loop repeats it)", () => {
+    const one = { items: [leaf("a")], activeItemId: "a", loop: true } as unknown as ProgramSongSequence;
+    expect(nextUp({ sequence: one, queue: [], playback: airing(null, "a:playback") })).toMatchObject({ itemId: "a", via: "rotation" });
+  });
+
+  it("returns no next song for a one-song rotation that does not loop, when that song is on air", () => {
+    const one = { items: [leaf("a")], activeItemId: "a", loop: false } as unknown as ProgramSongSequence;
+    expect(nextUp({ sequence: one, queue: [], playback: airing(null, "a:playback") })).toBeNull();
+  });
+
+  // A playback that carries no queue entry id cannot tell which queued entry is on air, so the entry is not skipped.
+  it("does not skip a queued song when the playback carries no queue entry id", () => {
+    const queue = [{ id: "q1", itemId: "a", enqueuedAt: 1 }];
+    expect(nextUp({ sequence, queue, playback: airing(undefined as unknown as null, "a:playback") })).toMatchObject({ itemId: "a", via: "queue" });
+  });
 });
