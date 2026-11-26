@@ -52,14 +52,14 @@ export default defineConfig({
       reportsDirectory: 'coverage',
       // Set from the CI measurement (pnpm workspace install), which reads lower than a local npm run:
       // 99.74 / 99.74 / 98.88 / 96.03 on 2026-11-24. Raise these as coverage rises; never lower them.
-      // Re-baselined for vitest 4.1.12 (the coverage engine changed; not a relaxation). Measured on
-      // 2026-11-26 over 285 files and 2,453 tests: statements 99.07, lines 99.45, branches 98.28,
-      // functions 97.72, floored to two decimals. The ratchet moves up from here; see gaulatti/alcantara#624.
+      // Re-baselined for vitest 4.1.12 (the coverage engine changed; not a relaxation), then ratcheted to the
+      // vitest 4 measurement on 2026-11-26 over 307 files and 2,588 tests: statements 99.43, lines 99.73,
+      // branches 98.63, functions 98.88, floored to two decimals. The ratchet moves up from here; see gaulatti/alcantara#624.
       thresholds: {
-        statements: 99.07,
-        lines: 99.45,
-        branches: 98.28,
-        functions: 97.72,
+        statements: 99.43,
+        lines: 99.73,
+        branches: 98.63,
+        functions: 98.88,
       },
     },
   },
