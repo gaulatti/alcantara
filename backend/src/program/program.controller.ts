@@ -126,10 +126,14 @@ export class ProgramController {
       streamSolo?: boolean;
       sceneInstantSolo?: boolean;
     },
+    @Req() request: { user: { authorization: { teamId: number } } },
   ) {
     // The service currently exposes a legacy loosely typed settings payload.
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-    return this.programService.updateBroadcastSettings(data);
+    return this.programService.updateBroadcastSettings(
+      data,
+      request.user.authorization.teamId,
+    );
   }
 
   @Get(':programId/state')
