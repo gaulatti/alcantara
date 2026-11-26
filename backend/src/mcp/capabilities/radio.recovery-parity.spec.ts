@@ -93,6 +93,19 @@ describe('radio_start_recovery and radio_stop_recovery refuse as the desk does',
     expect(t.radio.setRecoveryAutomation).not.toHaveBeenCalled();
   });
 
+  // Yakko's #796 review: the desk counts a polling Palazzo as answering too (RadioPanel engineReady).
+  it('refuses Start on playout down from a polling Palazzo, as the desk does', async () => {
+    const t = tools(stopped, {
+      ...palazzoStatus,
+      connection: 'polling',
+      playout: 'down',
+    });
+    await expect(
+      t.spec('radio_start_recovery').run({ program_id: 'main' }, ctx),
+    ).rejects.toMatchObject({ code: 'on_air' });
+    expect(t.radio.setRecoveryAutomation).not.toHaveBeenCalled();
+  });
+
   it('reads playout down only from a connected Palazzo, as the desk does', async () => {
     for (const status of [
       { ...palazzoStatus, connection: 'unavailable', playout: 'down' },

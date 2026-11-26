@@ -488,12 +488,15 @@ export class RadioMcpTools {
           const recovery = (await this.radio.getRecoveryStatus(
             args.program_id,
           )) as Recovery;
-          // The desk's playout-down rule: Palazzo answers, but its playout (Liquidsoap) is down.
+          // The desk's playout-down rule (RadioPanel engineReady): Palazzo answers, connected or polling, but its
+          // playout (Liquidsoap) is down.
           const status = this.telemetry.getStatus(args.program_id);
           return {
             ...recovery,
             playoutDown:
-              status?.connection === 'connected' && status.playout === 'down',
+              (status?.connection === 'connected' ||
+                status?.connection === 'polling') &&
+              status.playout === 'down',
           };
         },
         refuse: (_args, recovery) => recoveryRefusal(action, recovery),
