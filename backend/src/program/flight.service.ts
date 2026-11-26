@@ -1564,9 +1564,13 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     programId: string,
     index: number,
     generation: number,
+    /** Why the song on air is cut for this cue: a fixed start it reached (W3), logged as the song's end reason. */
+    cut?: 'fixed_start',
   ): Promise<void> {
     return this.serializeCueOperation(programId, () =>
-      this.executeCueAtIndexUnlocked(programId, index, generation),
+      cut
+        ? this.executeCueAtIndexUnlocked(programId, index, generation, cut)
+        : this.executeCueAtIndexUnlocked(programId, index, generation),
     );
   }
 
@@ -1574,6 +1578,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     programId: string,
     index: number,
     generation: number,
+    cut?: 'fixed_start',
   ): Promise<void> {
     const runtime = this.runtimes.get(programId);
     if (!runtime || runtime.generation !== generation || !runtime.isRunning) {
@@ -1616,7 +1621,9 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         runtime.scheduledAtMs !== null &&
         (cue.kind === 'playSong' || (cue.kind === 'instant' && cue.durationMs))
       )
-        await this.programService.stopProgramSongForTimedBlock(programId);
+        await (cut
+          ? this.programService.stopProgramSongForTimedBlock(programId, cut)
+          : this.programService.stopProgramSongForTimedBlock(programId));
       await this.executeCue(programId, cue);
     } catch (err) {
       if (err instanceof AutomationEngineUnavailableError) {
@@ -1831,10 +1838,58 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
           this.armTimedClip(current);
           return;
         }
-        void this.executeCueAtIndex(runtime.programId, index, generation);
+        const skipped = this.cuesPassedOver(current, index);
+        void (due <= target
+          ? this.executeCueAtIndex(runtime.programId, index, generation, 'fixed_start')
+          : this.executeCueAtIndex(runtime.programId, index, generation));
+        void this.logCuesSkippedByFixedStart(current, skipped);
       },
       Math.min(2_147_483_647, Math.max(0, Math.min(target, due) - Date.now())),
     );
+  }
+
+  /** The cues between the one on air and a fixed start the block jumps to: they never air. */
+  private cuesPassedOver(runtime: FlightRuntimeState, index: number): FlightCue[] {
+    return runtime.items.slice(runtime.activeIndex + 1, index);
+  }
+
+  /**
+   * The airing walk's W3: a cue a fixed start passed over never aired, but with no as-run row the rundown showed it
+   * as played. Each song cue gets a not-aired row naming its cue (`fixed_start`), as an outage skip does (#726). The
+   * fixed cue has already been started; a failed write is logged and never holds the block.
+   */
+  private async logCuesSkippedByFixedStart(
+    runtime: FlightRuntimeState,
+    cues: FlightCue[],
+  ): Promise<void> {
+    // Nothing here may reject: the caller does not wait, and the block has already moved on.
+    for (const cue of cues) {
+      try {
+        this.metrics.recordRadioLogResult('cue-skipped');
+        this.programService.broadcastUpdate(runtime.programId, {
+          type: 'radio_log_cue_skipped',
+          sequenceId: runtime.sequenceId,
+          cueId: cue.id,
+        });
+        if (cue.kind === 'playSong' && typeof cue.songId === 'number')
+          await this.prisma.asRunRecord.create({
+            data: {
+              programId: runtime.programId,
+              songId: cue.songId,
+              state: 'not-aired',
+              endReason: 'fixed_start',
+              at: new Date(),
+              flightSequenceId: runtime.sequenceId,
+              flightCueId: cue.id,
+            },
+          });
+      } catch (err) {
+        this.logger.error(
+          `Could not log a cue passed over by a fixed start as not aired for ${runtime.programId}`,
+          err,
+        );
+      }
+    }
   }
 
   private armNextHardCue(runtime: FlightRuntimeState): void {
@@ -1861,11 +1916,15 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         }
         current.waitingForSongEnd = false;
         current.generation += 1;
+        const skipped = this.cuesPassedOver(current, index);
+        // The song on air is still playing: the fixed start cuts it.
         void this.executeCueAtIndex(
           current.programId,
           index,
           current.generation,
+          'fixed_start',
         );
+        void this.logCuesSkippedByFixedStart(current, skipped);
       },
       Math.min(
         2_147_483_647,

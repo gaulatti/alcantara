@@ -964,6 +964,25 @@ it("names an unknown not-aired reason as the as-run logged it", () => {
   ).toBeVisible();
 });
 
+it("names a cue a fixed start passed over as skipped, not played", () => {
+  const p = props();
+  const log = onAirLog(p);
+  log.scheduledAt = new Date(Date.now() - 120_000).toISOString();
+  log.activeItemId = "cue-3";
+  log.items = [
+    { id: "cue-1", kind: "playSong", songId: 1, clockOffsetSeconds: 0 },
+    { id: "cue-2", kind: "playSong", songId: 1 },
+    { id: "cue-3", kind: "playSong", songId: 1, clockOffsetSeconds: 60 },
+  ];
+  log.cueOutcomes = [
+    { cueId: "cue-2", state: "not-aired", reason: "fixed_start" },
+  ];
+  mount(p);
+  expect(
+    screen.getByLabelText("Skipped: not aired, cut by a fixed start"),
+  ).toBeVisible();
+});
+
 it("marks rows by position when the backend sends no cue outcomes", () => {
   const p = props();
   const log = onAirLog(p);

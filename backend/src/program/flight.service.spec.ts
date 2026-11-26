@@ -444,7 +444,7 @@ describe('FlightService tag generation and live log edits', () => {
       });
       expect(runtime.items.map((item) => item.id)).toEqual(['now', 'hard']);
       jest.advanceTimersByTime(1800000);
-      expect(execute).toHaveBeenCalledWith('radio-1', 1, 2);
+      expect(execute).toHaveBeenCalledWith('radio-1', 1, 2, 'fixed_start');
     } finally {
       service.onModuleDestroy();
       jest.useRealTimers();
@@ -584,7 +584,7 @@ describe('FlightService tag generation and live log edits', () => {
       jest.advanceTimersByTime(30000);
       expect(execute).not.toHaveBeenCalled();
       jest.advanceTimersByTime(10000);
-      expect(execute).toHaveBeenCalledWith('radio-1', 2, 5);
+      expect(execute).toHaveBeenCalledWith('radio-1', 2, 5, 'fixed_start');
     } finally {
       service.onModuleDestroy();
       jest.useRealTimers();

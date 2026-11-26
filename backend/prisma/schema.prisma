@@ -847,7 +847,8 @@ model AsRunRecord {
   /// Review flag on an inferred end: `short` or `no-start`; null otherwise.
   reviewFlag        String?
   /// Why the engine ended a started play: `stopped`, `replaced` or `superseded`; on a `not-aired`
-  /// row, why the song was not aired (`engine_unavailable`, gaulatti/alcantara#609); null otherwise.
+  /// row, why the song was not aired (`engine_unavailable`, gaulatti/alcantara#609, or `fixed_start`: a fixed
+  /// start passed over its cue); null otherwise.
   endReason         String?
   /// Who caused an operator action: Pompeii principal (null while unresolved or for automatic transitions).
   actorPrincipalId  String?
