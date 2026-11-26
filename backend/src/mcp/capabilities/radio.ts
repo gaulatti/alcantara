@@ -79,6 +79,33 @@ interface Recovery {
 }
 
 /** Where the recovery session is, in words; it changes when it starts or stops. */
+/** The recovery session read with Palazzo's playout state, as the desk judges Start and Stop. */
+type RecoveryLive = Recovery & { playoutDown: boolean };
+
+const PLAYOUT_DOWN_RECOVERY =
+  'Playout down: nothing can air, the recovery playlist included: Start with fallback is unavailable until playout is back';
+
+/**
+ * The radio desk's rule for its recovery buttons (RadioPanel), so the capability refuses what the desk disables
+ * (#788, MCP parity): Start needs playout up, a prepared playlist, a connected Palazzo and no session running;
+ * Stop needs a running session.
+ */
+export function recoveryRefusal(
+  action: 'start' | 'stop',
+  recovery: RecoveryLive,
+): string | null {
+  const running = recovery.automation?.filler.ready === true;
+  if (action === 'stop')
+    return running ? null : 'No recovery session is running';
+  if (recovery.playoutDown) return PLAYOUT_DOWN_RECOVERY;
+  if (!recovery.preparedVersion)
+    return 'No recovery playlist is prepared: prepare one with radio_prepare_recovery first';
+  if (recovery.connection !== 'connected')
+    return 'Palazzo recovery status is unavailable';
+  if (running) return 'A recovery session is already running';
+  return null;
+}
+
 const recoveryStamp = (recovery: Recovery): string =>
   recovery.automation
     ? `recovery=${recovery.automation.requestedState}/${recovery.automation.actualState} seq=${recovery.automation.lastSequence}`
@@ -447,18 +474,32 @@ export class RadioMcpTools {
 
   private recoveryActions(): McpToolSpec[] {
     return (['start', 'stop'] as const).map((action) =>
-      actionSpec<{ program_id: typeof programIdArg }, Recovery>({
+      actionSpec<{ program_id: typeof programIdArg }, RecoveryLive>({
         name: `radio_${action}_recovery`,
         title: `${action === 'start' ? 'Start' : 'Stop'} the recovery session`,
         description:
           action === 'start'
-            ? 'Starts the recovery (fallback) session of a radio program, bound to the program radio filler version (or, without one, the prepared recovery playlist): when the live song queue runs dry, Palazzo plays the local playlist. Needs a prepared playlist.'
-            : 'Stops the recovery session of a radio program: the program audio is cleared and the binding to the playlist is dropped. Needs Palazzo to answer.',
+            ? "Starts the recovery (fallback) session of a radio program, bound to the program radio filler version (or, without one, the prepared recovery playlist): when the live song queue runs dry, Palazzo plays the local playlist. Refused with on_air, as the desk's Start with fallback is disabled, while Palazzo reports its playout down, with no prepared playlist, when Palazzo is not connected, or while a session runs."
+            : "Stops the recovery session of a radio program: the program audio is cleared and the binding to the playlist is dropped. Refused with on_air, as the desk's Hold · stop session is disabled, when no session runs. Needs Palazzo to answer.",
         permission: permissions.operate,
         tier: 'A',
         shape: { program_id: programIdArg },
-        load: (args) =>
-          this.radio.getRecoveryStatus(args.program_id) as Promise<Recovery>,
+        load: async (args) => {
+          const recovery = (await this.radio.getRecoveryStatus(
+            args.program_id,
+          )) as Recovery;
+          // The desk's playout-down rule (RadioPanel engineReady): Palazzo answers, connected or polling, but its
+          // playout (Liquidsoap) is down.
+          const status = this.telemetry.getStatus(args.program_id);
+          return {
+            ...recovery,
+            playoutDown:
+              (status?.connection === 'connected' ||
+                status?.connection === 'polling') &&
+              status.playout === 'down',
+          };
+        },
+        refuse: (_args, recovery) => recoveryRefusal(action, recovery),
         id: (args) => args.program_id,
         label: (_args, recovery) => recoveryStamp(recovery),
         plan: (args, recovery) => ({

@@ -530,7 +530,13 @@ reorder, consume, cursor persistence, rejection, and persistence failure,
 `alcantara_radio_start_refused_total{reason}` for a song start refused before anything was
 saved while a radio-only program's engine is disabled or has no settings (gaulatti/alcantara#609):
 `engine_unavailable` for an operator's take or start, `automation_engine_unavailable` for a
-rundown song that was skipped and logged as not aired (both exposed from 0),
+rundown song that was skipped and logged as not aired, and `playout_down` for an operator's take
+while Palazzo freshly reports its playout (Liquidsoap) down (the airing walk's D4; all exposed from 0),
+`alcantara_radio_take_playout_unconfirmed_total{report}` for an operator's take on a radio engine let through
+without a fresh playout report (`stale`: the last report was down but older than the idle watchdog plus the
+staleness window, 45 s by default, or the client no longer hears Palazzo; `unknown`: no report yet; `tv_leg`: a
+fresh down report on a simulcast program, whose own output airs the take on TV, so it is never refused; all exposed
+from 0),
 `alcantara_radio_cursor_writes_total{result}` for the write of the playlist cursor
 after it advanced (`succeeded`, `failed`: the database refused or timed out and
 the next song is not delayed, `conflict`: the stored sequence was edited

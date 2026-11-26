@@ -3338,6 +3338,8 @@ export default function Control() {
         programId={activeProgramId}
         playoutError={radioPlayoutError ?? radioSongFailure}
         songSequence={programAudioBusSongSequence}
+        rotationLoadError={rotationLoadFailed}
+        onRetryRotation={() => void fetchProgramAudioBusSettings(activeProgramId)}
         songQueue={normalizeProgramSongQueue(programAudioBusSettings.songQueue)}
         songCatalog={songCatalog}
         programSongPlayback={programSongPlaybackState}

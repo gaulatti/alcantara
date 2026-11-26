@@ -600,7 +600,9 @@ it("treats every unreachable or refused status endpoint as unverified", async ()
   expect(screen.queryByText("Engine unavailable")).toBeNull();
   expect(screen.getByText("Output unverified")).toBeVisible();
   expect(screen.getByText("No level sample")).toBeVisible();
-  expect(screen.getByText("No prepared recovery playlist")).toBeInTheDocument();
+  // The recovery status never answered, so there is no last known state to show.
+  expect(screen.getByText("Recovery status unavailable")).toBeInTheDocument();
+  expect(screen.queryByText("No prepared recovery playlist")).toBeNull();
   view.unmount();
 
   radioApi({
@@ -757,6 +759,16 @@ it("refuses Take, Take now and Start with fallback while playout is down, and ke
   fireEvent.click(within(dialog).getByRole("button", { name: "Confirm Paper Satellites" }));
   expect(
     await within(dialog).findByText("Playout down: nothing can air. Nothing was taken."),
+  ).toBeVisible();
+  expect(p.onTakeSelection).not.toHaveBeenCalled();
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Play a song now" })).toBeNull());
+
+  // The airing walk's W4: a rotation row's Take on air refused nothing and the song was sent to Palazzo.
+  const rows = screen.getAllByRole("button", { name: "Take on air" });
+  fireEvent.click(rows[1]);
+  expect(
+    await screen.findByText("Playout down: nothing can air. Nothing was taken."),
   ).toBeVisible();
   expect(p.onTakeSelection).not.toHaveBeenCalled();
 });
@@ -1088,6 +1100,49 @@ it("keeps Engine unavailable when the server answers that the engine is down", a
   mount(liveProps());
   expect(await screen.findByText("Engine unavailable")).toBeVisible();
   expect(screen.queryByText("Can\'t reach the Alcántara server")).toBeNull();
+});
+
+// Dot's recovery walk: a failed recovery status read used to replace the known state with "No prepared recovery
+// playlist", although a playlist was prepared and airing. The last known state stays, and the panel says it is
+// unavailable until a read answers again.
+it("keeps the last known recovery state and says it is unavailable when the status read fails", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    let recoveryUp = true;
+    radioApi({
+      "/status": () => json({ running: true, uptime: 60_000 }),
+      "/palazzo-status": () => json(props().fixtureData!.palazzo),
+      "/output-confidence": () => json(props().fixtureData!.output),
+      "/recovery": () =>
+        recoveryUp
+          ? json({ preparedVersion: "v7", automation: null, connection: "connected" })
+          : new Error("offline"),
+    });
+    vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+    mount(liveProps());
+    fireEvent.click(screen.getByText("Recovery & session"));
+    expect(await screen.findByText("Prepared for next session")).toBeVisible();
+
+    recoveryUp = false;
+    await act(async () => {
+      vi.advanceTimersByTime(8_000);
+    });
+    expect(await screen.findByText("Recovery status unavailable")).toBeVisible();
+    expect(screen.getByText("Last known: prepared for next session.")).toBeVisible();
+    expect(screen.queryByText("No prepared recovery playlist")).toBeNull();
+
+    // A read that answers again replaces the last known state and clears the notice.
+    recoveryUp = true;
+    await act(async () => {
+      vi.advanceTimersByTime(8_000);
+    });
+    await waitFor(() =>
+      expect(screen.queryByText("Recovery status unavailable")).toBeNull(),
+    );
+    expect(screen.getByText("Prepared for next session")).toBeVisible();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 // gaulatti/alcantara#707: a command failure shows as the alert and enters the session log; when the engine
@@ -2269,3 +2324,33 @@ describe("dead air", () => {
   });
 });
 
+// A rotation that failed to load is an error with a Retry, never the empty rotation (the desk read a restarting backend as
+// an empty filler rotation).
+it("shows a rotation that failed to load as an error with Retry, not as an empty rotation", async () => {
+  const onRetryRotation = vi.fn();
+  const p = props();
+  p.fixtureData!.logs = [];
+  mount({ ...p, rotationLoadError: true, onRetryRotation });
+  expect(screen.getByText("Couldn't load the rotation")).toBeVisible();
+  expect(screen.queryByText(/is empty/)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(onRetryRotation).toHaveBeenCalledOnce();
+});
+
+it("says a truly empty rotation is empty, and offers no load error", () => {
+  const p = props();
+  p.fixtureData!.logs = [];
+  mount({ ...p, songSequence: { mode: "manual", items: [], activeItemId: null, intervalMs: 0, loop: false, startedAt: 0 }, rotationLoadError: false });
+  expect(screen.getByText("Filler rotation is empty")).toBeVisible();
+  expect(screen.queryByText("Couldn't load the rotation")).toBeNull();
+});
+
+// The rotation-load error replaces the rotation editor only: taking the song off air stays available (an on-air control).
+it("keeps Stop the song on air working while the rotation-load error is shown", async () => {
+  const p = props();
+  p.fixtureData!.logs = [];
+  mount({ ...p, rotationLoadError: true, onRetryRotation: vi.fn() });
+  expect(screen.getByText("Couldn't load the rotation")).toBeVisible();
+  await hold(screen.getByRole("button", { name: "Stop the song on air" }));
+  await waitFor(() => expect(p.onTakeOffAir).toHaveBeenCalledOnce());
+});

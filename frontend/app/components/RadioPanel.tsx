@@ -84,6 +84,9 @@ interface RadioPanelProps {
   programId: string;
   playoutError?: string | null;
   songSequence: any;
+  /** The rotation could not be read: show the error, never the empty rotation (the rotation was not loaded). */
+  rotationLoadError?: boolean;
+  onRetryRotation?: () => void;
   songQueue: ProgramSongQueueEntry[];
   songCatalog: SongCatalogItem[];
   programSongPlayback: ProgramSongPlaybackState | null;
@@ -184,11 +187,24 @@ const PLAYOUT_DOWN_REASON = "Playout down: nothing can air";
 /** The engine chip when the console cannot reach the Alcántara server at all (Dot's recovery walk). */
 const SERVER_UNREACHABLE_LABEL = "Can't reach the Alcántara server";
 
+/** The Recovery & session headline for a recovery status the console has read. */
+function recoveryHeadline(recovery: RecoveryStatus | null): string {
+  return recovery?.automation?.filler.ready
+    ? "Recovery playlist active"
+    : recovery?.connection === "unavailable"
+      ? "Engine unavailable"
+      : recovery?.preparedVersion
+        ? "Prepared for next session"
+        : "No prepared recovery playlist";
+}
+
 export const RadioPanel: React.FC<RadioPanelProps> = ({
   fixtureData,
   programId,
   playoutError,
   songSequence,
+  rotationLoadError = false,
+  onRetryRotation,
   songQueue,
   onSaveSongSequence,
   onTakeSelection,
@@ -280,6 +296,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   );
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  // A failed recovery status read keeps the last known state and says it is unavailable (Dot's recovery walk).
+  const [recoveryUnavailable, setRecoveryUnavailable] = useState(false);
 
   const fetchStreamStatus = useCallback(async () => {
     try {
@@ -341,9 +359,12 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
       const response = await fetch(
         apiUrl(`/radio/${encodeURIComponent(programId)}/recovery`),
       );
-      setRecovery(response.ok ? await response.json() : null);
+      if (!response.ok) throw new Error(`recovery status ${response.status}`);
+      setRecovery(await response.json());
+      setRecoveryUnavailable(false);
     } catch {
-      setRecovery(null);
+      // The last known status stays on screen; the panel says it is unavailable.
+      setRecoveryUnavailable(true);
     }
   }, [programId]);
 
@@ -384,6 +405,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     setOutput(null);
     setLogs([]);
     setRecovery(null);
+    setRecoveryUnavailable(false);
     fetchStreamStatus();
     fetchPalazzoStatus();
     fetchAirPlan();
@@ -897,44 +919,61 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                       onReorder={onReorderSongQueue}
                     />
                   )}
-                  <ProgramSongSequenceEditor
-                    sequence={rotation}
-                    songCatalog={songCatalog}
-                    programSongPlayback={programSongPlayback}
-                    onChange={(next) => {
-                      void Promise.resolve(onSaveSongSequence(next)).catch(
-                        (cause) =>
-                          setQueueError(
-                            cause instanceof Error
-                              ? cause.message
-                              : "Rotation was not changed",
-                          ),
-                      );
-                    }}
-                    onTakeSelection={
-                      onTakeSelection
-                        ? (next) => runRotation(() => onTakeSelection(next))
-                        : undefined
-                    }
-                    onQueueItem={(itemId) => {
-                      // The editor fires and forgets; a refused add is shown
-                      // here, as a refused rotation change is (#194). A new
-                      // add clears the last refusal first.
-                      setQueueError(null);
-                      void Promise.resolve(onQueueSong(itemId)).catch(
-                        (cause) =>
-                          setQueueError(
-                            cause instanceof Error
-                              ? cause.message
-                              : "Play Next was not changed",
-                          ),
-                      );
-                    }}
-                    view={addingFillers ? "full" : "queue"}
-                    rotationLabel="Filler rotation"
-                    liveItemId={confirmedLiveLeaf?.id ?? null}
-                    nextItemId={next?.itemId ?? null}
-                  />
+                  {rotationLoadError ? (
+                    <div role="alert" className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-16 text-center">
+                      <p className="text-sm font-medium text-text-primary">Couldn't load the rotation</p>
+                      <p className="text-xs text-text-secondary">The backend did not answer. The rotation will load again once it does.</p>
+                      {onRetryRotation ? <Button variant="secondary" onClick={onRetryRotation}>Retry</Button> : null}
+                    </div>
+                  ) : (
+                    <ProgramSongSequenceEditor
+                      sequence={rotation}
+                      songCatalog={songCatalog}
+                      programSongPlayback={programSongPlayback}
+                      onChange={(next) => {
+                        void Promise.resolve(onSaveSongSequence(next)).catch(
+                          (cause) =>
+                            setQueueError(
+                              cause instanceof Error
+                                ? cause.message
+                                : "Rotation was not changed",
+                            ),
+                        );
+                      }}
+                      onTakeSelection={
+                        onTakeSelection
+                          ? (next) =>
+                              runRotation(() => {
+                                // A row's Take on air refuses while playout is down, as the transport's Take
+                                // does: it would be accepted and not air (the airing walk's W4).
+                                if (playoutDown)
+                                  throw new Error(
+                                    `${PLAYOUT_DOWN_REASON}. Nothing was taken.`,
+                                  );
+                                return onTakeSelection(next);
+                              })
+                          : undefined
+                      }
+                      onQueueItem={(itemId) => {
+                        // The editor fires and forgets; a refused add is shown
+                        // here, as a refused rotation change is (#194). A new
+                        // add clears the last refusal first.
+                        setQueueError(null);
+                        void Promise.resolve(onQueueSong(itemId)).catch(
+                          (cause) =>
+                            setQueueError(
+                              cause instanceof Error
+                                ? cause.message
+                                : "Play Next was not changed",
+                            ),
+                        );
+                      }}
+                      view={addingFillers ? "full" : "queue"}
+                      rotationLabel="Filler rotation"
+                      liveItemId={confirmedLiveLeaf?.id ?? null}
+                      nextItemId={next?.itemId ?? null}
+                    />
+                  )}
                 </div>
               )}
             </div>
@@ -1169,14 +1208,13 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
               <summary>Recovery & session</summary>
               <div className="console-recovery-content">
                 <strong>
-                  {recovery?.automation?.filler.ready
-                    ? "Recovery playlist active"
-                    : recovery?.connection === "unavailable"
-                      ? "Engine unavailable"
-                      : recovery?.preparedVersion
-                        ? "Prepared for next session"
-                        : "No prepared recovery playlist"}
+                  {recoveryUnavailable
+                    ? "Recovery status unavailable"
+                    : recoveryHeadline(recovery)}
                 </strong>
+                {recoveryUnavailable && recovery ? (
+                  <p>Last known: {recoveryHeadline(recovery).toLowerCase()}.</p>
+                ) : null}
                 <p>
                   Starting binds the prepared playlist. Stopping clears program
                   audio and the binding.
