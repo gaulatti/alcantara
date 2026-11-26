@@ -34,3 +34,9 @@ ORDER BY p."programId";
 ```
 
 The owner assigns the team of each listed program by hand. Until then, readers that need a team for such a program use their own fallback, for example the recipes' caller team (#464).
+
+## Renaming a program that is on air
+
+A rename is refused with 409 while the program is on air (a scene or fade to black, a running log, a playing song or
+scene instant): `This show is on air (…). Take it off air before renaming it.` After a rename the radio engine and
+Palazzo telemetry take up the new id in one step. Palazzo itself must be configured for the new program id.

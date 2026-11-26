@@ -129,6 +129,27 @@ export class PalazzoRadioTelemetryService
     );
   }
 
+  /**
+   * Moves a renamed program's telemetry to its new id. Synchronous: the old client stops and the new one starts with
+   * nothing in between, so there is never a moment with both consuming Palazzo, or with neither.
+   */
+  renameProgram(
+    current: string,
+    next: string,
+    setting: { type: string; palazzoUrl: string | null } | null,
+  ): void {
+    this.stopClient(current);
+    this.rejectedPrograms.delete(current);
+    this.rejectedPrograms.delete(next);
+    if (!setting?.palazzoUrl || isDeployCandidate()) return;
+    if (!RADIO_PROGRAM_TYPES.includes(setting.type)) return;
+    this.startClient(
+      next,
+      setting.type as PalazzoProgramType,
+      setting.palazzoUrl,
+    );
+  }
+
   isReconciled(programId: string): boolean {
     const client = this.clients.get(programId);
     if (!client) return false;

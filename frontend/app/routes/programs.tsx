@@ -96,8 +96,11 @@ function showSaveErrorMessage(error: unknown, showSaved: boolean): string {
   if (showSaved)
     return 'The show was saved, but its scenes or stingers were not updated. Edit it to try again.';
   if (error instanceof ShowSaveRefused) {
+    // A show on air is not renamed: say what the server said.
     if (error.status === 409)
-      return 'A show with this ID already exists. Choose another ID.';
+      return error.reason?.startsWith('This show is on air')
+        ? error.reason
+        : 'A show with this ID already exists. Choose another ID.';
     if (error.status === 400 && error.reason)
       return `Failed to save show: ${error.reason}`;
     return `Failed to save show (HTTP ${error.status}). Nothing was saved.`;

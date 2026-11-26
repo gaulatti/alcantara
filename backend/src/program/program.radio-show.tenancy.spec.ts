@@ -20,6 +20,13 @@ describe('radio shows against Postgres', () => {
       db: unknown,
     ) => ProgramService)(prisma);
     (program as unknown as { recorder: unknown }).recorder = noRecorder();
+    // Nothing is on air, and there is no radio engine to move on a rename.
+    (
+      program as unknown as { songExecutionEngine: unknown }
+    ).songExecutionEngine = {
+      getOnAirView: () => ({ playbackRequestId: null }),
+      renameProgram: () => Promise.resolve(),
+    };
     jest.spyOn(program, 'broadcastUpdate').mockImplementation(() => undefined);
     return program;
   };

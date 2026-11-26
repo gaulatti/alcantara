@@ -164,6 +164,12 @@ export interface PalazzoTelemetrySource {
    * authoritative state. Null when it cannot be read.
    */
   currentState?(programId: string): Promise<PalazzoPlaybackState | null>;
+  /** Moves a renamed program's telemetry to its new id, in one synchronous step. */
+  renameProgram?(
+    current: string,
+    next: string,
+    setting: { type: string; palazzoUrl: string | null } | null,
+  ): void;
 }
 
 /**
@@ -528,25 +534,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       const pid = s.programState.programId;
       if (!s.palazzoUrl) continue;
       if (!RADIO_PROGRAM_TYPES.has(s.programState.type)) continue;
-      const seq = normalizeProgramSongSequence(s.programState.songSequence);
-      this.radioProgramIds.add(pid);
-      const state = this.ensureState(pid);
-      state.sequence = seq;
-      state.queue = normalizeProgramSongQueue(s.programState.songQueue);
-      state.rotation = normalizeProgramSongRotation(
-        s.programState.songRotation,
-      );
-      this.updateQueueDepthMetric();
-      if (
-        !seq ||
-        (seq.mode !== 'autoplay' && seq.mode !== 'shuffle') ||
-        !seq.items.length
-      )
-        continue;
-      seq.startedAt = Date.now();
-      this.logger.log(
-        `Booting ${pid}, mode=${seq.mode}, awaiting Palazzo snapshot`,
-      );
+      this.hydrate(pid, s.programState);
     }
     this.updateHighRotationFavoriteMetric();
     // A deploy candidate (#223) starts no telemetry and no watchdog.
@@ -563,13 +551,87 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (this.watchdog) clearInterval(this.watchdog);
     this.watchdog = null;
     for (const [programId, state] of this.states) {
-      this.clearTimer(programId);
-      this.stopProgress(programId);
-      if (state.commandRetryTimer) clearTimeout(state.commandRetryTimer);
-      state.commandRetryTimer = null;
-      this.clearInheritedRetry(state);
-      this.clearSimilarityWait(state);
+      this.silence(programId, state);
     }
+  }
+
+  /** Takes up a radio program from its stored sequence, queue and rotation, as at start-up. */
+  private hydrate(
+    pid: string,
+    programState: {
+      songSequence: unknown;
+      songQueue: unknown;
+      songRotation: unknown;
+    },
+  ): void {
+    const seq = normalizeProgramSongSequence(programState.songSequence);
+    this.radioProgramIds.add(pid);
+    const state = this.ensureState(pid);
+    state.sequence = seq;
+    state.queue = normalizeProgramSongQueue(programState.songQueue);
+    state.rotation = normalizeProgramSongRotation(programState.songRotation);
+    this.updateQueueDepthMetric();
+    if (
+      !seq ||
+      (seq.mode !== 'autoplay' && seq.mode !== 'shuffle') ||
+      !seq.items.length
+    )
+      return;
+    seq.startedAt = Date.now();
+    this.logger.log(
+      `Booting ${pid}, mode=${seq.mode}, awaiting Palazzo snapshot`,
+    );
+  }
+
+  /** Stops a program's timers; its state stays. */
+  private silence(programId: string, state: SongEngineState): void {
+    this.clearTimer(programId);
+    this.stopProgress(programId);
+    if (state.commandRetryTimer) clearTimeout(state.commandRetryTimer);
+    state.commandRetryTimer = null;
+    this.clearInheritedRetry(state);
+    this.clearSimilarityWait(state);
+  }
+
+  /**
+   * A renamed program that is off air: the engine forgets the old id and takes up the new one from the database, and
+   * Palazzo telemetry moves with it. Everything is read first, so the switch itself is one synchronous step.
+   */
+  async renameProgram(current: string, next: string): Promise<void> {
+    const setting = await this.prisma.radioSettings.findFirst({
+      where: { enabled: true, programState: { programId: next } },
+      select: {
+        palazzoUrl: true,
+        programState: {
+          select: {
+            type: true,
+            songSequence: true,
+            songQueue: true,
+            songRotation: true,
+          },
+        },
+      },
+    });
+    const state = this.states.get(current);
+    if (state) this.silence(current, state);
+    this.states.delete(current);
+    this.radioProgramIds.delete(current);
+    const capable =
+      !!setting?.palazzoUrl &&
+      RADIO_PROGRAM_TYPES.has(setting.programState.type);
+    if (setting && capable) this.hydrate(next, setting.programState);
+    this.telemetry?.renameProgram?.(
+      current,
+      next,
+      setting && capable
+        ? {
+            type: setting.programState.type,
+            palazzoUrl: setting.palazzoUrl,
+          }
+        : null,
+    );
+    this.updateQueueDepthMetric();
+    this.updateHighRotationFavoriteMetric();
   }
 
   private clearSimilarityWait(state: SongEngineState): void {

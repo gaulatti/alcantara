@@ -164,6 +164,9 @@ export function startsSongPlayback(
   );
 }
 
+/** How the refusal to rename a program that is on air begins; the Shows dialog shows such a refusal as it is. */
+export const ON_AIR_RENAME_MESSAGE_START = 'This show is on air';
+
 @Injectable()
 export class ProgramService implements OnModuleInit, OnModuleDestroy {
   private static readonly DEFAULT_PROGRAM_ID = 'main';
@@ -1539,6 +1542,40 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     return this.getProgramStateWithScenes(normalized);
   }
 
+  /**
+   * A rename moves the program's engines and outputs to another id, so a program that is on air is not renamed: it
+   * would go silent, or lose its output.
+   */
+  private refuseRenameOnAir(
+    programId: string,
+    state: {
+      activeSceneId: number | null;
+      fadeToBlack: boolean;
+      activeFlightSequenceId: number | null;
+    },
+  ): void {
+    const reasons = [
+      [state.activeSceneId != null, 'a scene is on air'],
+      [!!state.fadeToBlack, 'fade to black is on'],
+      [state.activeFlightSequenceId != null, 'a log is running'],
+      [
+        !!this.programSongPlaybackByProgramId.get(programId)?.isPlaying ||
+          !!this.songExecutionEngine.getOnAirView(programId).playbackRequestId,
+        'a song is playing',
+      ],
+      [
+        !!this.programSceneInstantPlaybackByProgramId.get(programId)?.isPlaying,
+        'a scene instant is playing',
+      ],
+    ]
+      .filter(([holds]) => holds)
+      .map(([, reason]) => reason as string);
+    if (reasons.length === 0) return;
+    throw new ConflictException(
+      `${ON_AIR_RENAME_MESSAGE_START} (${reasons.join('; ')}). Take it off air before renaming it.`,
+    );
+  }
+
   private requireRecorder(): OperatorChangeRecorder {
     if (!this.recorder) throw new Error('Operator change recorder is required');
     return this.recorder;
@@ -1566,11 +1603,18 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
 
     const existingSource = await this.prisma.programState.findUnique({
       where: { programId: current },
-      select: { id: true, type: true },
+      select: {
+        id: true,
+        type: true,
+        activeSceneId: true,
+        fadeToBlack: true,
+        activeFlightSequenceId: true,
+      },
     });
     if (!existingSource) {
       throw new Error('Program not found');
     }
+    if (current !== next) this.refuseRenameOnAir(current, existingSource);
 
     if (current !== next) {
       const existingTarget = await this.prisma.programState.findUnique({
@@ -1657,6 +1701,9 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       });
       this.programSceneInstantPlaybackByProgramId.delete(current);
     }
+    // The radio engine and Palazzo telemetry take up the new id; without this the renamed show has no engine until
+    // its radio is switched off and on.
+    await this.songExecutionEngine.renameProgram(current, next);
     return this.getProgramStateWithScenes(next);
   }
 

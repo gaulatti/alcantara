@@ -72,6 +72,8 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       handleManualSong: jest.fn(),
       handleSequenceUpdated: jest.fn(),
       handleQueueUpdated: jest.fn(),
+      getOnAirView: jest.fn(() => ({ playbackRequestId: null })),
+      renameProgram: jest.fn().mockResolvedValue(undefined),
     };
     const recorder = noRecorder();
     const service = new ProgramService(

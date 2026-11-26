@@ -564,6 +564,12 @@ it("keeps the dialog open with a message when a save or a sync is refused", asyn
     () => {},
     "A show with this ID already exists. Choose another ID.",
   );
+  const onAir = "This show is on air (a song is playing). Take it off air before renaming it.";
+  await attempt(
+    () => (routes["PUT /program/news"] = () => json({ statusCode: 409, message: onAir }, 409)),
+    () => {},
+    onAir,
+  );
   await attempt(
     () =>
       (routes["PUT /program/news"] = () => new Response("", { status: 500 })),
