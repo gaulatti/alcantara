@@ -111,7 +111,46 @@ describeWithDatabase('the local seed and team-scoped reads (PostgreSQL e2e)', ()
   });
 
   it('is repeatable: a second run changes nothing it already wrote', async () => {
+    // An operator's local changes survive the re-seed that runs on every backend start (the recovery walk).
+    const radio = await prisma.programState.findUniqueOrThrow({
+      where: { programId: 'radio-demo' },
+      select: { id: true },
+    });
+    await prisma.radioSettings.update({
+      where: { programStateId: radio.id },
+      data: { enabled: true },
+    });
+    const key = {
+      subject_deviceClass: {
+        subject: 'test:alcantara:operator-a',
+        deviceClass: 'desktop',
+      },
+    };
+    const preference = await prisma.operatorPreference.findUniqueOrThrow({
+      where: key,
+    });
+    await prisma.operatorPreference.update({
+      where: key,
+      data: {
+        version: preference.version + 1,
+        profile: { ...(preference.profile as object), selectedProgramId: 'radio-demo' },
+      },
+    });
     await seedLocalDatabase(prisma, environment, fakeStore);
+    expect(
+      (
+        await prisma.radioSettings.findUniqueOrThrow({
+          where: { programStateId: radio.id },
+        })
+      ).enabled,
+    ).toBe(true);
+    const after = await prisma.operatorPreference.findUniqueOrThrow({
+      where: key,
+    });
+    expect(after.version).toBe(preference.version + 1);
+    expect((after.profile as { selectedProgramId: string }).selectedProgramId).toBe(
+      'radio-demo',
+    );
     const show = await prisma.program.findUnique({
       where: { programId: 'radio-demo' },
       select: { teamId: true },

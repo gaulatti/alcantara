@@ -534,16 +534,11 @@ export async function seedLocalDatabase(
   }
 
   for (const programState of [mainProgram, radioProgram]) {
+    // Created when missing, never reset: an operator's local radio settings (automation turned on, the Palazzo
+    // address) survive the re-seed that runs on every backend start (the recovery walk).
     await prisma.radioSettings.upsert({
       where: { programStateId: programState.id },
-      update: {
-        palazzoUrl: 'http://palazzo:3100',
-        bumperEnabled: true,
-        bumperInterval: 3,
-        bumperInstantIds: [9002],
-        bumperMode: 'sequential',
-        enabled: false,
-      },
+      update: {},
       create: {
         programStateId: programState.id,
         palazzoUrl: 'http://palazzo:3100',
@@ -660,7 +655,8 @@ export async function seedLocalDatabase(
     };
     await prisma.operatorPreference.upsert({
       where: { subject_deviceClass: { subject, deviceClass } },
-      update: { version: 1, profile },
+      // Created when missing, never reset: a re-seed must not move the operator to another show (the recovery walk).
+      update: {},
       create: {
         subject,
         deviceClass,
