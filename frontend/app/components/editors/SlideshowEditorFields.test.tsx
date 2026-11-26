@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { SlideshowEditorFields } from './SlideshowEditorFields';
 import { uploadFileToMediaBucket } from '../../services/uploads';
@@ -171,4 +171,17 @@ it('maps a legacy media group to its label, and says when a label is missing or 
   cleanup();
   editor({});
   expect(screen.getByText('Select a label to reuse the same images across scenes.')).toBeInTheDocument();
+});
+
+it('reports no upload error when every selected image uploads', async () => {
+  const updateProp = editor({ images: [] });
+  const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+  vi.mocked(uploadFileToMediaBucket).mockResolvedValue({ key: 'k', url: 'https://media.example.test/all.jpg', bucket: 'b', contentType: 'image/jpeg', sizeBytes: 1 });
+  const files = ['one', 'two'].map((name) => new File(['x'], `${name}.jpg`, { type: 'image/jpeg' }));
+  fireEvent.change(input, { target: { files } });
+  await waitFor(() => expect(updateProp).toHaveBeenLastCalledWith(TYPE, 'images', [
+    'https://media.example.test/all.jpg',
+    'https://media.example.test/all.jpg',
+  ]));
+  expect(screen.queryByText(/Failed to upload|Uploaded \d+ of/)).toBeNull();
 });

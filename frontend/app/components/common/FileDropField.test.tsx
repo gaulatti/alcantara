@@ -109,3 +109,14 @@ it('takes no file while disabled', () => {
   fireEvent.drop(zone, { dataTransfer: { files: [file(10)] } });
   expect(uploadFileToMediaBucket).not.toHaveBeenCalled();
 });
+
+it('finishes an upload after the field has gone, without touching the removed input', async () => {
+  let finish!: (value: ReturnType<typeof uploaded>) => void;
+  vi.mocked(uploadFileToMediaBucket).mockReturnValue(new Promise((done) => (finish = done)));
+  const { zone, onUploaded } = field();
+  fireEvent.drop(zone, { dataTransfer: { files: [file(10)] } });
+  expect(zone).toHaveTextContent('Uploading…');
+  cleanup();
+  await act(async () => finish(uploaded('https://media.example.test/clip.mp3')));
+  expect(onUploaded).toHaveBeenCalledWith('https://media.example.test/clip.mp3', expect.any(File));
+});

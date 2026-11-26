@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
+import { PompeiiService } from '../../auth/pompeii.service';
 import { MediaGroupsService } from '../../media-groups/media-groups.service';
 import { ProgramService } from '../../program/program.service';
 import { McpToolProvider, type McpToolSpec } from '../contract';
@@ -58,6 +59,7 @@ export class MediaGroupsMcpTools {
   constructor(
     private readonly groups: MediaGroupsService,
     private readonly programs: ProgramService,
+    private readonly pompeii: PompeiiService,
   ) {}
 
   specs(): McpToolSpec[] {
@@ -76,13 +78,16 @@ export class MediaGroupsMcpTools {
           limit: z.number().int().min(1).max(100).optional(),
         },
         run: (args) =>
-          this.groups.findAll({
-            search: args.search,
-            sortBy: args.sort_by,
-            sortOrder: args.sort_order,
-            page: args.page ?? 1,
-            limit: args.limit ?? 20,
-          }),
+          this.groups.findAll(
+            {
+              search: args.search,
+              sortBy: args.sort_by,
+              sortOrder: args.sort_order,
+              page: args.page ?? 1,
+              limit: args.limit ?? 20,
+            },
+            this.pompeii.teamId,
+          ),
       }),
       actionSpec({
         name: 'media_group_create',
@@ -103,11 +108,14 @@ export class MediaGroupsMcpTools {
           recoverable: true,
         }),
         run: (args) =>
-          this.groups.create({
-            name: args.name,
-            description: args.description,
-            mediaIds: args.media_ids,
-          }),
+          this.groups.create(
+            {
+              name: args.name,
+              description: args.description,
+              mediaIds: args.media_ids,
+            },
+            this.pompeii.teamId,
+          ),
         result: groupSummary,
       }),
       actionSpec({
@@ -143,6 +151,7 @@ export class MediaGroupsMcpTools {
               description: args.description,
               mediaIds: args.media_ids,
             }),
+            this.pompeii.teamId,
           ),
         result: groupSummary,
       }),
@@ -157,6 +166,7 @@ export class MediaGroupsMcpTools {
         load: async (args) => {
           const group = (await this.groups.findOne(
             args.media_group_id,
+            this.pompeii.teamId,
           )) as GroupAnswer;
           const listed = await listPrograms(this.programs);
           const uses = (p: { mediaGroups: Array<{ mediaGroupId: number }> }) =>
@@ -187,7 +197,8 @@ export class MediaGroupsMcpTools {
               `media group ${group.id} is read by program(s) on air: ${onAirIn.join(', ')}`,
             ],
           ]),
-        run: (args) => this.groups.remove(args.media_group_id),
+        run: (args) =>
+          this.groups.remove(args.media_group_id, this.pompeii.teamId),
       }),
     ];
   }
