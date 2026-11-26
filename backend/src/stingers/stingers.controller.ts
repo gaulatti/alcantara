@@ -11,8 +11,7 @@ import {
 import { StingersService } from './stingers.service';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { RequirePermission } from '../auth/require-permission.decorator';
-
-type TeamRequest = { user: { authorization: { teamId: number } } };
+import { callerTeam, type TeamRequest } from '../tenancy/caller-team';
 
 @Controller('stingers')
 @RequirePermission(ALCANTARA_PERMISSIONS.stinger.read)
@@ -21,7 +20,7 @@ export class StingersController {
 
   @Get()
   async listStingers(@Req() request: TeamRequest) {
-    return this.stingersService.findAll(request.user.authorization.teamId);
+    return this.stingersService.findAll(callerTeam(request));
   }
 
   @Post()
@@ -36,7 +35,7 @@ export class StingersController {
     },
     @Req() request: TeamRequest,
   ) {
-    return this.stingersService.create(data, request.user.authorization.teamId);
+    return this.stingersService.create(data, callerTeam(request));
   }
 
   @Put(':stingerId')
@@ -55,7 +54,7 @@ export class StingersController {
     return this.stingersService.update(
       Number(stingerId),
       data,
-      request.user.authorization.teamId,
+      callerTeam(request),
     );
   }
 
@@ -65,9 +64,6 @@ export class StingersController {
     @Param('stingerId') stingerId: string,
     @Req() request: TeamRequest,
   ) {
-    return this.stingersService.remove(
-      Number(stingerId),
-      request.user.authorization.teamId,
-    );
+    return this.stingersService.remove(Number(stingerId), callerTeam(request));
   }
 }
