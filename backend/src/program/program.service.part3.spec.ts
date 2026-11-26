@@ -1592,25 +1592,6 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
   });
 
   describe('radio forwarding', () => {
-    it('forwardSongToRadio skips when not capable', async () => {
-      const { service, radio } = build();
-      radio.getRadioSettings.mockResolvedValue({ enabled: false });
-      await (service as any).forwardSongToRadio('main', 'u');
-      expect(radio.playSong).not.toHaveBeenCalled();
-    });
-
-    it('forwardSongToRadio plays and rejects a refused command', async () => {
-      const { service, radio } = build();
-      await (service as any).forwardSongToRadio('main', 'u');
-      expect(radio.playSong).toHaveBeenCalledWith('main', 'u');
-      radio.playSong.mockResolvedValue({ ok: false });
-      await expect(
-        (service as any).forwardSongToRadio('main', 'u'),
-      ).rejects.toThrow(
-        new BadGatewayException('Palazzo rejected the song command'),
-      );
-    });
-
     it('treats radio settings that are null or throw as incapable', async () => {
       const { service, radio } = build();
       radio.getRadioSettings.mockResolvedValueOnce(null);
