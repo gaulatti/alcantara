@@ -444,7 +444,22 @@ export default function ConsoleFixture() {
                         })),
                         loop: false,
                         isRunning: true,
-                        activeItemId: "fixture-cue-1",
+                        // radio-skipped (#726): the second event was not aired, the block went on.
+                        activeItemId:
+                          fixture === "radio-skipped"
+                            ? "fixture-cue-3"
+                            : "fixture-cue-1",
+                        ...(fixture === "radio-skipped"
+                          ? {
+                              cueOutcomes: [
+                                {
+                                  cueId: "fixture-cue-2",
+                                  state: "not-aired" as const,
+                                  reason: "engine_unavailable",
+                                },
+                              ],
+                            }
+                          : {}),
                         scheduledAt: new Date().toISOString(),
                         publishedAt: new Date().toISOString(),
                         lastStartedAt: new Date().toISOString(),
