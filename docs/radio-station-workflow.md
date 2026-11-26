@@ -43,7 +43,9 @@ take or start is refused before anything is saved:
   becomes active, or an idle manual rotation switches to Autoplay or Shuffle).
 
 Both answer `409` with `{"statusCode":409,"error":"Conflict","reason":"engine_unavailable",
-"message":"The radio engine is off (disabled in settings), so nothing was taken."}`. Rotation
+"message":"The radio engine is off (disabled in settings), so nothing was taken."}`. Their MCP
+capabilities, `radio_play_song` and `program_update_program_audio_bus_by_id`, run the same check
+and answer `conflict`. Rotation
 edits that start nothing, and stopping, still save. TV and simulcast programs are not affected:
 their program output plays songs itself.
 

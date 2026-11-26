@@ -529,7 +529,9 @@ export class RadioMcpTools {
         summary: (live, programId) =>
           `Plays the given song now on program ${programId}, on air at once (${live.liveText}). Whatever plays now is replaced; the queue stays.`,
         recoverable: false,
-        run: (args) => {
+        run: async (args) => {
+          // The console's manual play refuses a start while the radio engine is off (gaulatti/alcantara#609).
+          await this.radio.refuseStartWhileEngineUnavailable(args.program_id);
           this.engine.handleManualSong(
             args.program_id,
             args.audio_url,
@@ -539,7 +541,7 @@ export class RadioMcpTools {
             args.cover_url,
             args.song_id,
           );
-          return Promise.resolve({ ok: true });
+          return { ok: true };
         },
       }),
       onProgram({

@@ -486,6 +486,10 @@ guest). A guest link is created and replaced in the console only. The four
   `radio_stop_all_instants`) confirm against the program's live stamp, like
   the program actions. `radio_play_instant` accepts `instant_id` as the
   console sends it; the route does not use it.
+- `radio_play_song` and `program_update_program_audio_bus_by_id` go through
+  the same engine check as their routes (#609): while a radio-only program's
+  engine is off, a manual song, or an audio-bus write that would start a song,
+  is refused with `conflict` before anything plays or is saved.
 - `webrtc_update_return` sets every field of the return feed: a field not
   given goes to its default (program, master, 1, not muted, 0 ms), exactly as
   the console's route does. The dry run shows the resulting values.
