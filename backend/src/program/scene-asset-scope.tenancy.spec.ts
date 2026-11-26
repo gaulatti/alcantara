@@ -75,6 +75,7 @@ describe("scene background audio and the program's team, against Postgres", () =
       undefined,
       undefined,
       undefined,
+      undefined,
       new SceneAssetScope(prisma, { teamId: team } as never, metrics),
     );
     jest.spyOn(service, 'broadcastUpdate').mockReturnValue(undefined as never);

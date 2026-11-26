@@ -15,6 +15,7 @@ import { RadioMetricsService } from './radio-metrics.service';
 import { RadioOutputConfidenceService } from './radio-output-confidence.service';
 import { PalazzoMachineClient } from './palazzo-machine.client';
 import { SongSimilarityService } from './song-similarity.service';
+import { PlayoutSongScope } from './playout-song-scope';
 import { PrismaService } from '../prisma.service';
 import { PompeiiService } from '../auth/pompeii.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
@@ -67,6 +68,7 @@ describe('RadioModule wiring', () => {
         RadioOutputConfidenceService,
         PalazzoMachineClient,
         SongSimilarityService,
+        PlayoutSongScope,
         PrismaService,
         SongSimilarityService,
       ]),
@@ -80,6 +82,7 @@ describe('RadioModule wiring', () => {
       RadioOutputConfidenceService,
       PalazzoMachineClient,
       SongSimilarityService,
+      PlayoutSongScope,
     ]);
   });
 

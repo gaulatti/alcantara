@@ -82,3 +82,24 @@ test('the frontend README documents the workspace install, not npm', () => {
   assert.doesNotMatch(readme, /\bnpm (install|run)\b/);
   assert.match(readme, /pnpm install --frozen-lockfile/);
 });
+
+// gaulatti/alcantara#741 follow-up: the production image starts the static client build. The app is built with
+// ssr: false, so the build writes build/client and no server bundle. The start command must serve exactly that.
+const frontendPackage = JSON.parse(read('frontend/package.json'));
+const serveSource = read('frontend/serve.mjs');
+const routerConfig = read('frontend/react-router.config.ts');
+
+test('the production start command serves the client build that the build writes', () => {
+  assert.match(routerConfig, /ssr:\s*false/, 'the build writes only build/client when ssr is off');
+  assert.equal(frontendPackage.scripts.start, 'node serve.mjs');
+  assert.ok(existsSync(resolve(root, 'frontend/serve.mjs')), 'the start target exists in the repository');
+  const served = serveSource.match(/resolve\('([^']+)'\)/);
+  assert.deepEqual(served && [served[1]], ['build/client'], 'the server serves the directory the build writes');
+  assert.doesNotMatch(prod, /react-router-serve|build\/server\//, 'no server bundle is expected');
+});
+
+test('the production image runs the start command and carries the file it names', () => {
+  assert.match(prod, /^CMD \["npm", "run", "start"\]$/m);
+  assert.match(prod, /COPY frontend\/package\.json frontend\/serve\.mjs \.\//);
+  assert.match(prod, /COPY --from=build-env \/app\/frontend\/build \/app\/frontend\/build/);
+});

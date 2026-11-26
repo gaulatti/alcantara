@@ -67,6 +67,8 @@ export interface OnAirInput {
   monitor: "stopped" | "buffering" | "playing" | "unavailable";
   /** Output confidence reads silent: a song is expected to play, but the output is quiet (#694). */
   outputSilent?: boolean;
+  /** Palazzo answers but its playout (Liquidsoap) is down: nothing can air. */
+  playoutDown?: boolean;
 }
 
 const MODE_LABELS = {
@@ -172,14 +174,30 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
           ? { id: "monitor", tone: "idle", label: "Monitor unavailable" }
           : { id: "monitor", tone: "idle", label: "Monitor off" },
   ];
+  // Palazzo answers but its playout (Liquidsoap) is down: the engine is not ready, whatever its connection says.
+  // A Palazzo that is not connected keeps its own unavailable state.
+  const engineChips =
+    input.engine.connected && input.playoutDown
+      ? chips.map((chip) =>
+          chip.id === "engine"
+            ? {
+                id: "engine" as const,
+                tone: "bad" as const,
+                label: "Playout down",
+                title:
+                  "Palazzo answers, but its playout engine (Liquidsoap) is down: nothing can air.",
+              }
+            : chip,
+        )
+      : chips;
   // While Dead air shows, the good chips stay truthful but neutral, so the red Dead air chip is the
   // only coloured "all is well / not well" signal on the strip (gaulatti/alcantara#694 closing walk).
   // Warnings keep their colour: they are a second problem, not a good state.
   const shownChips = input.outputSilent
-    ? chips.map((chip) =>
+    ? engineChips.map((chip) =>
         chip.tone === "ok" ? { ...chip, tone: "idle" as const } : chip,
       )
-    : chips;
+    : engineChips;
 
   return {
     state: !live

@@ -63,13 +63,17 @@ describe("the radio's song reads through the team-scoped client, against Postgre
 
   type Resolve = {
     findSongForAnalysis(
+      programId: string,
       audioUrl: string,
       songId: number | undefined,
       drops: string[],
     ): Promise<{ durationMs: number | null } | null>;
   };
   type Cover = {
-    storedCoverUrl(audioUrl: string): Promise<string | undefined>;
+    storedCoverUrl(
+      programId: string,
+      audioUrl: string,
+    ): Promise<string | undefined>;
   };
   const radio = (db: PrismaService) =>
     Object.assign(Object.create(RadioService.prototype) as object, {
@@ -107,14 +111,14 @@ describe("the radio's song reads through the team-scoped client, against Postgre
     for (const [index, name] of ['one', 'two'].entries()) {
       for (const db of [prisma, scoped()]) {
         await expect(
-          radio(db).findSongForAnalysis(address(name), undefined, []),
+          radio(db).findSongForAnalysis('gate', address(name), undefined, []),
         ).resolves.toMatchObject({ durationMs: (index + 1) * 1000 });
         await expect(
-          radio(db).findSongForAnalysis(address(name), ids[index], []),
+          radio(db).findSongForAnalysis('gate', address(name), ids[index], []),
         ).resolves.toMatchObject({ durationMs: (index + 1) * 1000 });
-        await expect(programs(db).storedCoverUrl(address(name))).resolves.toBe(
-          `https://media.test/${team}/${name}.jpg`,
-        );
+        await expect(
+          programs(db).storedCoverUrl('gate', address(name)),
+        ).resolves.toBe(`https://media.test/${team}/${name}.jpg`);
         // The engine's match of an unannounced track by its address.
         await expect(
           db.song
@@ -124,13 +128,23 @@ describe("the radio's song reads through the team-scoped client, against Postgre
       }
     }
     await expect(
-      radio(scoped()).findSongForAnalysis(address('theirs'), undefined, []),
+      radio(scoped()).findSongForAnalysis(
+        'gate',
+        address('theirs'),
+        undefined,
+        [],
+      ),
     ).resolves.toBeNull();
     await expect(
-      radio(scoped()).findSongForAnalysis(address('theirs'), otherIds[0], []),
+      radio(scoped()).findSongForAnalysis(
+        'gate',
+        address('theirs'),
+        otherIds[0],
+        [],
+      ),
     ).resolves.toBeNull();
     await expect(
-      programs(scoped()).storedCoverUrl(address('theirs')),
+      programs(scoped()).storedCoverUrl('gate', address('theirs')),
     ).resolves.toBeUndefined();
     await expect(
       scoped().song.findMany({ where: { audioUrl: address('theirs') } }),

@@ -145,6 +145,11 @@ interface PalazzoStatus {
   detail: string | null;
   /** Why there is no engine, when the backend says (#257); unknown values are ignored. */
   reason?: string | null;
+  /**
+   * Palazzo's playout (Liquidsoap), from its own state: down means Palazzo answers but nothing can air. Absent from
+   * an older backend, null until Palazzo has said.
+   */
+  playout?: "up" | "down" | null;
 }
 
 interface OutputConfidence {
@@ -172,6 +177,9 @@ function notAiredReason(reason: string | null): string {
     return "not aired, the engine was unavailable";
   return reason ? `not aired (${reason})` : "not aired";
 }
+
+/** Why the desk refuses what would be accepted and not air while Palazzo's playout is down. */
+const PLAYOUT_DOWN_REASON = "Playout down: nothing can air";
 
 export const RadioPanel: React.FC<RadioPanelProps> = ({
   fixtureData,
@@ -277,20 +285,22 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     }
   }, [programId]);
 
+  // A program switch hands this instance the new programId for one render before control.tsx swaps in its loading
+  // screen (Wakko's #738 review). An engine status that answers late for the program before must not land here.
+  const currentProgramId = useRef(programId);
+  currentProgramId.current = programId;
   const fetchPalazzoStatus = useCallback(async () => {
+    let next: PalazzoStatus | null = null;
     try {
       const res = await fetch(
         apiUrl(`/radio/${encodeURIComponent(programId)}/palazzo-status`),
       );
-      if (res.ok) {
-        const data = await res.json();
-        setPalazzo(data || null);
-      } else {
-        setPalazzo(null);
-      }
+      if (res.ok) next = (await res.json()) || null;
     } catch {
-      setPalazzo(null);
+      next = null;
     }
+    if (currentProgramId.current !== programId) return;
+    setPalazzo(next);
     setPalazzoAnswered(true);
   }, [programId]);
 
@@ -531,6 +541,9 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     queue: songQueue,
     playback: programSongPlayback,
   });
+  // Palazzo answers but its playout is down: automation still follows the connection, but the desk refuses
+  // what would be accepted and not air (Take, Take now, Start with fallback). Stop stays available.
+  const playoutDown = engineReady && palazzo?.playout === "down";
   const onAirView = deriveOnAir({
     playback: programSongPlayback,
     outputUnverified,
@@ -546,6 +559,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     },
     monitor: monitor ? monitor.state : "unavailable",
     outputSilent: output?.state === "silent",
+    playoutDown,
   });
   const recoveryControlsRef = useRef<HTMLDetailsElement>(null);
   const openRecoveryControls = () => {
@@ -985,7 +999,21 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
               >
                 {outputLabel}
               </span>
-              {output?.state === "silent" ? (
+              {playoutDown ? (
+                // Palazzo answers but its playout (Liquidsoap) is down: nothing airs, the recovery playlist
+                // included, so the dead-air advice would not help. The cure is on the Palazzo host.
+                <div
+                  role="alert"
+                  aria-label="Playout down"
+                  className="mt-2 flex flex-col items-start gap-1.5 text-xs text-terracotta"
+                >
+                  <p>
+                    Palazzo answers, but its playout engine (Liquidsoap) is
+                    down: nothing can air, the recovery playlist included.
+                    Restart playout on the Palazzo host or call engineering.
+                  </p>
+                </div>
+              ) : output?.state === "silent" ? (
                 // Dead air names the action that cures it (gaulatti/alcantara#694). Palazzo's
                 // recovery playlist plays when the live queue runs dry, so the silent song comes off
                 // air first.
@@ -1161,6 +1189,12 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   Starting binds the prepared playlist. Stopping clears program
                   audio and the binding.
                 </p>
+                {playoutDown ? (
+                  <p className="text-terracotta">
+                    {PLAYOUT_DOWN_REASON}, the recovery playlist included: Start
+                    with fallback is unavailable until playout is back.
+                  </p>
+                ) : null}
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
@@ -1169,6 +1203,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     onClick={() => void commandRecovery("start")}
                     disabled={
                       recoveryBusy ||
+                      playoutDown ||
                       !recovery?.preparedVersion ||
                       recovery.connection !== "connected" ||
                       recovery.automation?.filler.ready
@@ -1258,7 +1293,13 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
           onTake={takeNext}
           onTakeOffAir={onTakeOffAir}
           keysEnabled={!findingSong}
-          engineUnavailable={engineReady ? null : engineUnavailableLabel(palazzo)}
+          engineUnavailable={
+            !engineReady
+              ? engineUnavailableLabel(palazzo)
+              : playoutDown
+                ? PLAYOUT_DOWN_REASON
+                : null
+          }
           confirmedItemId={confirmedLiveLeaf?.id ?? null}
           onListen={
             monitor
@@ -1278,6 +1319,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
         onClose={() => setFindingSong(false)}
         onCueNext={(leaf) => onQueueSong(leaf.id)}
         onTakeNow={async (candidate) => {
+          if (playoutDown)
+            throw new Error(`${PLAYOUT_DOWN_REASON}. Nothing was taken.`);
           if (candidate.leaf) return takeRotationSong(candidate.leaf.id);
           if (candidate.song && onPlaySongNow) return onPlaySongNow(candidate.song);
           throw new Error("Playing a library song now is not available here.");
