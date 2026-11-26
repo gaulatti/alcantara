@@ -2863,6 +2863,7 @@ describe('similarity picker in the engine', () => {
     const similarity = new SongSimilarityService(
       similarityRows as never,
       metricsStub as never,
+      { teamId: 0 } as never,
     );
     await similarity.onModuleInit();
     similarity.onModuleDestroy();
