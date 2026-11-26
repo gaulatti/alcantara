@@ -213,8 +213,7 @@ function getSelectedItem(
 
   const baseIndex = getBaseIndex(sequence);
   if (sequence.mode === 'manual') {
-    // getBaseIndex returns 0 or a valid index, and items is non-empty here (checked above).
-    return sequence.items[baseIndex];
+    return sequence.items[baseIndex] ?? null;
   }
 
   const startedAt = sequence.startedAt ?? nowMs;
@@ -228,8 +227,7 @@ function getSelectedItem(
     nextIndex = sequence.items.length - 1;
   }
 
-  // nextIndex is wrapped when looping and clamped to the last item otherwise, so it is always in range.
-  return sequence.items[nextIndex];
+  return sequence.items[nextIndex] ?? null;
 }
 
 export function getToniChyronSequenceSelectedItemId(
