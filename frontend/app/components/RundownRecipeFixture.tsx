@@ -59,6 +59,8 @@ const items: FlightCue[] = [
   ...use("use_d4d4d4d4d4d4", 1, ["bumper", "song", "songEnd"], false),
 ];
 const ON_AIR = 3; // the first use's song
+// Every song id the fixture uses is in this table, so a missing id fails loudly instead of showing a placeholder.
+const SONG_BY_ID: Record<number, SongCatalogItem> = Object.fromEntries(songs.map((item) => [item.id, item]));
 
 export function RundownRecipeFixture() {
   const rows = groupRundown(items);
@@ -73,7 +75,7 @@ export function RundownRecipeFixture() {
                 key={`${row.useId}-${row.start}`}
                 row={row}
                 recipeName="Song"
-                songTitle={songs.find((item) => item.id === row.songId)?.title ?? "Song"}
+                songTitle={SONG_BY_ID[row.songId].title}
                 rowIndex={rowIndex}
                 rowCount={rows.length}
                 activeCueIndex={ON_AIR}
