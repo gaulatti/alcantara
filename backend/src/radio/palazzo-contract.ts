@@ -170,6 +170,11 @@ export interface PalazzoProgramStatus {
    * follow-up). Display only: automation still follows `connection`.
    */
   playout?: 'up' | 'down' | null;
+  /**
+   * Palazzo's live RTMP input, from its snapshot's `live.onAir` (gaulatti/palazzo#48). Absent until a snapshot from
+   * a Palazzo that reports it; a consumer that does not know the field ignores it.
+   */
+  live?: { onAir: boolean };
 }
 
 /**
