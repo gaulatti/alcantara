@@ -32,6 +32,7 @@ import {
 } from '../radio/radio-metrics.service';
 import { generateRadioLog, parseRadioLogRules } from './radio-log-generator';
 import { fillRadioRundown, parseFillerRules } from './radio-rundown-filler';
+import { fixedStartWindowRefusal } from './fixed-start-window';
 import type {
   FlightCue,
   FlightCueKind,
@@ -609,6 +610,31 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     return parsed;
   }
 
+  /**
+   * #788 (MCP parity, item 4): the desk's fixed-start window (D3), enforced on the save path the console and MCP
+   * share: within FIXED_START_MAX_HOURS of the block start and before the next scheduled block of the program.
+   */
+  private async refuseOutsideFixedStartWindow(
+    programStateId: number,
+    sequenceId: number | null,
+    scheduledAt: Date,
+    items: FlightCue[],
+  ): Promise<void> {
+    const later = await this.prisma.flightSequence.findMany({
+      where: {
+        programStateId,
+        scheduledAt: { gt: scheduledAt },
+        ...(sequenceId === null ? {} : { id: { not: sequenceId } }),
+      },
+      select: { id: true, scheduledAt: true },
+      orderBy: { scheduledAt: 'asc' },
+      take: 1,
+    });
+    const next = later?.[0]?.scheduledAt ?? null;
+    const why = fixedStartWindowRefusal(items, scheduledAt, next);
+    if (why) throw new BadRequestException(why);
+  }
+
   private validateClockItems(items: FlightCue[]): void {
     if (!items.length || items.length > 120) {
       throw new BadRequestException('a clocked log needs 1-120 items');
@@ -1001,6 +1027,8 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         : normalizeFlightItems(data.items);
     if (scheduledAt && data.loop === true)
       throw new BadRequestException('a clocked log cannot loop');
+    if (scheduledAt && items.length)
+      await this.refuseOutsideFixedStartWindow(state.id, null, scheduledAt, items);
 
     try {
       const sequence = await this.prisma.flightSequence.create({
@@ -1153,6 +1181,18 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
             : normalizeFlightItems(updateData.items);
       if (nextScheduledAt && nextItems.length)
         this.validateClockItems(nextItems);
+      // The window is checked only when the cues or the start are written, so an older block still loads and renames.
+      if (
+        nextScheduledAt &&
+        nextItems.length &&
+        (data.items !== undefined || data.scheduledAt !== undefined)
+      )
+        await this.refuseOutsideFixedStartWindow(
+          state.id,
+          sequenceId,
+          nextScheduledAt,
+          nextItems,
+        );
       if (updateData.items !== undefined)
         updateData.items = nextItems as unknown as Prisma.InputJsonValue;
       if (isActiveRuntime && runtime?.isRunning) {
