@@ -53,7 +53,7 @@ const services = {
 };
 
 const grants = ['alcantara:access', 'alcantara:media:manage'];
-const authorization = { permissions: grants };
+const authorization = { permissions: grants, teamId: 7 };
 const request = { user: { authorization } };
 const ctx = {
   principal: principalWith(...(grants as never[])),
