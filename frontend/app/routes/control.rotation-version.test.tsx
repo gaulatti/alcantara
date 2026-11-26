@@ -119,12 +119,12 @@ it("saves with the version it loaded, then with the one the save answered, and s
   );
   render(view());
   fireEvent.click(await screen.findByRole("button", { name: "Add songs" }, { timeout: 5000 }));
-  fireEvent.click(await screen.findByRole("button", { name: "Add to queue" }, { timeout: 5000 }));
+  fireEvent.click(await screen.findByRole("button", { name: /^Add .+ to the playlist$/ }, { timeout: 5000 }));
   await waitFor(() => expect(server.requests("PUT /program/main/audio-bus")).toHaveLength(1), { timeout: 5000 });
 
   server.answer("PUT /program/main/audio-bus", () => Response.json({ message: refusal }, { status: 409 }));
   // The refused save reloads the stored rotation, which has no song, so the song can be added again.
-  fireEvent.click(await screen.findByRole("button", { name: "Add to queue" }, { timeout: 5000 }));
+  fireEvent.click(await screen.findByRole("button", { name: /^Add .+ to the playlist$/ }, { timeout: 5000 }));
   expect(await screen.findByText(refusal, {}, { timeout: 5000 })).toHaveAttribute("role", "alert");
   expect(
     server.requests("PUT /program/main/audio-bus").map((body) => (body as { sequenceVersion?: unknown }).sequenceVersion),
