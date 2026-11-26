@@ -122,6 +122,18 @@ export type IntroTransitionResult =
   | 'failed'
   | 'ignored-mismatch';
 
+/**
+ * Why a song start was refused before anything was saved (gaulatti/alcantara#609): an operator's
+ * take or start (`engine_unavailable`), or a rundown's song (`automation_engine_unavailable`).
+ */
+export type StartRefusalReason =
+  | 'engine_unavailable'
+  | 'automation_engine_unavailable';
+const START_REFUSAL_REASONS: StartRefusalReason[] = [
+  'engine_unavailable',
+  'automation_engine_unavailable',
+];
+
 export type SongQueueActionResult =
   | 'enqueued'
   | 'claimed'
@@ -153,6 +165,13 @@ export type AnalysisDropResult =
   | 'lookup-failed';
 
 export type AsRunScopePath = 'attribute' | 'export' | 'summary' | 'list';
+
+export type SimilarityScopePath =
+  | 'propose'
+  | 'decisions'
+  | 'coverage'
+  | 'export'
+  | 'upload';
 
 export type SimilarityActionResult =
   | 'selected'
@@ -286,6 +305,8 @@ const RADIO_LOG_RESULTS = [
   'started',
   'start-failed',
   'cue-failed',
+  'cue-retried',
+  'cue-skipped',
   'preflight-failed',
   'poll-failed',
 ] as const;
@@ -431,6 +452,14 @@ const AS_RUN_SCOPE_PATHS: AsRunScopePath[] = [
   'list',
 ];
 
+const SIMILARITY_SCOPE_PATHS: SimilarityScopePath[] = [
+  'propose',
+  'decisions',
+  'coverage',
+  'export',
+  'upload',
+];
+
 const SIMILARITY_ACTION_RESULTS: SimilarityActionResult[] = [
   'selected',
   'fallback-no-candidate',
@@ -496,10 +525,12 @@ export class RadioMetricsService {
   private readonly introTransitions = new Map<string, number>();
   private readonly songRequestFailures = new Map<string, number>();
   private readonly songQueueActions = new Map<string, number>();
+  private readonly startRefusals = new Map<string, number>();
   private songQueueDepth = 0;
   private readonly highRotationActions = new Map<string, number>();
   private readonly similarityActions = new Map<string, number>();
   private readonly asRunScopeRefusals = new Map<string, number>();
+  private readonly similarityScopeRefusals = new Map<string, number>();
   private readonly analysisDrops = new Map<string, number>();
   private readonly cueGroups = new Map<string, number>();
   private readonly nextAnnouncements = new Map<string, number>();
@@ -600,6 +631,12 @@ export class RadioMetricsService {
     );
   }
 
+  /** An operator's take or start refused before anything was saved, by bounded reason. */
+  recordStartRefused(reason: StartRefusalReason): void {
+    if (!START_REFUSAL_REASONS.includes(reason)) return;
+    this.startRefusals.set(reason, (this.startRefusals.get(reason) ?? 0) + 1);
+  }
+
   recordSongQueueAction(result: SongQueueActionResult): void {
     if (!SONG_QUEUE_ACTION_RESULTS.includes(result)) return;
     this.songQueueActions.set(
@@ -625,6 +662,14 @@ export class RadioMetricsService {
     this.asRunScopeRefusals.set(
       path,
       (this.asRunScopeRefusals.get(path) ?? 0) + 1,
+    );
+  }
+
+  recordSimilarityScopeRefusal(path: SimilarityScopePath): void {
+    if (!SIMILARITY_SCOPE_PATHS.includes(path)) return;
+    this.similarityScopeRefusals.set(
+      path,
+      (this.similarityScopeRefusals.get(path) ?? 0) + 1,
     );
   }
 
@@ -915,6 +960,15 @@ export class RadioMetricsService {
       );
     }
     lines.push(
+      '# HELP alcantara_radio_start_refused_total Song starts refused before anything was saved, by bounded reason (operator or rundown automation).',
+      '# TYPE alcantara_radio_start_refused_total counter',
+    );
+    for (const reason of START_REFUSAL_REASONS) {
+      lines.push(
+        `alcantara_radio_start_refused_total{reason="${reason}"} ${this.startRefusals.get(reason) ?? 0}`,
+      );
+    }
+    lines.push(
       '# HELP alcantara_radio_song_queue_depth Total queued song entries across radio-capable programs.',
       '# TYPE alcantara_radio_song_queue_depth gauge',
       `alcantara_radio_song_queue_depth ${this.songQueueDepth}`,
@@ -944,6 +998,15 @@ export class RadioMetricsService {
     for (const result of SIMILARITY_ACTION_RESULTS) {
       lines.push(
         `alcantara_radio_similarity_total{result="${result}"} ${this.similarityActions.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_similarity_scope_refusals_total Similarity reads refused because the program has no team, by bounded path.',
+      '# TYPE alcantara_similarity_scope_refusals_total counter',
+    );
+    for (const path of SIMILARITY_SCOPE_PATHS) {
+      lines.push(
+        `alcantara_similarity_scope_refusals_total{path="${path}"} ${this.similarityScopeRefusals.get(path) ?? 0}`,
       );
     }
     lines.push(

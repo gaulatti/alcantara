@@ -29,10 +29,15 @@ describe("as-run scoped to the program's team, against Postgres", () => {
     prisma = new PrismaService();
     await prisma.$connect();
     metrics = new RadioMetricsService();
+    // The engine says which song it commanded for a playback named after that song (#729).
+    const engine = {
+      songIdForPlayback: (_programId: string, playback: string) =>
+        ids[playback] ?? null,
+    };
     service = new AsRunService(
       prisma,
       { teamId: team } as never,
-      undefined,
+      engine as never,
       metrics,
     );
     for (const [name, owner] of [
@@ -48,6 +53,14 @@ describe("as-run scoped to the program's team, against Postgres", () => {
         },
       });
       ids[name] = song.id;
+      await prisma.mediaAsset.create({
+        data: {
+          id: `${prefix}-${name}`,
+          name: `${name} asset`,
+          sourceUrl: address(`${name}-asset`),
+          teamId: owner,
+        },
+      });
     }
     for (const [programId, owner] of [
       [mine, team],
@@ -74,6 +87,9 @@ describe("as-run scoped to the program's team, against Postgres", () => {
     await prisma?.song.deleteMany({
       where: { teamId: { in: [team, other] } },
     });
+    await prisma?.mediaAsset.deleteMany({
+      where: { teamId: { in: [team, other] } },
+    });
     await prisma?.$disconnect();
   });
 
@@ -97,6 +113,55 @@ describe("as-run scoped to the program's team, against Postgres", () => {
         songId: null,
       });
     }
+  });
+
+  it("takes the commanded song and a media asset from the program's team only", async () => {
+    const resolve = (programId: string, event: Record<string, unknown>) =>
+      service.resolveSongAndAsset({ programId, ...event } as never);
+    await expect(
+      resolve(mine, { playbackRequestId: 'own' }),
+    ).resolves.toMatchObject({ songId: ids.own });
+    // Another team's commanded song is not read; the address decides.
+    await expect(
+      resolve(mine, { playbackRequestId: 'theirs', url: address('own') }),
+    ).resolves.toMatchObject({ songId: ids.own });
+    await expect(
+      resolve(orphan, { playbackRequestId: 'own' }),
+    ).resolves.toEqual({ songId: null, assetId: null });
+
+    await expect(resolve(mine, { url: address('own-asset') })).resolves.toEqual(
+      { songId: null, assetId: `${prefix}-own` },
+    );
+    for (const [programId, name] of [
+      [mine, 'theirs'],
+      [orphan, 'own'],
+    ]) {
+      await expect(
+        resolve(programId, { url: address(`${name}-asset`) }),
+      ).resolves.toEqual({ songId: null, assetId: null });
+    }
+  });
+
+  it("names only the team's media assets in the summary", async () => {
+    const day = new Date('2026-02-01T12:00:00Z');
+    for (const programId of [mine, orphan]) {
+      for (const name of ['own', 'theirs']) {
+        await prisma.asRunRecord.create({
+          data: {
+            programId,
+            assetId: `${prefix}-${name}`,
+            state: 'ended',
+            at: day,
+          },
+        });
+      }
+    }
+    const names = async (programId: string) =>
+      (await service.summarizePerformances(programId, day, day))
+        .map((row) => row.title)
+        .sort();
+    await expect(names(mine)).resolves.toEqual(['', 'own asset']);
+    await expect(names(orphan)).resolves.toEqual(['', '']);
   });
 
   it("names only the team's songs in the list, the summary and the export, keeping every row", async () => {

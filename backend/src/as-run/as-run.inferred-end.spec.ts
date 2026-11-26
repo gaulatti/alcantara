@@ -89,6 +89,10 @@ function memoryStore(songs: CatalogSong[]) {
       ),
     },
     song: {
+      findUnique: jest.fn(({ where }: { where: { id: number } }) => {
+        const song = songs.find((s) => s.id === where.id);
+        return Promise.resolve(song ? { id: song.id, assetId: null } : null);
+      }),
       findFirst: jest.fn(
         ({
           where,

@@ -156,7 +156,7 @@ export async function resetFlight(
 export async function preflightFlightSequence(
   targetProgramId: string,
   sequenceId: number,
-): Promise<{ ready: boolean; issues: string[] }> {
+): Promise<{ ready: boolean; issues: string[]; warnings: string[] }> {
   const res = await fetch(
     apiUrl(
       `/program/${encodeURIComponent(targetProgramId)}/flight/${sequenceId}/preflight`,
