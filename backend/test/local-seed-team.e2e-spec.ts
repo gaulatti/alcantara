@@ -157,4 +157,76 @@ describeWithDatabase('the local seed and team-scoped reads (PostgreSQL e2e)', ()
     });
     expect(show?.teamId).toBe(TEAM);
   });
+
+  it('keeps what an operator changed to the seeded shows through a re-seed', async () => {
+    // A backend restart re-runs the seed. The rotation, show type, mixer, on-air scene and log pointer an operator
+    // set must come through it (Yakko's #800 review). The values are put back afterwards, so other specs that read
+    // these shows see them as the seed left them.
+    const read = (programId: string) =>
+      prisma.programState.findUniqueOrThrow({
+        where: { programId },
+        select: {
+          id: true,
+          type: true,
+          songSequence: true,
+          audioMixer: true,
+          activeSceneId: true,
+          activeFlightSequenceId: true,
+        },
+      });
+    const before = {
+      main: await read('main'),
+      tv: await read('tv-demo'),
+      radio: await read('radio-demo'),
+    };
+    const operatorMixer = { operatorChange: 'mixer', channels: [] };
+    try {
+      await prisma.programState.update({
+        where: { programId: 'main' },
+        data: {
+          type: 'tv',
+          songSequence: { ...(before.main.songSequence as object), mode: 'shuffle' },
+        },
+      });
+      await prisma.programState.update({
+        where: { programId: 'tv-demo' },
+        // Taken off air: no scene on air, and the operator's mixer.
+        data: { activeSceneId: null, audioMixer: operatorMixer as never },
+      });
+      await prisma.programState.update({
+        where: { programId: 'radio-demo' },
+        data: { activeFlightSequenceId: null },
+      });
+
+      await seedLocalDatabase(prisma, environment, fakeStore);
+
+      const after = {
+        main: await read('main'),
+        tv: await read('tv-demo'),
+        radio: await read('radio-demo'),
+      };
+      expect(after.main.type).toBe('tv');
+      expect((after.main.songSequence as { mode: string }).mode).toBe('shuffle');
+      expect(after.tv.audioMixer).toEqual(operatorMixer);
+      expect(after.tv.activeSceneId).toBeNull();
+      expect(after.radio.activeFlightSequenceId).toBeNull();
+    } finally {
+      for (const [programId, original] of [
+        ['main', before.main],
+        ['tv-demo', before.tv],
+        ['radio-demo', before.radio],
+      ] as const) {
+        await prisma.programState.update({
+          where: { programId },
+          data: {
+            type: original.type,
+            songSequence: original.songSequence as never,
+            audioMixer: original.audioMixer as never,
+            activeSceneId: original.activeSceneId,
+            activeFlightSequenceId: original.activeFlightSequenceId,
+          },
+        });
+      }
+    }
+  });
 });
