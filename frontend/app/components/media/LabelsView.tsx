@@ -147,12 +147,11 @@ export function LabelsView<T extends LabelsViewLabel>({
   const selected = labels.find((label) => label.id === selectedId) ?? null;
   const ordered = selected ? selected.assets.map((entry) => entry.asset) : [];
 
-  const reorder = (from: number, to: number) => {
-    if (!selected) return;
+  const reorder = (label: T, from: number, to: number) => {
     const next = moveItem(ordered, from, to);
     if (next === ordered) return;
     void onReorder(
-      selected,
+      label,
       next.map((asset) => asset.id),
     );
   };
@@ -162,9 +161,9 @@ export function LabelsView<T extends LabelsViewLabel>({
     setDragOver(null);
   };
 
-  const onDrop = (event: DragEvent<HTMLLIElement>, to: number) => {
+  const onDrop = (label: T, event: DragEvent<HTMLLIElement>, to: number) => {
     event.preventDefault();
-    if (dragFrom !== null) reorder(dragFrom, to);
+    if (dragFrom !== null) reorder(label, dragFrom, to);
     endDrag();
   };
 
@@ -363,7 +362,7 @@ export function LabelsView<T extends LabelsViewLabel>({
                             event.preventDefault();
                             setDragOver(index);
                           }}
-                          onDrop={(event) => onDrop(event, index)}
+                          onDrop={(event) => onDrop(selected, event, index)}
                           onDragEnd={endDrag}
                           className={`group flex items-center gap-2 rounded-[var(--radius-ui)] border px-2 py-1.5 text-sm ${dragOver === index && dragFrom !== index ? "border-sea" : "border-sand/25"} ${dragFrom === index ? "opacity-50" : ""}`}
                         >
@@ -385,14 +384,14 @@ export function LabelsView<T extends LabelsViewLabel>({
                             <IconButton
                               aria-label={`Move ${asset.name} up`}
                               disabled={index === 0}
-                              onClick={() => reorder(index, index - 1)}
+                              onClick={() => reorder(selected, index, index - 1)}
                             >
                               <ArrowUp size={13} />
                             </IconButton>
                             <IconButton
                               aria-label={`Move ${asset.name} down`}
                               disabled={index === ordered.length - 1}
-                              onClick={() => reorder(index, index + 1)}
+                              onClick={() => reorder(selected, index, index + 1)}
                             >
                               <ArrowDown size={13} />
                             </IconButton>

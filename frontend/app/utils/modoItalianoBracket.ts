@@ -160,22 +160,19 @@ export function drawModoItalianoBracketOpeningSongs(
   const availableSongIds = seededShuffle(normalizeModoItalianoBracketSongPoolIds(songPoolIds), normalizeModoItalianoBracketDrawSeed(seed)).filter(
     (songId) => !usedSongIds.has(songId)
   );
-  const drawnSongIds = availableSongIds.slice(0, emptySlots.length > 0 ? 1 : 0);
-
-  drawnSongIds.forEach((songId, index) => {
-    const slot = emptySlots[index];
-    if (!slot) {
-      return;
-    }
-    nextMatches[slot.matchId - 1] = {
-      ...nextMatches[slot.matchId - 1],
-      [slot.field]: songId
+  // A draw places at most one song, into the first empty slot, so the slot and the song are taken together.
+  const firstSlot = emptySlots[0];
+  const drawn = firstSlot !== undefined && availableSongIds.length > 0 ? { slot: firstSlot, songId: availableSongIds[0] } : null;
+  if (drawn) {
+    nextMatches[drawn.slot.matchId - 1] = {
+      ...nextMatches[drawn.slot.matchId - 1],
+      [drawn.slot.field]: drawn.songId
     };
-  });
+  }
 
   return {
     matches: applyModoItalianoBracketAdvancement(nextMatches, normalizedStartRound),
-    drawnSongIds,
+    drawnSongIds: drawn ? [drawn.songId] : [],
     availableSongIds,
     emptySlotCount: emptySlots.length,
     availableSongCount: availableSongIds.length

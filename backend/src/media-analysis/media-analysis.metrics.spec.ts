@@ -103,6 +103,30 @@ describe('MediaAnalysisMetrics', () => {
     });
   });
 
+  it('serves interrupted runs on /metrics, apart from failed ones (#587)', async () => {
+    const managed = new ManagedMetricsService();
+    const metrics = new MediaAnalysisMetrics(managed);
+    const controller = new MetricsController(
+      new RadioMetricsService(),
+      managed,
+      undefined as never,
+    );
+    const name = 'alcantara_media_analysis_interrupted_runs_total';
+    const values = async () =>
+      Object.fromEntries(
+        samples(await controller.getMetrics(), name).map((s) => [
+          s.labels.outcome,
+          s.value,
+        ]),
+      );
+
+    expect(await values()).toEqual({ handed_back: 0, attempt_spent: 0 });
+    metrics.recordInterrupted('handed_back', 2);
+    metrics.recordInterrupted('attempt_spent', 1);
+    metrics.recordInterrupted('attempt_spent', -1);
+    expect(await values()).toEqual({ handed_back: 2, attempt_spent: 1 });
+  });
+
   it('serves refused result writes on /metrics with a bounded outcome label only', async () => {
     const managed = new ManagedMetricsService();
     const metrics = new MediaAnalysisMetrics(managed);
