@@ -48,6 +48,7 @@ describe('catalogue, preference and ticket contracts through Fastify HTTP', () =
     },
     {
       path: 'media',
+      scoped: true,
       controller: MediaController,
       token: MediaService,
       service: methods(['findAll', 'findOne', 'create', 'update', 'remove']),
