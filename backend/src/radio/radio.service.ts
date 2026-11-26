@@ -14,6 +14,7 @@ import {
   type CueGroupShape,
 } from './radio-metrics.service';
 import { PrismaService } from '../prisma.service';
+import { isRadioOnlyEngineOff } from './engine-availability';
 import { ActorContext } from '../auth/actor-context';
 import { radioSettingsChangeSummary } from '../operator-change/operator-change-summary';
 import {
@@ -323,6 +324,25 @@ export class RadioService {
       where: { programId_leg: { programId, leg: 'radio' } },
     });
     return leg?.pendingVersionId ?? leg?.activeVersionId ?? null;
+  }
+
+  /**
+   * gaulatti/alcantara#609: a radio-only program plays only through its playout engine. While
+   * that engine is disabled (or has no settings), a take or start would play nowhere, so it is
+   * refused with 409 and `reason: "engine_unavailable"`. TV and simulcast programs, whose program
+   * output plays songs itself, are not affected.
+   */
+  async refuseStartWhileEngineUnavailable(programId: string): Promise<void> {
+    if (await isRadioOnlyEngineOff(this.prisma, programId)) {
+      this.metrics.recordStartRefused('engine_unavailable');
+      throw new ConflictException({
+        statusCode: 409,
+        error: 'Conflict',
+        reason: 'engine_unavailable',
+        message:
+          'The radio engine is off (disabled in settings), so nothing was taken.',
+      });
+    }
   }
 
   async getRadioSettings(programId: string) {

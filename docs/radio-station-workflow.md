@@ -32,6 +32,30 @@ Radio settings created from now on have segue-aware and loudness-normalized play
 
 Use **Voice** on a song row to record a link with the browser microphone. Preview the take alone or over the chosen song, set duck and fade values, then **Use this take**. The recording uploads as a managed audio clip and is attached to that exact cue by `voiceTrackInstantId`; changing another play of the same song does not change this cue. Palazzo receives the voice clip with the song command and applies the saved duck/fades. Browser preview approximates the mix. A missing or disabled clip fails preflight; if it disappears between preflight and playout, the Radio desk shows intro degradation.
 
+## Take and start while the engine is off
+
+A radio-only program plays only through its playout engine (gaulatti/alcantara#609). While
+that engine is disabled in radio settings, or the program has no radio settings, an operator's
+take or start is refused before anything is saved:
+
+- `POST /radio/:programId/song` (Take, play now);
+- `PUT /program/:programId/audio-bus` when the write would start a song (a different song
+  becomes active, or an idle manual rotation switches to Autoplay or Shuffle).
+
+Both answer `409` with `{"statusCode":409,"error":"Conflict","reason":"engine_unavailable",
+"message":"The radio engine is off (disabled in settings), so nothing was taken."}`. Their MCP
+capabilities, `radio_play_song` and `program_update_program_audio_bus_by_id`, run the same check
+and answer `conflict`. Rotation
+edits that start nothing, and stopping, still save. TV and simulcast programs are not affected:
+their program output plays songs itself.
+
+Rundown automation follows the same rule. When a scheduled or running rundown reaches a song for a
+radio-only program whose engine is off, the song is not started (no audio-bus write, no engine
+take). The as-run gets a row with `state: "not-aired"` and `endReason: "engine_unavailable"`. The
+block is then stopped and `radio_log_cue_failed` is broadcast with `reason: "engine_unavailable"`,
+so it does not run silently. The CSV export lists `not-aired` rows; the SoundExchange export and the
+royalty summary read only `ended` rows, so a song that was not aired is never reported as played.
+
 ## Output confidence and recovery
 
 The Radio desk separates **Stream verified** (Liquidsoap and Icecast transport) from output confidence. It shows fresh sampled output as detected, checking, silent after ten seconds below 0.001 RMS while song playback is expected, idle, unavailable, or unverified. A sample older than fifteen seconds cannot prove audio. This is a level check, not a listener-side measurement.

@@ -751,14 +751,18 @@ export class ProgramMcpTools {
         summary: (args, live) =>
           `Changes the ${Object.keys(present({ song_sequence: args.song_sequence, mixer_settings: args.mixer_settings })).join(' and ') || 'nothing'} of program ${args.program_id}. A new song sequence replaces the playlist and rotation the engine follows. Live now: ${live.liveText}. The previous values are not kept: read them first to restore them.`,
         recoverable: true,
-        call: (args) =>
-          this.programs.updateProgramAudioBus(
-            present({
-              songSequence: args.song_sequence,
-              mixerSettings: args.mixer_settings,
-            }),
+        call: async (args) => {
+          const data = present({
+            songSequence: args.song_sequence,
+            mixerSettings: args.mixer_settings,
+          });
+          // The same refusal as the console's audio-bus write, while the radio engine is off (gaulatti/alcantara#609).
+          await this.programs.refuseOperatorStartWhileEngineUnavailable(
+            data,
             args.program_id,
-          ),
+          );
+          return this.programs.updateProgramAudioBus(data, args.program_id);
+        },
         result: (raw, args) => ({
           program_id: args.program_id,
           mixerSettings: (raw as { mixerSettings: unknown }).mixerSettings,

@@ -49,6 +49,7 @@ import {
   collectHighRotationProgramSongLeaves,
   countProgramSongLeavesBySong,
   normalizeProgramSongSequence,
+  type ProgramSongSequence,
 } from '../radio/song-sequence.utils';
 import { MAX_HIGH_ROTATION_SONGS } from '../radio/song-rotation.utils';
 import {
@@ -136,6 +137,28 @@ export interface ProgramPlayingTrack {
   startedAt: string;
   /** The song record's stored public https cover (gaulatti/alcantara#179). */
   coverUrl?: string;
+}
+
+/**
+ * Whether writing `next` over `stored` would start a song (gaulatti/alcantara#609): a different
+ * song becomes active, or an idle manual rotation switches to Autoplay or Shuffle. Edits that keep
+ * the active song, and stopping (no active song), start nothing.
+ */
+export function startsSongPlayback(
+  stored: ProgramSongSequence | null,
+  next: ProgramSongSequence | null,
+): boolean {
+  if (!next) return false;
+  if (
+    next.activeItemId !== null &&
+    next.activeItemId !== (stored?.activeItemId ?? null)
+  )
+    return true;
+  const automatic = (mode: string | undefined) =>
+    mode === 'autoplay' || mode === 'shuffle';
+  return (
+    automatic(next.mode) && !automatic(stored?.mode) && next.items.length > 0
+  );
 }
 
 @Injectable()
@@ -1777,6 +1800,40 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       mixerSettings,
       version: this.getProgramTopicVersion(normalizedProgramId, 'audioBus'),
     };
+  }
+
+  /**
+   * gaulatti/alcantara#609: an operator's audio-bus write that would start a song on a radio-only
+   * program is refused (409, `reason: "engine_unavailable"`) while its engine is off. Scheduled
+   * rundown automation does not come through here.
+   */
+  async refuseOperatorStartWhileEngineUnavailable(
+    data: unknown,
+    programId: string,
+  ): Promise<void> {
+    if (
+      !data ||
+      typeof data !== 'object' ||
+      !Object.prototype.hasOwnProperty.call(data, 'songSequence')
+    )
+      return;
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const current = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
+      select: { type: true, songSequence: true },
+    });
+    if (current?.type !== 'radio') return;
+    if (
+      startsSongPlayback(
+        normalizeProgramSongSequence(current.songSequence),
+        normalizeProgramSongSequence(
+          (data as { songSequence?: unknown }).songSequence,
+        ),
+      )
+    )
+      await this.radioService.refuseStartWhileEngineUnavailable(
+        normalizedProgramId,
+      );
   }
 
   async updateProgramAudioBus(
