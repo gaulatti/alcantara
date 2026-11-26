@@ -118,6 +118,7 @@ const STATUS_CODES: Record<number, McpErrorCode> = {
   403: 'forbidden',
   404: 'not_found',
   409: 'conflict',
+  429: 'rate_limited',
 };
 
 // A database refusal the console reports as a plain 500: a row that is not

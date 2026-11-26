@@ -82,6 +82,7 @@ const specs = [
   ...new BroadcastDestinationsMcpTools(
     {} as never,
     { teamId: 0 } as never,
+    {} as never,
   ).specs(),
   ...new FillerMcpTools({} as never).specs(),
   ...new RecordingMcpTools({} as never).specs(),
@@ -116,11 +117,11 @@ const controllerOf = (area: string, path: string) =>
 
 describe('appendix A rows of ticket #219', () => {
   it('has a row for every route of its areas that is not excluded', () => {
-    expect(ROWS).toHaveLength(56);
+    expect(ROWS).toHaveLength(57);
     const count = (area: string) =>
       ROWS.filter((row) => row[0] === area).length;
     expect([...AREAS].map((area) => [area, count(area)])).toEqual([
-      ['broadcast-destinations', 10],
+      ['broadcast-destinations', 11],
       ['filler', 3],
       ['recording', 6],
       ['radio', 16],
@@ -168,7 +169,7 @@ describe('appendix A rows of ticket #219', () => {
     for (const [tier, n] of [
       ['R', 19],
       ['W', 12],
-      ['A', 19],
+      ['A', 20],
       ['D', 6],
     ] as const)
       expect(tiers.filter((t) => t === tier)).toHaveLength(n);
@@ -203,7 +204,6 @@ describe('appendix A rows of ticket #219', () => {
       'replaceInvitation',
       'replaceKey',
       'rotate',
-      'testDestination',
     ]);
     for (const row of excludedRows) expect(row[5]).toBe('—');
     for (const spec of specs) {
