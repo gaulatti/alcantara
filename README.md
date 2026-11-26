@@ -146,7 +146,11 @@ may be used for repeatable automated media UAT. Verify all six show as connected
 without appearing on Preview/Program, assign slots to a reusable layout, then
 exercise Preview and TAKE deliberately. Restart one guest and verify its slot
 is held for 60 seconds. The machine-only return router requires the local
-`WEBRTC_RENDERER_KEY` from Compose.
+`WEBRTC_RENDERER_KEY` from Compose. [`e2e/webrtc-call.mjs`](e2e/README.md) runs
+the call path as one repeatable check: an operator invitation, a fake-device
+guest on the real guest page, the operator and program receiving the guest, and
+the guest receiving the program return. It also has a guest-only mode for a
+production invitation.
 
 In production, LiveKit runs on Helix, the on-premises host, not on the backend's
 service host (#354). `infra/helix/livekit-up.sh` starts it there, and
