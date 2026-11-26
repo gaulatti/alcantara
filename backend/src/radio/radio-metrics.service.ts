@@ -269,6 +269,8 @@ const RADIO_LOG_RESULTS = [
   'started',
   'start-failed',
   'cue-failed',
+  'cue-retried',
+  'cue-skipped',
   'preflight-failed',
   'poll-failed',
 ] as const;

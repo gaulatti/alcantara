@@ -327,6 +327,7 @@ async function harness() {
     palazzo.radioService as never,
     {
       isClockedLogRunning: jest.fn(() => false),
+      handleEngineAvailability: jest.fn(),
       handleSongEnded: jest.fn().mockResolvedValue({ ok: true }),
     } as never,
     prisma,

@@ -33,6 +33,12 @@ import type {
 /** How late a published log may start: the scheduler skips one later than this. */
 export const START_GRACE_MS = 5000;
 
+/**
+ * gaulatti/alcantara#719: how long past its due time a timed-block cue that failed
+ * while the engine was unavailable may still air. Past it the cue is skipped.
+ */
+export const ENGINE_OUTAGE_GRACE_MS = 60_000;
+
 const FLIGHT_CUE_KINDS: Set<FlightCueKind> = new Set([
   'scene',
   'playSong',
@@ -258,6 +264,8 @@ function deepPatch(
 export class FlightService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(FlightService.name);
   private readonly runtimes = new Map<string, FlightRuntimeState>();
+  /** Programs whose engine is unavailable now, as handleEngineAvailability reports it. */
+  private readonly enginesDown = new Set<string>();
   private scheduleTimer: ReturnType<typeof setInterval> | null = null;
   private scheduleTickRunning = false;
   private readonly cueOperations = new Map<string, Promise<unknown>>();
@@ -1495,6 +1503,13 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     } catch (err) {
       console.error(`Flight cue execution failed (${cue.kind})`, err);
       if (runtime.scheduledAtMs !== null) {
+        if (
+          this.enginesDown.has(programId) ||
+          runtime.engineRetry?.index === index
+        ) {
+          this.holdForEngine(runtime, index, generation);
+          return;
+        }
         this.metrics.recordRadioLogResult('cue-failed');
         await this.stop(programId, { flightDriven: true });
         this.programService.broadcastUpdate(programId, {
@@ -1504,6 +1519,11 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         });
         return;
       }
+    }
+    if (runtime.engineRetry) {
+      if (runtime.engineRetry.index === index)
+        this.metrics.recordRadioLogResult('cue-retried');
+      runtime.engineRetry = undefined;
     }
 
     if (runtime.generation !== generation || !runtime.isRunning) {
@@ -1552,6 +1572,95 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     }
 
     void this.advance(programId, generation);
+  }
+
+  /**
+   * Engine availability as the song engine sees it (#719): it freezes on an outage
+   * and calls here on each change. A cue held through the outage is retried as soon
+   * as the engine is back, while its grace lasts.
+   */
+  handleEngineAvailability(programId: string, available: boolean): void {
+    if (!available) {
+      this.enginesDown.add(programId);
+      return;
+    }
+    this.enginesDown.delete(programId);
+    const runtime = this.runtimes.get(programId);
+    const retry = runtime?.engineRetry;
+    if (!runtime?.isRunning || !retry) return;
+    this.clearTimer(runtime);
+    void this.executeCueAtIndex(programId, retry.index, runtime.generation);
+  }
+
+  /**
+   * A timed-block cue failed with the engine unavailable (#719). It waits for the
+   * engine: retried when it is back within ENGINE_OUTAGE_GRACE_MS of its due time
+   * (a fixed-time cue's clock time, otherwise when it first failed), skipped past it.
+   * The block never stops for this.
+   */
+  private holdForEngine(
+    runtime: FlightRuntimeState,
+    index: number,
+    generation: number,
+  ): void {
+    const cue = runtime.items[index];
+    const dueAt =
+      cue.clockOffsetSeconds !== undefined
+        ? runtime.scheduledAtMs! + cue.clockOffsetSeconds * 1000
+        : runtime.engineRetry?.index === index
+          ? runtime.engineRetry.dueAt
+          : Date.now();
+    runtime.engineRetry = { index, dueAt };
+    this.clearTimer(runtime);
+    runtime.timer = setTimeout(
+      () => {
+        const current = this.runtimes.get(runtime.programId);
+        if (
+          current !== runtime ||
+          current.generation !== generation ||
+          !current.isRunning ||
+          current.engineRetry?.index !== index
+        )
+          return;
+        void this.skipAfterOutage(current, index, generation);
+      },
+      Math.max(0, dueAt + ENGINE_OUTAGE_GRACE_MS - Date.now()),
+    );
+  }
+
+  private async skipAfterOutage(
+    runtime: FlightRuntimeState,
+    index: number,
+    generation: number,
+  ): Promise<void> {
+    const cue = runtime.items[index];
+    runtime.engineRetry = undefined;
+    runtime.timer = null;
+    this.metrics.recordRadioLogResult('cue-skipped');
+    if (cue.kind === 'playSong' && typeof cue.songId === 'number') {
+      try {
+        await this.prisma.asRunRecord.create({
+          data: {
+            programId: runtime.programId,
+            songId: cue.songId,
+            state: 'not-aired',
+            endReason: 'engine_unavailable',
+            at: new Date(),
+          },
+        });
+      } catch (err) {
+        this.logger.error(
+          `Could not log a skipped cue as not aired for ${runtime.programId}`,
+          err,
+        );
+      }
+    }
+    this.programService.broadcastUpdate(runtime.programId, {
+      type: 'radio_log_cue_skipped',
+      sequenceId: runtime.sequenceId,
+      cueId: cue.id,
+    });
+    await this.advance(runtime.programId, generation);
   }
 
   private armTimedClip(runtime: FlightRuntimeState): void {

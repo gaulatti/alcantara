@@ -1387,10 +1387,12 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(
         `Freezing radio automation for ${programId}: Palazzo ${status.connection}`,
       );
+      this.flightService.handleEngineAvailability(programId, false);
     } else if (!unavailable && state.frozen) {
       state.frozen = false;
       state.reconciled = false;
       this.logger.log(`Unfreezing radio automation for ${programId}`);
+      this.flightService.handleEngineAvailability(programId, true);
     }
     this.emit({ type: 'radio_leg_status', programId, status });
   }

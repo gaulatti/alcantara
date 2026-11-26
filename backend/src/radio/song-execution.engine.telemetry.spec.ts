@@ -106,6 +106,7 @@ function setup(
   };
   const flightService = {
     isClockedLogRunning: jest.fn().mockReturnValue(false),
+    handleEngineAvailability: jest.fn(),
     handleSongEnded: jest.fn().mockResolvedValue({ ok: true }),
   };
   const publisher = {
