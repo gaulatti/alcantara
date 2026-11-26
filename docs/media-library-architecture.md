@@ -242,6 +242,17 @@ with an optimistic check on the row, so two backend instances never analyse the
 same file. Re-running the job is idempotent: the same file produces the same
 row.
 
+**A restart in the middle of a run (#587).** A claim also stores `claimedAt`.
+When a backend starts (not a deploy candidate), every row still claimed belongs
+to a stopped process, because a deploy stops the old container before the new one
+starts. It is handed back: due at once, with the attempt returned, and the first
+run comes after `RESUME_DELAY_MS` (1 minute) instead of 5. This needs no
+shutdown hook, so it covers a stop, a crash and a `kill -9` alike. A source is
+handed back free at most `MAX_HAND_BACKS` (3) times (`interruptions`), after
+which an interruption spends the attempt, so a file that takes the process down
+cannot be retried for ever. A success or a new re-analysis request resets the
+count. If the hand-back itself fails, the ten minute lease applies as before.
+
 **Limits.** Each file has 180 seconds for the fetch, the probe and the
 measurement together, and a tool that writes more than 4 MiB of output is
 stopped. A remote source is fetched under the outbound-request policy
@@ -271,6 +282,8 @@ falls to zero when the backfill is done.
 `alcantara_media_analysis_result_writes_total{outcome}` counts finished
 analyses whose result write the database refused (see below): `retried` (held
 for another run), `stored_after_retry`, `released` or `dropped`.
+`alcantara_media_analysis_interrupted_runs_total{outcome}` counts the claims a
+stopped process left, found at startup: `handed_back` or `attempt_spent`.
 
 **A refused result write (#278).** The asset is claimed (attempt n, a ten
 minute lease), analysed, and then the result is written. If that write fails on
@@ -284,7 +297,7 @@ minutes), so a database that keeps refusing the write does not starve the other
 assets; if even the release fails, the lease runs out as it always did. A
 warning with the cause class is logged at each step, never the message. A write
 that fails for any other reason is logged as an error and not retried. The held
-result is lost on a restart; the lease path then applies, as before.
+result is lost on a restart; the next start hands its claim back (#587).
 
 **Stored length (#296).** The pass that measures the cue points also decodes the
 file, so its length is stored as `MediaAssetAnalysis.durationSeconds` (null until
