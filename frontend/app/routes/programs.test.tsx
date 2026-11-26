@@ -137,5 +137,8 @@ describe("Programs template registration", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Program Media Groups")).not.toBeInTheDocument();
     expect(screen.queryByText("Program Stingers")).not.toBeInTheDocument();
+    // Anchored to the top, so hiding the TV fields does not move the type toggles (the walk's polish).
+    const dialog = screen.getByRole("dialog", { name: "Edit show" });
+    expect(dialog).toHaveClass("mt-[8vh]", "mb-auto");
   });
 });
