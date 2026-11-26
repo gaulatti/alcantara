@@ -404,3 +404,12 @@ it("replaces only the saved recipe in the list", async () => {
   await screen.findByText("Revision 4 · 2 uses");
   expect(screen.getByText("Revision 1 · 0 uses")).toBeTruthy();
 });
+
+it("picks the slideshow scene by id, and saves it", async () => {
+  stubApi({ sequences: [], rebuilt: 0 });
+  await open();
+  fireEvent.change(screen.getByLabelText("Slideshow scene"), { target: { value: "10" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save recipe" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirm save" }));
+  await screen.findByText("Recipe saved. No upcoming use needed a rebuild.");
+});
