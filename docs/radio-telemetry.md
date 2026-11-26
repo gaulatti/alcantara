@@ -686,6 +686,26 @@ stop in about 10 s. They still retry a server error (429 or 5xx) or a refused co
 never received. The event stream is long-lived and output-monitor has its own 10 s bound, so neither uses this
 one. A caller's own cancellation still wins.
 
+## A silent event stream (#734)
+
+A hung Palazzo (connections accepted, nothing answered) keeps its event stream open and silent. Palazzo emits
+`playback.position` every second and a `heartbeat` every 10 s from its Liquidsoap sample loop (gaulatti/palazzo
+`src/stream/playback-telemetry.service.ts`, heartbeat at L556 on main 706c383), so a stream that delivers no byte
+for `PALAZZO_EVENT_IDLE_MS` (30 s, three heartbeats) is treated as lost:
+
+- The client drops the stream and counts it in `alcantara_palazzo_event_stream_idle_disconnects_total`. The
+  program reads `connecting` with detail `sse idle: no event for 30 s`, which does **not** freeze automation.
+- It then polls the state endpoint and reconnects as for any lost stream. A Palazzo that still answers is back to
+  `polling`, then `connected` with a fresh snapshot, and automation is never frozen. This includes a Palazzo whose
+  Liquidsoap is down: it sends one `telemetry.disconnected` and then nothing, so it reconnects about every 31 s
+  while that lasts.
+- A hung Palazzo fails the state poll (10 s, #717). The program reads `unavailable` and the song engine freezes, as
+  for an unreachable Palazzo: Take is refused, and timed-block cues are held under #719's grace.
+- The event-stream handshake is bounded at `PALAZZO_COMMAND_TIMEOUT_MS` (10 s) until the response headers arrive,
+  so a reconnect to a hung Palazzo cannot wait forever. A timed-out handshake counts as
+  `alcantara_palazzo_machine_requests_total{operation="event-connect",result="unavailable"}`. The stream itself stays
+  long-lived.
+
 ## Two sources on the program bus (#242)
 
 Alcántara does not hold or delay a command while a spot is on air (decided on #242). Instead it detects, read-only,
