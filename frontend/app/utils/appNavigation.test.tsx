@@ -32,6 +32,24 @@ describe("program-aware application navigation", () => {
     expect(simulcast).toContain("Scene templates");
   });
 
+  it("links the external sources page beside guest calls on a television leg (#45)", () => {
+    for (const type of ["tv", "both"] as const) {
+      const live = getAppNavigationSections({
+        programType: type,
+        canViewBroadcasts: false,
+        includeDeveloperTools: false,
+      }).find((section) => section.id === "live")!;
+      const ids = live.items.map((item) => item.id);
+      expect(ids.indexOf("sources")).toBe(ids.indexOf("calls") + 1);
+      expect(live.items.find((item) => item.id === "sources")).toEqual({
+        id: "sources",
+        href: "/sources",
+        label: "External sources",
+      });
+    }
+    expect(labels("radio")).not.toContain("External sources");
+  });
+
   it("does not expose developer tools in the production navigation", () => {
     expect(labels("tv")).not.toContain("Component catalog");
   });

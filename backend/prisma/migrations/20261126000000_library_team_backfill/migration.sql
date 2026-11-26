@@ -2,9 +2,11 @@
 -- 2026-11-26). The team is not written here: it is the single distinct non-null teamId already in the tenant tables.
 --
 -- NULL teamId rows of the eleven shared libraries, Program and OperatorChangeRecord get that team; updatedAt is left
--- alone, so a second run finds no NULL and changes nothing. If there are rows to assign and the tables name no team,
--- or more than one, the migration FAILS: it never guesses. A database with nothing to assign (a new one) is left as it
--- is. Each table's count goes to the database server log. Other audit tables and ArtistLabel are not touched.
+-- alone, so a second run finds no NULL and changes nothing. If there are rows to assign and the tables name more than
+-- one team, or one that is not positive, the migration FAILS: it never guesses. If they name no team at all, the
+-- installation has no tenancy and there is nothing to scope: it is skipped with a notice. A database with nothing to
+-- assign (a new one) is left as it is. Each table's count goes to the database server log. Other audit tables and
+-- ArtistLabel are not touched.
 DO $$
 DECLARE
   targets TEXT[] := ARRAY[
@@ -34,6 +36,10 @@ BEGIN
     found := found || COALESCE(here, ARRAY[]::INTEGER[]);
   END LOOP;
   SELECT COALESCE(array_agg(DISTINCT team ORDER BY team), ARRAY[]::INTEGER[]) INTO found FROM unnest(found) AS team;
+  IF cardinality(found) = 0 THEN
+    RAISE NOTICE 'library_team_backfill: no team anywhere, so this installation has no tenancy; rows are left unassigned';
+    RETURN;
+  END IF;
   IF cardinality(found) <> 1 OR found[1] <= 0 THEN
     RAISE EXCEPTION 'library_team_backfill: cannot tell which team owns the unassigned rows (teams found: %)', found;
   END IF;
