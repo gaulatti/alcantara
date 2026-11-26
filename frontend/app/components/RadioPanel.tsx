@@ -181,6 +181,9 @@ function notAiredReason(reason: string | null): string {
 /** Why the desk refuses what would be accepted and not air while Palazzo's playout is down. */
 const PLAYOUT_DOWN_REASON = "Playout down: nothing can air";
 
+/** The engine chip when the console cannot reach the Alcántara server at all (Dot's recovery walk). */
+const SERVER_UNREACHABLE_LABEL = "Can't reach the Alcántara server";
+
 export const RadioPanel: React.FC<RadioPanelProps> = ({
   fixtureData,
   programId,
@@ -239,6 +242,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   // reload) would otherwise read "Engine unavailable" for a round trip (#734 walk). Any answer, a failed one
   // included, ends the wait.
   const [palazzoAnswered, setPalazzoAnswered] = useState(!!fixtureData);
+  // The console cannot reach the Alcántara server at all, as opposed to the server answering that the engine is down.
+  const [serverUnreachable, setServerUnreachable] = useState(false);
   const [addSongId, setAddSongId] = useState("");
   const [logBusy, setLogBusy] = useState(false);
   const [logLoadError, setLogLoadError] = useState<string | null>(null);
@@ -293,6 +298,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   currentProgramId.current = programId;
   const fetchPalazzoStatus = useCallback(async () => {
     let next: PalazzoStatus | null = null;
+    let unreachable = false;
     try {
       const res = await fetch(
         apiUrl(`/radio/${encodeURIComponent(programId)}/palazzo-status`),
@@ -300,10 +306,12 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
       if (res.ok) next = (await res.json()) || null;
     } catch {
       next = null;
+      unreachable = true;
     }
     if (currentProgramId.current !== programId) return;
     setPalazzo(next);
     setPalazzoAnswered(true);
+    setServerUnreachable(unreachable);
   }, [programId]);
 
   const fetchAirPlan = useCallback(async () => {
@@ -372,6 +380,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     setStream(null);
     setPalazzo(null);
     setPalazzoAnswered(false);
+    setServerUnreachable(false);
     setOutput(null);
     setLogs([]);
     setRecovery(null);
@@ -533,6 +542,9 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   });
   // Palazzo answers but its playout is down: automation still follows the connection, but the desk refuses
   // what would be accepted and not air (Take, Take now, Start with fallback). Stop stays available.
+  const engineLabel = serverUnreachable
+    ? SERVER_UNREACHABLE_LABEL
+    : engineUnavailableLabel(palazzo);
   const playoutDown = engineReady && palazzo?.playout === "down";
   const onAirInput: Omit<OnAirInput, "outputUnverified"> = {
     playback: programSongPlayback,
@@ -543,7 +555,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
       connected: engineReady,
       unknown: !palazzoAnswered,
       degraded: palazzo?.degraded === true,
-      unavailableLabel: engineUnavailableLabel(palazzo),
+      unavailableLabel: engineLabel,
       detail: palazzo?.detail ?? null,
     },
     monitor: monitor ? monitor.state : "unavailable",
@@ -1277,7 +1289,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
           keysEnabled={!findingSong}
           engineUnavailable={
             !engineReady
-              ? engineUnavailableLabel(palazzo)
+              ? engineLabel
               : playoutDown
                 ? PLAYOUT_DOWN_REASON
                 : null

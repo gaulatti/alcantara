@@ -595,7 +595,9 @@ it("treats every unreachable or refused status endpoint as unverified", async ()
     "alert",
   );
   expect(screen.getByText("Stream unverified")).toBeVisible();
-  expect(await screen.findByText("Engine unavailable")).toBeVisible();
+  // The console cannot reach the server, so the engine is not what is unavailable.
+  expect(await screen.findByText("Can\'t reach the Alcántara server")).toBeVisible();
+  expect(screen.queryByText("Engine unavailable")).toBeNull();
   expect(screen.getByText("Output unverified")).toBeVisible();
   expect(screen.getByText("No level sample")).toBeVisible();
   expect(screen.getByText("No prepared recovery playlist")).toBeInTheDocument();
@@ -1058,6 +1060,34 @@ it("reloads the log from the API after a command when it is live", async () => {
       loads,
     ),
   );
+});
+
+// Dot's recovery walk: while the console cannot reach the Alcántara server, the engine chip must not blame the
+// engine. A server that answers that the engine is down still reads Engine unavailable.
+it("says the console cannot reach the server, not the engine, when the server is unreachable", async () => {
+  radioApi({
+    "/status": json({ running: true, uptime: 60_000 }),
+    "/palazzo-status": new Error("offline"),
+    "/output-confidence": json(props().fixtureData!.output),
+    "/recovery": json({ preparedVersion: null, automation: null, connection: "connected" }),
+  });
+  vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+  mount(liveProps());
+  expect(await screen.findByText("Can\'t reach the Alcántara server")).toBeVisible();
+  expect(screen.queryByText("Engine unavailable")).toBeNull();
+});
+
+it("keeps Engine unavailable when the server answers that the engine is down", async () => {
+  radioApi({
+    "/status": json({ running: true, uptime: 60_000 }),
+    "/palazzo-status": json({ ...props().fixtureData!.palazzo, connection: "unavailable" }),
+    "/output-confidence": json(props().fixtureData!.output),
+    "/recovery": json({ preparedVersion: null, automation: null, connection: "connected" }),
+  });
+  vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+  mount(liveProps());
+  expect(await screen.findByText("Engine unavailable")).toBeVisible();
+  expect(screen.queryByText("Can\'t reach the Alcántara server")).toBeNull();
 });
 
 // gaulatti/alcantara#707: a command failure shows as the alert and enters the session log; when the engine
