@@ -123,7 +123,7 @@ function renderAppLink({ children, className, item, onClick }: ShellLinkProps) {
   /* v8 ignore stop */
 
   return (
-    <Link to={item.href} className={className} onClick={onClick} aria-label={item.label} aria-current={item.active ? 'page' : undefined}>
+    <Link to={item.href} className={className} onClick={onClick} title={item.label} aria-label={item.label} aria-current={item.active ? 'page' : undefined}>
       {children}
     </Link>
   );

@@ -483,6 +483,10 @@ it("keeps a show it cannot find, and logs catalogs that fail to load", async () 
   expect(
     within(collapsed).getByRole("link", { name: "TV control" }),
   ).toHaveAttribute("aria-current", "page");
+  // A native tooltip shows the same label on hover, so the icon-only rail is readable without a visible name.
+  expect(
+    within(collapsed).getByRole("link", { name: "TV control" }),
+  ).toHaveAttribute("title", "TV control");
 
   const dialog = await openCommands();
   expect(
