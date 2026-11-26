@@ -491,8 +491,17 @@ route list, so it marks a route the list does not name yet. `status_class` is `2
 | `alcantara_media_analysis_duration_seconds`    | `result`                            | Wall time of one audio asset analysis          |
 | `alcantara_media_analysis_backlog_assets`      | none                                | Audio assets still waiting for analysis        |
 | `alcantara_media_analysis_interrupted_runs_total` | `outcome`                        | Claims a stopped process left, found at start  |
+| `alcantara_program_song_playback_writes_total` | `result`                            | Calls to `POST /program/:programId/song-playback` |
 | `alcantara_radio_programs_without_team`           | none                             | Radio programs with no team (#122)             |
 | `alcantara_library_songs_without_team`            | none                             | Library songs with no team (#122)              |
+
+`alcantara_program_song_playback_writes_total{result}` counts calls to
+`POST /program/:programId/song-playback`, from the HTTP response: `accepted` (2xx:
+the playback state was stored and broadcast) and `refused` (anything else: not
+signed in, not permitted, an invalid request or a failed write). Both are exported
+from startup at zero. The playout engine does not use the route, so a long run with
+both at zero shows that no client still calls it (gaulatti/alcantara#612). The
+labels and logs carry nothing from the request.
 
 `alcantara_radio_programs_without_team` and `alcantara_library_songs_without_team`
 count what a team-scoped song read would miss: programs of type `radio` or `both`
@@ -597,6 +606,23 @@ program's team (gaulatti/alcantara#122).
 `alcantara_log_song_scope_refusals_total{path}` counts reads refused because the
 program has no team, with `path` one of `generate`, `validate`, `cue`, `recipe` and
 `recovery`. A refused read treats the songs as missing. It should stay at `0`.
+
+Playout reads the program team's songs for four things: the analysis sent with a song
+command, recognising an unannounced track, now-playing artwork and the playing
+track's cover (gaulatti/alcantara#122). Here scoping never takes anything off air:
+whatever the team cannot serve is read as before, from every song, and counted in
+`alcantara_radio_song_scope_refusals_total{path,reason}`. `path` is `analysis`,
+`recognise`, `artwork` or `cover`; `reason` is `no-team` (the program has none),
+`other-team` (only another team has the song) or `lookup-failed` (the program or
+team lookup failed). Both labels are fixed sets, all exported at 0 from start-up.
+Each program, path and reason is logged once. It should stay at `0`: anything else
+means a program or song is in the wrong team, and the listener hears no difference.
+
+Starting a scene's background audio reads the program team's media asset
+(gaulatti/alcantara#122). It is on air, so what the team cannot serve is read as
+before, from every asset, and counted in
+`alcantara_scene_asset_scope_refusals_total{reason}`, with `reason` one of
+`no-team`, `other-team` and `lookup-failed`, all exported at 0. It should stay at `0`.
 
 ## Song analysis drop metric
 
@@ -763,3 +789,10 @@ When no fresh output level has arrived for 6 seconds (`OUTPUT_SAMPLE_UNVERIFIED_
 strip shows **Unverified** with its clock dimmed. The desk re-reads freshness every second. This is display only: no
 alarm and no automation change. Status delayed (a stale sample after 15 s) and dead air (silence for 10 s) keep their
 own thresholds. The console fixture `state=radio-unverified` shows it.
+
+## Playout down
+
+Palazzo can answer while its playout (Liquidsoap) is down. `GET /radio/:programId/palazzo-status` carries
+`playout: "up" | "down" | null`. It comes from Palazzo's own state (`liquidsoap.connected`, in every snapshot or
+polled state) and its `telemetry.connected` / `telemetry.disconnected` events, and is null until Palazzo has said.
+The desk shows **Playout down** for it; automation is unchanged and still follows `connection`.

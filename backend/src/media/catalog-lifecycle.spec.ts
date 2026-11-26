@@ -254,15 +254,18 @@ describe('legacy catalog API and canonical asset consistency', () => {
   it('queries a scoped song catalog with truthful aggregate totals and canonical case-insensitive search', async () => {
     const f = fixture();
     f.song().intro = { programId: 'news', instantId: 12 };
-    const result = await f.songs.findAll({
-      programId: ' news ',
-      enabled: false,
-      search: ' artist ',
-      sortBy: 'durationMs',
-      sortOrder: 'asc',
-      page: 2,
-      limit: 2,
-    });
+    const result = await f.songs.findAll(
+      {
+        programId: ' news ',
+        enabled: false,
+        search: ' artist ',
+        sortBy: 'durationMs',
+        sortOrder: 'asc',
+        page: 2,
+        limit: 2,
+      },
+      0,
+    );
     expect(result.data[0].intro).toEqual({ programId: 'news', instantId: 12 });
     expect(result.meta).toEqual({
       total: 3,
@@ -289,7 +292,7 @@ describe('legacy catalog API and canonical asset consistency', () => {
         take: 2,
       }),
     );
-    expect((await f.songs.findOne(6, 'other')).intro).toBeNull();
+    expect((await f.songs.findOne(6, 'other', 0)).intro).toBeNull();
   });
 
   it('omits empty song search/pagination and defaults invalid sort fields without masking an empty duration total', async () => {
@@ -298,13 +301,16 @@ describe('legacy catalog API and canonical asset consistency', () => {
       _sum: { durationMs: null },
       _count: { durationMs: 0 },
     });
-    const result = await f.songs.findAll({
-      search: ' ',
-      sortBy: 'unsafe',
-      sortOrder: 'bad',
-      page: 1,
-      limit: 0,
-    });
+    const result = await f.songs.findAll(
+      {
+        search: ' ',
+        sortBy: 'unsafe',
+        sortOrder: 'bad',
+        page: 1,
+        limit: 0,
+      },
+      0,
+    );
     expect(result.meta.catalogTotalDurationMs).toBe(0);
     expect(f.prisma.song.findMany.mock.calls[0][0]).toEqual(
       expect.objectContaining({
@@ -313,22 +319,25 @@ describe('legacy catalog API and canonical asset consistency', () => {
       }),
     );
     expect(f.prisma.song.findMany.mock.calls[0][0]).not.toHaveProperty('take');
-    await f.songs.findAll({ page: 1, limit: 20 });
+    await f.songs.findAll({ page: 1, limit: 20 }, 0);
   });
 
   it('creates normalized songs and cover assets while retaining explicitly disabled state', async () => {
     const f = fixture();
-    const result = await f.songs.create({
-      artist: ' Artist ',
-      title: ' Title ',
-      audioUrl: ' https://media.example/new.mp3 ',
-      coverUrl: ' https://media.example/cover.png ',
-      durationMs: 1.6,
-      earoneSongId: 42,
-      earoneRank: ' 2 ',
-      earoneSpins: 0,
-      enabled: false,
-    });
+    const result = await f.songs.create(
+      {
+        artist: ' Artist ',
+        title: ' Title ',
+        audioUrl: ' https://media.example/new.mp3 ',
+        coverUrl: ' https://media.example/cover.png ',
+        durationMs: 1.6,
+        earoneSongId: 42,
+        earoneRank: ' 2 ',
+        earoneSpins: 0,
+        enabled: false,
+      },
+      0,
+    );
     expect(result).toEqual(
       expect.objectContaining({
         artist: 'Artist',
@@ -353,10 +362,13 @@ describe('legacy catalog API and canonical asset consistency', () => {
         }),
       }),
     );
-    const defaults = await f.songs.create({
-      title: 'Only title',
-      audioUrl: 'https://media.example/default.mp3',
-    });
+    const defaults = await f.songs.create(
+      {
+        title: 'Only title',
+        audioUrl: 'https://media.example/default.mp3',
+      },
+      0,
+    );
     expect(defaults).toEqual(
       expect.objectContaining({
         artist: '',
@@ -372,17 +384,21 @@ describe('legacy catalog API and canonical asset consistency', () => {
     const f = fixture();
     f.song().coverAssetId = 'song-cover:6';
     f.song().coverUrl = 'https://media.example/old.png';
-    const result = await f.songs.update(6, {
-      artist: ' Renamed ',
-      title: ' New title ',
-      audioUrl: ' https://media.example/updated.mp3 ',
-      coverUrl: null,
-      durationMs: '1500' as any,
-      earoneSongId: '',
-      earoneRank: null,
-      earoneSpins: Infinity,
-      enabled: false,
-    });
+    const result = await f.songs.update(
+      6,
+      {
+        artist: ' Renamed ',
+        title: ' New title ',
+        audioUrl: ' https://media.example/updated.mp3 ',
+        coverUrl: null,
+        durationMs: '1500' as any,
+        earoneSongId: '',
+        earoneRank: null,
+        earoneSpins: Infinity,
+        enabled: false,
+      },
+      0,
+    );
     expect(result).toEqual(
       expect.objectContaining({
         artist: 'Renamed',
@@ -399,7 +415,7 @@ describe('legacy catalog API and canonical asset consistency', () => {
     expect(f.prisma.mediaAsset.deleteMany).toHaveBeenCalledWith({
       where: { id: 'song-cover:6' },
     });
-    await f.songs.update(6, {});
+    await f.songs.update(6, {}, 0);
     expect(f.prisma.song.update).toHaveBeenLastCalledWith({
       where: { id: 6 },
       data: { artist: 'Renamed', title: 'New title' },
@@ -411,11 +427,14 @@ describe('legacy catalog API and canonical asset consistency', () => {
     async (durationMs) => {
       const f = fixture();
       await expect(
-        f.songs.create({
-          title: 'Title',
-          audioUrl: 'https://media.example/song.mp3',
-          durationMs: durationMs as any,
-        }),
+        f.songs.create(
+          {
+            title: 'Title',
+            audioUrl: 'https://media.example/song.mp3',
+            durationMs: durationMs as any,
+          },
+          0,
+        ),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(f.prisma.mediaAsset.upsert).not.toHaveBeenCalled();
     },
@@ -423,19 +442,19 @@ describe('legacy catalog API and canonical asset consistency', () => {
 
   it('requires a song identity and audio URL and preserves the remaining identity field on partial edits', async () => {
     const f = fixture();
-    await expect(f.songs.create({ audioUrl: 'url' })).rejects.toThrow(
+    await expect(f.songs.create({ audioUrl: 'url' }, 0)).rejects.toThrow(
       'artist or title is required',
     );
     await expect(
-      f.songs.create({ title: 'Title', audioUrl: ' ' }),
+      f.songs.create({ title: 'Title', audioUrl: ' ' }, 0),
     ).rejects.toThrow('audioUrl is required');
-    await expect(f.songs.update(6, { artist: '', title: '' })).rejects.toThrow(
-      'artist or title is required',
-    );
-    await expect(f.songs.update(6, { audioUrl: '' })).rejects.toThrow(
+    await expect(
+      f.songs.update(6, { artist: '', title: '' }, 0),
+    ).rejects.toThrow('artist or title is required');
+    await expect(f.songs.update(6, { audioUrl: '' }, 0)).rejects.toThrow(
       'audioUrl is required',
     );
-    expect((await f.songs.update(6, { artist: '' })).title).toBe('Title');
+    expect((await f.songs.update(6, { artist: '' }, 0)).title).toBe('Title');
   });
 
   it.each(['create', 'update'] as const)(
@@ -452,7 +471,9 @@ describe('legacy catalog API and canonical asset consistency', () => {
       );
       f.prisma.$transaction.mockRejectedValueOnce(duplicate);
       const call = () =>
-        method === 'create' ? f.songs.create(data) : f.songs.update(6, data);
+        method === 'create'
+          ? f.songs.create(data, 0)
+          : f.songs.update(6, data, 0);
       await expect(call()).rejects.toThrow(
         'already has an active intro assignment',
       );
@@ -464,27 +485,31 @@ describe('legacy catalog API and canonical asset consistency', () => {
 
   it('deletes a song and both canonical asset identities together and rejects missing records', async () => {
     const f = fixture();
-    expect(await f.songs.remove(6)).toEqual({ deletedSongId: 6 });
+    expect(await f.songs.remove(6, 0)).toEqual({ deletedSongId: 6 });
     expect(f.prisma.song.delete).toHaveBeenCalledWith({ where: { id: 6 } });
     expect(f.prisma.mediaAsset.deleteMany.mock.calls).toEqual([
       [{ where: { id: 'song:6' } }],
       [{ where: { id: 'song-cover:6' } }],
     ]);
     f.prisma.song.findUnique.mockResolvedValue(null);
-    await expect(f.songs.findOne(99)).rejects.toBeInstanceOf(NotFoundException);
-    await expect(f.songs.update(99, {})).rejects.toBeInstanceOf(
+    await expect(f.songs.findOne(99, undefined, 0)).rejects.toBeInstanceOf(
       NotFoundException,
     );
-    await expect(f.songs.remove(99)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(f.songs.update(99, {}, 0)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    await expect(f.songs.remove(99, 0)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it.each([1, '', 'x'.repeat(101)])(
     'rejects an unbounded or nontext program scope: %p',
     async (programId) => {
       const f = fixture();
-      await expect(f.songs.findOne(6, programId as any)).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
+      await expect(
+        f.songs.findOne(6, programId as any, 0),
+      ).rejects.toBeInstanceOf(BadRequestException);
     },
   );
 

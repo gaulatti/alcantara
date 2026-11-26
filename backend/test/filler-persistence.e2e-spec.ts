@@ -65,6 +65,7 @@ describeWithDatabase('program filler persistence (PostgreSQL e2e)', () => {
       new PalazzoMachineClient(config, new RadioMetricsService()),
       config,
       metrics,
+      { teamId: 0 } as never,
     );
   };
 

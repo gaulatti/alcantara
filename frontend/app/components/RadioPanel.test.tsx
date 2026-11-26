@@ -618,6 +618,43 @@ it("treats every unreachable or refused status endpoint as unverified", async ()
 
 // The #734 walk: a page reload left the desk reading "Engine unavailable" for seconds while the engine was fine, only
 // because its first engine status had not answered yet. Unknown reads as unknown until an answer, a failure included.
+// Wakko's #738 review: on a program switch this instance gets the new programId before it unmounts. An engine status
+// that answers late for the previous program must not set the new program's engine state.
+it("drops an engine status that answers for the program before a switch", async () => {
+  const pending: Record<string, (response: Response) => void> = {};
+  radioApi({});
+  vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    const match = /\/radio\/([^/]+)\/palazzo-status/.exec(url);
+    if (match)
+      return new Promise<Response>((resolve) => {
+        pending[match[1]] = resolve;
+      });
+    return new Response("null", { status: 404 });
+  });
+  vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+  const first = liveProps();
+  const view = mount({ ...first, programId: "radio-old" });
+  await waitFor(() => expect(pending["radio-old"]).toBeDefined());
+  view.rerender(
+    <MemoryRouter>
+      <RadioPanel {...first} programId="radio-new" />
+    </MemoryRouter>,
+  );
+  await waitFor(() => expect(pending["radio-new"]).toBeDefined());
+
+  // The old program answers late, as connected: it must not read as the new program's engine.
+  pending["radio-old"](json({ ...props().fixtureData!.palazzo, connection: "connected" }));
+  const strip = screen.getByRole("region", { name: "On air" });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(within(strip).getByText("Checking engine")).toBeVisible();
+  expect(within(strip).queryByText("Engine ready")).toBeNull();
+
+  // The new program's own answer decides.
+  pending["radio-new"](json({ ...props().fixtureData!.palazzo, connection: "unavailable" }));
+  expect(await within(strip).findByText(/Engine unavailable/)).toBeVisible();
+});
+
 it("reads Checking engine, never Engine unavailable, until the first engine status answers", async () => {
   let answer: (response: Response) => void = () => undefined;
   radioApi({
@@ -641,6 +678,82 @@ it("reads Checking engine, never Engine unavailable, until the first engine stat
   answer(json({ ...props().fixtureData!.palazzo, connection: "unavailable" }));
   expect(await within(strip).findByText(/Engine unavailable/)).toBeVisible();
   expect(within(strip).queryByText("Checking engine")).toBeNull();
+});
+
+// The #734 follow-up: Palazzo answering with its playout (Liquidsoap) down is its own engine state, never Ready.
+it("shows Playout down on the strip and names the action, over the dead-air advice", async () => {
+  radioApi({
+    "/status": json({ running: false, uptime: null }),
+    "/palazzo-status": json({ ...props().fixtureData!.palazzo, playout: "down" }),
+    "/output-confidence": json({
+      state: "silent",
+      expectedAudio: true,
+      outputRms: 0,
+      lastSampleAt: new Date().toISOString(),
+      quietForMs: 12_000,
+    }),
+    "/recovery": json({ preparedVersion: "v3", automation: null, connection: "connected" }),
+  });
+  vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+  mount(liveProps());
+  const strip = screen.getByRole("region", { name: "On air" });
+  const chip = await within(strip).findByText("Playout down");
+  expect(chip.closest("[data-tone]")).toHaveAttribute("data-tone", "bad");
+  expect(within(strip).queryByText("Engine ready")).toBeNull();
+  expect(screen.getByRole("alert", { name: "Playout down" })).toHaveTextContent(
+    "Restart playout on the Palazzo host or call engineering.",
+  );
+  // The dead-air advice (Start with fallback) cannot help while playout is down.
+  expect(screen.queryByRole("alert", { name: "Dead air" })).toBeNull();
+});
+
+// Wakko's #740 review: while playout is down a take would be accepted and not air, so the desk refuses it on every
+// take path, and Start with fallback (the recovery playlist cannot play either). Stop stays available.
+it("refuses Take, Take now and Start with fallback while playout is down, and keeps Stop", async () => {
+  const p = deskProps();
+  p.fixtureData!.logs = [];
+  p.fixtureData!.palazzo = { ...p.fixtureData!.palazzo, playout: "down" } as never;
+  p.fixtureData!.recovery = {
+    preparedVersion: "v3",
+    automation: { actualState: "ready", filler: { activeVersion: null, ready: false } },
+    connection: "connected",
+  } as never;
+  mount(p);
+  expect(
+    screen.getByText("Playout down: nothing can air. Take is unavailable until the engine is back."),
+  ).toBeVisible();
+  const fallback = screen.getByRole("button", { name: "Start with fallback" });
+  expect(fallback).toBeDisabled();
+  expect(
+    screen.getByText(
+      "Playout down: nothing can air, the recovery playlist included: Start with fallback is unavailable until playout is back.",
+    ),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Stop the song on air" })).toBeEnabled();
+
+  fireEvent.keyDown(window, { key: "/" });
+  const dialog = await screen.findByRole("dialog", { name: "Play a song now" });
+  fireEvent.change(
+    within(dialog).getByRole("textbox", { name: "Search the rotation and the library" }),
+    { target: { value: "paper sat" } },
+  );
+  fireEvent.click(within(dialog).getByRole("button", { name: "Take now Paper Satellites" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Confirm Paper Satellites" }));
+  expect(
+    await within(dialog).findByText("Playout down: nothing can air. Nothing was taken."),
+  ).toBeVisible();
+  expect(p.onTakeSelection).not.toHaveBeenCalled();
+});
+
+it("reads Engine ready when Palazzo reports its playout up", async () => {
+  radioApi({
+    "/palazzo-status": json({ ...props().fixtureData!.palazzo, playout: "up" }),
+  });
+  vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+  mount(liveProps());
+  const strip = screen.getByRole("region", { name: "On air" });
+  expect(await within(strip).findByText("Engine ready")).toBeVisible();
+  expect(screen.queryByRole("alert", { name: "Playout down" })).toBeNull();
 });
 
 // gaulatti/alcantara#706: six seconds without a fresh output sample turn audible output into Output unverified and

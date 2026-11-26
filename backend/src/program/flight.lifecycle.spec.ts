@@ -14,7 +14,7 @@ function fixture() {
     programId: 'news',
     type: 'radio',
     // A working station: its playout engine is enabled (#609).
-    radioSettings: { enabled: true },
+    radioSettings: { enabled: true, palazzoUrl: 'http://palazzo:3100' },
     activeFlightSequenceId: 7,
   };
   let sequence: any = {
@@ -894,6 +894,7 @@ describe('FlightService public lifecycle and clock boundary', () => {
       ready: true,
       issues: [],
       warnings: [],
+      engine: 'ready',
     });
     const published = await f.service.publishFlightSequence('news', 7, 1);
     expect(published).toEqual(
@@ -935,6 +936,7 @@ describe('FlightService public lifecycle and clock boundary', () => {
         'Item 2: audio clip unavailable',
       ],
       warnings: [],
+      engine: 'ready',
     });
     await expect(f.service.publishFlightSequence('news', 7, 1)).rejects.toThrow(
       'audio clip unavailable',

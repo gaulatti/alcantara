@@ -273,6 +273,9 @@ it("loads the scheduled block, every page of the song catalog and the rotation s
   expect(within(blocks).getAllByRole("option")[1]).toHaveTextContent("Draft");
   expect(screen.getByText(/DRAFT · Revision 3 · 2 events/)).toBeVisible();
   expect(screen.getByText(/0 fillers · 00:00 unfilled/)).toBeVisible();
+  expect(screen.getByRole("button", { name: /Check & publish/ })).toHaveClass(
+    "bg-sea",
+  );
 });
 
 it("tolerates an empty rotation and library payloads that are not lists", async () => {
@@ -317,6 +320,11 @@ it("shows how to start when the program has no scheduled block", async () => {
   ).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Check" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
+  // Disabled, Check & publish no longer wears the primary styling (the walk's polish).
+  const checkAndPublish = screen.getByRole("button", { name: /Check & publish/ });
+  expect(checkAndPublish).toBeDisabled();
+  expect(checkAndPublish).not.toHaveClass("bg-sea");
+  expect(checkAndPublish).toHaveClass("bg-white");
 });
 
 it("creates a draft block only for a future start", async () => {
@@ -325,11 +333,11 @@ it("creates a draft block only for a future start", async () => {
   vi.mocked(createFlightSequence).mockResolvedValue(created);
   renderRundown();
   await openBlock();
-  fireEvent.click(screen.getByRole("button", { name: /New block/ }));
+  fireEvent.click(screen.getByRole("button", { name: /New timed block/ }));
   const start = await screen.findByLabelText("New block");
 
   fireEvent.change(start, { target: { value: "2000-01-01T10:00" } });
-  fireEvent.click(screen.getByRole("button", { name: "Create rundown" }));
+  fireEvent.click(screen.getByRole("button", { name: "Create timed block" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Choose a future start time.",
   );
@@ -337,7 +345,7 @@ it("creates a draft block only for a future start", async () => {
 
   vi.mocked(fetchFlightSequences).mockResolvedValue([block(), created]);
   fireEvent.change(start, { target: { value: "2099-01-01T10:00" } });
-  fireEvent.click(screen.getByRole("button", { name: "Create rundown" }));
+  fireEvent.click(screen.getByRole("button", { name: "Create timed block" }));
   await waitFor(() =>
     expect(createFlightSequence).toHaveBeenCalledWith(
       "radio-demo",
@@ -361,11 +369,11 @@ it("reports a block that could not be created", async () => {
   vi.mocked(createFlightSequence).mockRejectedValue(new Error("Overlaps"));
   renderRundown();
   await openBlock();
-  fireEvent.click(screen.getByRole("button", { name: /New block/ }));
+  fireEvent.click(screen.getByRole("button", { name: /New timed block/ }));
   fireEvent.change(await screen.findByLabelText("New block"), {
     target: { value: "2099-01-01T10:00" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Create rundown" }));
+  fireEvent.click(screen.getByRole("button", { name: "Create timed block" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Overlaps");
 });
 
@@ -457,7 +465,10 @@ it("shows preflight warnings without blocking a ready block (unknown song durati
   expect(
     await screen.findByText("Audio checked · ready for air"),
   ).toBeVisible();
-  expect(screen.getByText("Times are estimates")).toBeVisible();
+  expect(
+    screen.getByText("All scheduled audio is available. 1 warning: check before air."),
+  ).toBeVisible();
+  expect(screen.getByText("Check before air")).toBeVisible();
   expect(
     screen.getByRole("list", { name: "Preflight warnings" }),
   ).toHaveTextContent("Item 2: song duration unknown");
@@ -532,12 +543,97 @@ it("keeps the ready-for-air confirmation after publishing moves the block to a n
   vi.mocked(publishFlightSequence).mockImplementation(async (_program, id) =>
     block({ id, revision: 5, publishedAt: "2026-11-17T09:00:00Z" }),
   );
+  vi.mocked(preflightFlightSequence).mockResolvedValue({
+    ready: true,
+    issues: [],
+    warnings: [],
+    engine: "ready",
+  });
   renderRundown();
   await openBlock();
   addFromLibrary(/^Stop program audio/);
   fireEvent.click(screen.getByRole("button", { name: "Publish" }));
   expect(await screen.findByText(/PUBLISHED · Revision 5/)).toBeVisible();
-  expect(screen.getByText("Audio checked · ready for air")).toBeVisible();
+  expect(await screen.findByText("Audio checked · ready for air")).toBeVisible();
+  // The published revision is checked again rather than assumed ready.
+  expect(preflightFlightSequence).toHaveBeenLastCalledWith("radio-demo", 7);
+});
+
+// The rundown-building walk (GM's decision D1): a new radio show with no radio set up was "ready for air". The desk
+// never says so while the show's radio is not set up or is off, on Check or after Publish.
+it("never says ready for air while the show's radio is not set up, on Check or after Publish", async () => {
+  stubLibrary();
+  vi.mocked(updateFlightSequence).mockImplementation(
+    async (_program, id, body) => block({ id, revision: 4, items: body.items }),
+  );
+  vi.mocked(publishFlightSequence).mockImplementation(async (_program, id) =>
+    block({ id, revision: 5, publishedAt: "2026-11-17T09:00:00Z" }),
+  );
+  vi.mocked(preflightFlightSequence)
+    .mockResolvedValueOnce({
+      ready: true,
+      issues: [],
+      warnings: [
+        "Item 1: song duration unknown",
+        "Item 2: song duration unknown",
+        "Radio isn't set up for this show: set it up in Radio distribution before the block starts",
+      ],
+      engine: "not-configured",
+    })
+    .mockResolvedValueOnce({
+      ready: true,
+      issues: [],
+      warnings: [
+        "Radio is off for this show: turn it on in Radio distribution before the block starts",
+      ],
+      engine: "disabled",
+    });
+  renderRundown();
+  await openBlock();
+  addFromLibrary(/^Stop program audio/);
+  fireEvent.click(screen.getByRole("button", { name: "Check" }));
+  expect(
+    await screen.findByText("Audio checked · radio not set up"),
+  ).toBeVisible();
+  expect(screen.queryByText("Audio checked · ready for air")).toBeNull();
+  expect(
+    screen.getByText(
+      "All scheduled audio is available, but radio isn't set up for this show: it won't air until it is. 2 warnings: check before air.",
+    ),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("list", { name: "Preflight warnings" }),
+  ).toHaveTextContent("Radio isn't set up for this show");
+
+  fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+  expect(
+    await screen.findByText(
+      "Rundown published, but radio isn't set up for this show: it won't air until it is.",
+    ),
+  ).toBeVisible();
+  expect(screen.getByText("Audio checked · radio not set up")).toBeVisible();
+  expect(
+    screen.getByRole("list", { name: "Preflight warnings" }),
+  ).toHaveTextContent("Radio is off for this show");
+});
+
+it("shows no check result after publishing when the published revision cannot be checked", async () => {
+  stubLibrary();
+  vi.mocked(updateFlightSequence).mockImplementation(
+    async (_program, id, body) => block({ id, revision: 4, items: body.items }),
+  );
+  vi.mocked(publishFlightSequence).mockImplementation(async (_program, id) =>
+    block({ id, revision: 5, publishedAt: "2026-11-17T09:00:00Z" }),
+  );
+  vi.mocked(preflightFlightSequence).mockRejectedValue(new Error("offline"));
+  renderRundown();
+  await openBlock();
+  addFromLibrary(/^Stop program audio/);
+  fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+  expect(
+    await screen.findByText("Rundown published for automatic start."),
+  ).toBeVisible();
+  expect(screen.queryByText("Audio checked · ready for air")).toBeNull();
 });
 
 it("keeps a passing check after saving unsaved edits first, and drops it once the block changes", async () => {
@@ -887,7 +983,7 @@ it("closes the record and new-block dialogs with Escape", async () => {
   const recording = await screen.findByText("Recording over Harbor Light");
   fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   await waitFor(() => expect(recording).not.toBeInTheDocument());
-  fireEvent.click(screen.getByRole("button", { name: /New block/ }));
+  fireEvent.click(screen.getByRole("button", { name: /New timed block/ }));
   const start = await screen.findByLabelText("New block");
   fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   await waitFor(() => expect(start).not.toBeInTheDocument());

@@ -366,3 +366,8 @@ it("shows the default interval for an autoplay sequence that has none stored", (
   editor({ ...root([leaf("a", "One")]), mode: "autoplay", intervalMs: undefined });
   expect(screen.getByRole("spinbutton")).toHaveValue(4000);
 });
+
+it("shows the default 4000 ms interval for an autoplay sequence that stores none", () => {
+  editor({ ...root([leaf("a", "One")]), mode: "autoplay" });
+  expect(screen.getByRole("spinbutton")).toHaveValue(4000);
+});

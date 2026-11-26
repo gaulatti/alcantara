@@ -371,6 +371,15 @@ docker compose down -v
 docker compose up --build
 ```
 
+The seeded `radio-demo` songs 9101–9104 have their own fictional tones in the
+Compose LocalStack bucket, under `LOCAL_MEDIA_PUBLIC_BASE_URL`, so a fresh stack
+can prepare a recovery playlist (gaulatti/alcantara#695). In Radio settings,
+**Prepared local playlist** with those songs reaches Palazzo's filler
+preparation; without a Palazzo attached, it fails as Palazzo unavailable, not as
+a URL refusal. The seeded songs 9001 and 9002 keep their relative
+`/fifthbell/audio/` URLs, which the browser plays but Palazzo cannot download,
+so they are refused for recovery. The production media guard is unchanged.
+
 The `postgres-data` volume otherwise preserves local changes across restarts.
 `AUTH_MODE=test` fails startup under `NODE_ENV=production`; the issuance route
 is absent when test auth is disabled, and test tokens use a distinct issuer and

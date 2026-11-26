@@ -156,7 +156,13 @@ export async function resetFlight(
 export async function preflightFlightSequence(
   targetProgramId: string,
   sequenceId: number,
-): Promise<{ ready: boolean; issues: string[]; warnings: string[] }> {
+): Promise<{
+  ready: boolean;
+  issues: string[];
+  warnings: string[];
+  /** Whether the show's radio can air the block; absent from an older backend. */
+  engine?: "ready" | "not-configured" | "disabled" | "not-radio";
+}> {
   const res = await fetch(
     apiUrl(
       `/program/${encodeURIComponent(targetProgramId)}/flight/${sequenceId}/preflight`,

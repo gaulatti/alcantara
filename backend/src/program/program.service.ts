@@ -12,6 +12,7 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
+import { SceneAssetScope } from './scene-asset-scope';
 import { MediaAssetKind, Prisma } from '@prisma/client';
 import { Subject, Observable, type Subscription } from 'rxjs';
 import {
@@ -21,6 +22,7 @@ import {
 } from '../operator-change/operator-change-recorder';
 import { INSTANT_CHANGE_FIELDS } from '../operator-change/library-change-fields';
 import { PrismaService } from '../prisma.service';
+import { PlayoutSongScope } from '../radio/playout-song-scope';
 import { forTeam } from '../tenancy/scoped-prisma';
 import {
   OUTBOUND_REFUSAL_MESSAGES,
@@ -162,6 +164,10 @@ export function startsSongPlayback(
   );
 }
 
+/** The refusal of a rename onto the id a deleted program's settings still hold (gaulatti/alcantara#122). */
+export const LEFTOVER_PROGRAM_ID_MESSAGE =
+  "That ID belongs to a deleted show's settings. Choose another ID.";
+
 @Injectable()
 export class ProgramService implements OnModuleInit, OnModuleDestroy {
   private static readonly DEFAULT_PROGRAM_ID = 'main';
@@ -236,6 +242,8 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     @Optional()
     private readonly outputConfidence?: RadioOutputConfidenceService,
     @Optional() private readonly recorder?: OperatorChangeRecorder,
+    @Optional() private readonly songScope?: PlayoutSongScope,
+    @Optional() private readonly sceneAssets?: SceneAssetScope,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -280,7 +288,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     event: SongEngineTrackEvent,
   ): Promise<void> {
     if (event.type === 'track.started') {
-      const coverUrl = await this.storedCoverUrl(event.url);
+      const coverUrl = await this.storedCoverUrl(programId, event.url);
       this.playingTrackByProgramId.set(programId, {
         playbackId: event.playbackRequestId,
         title: event.title,
@@ -312,15 +320,20 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
    * alcantara_program_playing_track_cover_lookups_total.
    */
   private async storedCoverUrl(
+    programId: string,
     audioUrl: string | null,
   ): Promise<string | undefined> {
     if (!audioUrl) return undefined;
     let stored: unknown;
     try {
-      const song = await this.prisma.song.findFirst({
-        where: { audioUrl },
-        select: { coverUrl: true },
-      });
+      const byUrl = (db: PrismaService) =>
+        db.song.findFirst({
+          where: { audioUrl },
+          select: { coverUrl: true },
+        });
+      const song = this.songScope
+        ? await this.songScope.read('cover', programId, byUrl, (row) => !!row)
+        : await byUrl(this.prisma);
       stored = song?.coverUrl;
     } catch (error) {
       this.metrics?.recordPlayingTrackCoverLookup('error');
@@ -818,24 +831,27 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     return value;
   }
 
-  async updateBroadcastSettings(data: {
-    enabled?: boolean;
-    startTime?: string | null;
-    mixerChannels?: unknown;
-    mainMasterVolume?: number;
-    songMasterVolume?: number;
-    instantMasterVolume?: number;
-    streamMasterVolume?: number;
-    sceneInstantMasterVolume?: number;
-    songMuted?: boolean;
-    instantMuted?: boolean;
-    streamMuted?: boolean;
-    sceneInstantMuted?: boolean;
-    songSolo?: boolean;
-    instantSolo?: boolean;
-    streamSolo?: boolean;
-    sceneInstantSolo?: boolean;
-  }, teamId = 0) {
+  async updateBroadcastSettings(
+    data: {
+      enabled?: boolean;
+      startTime?: string | null;
+      mixerChannels?: unknown;
+      mainMasterVolume?: number;
+      songMasterVolume?: number;
+      instantMasterVolume?: number;
+      streamMasterVolume?: number;
+      sceneInstantMasterVolume?: number;
+      songMuted?: boolean;
+      instantMuted?: boolean;
+      streamMuted?: boolean;
+      sceneInstantMuted?: boolean;
+      songSolo?: boolean;
+      instantSolo?: boolean;
+      streamSolo?: boolean;
+      sceneInstantSolo?: boolean;
+    },
+    teamId = 0,
+  ) {
     const currentRaw = await this.ensureBroadcastSettings();
     // One row for the whole installation (gaulatti/alcantara#122): only its own team may change it. `0` means no team
     // is configured, which production refuses.
@@ -1568,6 +1584,15 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       if (existingTarget) {
         throw new ConflictException('Target program id already exists');
       }
+      // A deleted program leaves its Program row (team and branding) behind. Nothing is removed as a side effect of
+      // a rename: the id is refused instead.
+      const leftover = await this.prisma.program.findUnique({
+        where: { programId: next },
+        select: { programId: true },
+      });
+      if (leftover) {
+        throw new ConflictException(LEFTOVER_PROGRAM_ID_MESSAGE);
+      }
     }
 
     const effectiveType = programType ?? existingSource.type;
@@ -1590,10 +1615,23 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       Object.assign(updateData, this.programTemplateUpdateData(template));
     }
 
-    await this.prisma.programState.update({
+    const updateState = this.prisma.programState.update({
       where: { id: existingSource.id },
       data: updateData,
     });
+    if (current === next) {
+      await updateState;
+    } else {
+      // gaulatti/alcantara#122: the Program row carries the program's team and branding, so it is renamed with the
+      // program, or the renamed program would belong to no team.
+      await this.prisma.$transaction([
+        this.prisma.program.updateMany({
+          where: { programId: current },
+          data: { programId: next },
+        }),
+        updateState,
+      ]);
+    }
     await recorder.record({
       actor,
       target: 'program',
@@ -2573,14 +2611,18 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       volume: number;
     };
     if (mediaAssetId !== null) {
-      const asset = await this.prisma.mediaAsset.findFirst({
-        where: {
-          id: mediaAssetId,
-          enabled: true,
-          backgroundAudio: { isNot: null },
-        },
-        include: { backgroundAudio: true, audioClip: true },
-      });
+      const read = (db: PrismaService) =>
+        db.mediaAsset.findFirst({
+          where: {
+            id: mediaAssetId,
+            enabled: true,
+            backgroundAudio: { isNot: null },
+          },
+          include: { backgroundAudio: true, audioClip: true },
+        });
+      const asset = this.sceneAssets
+        ? await this.sceneAssets.read(normalizedProgramId, read)
+        : await read(this.prisma);
       if (!asset || !asset.backgroundAudio) {
         throw new NotFoundException(
           'Configured background audio asset not found',

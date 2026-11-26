@@ -7,7 +7,6 @@ function buildService() {
   const tx = {
     song: {
       findUnique: jest.fn(),
-      findUniqueOrThrow: jest.fn(),
       update: jest
         .fn()
         .mockImplementation(({ data }: { data: Record<string, unknown> }) =>
@@ -63,7 +62,7 @@ describe('SongsService song intros', () => {
       enabled: true,
       audioUrl: 'https://media.test/intro.mp3',
     });
-    tx.song.findUniqueOrThrow.mockResolvedValue({
+    tx.song.findUnique.mockResolvedValue({
       ...song,
       intro: {
         id: 3,
@@ -79,10 +78,14 @@ describe('SongsService song intros', () => {
       },
     });
 
-    const result = await service.update(song.id, {
-      programId: 'radio',
-      introInstantId: 12,
-    });
+    const result = await service.update(
+      song.id,
+      {
+        programId: 'radio',
+        introInstantId: 12,
+      },
+      0,
+    );
 
     expect(tx.songIntro.upsert).toHaveBeenCalledWith({
       where: { songId: song.id },
@@ -122,12 +125,16 @@ describe('SongsService song intros', () => {
       programId: 'radio',
       instantId: 12,
     });
-    tx.song.findUniqueOrThrow.mockResolvedValue({ ...song, intro: null });
+    tx.song.findUnique.mockResolvedValue({ ...song, intro: null });
 
-    await service.update(song.id, {
-      programId: 'radio',
-      introInstantId: null,
-    });
+    await service.update(
+      song.id,
+      {
+        programId: 'radio',
+        introInstantId: null,
+      },
+      0,
+    );
 
     expect(tx.songIntro.delete).toHaveBeenCalledWith({ where: { id: 3 } });
   });
@@ -144,10 +151,14 @@ describe('SongsService song intros', () => {
       instantId: 12,
     });
     await expect(
-      crossProgram.service.update(song.id, {
-        programId: 'television',
-        introInstantId: 13,
-      }),
+      crossProgram.service.update(
+        song.id,
+        {
+          programId: 'television',
+          introInstantId: 13,
+        },
+        0,
+      ),
     ).rejects.toThrow('Song intro belongs to another program');
 
     const assigned = buildService();
@@ -164,10 +175,14 @@ describe('SongsService song intros', () => {
       audioUrl: 'https://media.test/other.mp3',
     });
     await expect(
-      assigned.service.update(song.id, {
-        programId: 'radio',
-        introInstantId: 13,
-      }),
+      assigned.service.update(
+        song.id,
+        {
+          programId: 'radio',
+          introInstantId: 13,
+        },
+        0,
+      ),
     ).rejects.toThrow('Instant is already assigned as a song intro');
   });
 
@@ -183,10 +198,14 @@ describe('SongsService song intros', () => {
       tx.songIntro.findUnique.mockResolvedValue(null);
       tx.instant.findUnique.mockResolvedValue(instant);
       await expect(
-        service.update(song.id, {
-          programId: 'radio',
-          introInstantId: instantId,
-        }),
+        service.update(
+          song.id,
+          {
+            programId: 'radio',
+            introInstantId: instantId,
+          },
+          0,
+        ),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(tx.songIntro.upsert).not.toHaveBeenCalled();
       expect(name).toBeTruthy();

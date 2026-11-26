@@ -132,6 +132,7 @@ describe('PalazzoProgramClient coverage', () => {
         lastSnapshotAt: null,
         degraded: false,
         detail: null,
+        playout: null,
       });
     });
 

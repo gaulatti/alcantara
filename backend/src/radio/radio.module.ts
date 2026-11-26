@@ -12,6 +12,7 @@ import { RadioScopePreflightService } from './radio-scope-preflight.service';
 import { RadioOutputConfidenceService } from './radio-output-confidence.service';
 import { PalazzoMachineClient } from './palazzo-machine.client';
 import { SongSimilarityService } from './song-similarity.service';
+import { PlayoutSongScope } from './playout-song-scope';
 import { PrismaService } from '../prisma.service';
 import { SimilarityMcpTools } from '../mcp/capabilities/similarity';
 import { RadioMcpTools } from '../mcp/capabilities/radio';
@@ -31,6 +32,7 @@ import { RadioMcpTools } from '../mcp/capabilities/radio';
     RadioOutputConfidenceService,
     PalazzoMachineClient,
     SongSimilarityService,
+    PlayoutSongScope,
     SimilarityMcpTools,
     PrismaService,
     RadioScopePreflightService,
@@ -44,6 +46,7 @@ import { RadioMcpTools } from '../mcp/capabilities/radio';
     RadioOutputConfidenceService,
     PalazzoMachineClient,
     SongSimilarityService,
+    PlayoutSongScope,
   ],
 })
 export class RadioModule {}
