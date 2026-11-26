@@ -41,6 +41,12 @@ Stop all services:
 docker compose down
 ```
 
+To walk the radio desk without a real Palazzo, add the opt-in fake (local only, see
+[`docs/fake-palazzo.md`](docs/fake-palazzo.md)):
+```bash
+docker compose --profile fake-palazzo up --build
+```
+
 ### Option 2: Manual Launch (without Docker)
 
 ```bash
