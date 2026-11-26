@@ -21,6 +21,15 @@ describe('program changes forget the remembered team', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      fillerVersion: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      fillerLeg: {
+        count: jest.fn().mockResolvedValue(0),
+        findFirst: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
       $transaction: jest.fn((operations: Promise<unknown>[]) =>
         Promise.all(operations),
       ),
@@ -28,7 +37,7 @@ describe('program changes forget the remembered team', () => {
     const programTeams = { invalidate: jest.fn() };
     const service = new ProgramService(
       prisma as never,
-      {} as never,
+      { isRecoveryRunning: jest.fn().mockResolvedValue(false) } as never,
       {} as never,
       undefined,
       undefined,

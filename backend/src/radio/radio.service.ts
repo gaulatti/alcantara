@@ -1,3 +1,5 @@
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
+import { releaseActiveFiller } from '../filler/release-active-filler';
 import {
   BadGatewayException,
   BadRequestException,
@@ -115,6 +117,7 @@ export class RadioService {
     private readonly metrics: RadioMetricsService,
     private readonly pompeii: PompeiiService,
     @Optional() private readonly songScope?: PlayoutSongScope,
+    @Optional() private readonly managedMetrics?: ManagedMetricsService,
   ) {}
 
   /**
@@ -329,6 +332,13 @@ export class RadioService {
         `Palazzo could not ${action} the recovery session`,
       );
     }
+    if (action === 'stop')
+      await releaseActiveFiller(
+        this.prisma,
+        programId,
+        'radio',
+        this.managedMetrics,
+      );
     if (action === 'start' && programFiller) {
       // The session's filler is now that version; it stops being pending
       // only if it still is. Each statement is atomic.
@@ -345,6 +355,28 @@ export class RadioService {
       }
     }
     return this.getRecoveryStatus(programId);
+  }
+
+  /**
+   * Whether Palazzo reports recovery automation running for the program. A program with no engine address, or one
+   * Palazzo cannot be asked about, reports nothing running.
+   */
+  async isRecoveryRunning(programId: string): Promise<boolean> {
+    const state = await this.prisma.programState.findUnique({
+      where: { programId },
+      include: { radioSettings: true },
+    });
+    const settings = state?.radioSettings;
+    if (!settings?.palazzoUrl) return false;
+    try {
+      const automation = await this.palazzo.getAutomation(
+        this.palazzoUrl(settings),
+        programId,
+      );
+      return automation.actualState === 'running';
+    } catch {
+      return false;
+    }
   }
 
   /** The program radio filler version a Start binds to, if one is configured. */

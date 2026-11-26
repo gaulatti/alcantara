@@ -50,7 +50,16 @@ test) every asset is usable.
 A rename moves the program's versions and legs to the new id and clears each leg's pending and active pointers, because
 Alana and Palazzo hold a prepared version under the old id (gaulatti/alcantara#122). Start then behaves as with no
 filler, and the panel says **Filler needs preparing again** (`needsPreparing` in the state). The rename dialog and the
-MCP dry run say so beforehand. Renaming onto an id that still holds a deleted program's filler is refused with 409.
+MCP dry run say so beforehand. Renaming onto an id that still holds a deleted program's filler, a leg or a version, is refused with 409.
+
+A rename is refused with 409 "Its filler is on air. Stop it before renaming." while either leg has an active version,
+or while Palazzo reports recovery automation running for the program (Palazzo that cannot be asked reports nothing
+running). A Stop, radio recovery or television, returns the leg's active version to pending, unless a newer one is
+already pending, so the next Start binds to the same filler. A version made active before this behavior is released by
+the program's next Stop.
+
+The release is best effort: a failed write is logged, counted and never fails the Stop, which has already taken effect;
+the version stays active until the next Stop.
 
 ## Start binding
 
@@ -69,6 +78,7 @@ MCP dry run say so beforehand. Renaming onto an id that still holds a deleted pr
 | Metric | Labels |
 | --- | --- |
 | `alcantara_filler_preparations_total{leg,result}` | `leg` is `television` or `radio`; `result` is `ready`, `failed`, `unavailable`, `profile-unavailable` or `no-team` |
+| `alcantara_filler_releases_total{leg,result}` | `leg` is `television` or `radio`; `result` is `released` or `failed` |
 | `alcantara_filler_start_bindings_total{result}` | `bound`, `mismatch`, `not-configured` or `legacy-executor` |
 | `alcantara_alana_live_profile_unknown_keys_total` | no labels; one per live-profile key Alcantara does not know (never the key name) |
 | `alcantara_dependency_operations_total{dependency="alana",...}` | gains the `profile` and `prepare` operations |

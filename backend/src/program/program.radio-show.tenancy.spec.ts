@@ -20,6 +20,9 @@ describe('radio shows against Postgres', () => {
       db: unknown,
     ) => ProgramService)(prisma);
     (program as unknown as { recorder: unknown }).recorder = noRecorder();
+    (program as unknown as { radioService: unknown }).radioService = {
+      isRecoveryRunning: () => Promise.resolve(false),
+    };
     jest.spyOn(program, 'broadcastUpdate').mockImplementation(() => undefined);
     return program;
   };

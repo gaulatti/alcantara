@@ -166,6 +166,9 @@ export function startsSongPlayback(
 }
 
 /** The refusal of a rename onto the id a deleted program's settings still hold (gaulatti/alcantara#122). */
+export const FILLER_ON_AIR_MESSAGE =
+  'Its filler is on air. Stop it before renaming.';
+
 export const LEFTOVER_PROGRAM_ID_MESSAGE =
   "That ID belongs to a deleted show's settings. Choose another ID.";
 
@@ -1560,6 +1563,18 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     return legs > 0;
   }
 
+  /**
+   * A rename takes the program's filler with it, so it is refused while that filler is on air: a session holds a
+   * version (until its Stop), or Palazzo reports recovery automation running.
+   */
+  private async refuseRenameWhileFillerAirs(programId: string): Promise<void> {
+    const held = await this.prisma.fillerLeg.count({
+      where: { programId, activeVersionId: { not: null } },
+    });
+    if (held || (await this.radioService.isRecoveryRunning(programId)))
+      throw new ConflictException(FILLER_ON_AIR_MESSAGE);
+  }
+
   private requireRecorder(): OperatorChangeRecorder {
     if (!this.recorder) throw new Error('Operator change recorder is required');
     return this.recorder;
@@ -1594,6 +1609,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (current !== next) {
+      await this.refuseRenameWhileFillerAirs(current);
       const existingTarget = await this.prisma.programState.findUnique({
         where: { programId: next },
         select: { id: true },
@@ -1611,7 +1627,12 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         where: { programId: next },
         select: { programId: true },
       });
-      if (leftover || leftoverFiller) {
+      // A version can be left with no leg, and would otherwise be listed as the renamed program's own.
+      const leftoverVersion = await this.prisma.fillerVersion.findFirst({
+        where: { programId: next },
+        select: { id: true },
+      });
+      if (leftover || leftoverFiller || leftoverVersion) {
         throw new ConflictException(LEFTOVER_PROGRAM_ID_MESSAGE);
       }
     }

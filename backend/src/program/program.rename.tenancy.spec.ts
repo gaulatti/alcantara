@@ -6,6 +6,7 @@ import { ManagedMetricsService } from '../observability/managed-metrics.service'
 import { RadioService } from '../radio/radio.service';
 import { PrismaService } from '../prisma.service';
 import { ProgramService } from './program.service';
+import { releaseActiveFiller } from '../filler/release-active-filler';
 
 // CI's coverage step runs without DATABASE_URL and starts this database; a local run sets DATABASE_URL to its own
 // disposable one. Without a database the suite fails rather than passing unrun.
@@ -20,13 +21,15 @@ describe('renaming a program keeps its Program row, against Postgres', () => {
   let prisma: PrismaService;
   let service: ProgramService;
 
+  const recovery = { isRecoveryRunning: jest.fn().mockResolvedValue(false) };
+
   beforeAll(async () => {
     process.env.DATABASE_URL ||= CI_DATABASE_URL;
     prisma = new PrismaService();
     await prisma.$connect();
     service = new ProgramService(
       prisma,
-      {} as never,
+      recovery as never,
       {} as never,
       undefined,
       undefined,
@@ -154,6 +157,21 @@ describe('renaming a program keeps its Program row, against Postgres', () => {
       binding().televisionStartBinding(id('filled'), alana),
     ).rejects.toThrow('Alana is not prepared');
 
+    // While a session holds the filler, and while Palazzo reports recovery running, the rename is refused.
+    const onAir = {
+      status: 409,
+      message: 'Its filler is on air. Stop it before renaming.',
+    };
+    await expect(
+      service.renameProgram(id('filled'), id('moved')),
+    ).rejects.toMatchObject(onAir);
+    for (const leg of ['radio', 'television'] as const)
+      await releaseActiveFiller(prisma, id('filled'), leg);
+    recovery.isRecoveryRunning.mockResolvedValueOnce(true);
+    await expect(
+      service.renameProgram(id('filled'), id('moved')),
+    ).rejects.toMatchObject(onAir);
+
     await service.renameProgram(id('filled'), id('moved'));
 
     await expect(service.hasPreparedFiller(id('moved'))).resolves.toBe(false);
@@ -211,6 +229,23 @@ describe('renaming a program keeps its Program row, against Postgres', () => {
     await service.createProgram(id('e'), 'radio', null, team);
     await expect(
       service.renameProgram(id('e'), id('held')),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("refuses an id a deleted program's filler version still holds, with no leg", async () => {
+    await prisma.fillerVersion.create({
+      data: {
+        id: id('version'),
+        programId: id('orphan'),
+        leg: 'radio',
+        checksum: 'x',
+        config: {},
+        createdBy: 'test',
+      },
+    });
+    await service.createProgram(id('f'), 'radio', null, team);
+    await expect(
+      service.renameProgram(id('f'), id('orphan')),
     ).rejects.toMatchObject({ status: 409 });
   });
 
