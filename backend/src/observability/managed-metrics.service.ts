@@ -402,6 +402,7 @@ export class ManagedMetricsService {
   private readonly palazzoMetricsScrapeDuration: Histogram<string>;
   private readonly webrtcJoins: Counter<'client' | 'result'>;
   private readonly webrtcIcePaths: Counter<'client' | 'path'>;
+  private readonly webrtcDrops: Counter;
   private readonly mcpAuth: Counter<string>;
   private readonly mcpOAuth: Counter<string>;
   private readonly mcpRequests: Counter<string>;
@@ -632,6 +633,11 @@ export class ManagedMetricsService {
       name: 'alcantara_webrtc_ice_path_total',
       help: 'Calls connected, by bounded client and selected ICE path.',
       labelNames: ['client', 'path'],
+      registers: [this.registry],
+    });
+    this.webrtcDrops = new Counter({
+      name: 'alcantara_webrtc_drops_total',
+      help: 'Guest calls lost after connecting, not ended by the guest or the studio.',
       registers: [this.registry],
     });
     for (const client of WEBRTC_CLIENTS) {
@@ -1027,6 +1033,10 @@ export class ManagedMetricsService {
 
   recordWebrtcIcePath(client: WebrtcClient, path: WebrtcIcePath): void {
     this.webrtcIcePaths.inc({ client, path });
+  }
+
+  recordWebrtcDrop(): void {
+    this.webrtcDrops.inc();
   }
 
   recordProgramSseConnection(delta: 1 | -1): void {

@@ -70,7 +70,9 @@ vi.mock("livekit-client", () => ({
     ConnectionStateChanged: "connectionStateChanged",
     ConnectionQualityChanged: "connectionQualityChanged",
     DataReceived: "dataReceived",
+    Disconnected: "disconnected",
   },
+  DisconnectReason: { CLIENT_INITIATED: 1, DUPLICATE_IDENTITY: 2, PARTICIPANT_REMOVED: 4, ROOM_DELETED: 5 },
   Track: {
     Kind: { Video: "video", Audio: "audio" },
     Source: { Camera: "camera" },
@@ -382,6 +384,19 @@ it("tells the studio when the browser refuses the camera and microphone", async 
   vi.mocked(navigator.mediaDevices.getUserMedia).mockRejectedValue(Object.assign(new Error("denied"), { name: "NotAllowedError" }));
   openPage();
   await waitFor(() => expect(reportedFailures()).toEqual([{ invitation: "inv-1.secret", reason: "permission_denied" }]));
+});
+
+it("reports a lost call with the first heartbeat that gets through, and no call the studio ended", async () => {
+  await join();
+  await emit("disconnected", 4);
+  expect(await nextHeartbeat()).not.toHaveProperty("dropped");
+
+  const answer = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockRejectedValueOnce(new Error("offline"));
+  await emit("disconnected", 9);
+  vi.mocked(fetch).mockImplementation(answer);
+  expect(await nextHeartbeat()).toMatchObject({ dropped: true });
+  expect(await nextHeartbeat()).not.toHaveProperty("dropped");
 });
 
 const reportedFailures = () =>

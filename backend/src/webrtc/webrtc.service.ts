@@ -359,7 +359,10 @@ export class WebrtcService {
     const reported = telemetryValue as {
       joined?: unknown;
       iceTransport?: unknown;
+      dropped?: unknown;
     } | null;
+    // Sent until a heartbeat gets through, which may be after the guest's network returns.
+    if (reported?.dropped === true) this.metrics.recordWebrtcDrop();
     if (reported?.joined === true) {
       this.metrics.recordWebrtcJoin('guest', 'success');
       const path = icePathFrom(reported.iceTransport);

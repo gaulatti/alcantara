@@ -64,7 +64,7 @@ function setup() {
       'alcantara_webrtc_ice_path_total',
       `client="${client}",path="${path}"`,
     );
-  return { service, prisma, invitation, joins, paths };
+  return { service, prisma, invitation, joins, paths, metrics };
 }
 
 describe('guest call reports', () => {
@@ -105,6 +105,19 @@ describe('guest call reports', () => {
     });
     expect(await joins('guest', 'success')).toBe(2);
     expect(await paths('guest', 'relay')).toBe(1);
+  });
+
+  it('counts a dropped call from the heartbeat that reports it', async () => {
+    const { service, metrics } = setup();
+    const drops = async () =>
+      /^alcantara_webrtc_drops_total (\d+)/m.exec(
+        await metrics.render(''),
+      )?.[1];
+    expect(await drops()).toBe('0');
+    const { sessionToken } = await service.redeemInvitation(token, undefined);
+    await service.heartbeat(sessionToken, { dropped: true });
+    await service.heartbeat(sessionToken, { dropped: 'yes' });
+    expect(await drops()).toBe('1');
   });
 
   it('stores and counts a failure the guest browser reports', async () => {

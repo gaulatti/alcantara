@@ -112,8 +112,10 @@ Production shows whether calls work from what each call reports. The API counts,
 A guest's first heartbeat after joining says so and every heartbeat names the path. A join the browser sees fail
 (also before asking to join, when the camera is refused) goes to `POST /webrtc/join/failure` with the invitation.
 The API itself counts the joins it refuses (revoked or invalid: `token_rejected`; expired: `invite_expired`; in use
-elsewhere: `other`). The console reports its talkback to `POST /webrtc/operator-report`. On `/calls`, each guest
-shows the path of their call, or why their last join failed. A call that drops after connecting is not counted.
+elsewhere: `other`). `alcantara_webrtc_drops_total` counts guest calls lost after going live (not left by the
+guest, removed by the studio or taken over by a second window); the guest's next heartbeat that gets through reports
+it, so a guest who never reconnects is missed. The console reports its talkback to `POST /webrtc/operator-report`. On `/calls`, each guest
+shows the path of their call, or why their last join failed. Operator talkback drops are not counted.
 
 #### Return routing
 

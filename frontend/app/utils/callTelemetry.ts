@@ -1,3 +1,4 @@
+import { DisconnectReason } from 'livekit-client';
 import { apiUrl } from './apiBaseUrl';
 
 /** What a call reports about itself, so production shows whether calls work (counted by the API). */
@@ -59,6 +60,17 @@ export function callFailureReason(error: unknown): CallFailure {
     if (reasonName === 'InternalError' || reasonName === 'Timeout') return 'ice_failed';
   }
   return 'other';
+}
+
+/** Whether a call that had connected was lost, rather than ended by the guest or the studio. */
+export function isDrop(reason: DisconnectReason | undefined): boolean {
+  return (
+    reason !== DisconnectReason.CLIENT_INITIATED &&
+    reason !== DisconnectReason.PARTICIPANT_REMOVED &&
+    reason !== DisconnectReason.ROOM_DELETED &&
+    // The guest opened the same link again.
+    reason !== DisconnectReason.DUPLICATE_IDENTITY
+  );
 }
 
 /** Tells the API a guest could not join. A report that cannot be sent is dropped: it must not disturb the guest. */

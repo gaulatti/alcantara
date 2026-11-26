@@ -4,7 +4,7 @@ import { Camera, CameraOff, CheckCircle2, Headphones, Mic, MicOff, PhoneOff, Rad
 import { ConnectionState, Room, RoomEvent, Track, type RemoteParticipant, type RemoteTrack, type RemoteTrackPublication } from 'livekit-client';
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router';
-import { reportJoinFailure, roomIcePath } from '../utils/callTelemetry';
+import { isDrop, reportJoinFailure, roomIcePath } from '../utils/callTelemetry';
 import { isProgramFeed, preferredProgramFeed } from '../utils/programFeed';
 import { apiUrl } from '../utils/apiBaseUrl';
 import type { Route } from './+types/guest';
@@ -52,6 +52,8 @@ export default function GuestRoute() {
   const heartbeatRef = useRef<number | null>(null);
   // Set at each join until a heartbeat has told the studio, so one join is counted once.
   const announceJoinRef = useRef(false);
+  // A lost call is reported by the next heartbeat that gets through.
+  const pendingDropRef = useRef(false);
   const [status, setStatus] = useState<GuestStatus>('preflight');
   const [error, setError] = useState('');
   // The join was refused (401/403): the invitation is closed, so a rejoin cannot succeed (gaulatti/alcantara#353).
@@ -89,6 +91,7 @@ export default function GuestRoute() {
     const icePath = await roomIcePath(roomRef.current);
     const joined = announceJoinRef.current;
     announceJoinRef.current = false;
+    const dropped = pendingDropRef.current;
     const response = await fetch(apiUrl('/webrtc/session/heartbeat'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -101,10 +104,12 @@ export default function GuestRoute() {
           cameraEnabled: telemetry.cameraEnabled,
           microphoneEnabled: telemetry.microphoneEnabled,
           ...(icePath ? { iceTransport: icePath } : {}),
-          ...(joined ? { joined: true } : {})
+          ...(joined ? { joined: true } : {}),
+          ...(dropped ? { dropped: true } : {})
         }
       })
     });
+    if (response.ok && dropped) pendingDropRef.current = false;
     if (response.status === 401 || response.status === 403) {
       stopHeartbeat();
       roomRef.current?.disconnect();
@@ -357,6 +362,13 @@ export default function GuestRoute() {
         if (state === ConnectionState.Connected) setStatus('live');
         if (state === ConnectionState.Disconnected && status !== 'left') setStatus('ended');
       });
+      // Only a call that got as far as live can drop; a failed join is reported as one.
+      let wentLive = false;
+      room.on(RoomEvent.Disconnected, (reason) => {
+        if (!wentLive || !isDrop(reason)) return;
+        pendingDropRef.current = true;
+        void heartbeat().catch(() => undefined);
+      });
       room.on(RoomEvent.ConnectionQualityChanged, (next, participant) => {
         if (participant.isLocal) setQuality(String(next).toLowerCase());
       });
@@ -397,6 +409,7 @@ export default function GuestRoute() {
       if (cameraPublication?.videoTrack && previewRef.current) cameraPublication.videoTrack.attach(previewRef.current);
       setStatus('live');
       announceJoinRef.current = true;
+      wentLive = true;
       stopHeartbeat();
       heartbeatRef.current = window.setInterval(() => void heartbeat(), 20_000);
       void heartbeat();

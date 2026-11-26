@@ -1,5 +1,6 @@
+import { DisconnectReason } from 'livekit-client';
 import { afterEach, expect, it, vi } from 'vitest';
-import { callFailureReason, reportJoinFailure, roomIcePath, selectedIcePath } from './callTelemetry';
+import { callFailureReason, isDrop, reportJoinFailure, roomIcePath, selectedIcePath } from './callTelemetry';
 
 const report = (...stats: Array<Record<string, unknown> & { id: string }>) => new Map(stats.map((stat) => [stat.id, stat]));
 const local = (candidateType: string, protocol: string) => ({ id: 'L', type: 'local-candidate', candidateType, protocol });
@@ -49,6 +50,12 @@ it('sorts what getUserMedia and LiveKit throw into the counted reasons', () => {
   expect(named('ConnectionError', 'Timeout')).toBe('ice_failed');
   expect(named('ConnectionError', 'ServerUnreachable')).toBe('other');
   expect(callFailureReason(undefined)).toBe('other');
+});
+
+it('counts a lost call as a drop, not one the guest or the studio ended', () => {
+  for (const reason of [DisconnectReason.CLIENT_INITIATED, DisconnectReason.PARTICIPANT_REMOVED, DisconnectReason.ROOM_DELETED, DisconnectReason.DUPLICATE_IDENTITY])
+    expect(isDrop(reason)).toBe(false);
+  for (const reason of [undefined, DisconnectReason.UNKNOWN_REASON, DisconnectReason.SERVER_SHUTDOWN, DisconnectReason.SIGNAL_CLOSE]) expect(isDrop(reason)).toBe(true);
 });
 
 it('reports a failed join with the invitation, and drops a report it cannot send', async () => {
