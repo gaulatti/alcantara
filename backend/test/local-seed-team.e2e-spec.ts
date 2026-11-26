@@ -20,8 +20,8 @@ describeWithDatabase('the local seed and team-scoped reads (PostgreSQL e2e)', ()
     NODE_ENV: 'development',
     POMPEII_TEAM_ID: String(TEAM),
     MEDIA_S3_BUCKET: 'alcantara-local-only',
-    MEDIA_S3_ENDPOINT: 'http://localstack.test:4566',
-    LOCAL_MEDIA_PUBLIC_BASE_URL: 'http://localstack.test:4566/alcantara-local-only',
+    MEDIA_S3_ENDPOINT: 'http://localstack.localhost:4566',
+    LOCAL_MEDIA_PUBLIC_BASE_URL: 'http://localstack.localhost:4566/alcantara-local-only',
   };
   const fakeStore = {
     send: async (command: unknown) => {
