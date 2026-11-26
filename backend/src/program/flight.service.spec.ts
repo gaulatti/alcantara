@@ -102,6 +102,9 @@ describe('FlightService clocked logs', () => {
         // No later block: the fixed-start window (#788 item 4) reads it on create.
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockImplementation(async () => record),
+        // No later block is scheduled in this fixture, so the following-block
+        // warning must stay silent and preflight must report ready.
+        findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockImplementation(async ({ data }) => {
           record.publishedAt = data.publishedAt;
           record.revision += 1;
