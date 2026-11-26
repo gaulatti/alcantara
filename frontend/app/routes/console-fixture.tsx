@@ -19,6 +19,7 @@ import { AppLoading } from "../components/AppLoading";
 import { RundownFixture } from "../components/RundownFixture";
 import { RecipeEditorFixture } from "../components/RecipeEditorFixture";
 import { RundownRecipeFixture } from "../components/RundownRecipeFixture";
+import { RundownLibrary } from "../components/RundownLibrary";
 import { CallerDeskFixture, ProgramReturnFixture } from "../components/ReturnCallersFixture";
 import { RundownFillers } from "../components/RundownFillers";
 import {
@@ -336,6 +337,12 @@ export default function ConsoleFixture() {
   if (fixture === "rundown-desk") return <RundownFixture />;
   if (fixture === "rundown-recipes") return <RecipeEditorFixture />;
   if (fixture === "rundown-recipe") return <RundownRecipeFixture />;
+  if (fixture === "rundown-library-empty")
+    return (
+      <main className="max-w-sm p-6">
+        <RundownLibrary songs={[]} clips={[]} disabled={false} onAdd={() => {}} initialFilter="clip" />
+      </main>
+    );
   if (fixture === "program-return") return <ProgramReturnFixture />;
   if (fixture === "caller-desk") return <CallerDeskFixture />;
   if (fixture === "loading") return <AppLoading />;

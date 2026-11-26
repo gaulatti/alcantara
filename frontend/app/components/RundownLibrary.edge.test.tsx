@@ -22,3 +22,21 @@ it("falls back to every song and clip when the recipes go away while the Recipes
   expect(screen.getByText("Harbor Song")).toBeInTheDocument();
   expect(screen.getByText("Fictional clip")).toBeInTheDocument();
 });
+
+// The walk's B4: an empty Clips or Songs tab says where to add one, never `Nothing matches ""`.
+it("says where to add clips or songs when the tab is empty, and what was searched otherwise", () => {
+  render(<RundownLibrary songs={[]} clips={[]} disabled={false} onAdd={vi.fn()} />);
+  const search = screen.getByRole("searchbox", { name: "Search the library" });
+  fireEvent.click(screen.getByRole("button", { name: "Clips" }));
+  expect(screen.getByText(/No audio clips yet: upload one in/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Media" })).toHaveAttribute("href", "/media");
+  expect(screen.queryByText(/Nothing matches/)).toBeNull();
+  fireEvent.change(search, { target: { value: "   " } });
+  expect(screen.getByText(/No audio clips yet/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Songs" }));
+  expect(screen.getByText(/No songs yet: add one in/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Songs" })).toHaveAttribute("href", "/songs");
+  fireEvent.change(search, { target: { value: "harbor" } });
+  expect(screen.getByText("Nothing matches “harbor”.")).toBeInTheDocument();
+  expect(screen.queryByRole("link")).toBeNull();
+});

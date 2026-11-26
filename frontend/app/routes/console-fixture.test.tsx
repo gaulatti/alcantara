@@ -379,6 +379,15 @@ it("opens the single-component fixtures", () => {
   press("fillers: filled");
   cleanup();
 
+  open("?state=rundown-library-empty");
+  expect(screen.getByRole("link", { name: "Media" })).toHaveAttribute("href", "/media");
+  expect(screen.getByText(/No audio clips yet/)).toBeInTheDocument();
+  // The fixture's library adds nothing: the Stop still double-clicks without effect.
+  fireEvent.click(screen.getByRole("button", { name: "All" }));
+  fireEvent.doubleClick(screen.getByRole("option", { name: /Stop program audio/ }));
+  expect(screen.getByRole("option", { name: /Stop program audio/ })).toBeInTheDocument();
+  cleanup();
+
   open("?state=button-help");
   expect(
     screen.getByRole("heading", { name: "Button help" }),
