@@ -1,7 +1,7 @@
 import { StatePill } from '../radio-desk/primitives';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Input, Select } from '@gaulatti/bleecker';
-import { Check, Clock, GripVertical, Headphones, ListPlus, Music2, Plus, Star } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Clock, GripVertical, Headphones, ListPlus, Music2, Plus, Star } from 'lucide-react';
 import {
   createProgramSongSequence,
   createProgramSongSequenceItem,
@@ -366,7 +366,7 @@ export function ProgramSongSequenceEditor({
                               draggable
                               onDragStart={() => setDraggingIndex(index)}
                               onDragEnd={() => setDraggingIndex(null)}
-                              className='inline-flex h-6 w-6 cursor-grab select-none items-center justify-center text-text-secondary opacity-0 transition-opacity group-hover:opacity-100'
+                              className='inline-flex h-6 w-6 cursor-grab select-none items-center justify-center text-text-secondary'
                               title='Drag to reorder'
                               aria-label='Drag to reorder'
                             >
@@ -452,7 +452,29 @@ export function ProgramSongSequenceEditor({
                               </div>
                             </div>
                             <span className={`text-right pr-3 text-xs tabular-nums ${isActive ? 'text-sea' : 'text-text-secondary'}`}>{rowDuration}</span>
-                            <div className='playlist-row-actions flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100'>
+                            <div className='playlist-row-actions flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100'>
+                              {/* Move up and down are the keyboard and touch way to reorder; they use the same
+                                  reorderItems as drag, so the new order persists the same way. */}
+                              <Button
+                                type='button'
+                                onClick={() => reorderItems(index, index - 1)}
+                                disabled={index === 0}
+                                className='flex h-6 w-6 items-center justify-center rounded border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-30'
+                                title='Move up'
+                                aria-label={`Move ${titleText || 'song'} up`}
+                              >
+                                <ChevronUp size={13} />
+                              </Button>
+                              <Button
+                                type='button'
+                                onClick={() => reorderItems(index, index + 1)}
+                                disabled={index === sequence.items.length - 1}
+                                className='flex h-6 w-6 items-center justify-center rounded border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-30'
+                                title='Move down'
+                                aria-label={`Move ${titleText || 'song'} down`}
+                              >
+                                <ChevronDown size={13} />
+                              </Button>
                               {onQueueItem ? (
                                 <Button
                                   type='button'
