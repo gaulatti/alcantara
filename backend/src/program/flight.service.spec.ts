@@ -24,6 +24,8 @@ describe('FlightService song cues', () => {
       enabled: true,
     };
     const prisma = {
+      // An unknown program is never "engine off" (#609).
+      programState: { findUnique: jest.fn().mockResolvedValue(null) },
       song: { findUnique: jest.fn().mockResolvedValue(song) },
     };
     const programService = {

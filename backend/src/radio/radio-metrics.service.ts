@@ -122,9 +122,17 @@ export type IntroTransitionResult =
   | 'failed'
   | 'ignored-mismatch';
 
-/** Why an operator's take or start was refused before anything was saved (gaulatti/alcantara#609). */
-export type StartRefusalReason = 'engine_unavailable';
-const START_REFUSAL_REASONS: StartRefusalReason[] = ['engine_unavailable'];
+/**
+ * Why a song start was refused before anything was saved (gaulatti/alcantara#609): an operator's
+ * take or start (`engine_unavailable`), or a rundown's song (`automation_engine_unavailable`).
+ */
+export type StartRefusalReason =
+  | 'engine_unavailable'
+  | 'automation_engine_unavailable';
+const START_REFUSAL_REASONS: StartRefusalReason[] = [
+  'engine_unavailable',
+  'automation_engine_unavailable',
+];
 
 export type SongQueueActionResult =
   | 'enqueued'
@@ -908,7 +916,7 @@ export class RadioMetricsService {
       );
     }
     lines.push(
-      '# HELP alcantara_radio_start_refused_total Operator takes and starts refused before anything was saved, by bounded reason.',
+      '# HELP alcantara_radio_start_refused_total Song starts refused before anything was saved, by bounded reason (operator or rundown automation).',
       '# TYPE alcantara_radio_start_refused_total counter',
     );
     for (const reason of START_REFUSAL_REASONS) {

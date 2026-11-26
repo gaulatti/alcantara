@@ -45,8 +45,14 @@ take or start is refused before anything is saved:
 Both answer `409` with `{"statusCode":409,"error":"Conflict","reason":"engine_unavailable",
 "message":"The radio engine is off (disabled in settings), so nothing was taken."}`. Rotation
 edits that start nothing, and stopping, still save. TV and simulcast programs are not affected:
-their program output plays songs itself. Scheduled rundown automation does not go through these
-operator routes.
+their program output plays songs itself.
+
+Rundown automation follows the same rule. When a scheduled or running rundown reaches a song for a
+radio-only program whose engine is off, the song is not started (no audio-bus write, no engine
+take). The as-run gets a row with `state: "not-aired"` and `endReason: "engine_unavailable"`. The
+block is then stopped and `radio_log_cue_failed` is broadcast with `reason: "engine_unavailable"`,
+so it does not run silently. The CSV export lists `not-aired` rows; the SoundExchange export and the
+royalty summary read only `ended` rows, so a song that was not aired is never reported as played.
 
 ## Output confidence and recovery
 

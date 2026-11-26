@@ -14,6 +14,7 @@ import {
   type CueGroupShape,
 } from './radio-metrics.service';
 import { PrismaService } from '../prisma.service';
+import { isRadioOnlyEngineOff } from './engine-availability';
 import { ActorContext } from '../auth/actor-context';
 import { radioSettingsChangeSummary } from '../operator-change/operator-change-summary';
 import {
@@ -301,11 +302,7 @@ export class RadioService {
    * output plays songs itself, are not affected.
    */
   async refuseStartWhileEngineUnavailable(programId: string): Promise<void> {
-    const state = await this.prisma.programState.findUnique({
-      where: { programId },
-      select: { type: true, radioSettings: { select: { enabled: true } } },
-    });
-    if (state?.type === 'radio' && state.radioSettings?.enabled !== true) {
+    if (await isRadioOnlyEngineOff(this.prisma, programId)) {
       this.metrics.recordStartRefused('engine_unavailable');
       throw new ConflictException({
         statusCode: 409,

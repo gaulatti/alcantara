@@ -1,3 +1,7 @@
+import {
+  AutomationEngineUnavailableError,
+  isRadioOnlyEngineOff,
+} from '../radio/engine-availability';
 import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   BadRequestException,
@@ -1493,6 +1497,17 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         await this.programService.stopProgramSongForTimedBlock(programId);
       await this.executeCue(programId, cue);
     } catch (err) {
+      if (err instanceof AutomationEngineUnavailableError) {
+        // Nothing can air until the engine is back: end the block rather than run it silently.
+        await this.stop(programId, { flightDriven: true });
+        this.programService.broadcastUpdate(programId, {
+          type: 'radio_log_cue_failed',
+          sequenceId: runtime.sequenceId,
+          cueId: cue.id,
+          reason: err.reason,
+        });
+        return;
+      }
       console.error(`Flight cue execution failed (${cue.kind})`, err);
       if (runtime.scheduledAtMs !== null) {
         this.metrics.recordRadioLogResult('cue-failed');
@@ -1778,6 +1793,21 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
 
     if (!selectedSong) {
       throw new BadRequestException('scheduled song is unavailable');
+    }
+    // gaulatti/alcantara#609: with a radio-only program's engine off, a rundown song would only
+    // start a local timeline that plays nowhere. It is skipped and logged as not aired instead.
+    if (await isRadioOnlyEngineOff(this.prisma, programId)) {
+      this.metrics.recordStartRefused('automation_engine_unavailable');
+      await this.prisma.asRunRecord.create({
+        data: {
+          programId,
+          songId: selectedSong.id,
+          state: 'not-aired',
+          endReason: 'engine_unavailable',
+          at: new Date(),
+        },
+      });
+      throw new AutomationEngineUnavailableError();
     }
     if (!this.isClockedLogRunning(programId)) {
       await this.programService.updateProgramAudioBus(
