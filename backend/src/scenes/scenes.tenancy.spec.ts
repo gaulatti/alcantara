@@ -1,33 +1,29 @@
-import { Client } from 'pg';
 import { PrismaService } from '../prisma.service';
 import { ScenesService } from './scenes.service';
+
+// CI's coverage step runs without DATABASE_URL and starts this database; a local run sets DATABASE_URL to its own
+// disposable one. Without a database the suite fails rather than passing unrun.
+const CI_DATABASE_URL =
+  'postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci?schema=public';
 
 // The gate for switching scenes to the scoped client (gaulatti/alcantara#122):
 // a team's scoped read returns the rows the unscoped read holds for that team.
 describe('scenes scoped to a team, against Postgres', () => {
   const team = 930_000 + (process.pid % 10_000);
   const other = team + 20_000;
-  const url = process.env.DATABASE_URL;
   const programs = {
     getProgramIdsByAssignedScene: jest.fn().mockResolvedValue([]),
     getProgramIdsByActiveScene: jest.fn().mockResolvedValue([]),
     clearActiveScene: jest.fn().mockResolvedValue([]),
   };
-  let prisma: PrismaService | null = null;
+  let prisma: PrismaService;
   let layoutId = 0;
 
   const service = () =>
     new ScenesService(prisma as PrismaService, programs as never, {} as never);
 
   beforeAll(async () => {
-    if (!url) return;
-    const probe = new Client({ connectionString: url });
-    try {
-      await probe.connect();
-      await probe.end();
-    } catch {
-      return;
-    }
+    process.env.DATABASE_URL ||= CI_DATABASE_URL;
     prisma = new PrismaService();
     await prisma.$connect();
     const layout = await prisma.layout.create({
@@ -52,7 +48,6 @@ describe('scenes scoped to a team, against Postgres', () => {
   });
 
   it("returns the team's rows, the same as the unscoped read holds for it", async () => {
-    if (!prisma) return;
     const mine = (await service().findAll()).filter(
       (row) => row.teamId === team,
     );
@@ -66,7 +61,6 @@ describe('scenes scoped to a team, against Postgres', () => {
   });
 
   it("does not read, change or delete another team's scene", async () => {
-    if (!prisma) return;
     const theirs = await prisma.scene.findFirstOrThrow({
       where: { teamId: other },
     });
@@ -84,7 +78,6 @@ describe('scenes scoped to a team, against Postgres', () => {
   });
 
   it("does not put a scene on another team's layout", async () => {
-    if (!prisma) return;
     await expect(
       service().create({ name: 'n', layoutId }, other),
     ).rejects.toThrow('Layout not found');

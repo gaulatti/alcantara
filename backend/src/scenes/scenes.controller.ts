@@ -11,8 +11,7 @@ import {
 import { ScenesService } from './scenes.service';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { RequirePermission } from '../auth/require-permission.decorator';
-
-type TeamRequest = { user: { authorization: { teamId: number } } };
+import { callerTeam, type TeamRequest } from '../tenancy/caller-team';
 
 @Controller('scenes')
 @RequirePermission(ALCANTARA_PERMISSIONS.scene.read)
@@ -21,12 +20,12 @@ export class ScenesController {
 
   @Get()
   async findAll(@Req() request: TeamRequest) {
-    return this.scenesService.findAll(request.user.authorization.teamId);
+    return this.scenesService.findAll(callerTeam(request));
   }
 
   @Get(':id')
   async findOne(@Param('id') id: string, @Req() request: TeamRequest) {
-    return this.scenesService.findOne(+id, request.user.authorization.teamId);
+    return this.scenesService.findOne(+id, callerTeam(request));
   }
 
   @Post()
@@ -42,7 +41,7 @@ export class ScenesController {
     },
     @Req() request: TeamRequest,
   ) {
-    return this.scenesService.create(data, request.user.authorization.teamId);
+    return this.scenesService.create(data, callerTeam(request));
   }
 
   @Put(':id')
@@ -59,11 +58,7 @@ export class ScenesController {
     },
     @Req() request: TeamRequest,
   ) {
-    return this.scenesService.update(
-      +id,
-      data,
-      request.user.authorization.teamId,
-    );
+    return this.scenesService.update(+id, data, callerTeam(request));
   }
 
   @Put(':id/chyron')
@@ -76,7 +71,7 @@ export class ScenesController {
     return this.scenesService.updateChyron(
       +id,
       data.chyronText,
-      request.user.authorization.teamId,
+      callerTeam(request),
     );
   }
 
@@ -90,7 +85,7 @@ export class ScenesController {
     return this.scenesService.drawModoItalianoBracket(
       +id,
       data,
-      request.user.authorization.teamId,
+      callerTeam(request),
     );
   }
 
@@ -110,7 +105,7 @@ export class ScenesController {
     return this.scenesService.voteModoItalianoBracket(
       +id,
       data,
-      request.user.authorization.teamId,
+      callerTeam(request),
     );
   }
 
@@ -124,13 +119,13 @@ export class ScenesController {
     return this.scenesService.openModoItalianoBracketVoting(
       +id,
       data,
-      request.user.authorization.teamId,
+      callerTeam(request),
     );
   }
 
   @Delete(':id')
   @RequirePermission(ALCANTARA_PERMISSIONS.scene.manage)
   async remove(@Param('id') id: string, @Req() request: TeamRequest) {
-    return this.scenesService.remove(+id, request.user.authorization.teamId);
+    return this.scenesService.remove(+id, callerTeam(request));
   }
 }
