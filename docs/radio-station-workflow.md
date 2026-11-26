@@ -72,7 +72,9 @@ runs dry, the silent song comes off air first: hold Stop, then **Start with fall
 prepared (**Go to recovery** opens Recovery & session), or **Prepare a recovery playlist** when none is. When one
 is already bound, it plays once the queue runs dry. While the recovery status is unknown or the engine is
 unavailable, the alarm says to take the silent song off air and check the engine, and claims nothing about a
-playlist. The `state=radio-dead-air` fixture shows this state.
+playlist. When the desk itself silenced the song, the alarm says so first: with the Music channel muted it reads
+"Music is muted on this desk" with **Unmute music**, and with the Music or Output fader at zero it names the fader to
+raise, never "hold Stop", which would leave the silence on air. The `state=radio-dead-air` fixture shows this state.
 
 **Engine audio detected** measures Palazzo's post-master mix before Icecast.
 **Listen** returns Icecast audio through Palazzo and Alcántara's
