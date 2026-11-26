@@ -93,6 +93,7 @@ vi.mock("../components/RadioPanel", () => ({
             .join(","),
         ),
         songs: p.songSequence.items.length,
+        mode: p.songSequence.mode,
         queue: p.songQueue.map((entry: any) => entry.itemId),
         catalog: p.songCatalog
           .map((song: any) => `${song.id}:${song.durationMs}`)
@@ -538,6 +539,7 @@ it("hands the radio desk its fixture data for every radio state", () => {
     ["?state=radio-playout-down", { palazzo: "connected", playout: "down" }],
     ["?state=radio-continuous", { logs: [] }],
     ["?state=radio-audio-off-rundown", { logs: [], playback: null, output: "audible" }],
+    ["?state=radio-manual-off-air", { logs: [], playback: null, mode: "manual" }],
     [
       "?state=radio-skipped",
       { skipped: ["fixture-cue-2"], active: ["fixture-cue-3"] },
