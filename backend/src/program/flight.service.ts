@@ -1568,7 +1568,9 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     cut?: 'fixed_start',
   ): Promise<void> {
     return this.serializeCueOperation(programId, () =>
-      this.executeCueAtIndexUnlocked(programId, index, generation, cut),
+      cut
+        ? this.executeCueAtIndexUnlocked(programId, index, generation, cut)
+        : this.executeCueAtIndexUnlocked(programId, index, generation),
     );
   }
 
@@ -1837,12 +1839,9 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
           return;
         }
         const skipped = this.cuesPassedOver(current, index);
-        void this.executeCueAtIndex(
-          runtime.programId,
-          index,
-          generation,
-          due <= target ? 'fixed_start' : undefined,
-        );
+        void (due <= target
+          ? this.executeCueAtIndex(runtime.programId, index, generation, 'fixed_start')
+          : this.executeCueAtIndex(runtime.programId, index, generation));
         void this.logCuesSkippedByFixedStart(current, skipped);
       },
       Math.min(2_147_483_647, Math.max(0, Math.min(target, due) - Date.now())),
@@ -1863,10 +1862,16 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     runtime: FlightRuntimeState,
     cues: FlightCue[],
   ): Promise<void> {
+    // Nothing here may reject: the caller does not wait, and the block has already moved on.
     for (const cue of cues) {
-      this.metrics.recordRadioLogResult('cue-skipped');
-      if (cue.kind === 'playSong' && typeof cue.songId === 'number') {
-        try {
+      try {
+        this.metrics.recordRadioLogResult('cue-skipped');
+        this.programService.broadcastUpdate(runtime.programId, {
+          type: 'radio_log_cue_skipped',
+          sequenceId: runtime.sequenceId,
+          cueId: cue.id,
+        });
+        if (cue.kind === 'playSong' && typeof cue.songId === 'number')
           await this.prisma.asRunRecord.create({
             data: {
               programId: runtime.programId,
@@ -1878,18 +1883,12 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
               flightCueId: cue.id,
             },
           });
-        } catch (err) {
-          this.logger.error(
-            `Could not log a cue passed over by a fixed start as not aired for ${runtime.programId}`,
-            err,
-          );
-        }
+      } catch (err) {
+        this.logger.error(
+          `Could not log a cue passed over by a fixed start as not aired for ${runtime.programId}`,
+          err,
+        );
       }
-      this.programService.broadcastUpdate(runtime.programId, {
-        type: 'radio_log_cue_skipped',
-        sequenceId: runtime.sequenceId,
-        cueId: cue.id,
-      });
     }
   }
 
