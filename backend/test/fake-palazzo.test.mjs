@@ -97,6 +97,76 @@ async function refusesMalformedPreparation() {
   assert.equal(refused.status, 400);
 }
 
+/** Opens the program's event stream and collects the event types it delivers for `ms`. */
+async function eventTypes(path, ms) {
+  const controller = new AbortController();
+  const response = await fetch(`${origin}${path}`, {
+    headers: { Accept: 'text/event-stream' },
+    signal: controller.signal,
+  });
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const types = [];
+  let buffer = '';
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      for (const match of buffer.matchAll(/^event: (.+)$/gm)) types.push(match[1]);
+      buffer = buffer.slice(buffer.lastIndexOf('\n\n') + 2);
+    }
+  } catch {
+    // The abort ends the read.
+  } finally {
+    clearTimeout(timer);
+  }
+  return types;
+}
+
+// gaulatti/alcantara#734: Palazzo with Liquidsoap down sends one telemetry.disconnected and then nothing on its event
+// stream, while its HTTP API still answers. mute-events lets a walk reproduce that without pausing the container.
+async function mutesEventsAsLiquidsoapDown() {
+  const program = '/v1/programs/radio-mute';
+  const events = `${program}/playback/events`;
+  const live = await eventTypes(events, 2_500);
+  assert.equal(live[0], 'snapshot');
+  assert.ok(live.includes('playback.position'), `live stream: ${live.join(',')}`);
+
+  const muted = await call(origin, 'POST', '/__fake/programs/radio-mute/mute-events', {
+    body: { muted: true },
+  });
+  assert.deepEqual(muted.body, { ok: true, muted: true });
+  const silent = await eventTypes(events, 2_500);
+  // A reconnect still gets its snapshot at once, then nothing: no position, levels or heartbeat.
+  assert.deepEqual(silent, ['snapshot']);
+
+  const state = await call(origin, 'GET', `${program}/playback/state`);
+  assert.equal(state.status, 200);
+  assert.equal(state.body.liquidsoap.connected, false);
+  assert.match(state.body.liquidsoap.staleSince, /^\d{4}-\d{2}-\d{2}T/);
+  const control = await call(origin, 'GET', '/__fake/programs/radio-mute');
+  assert.equal(control.body.eventsMuted, true);
+
+  // Muting twice emits nothing more; unmuting is Liquidsoap coming back.
+  await call(origin, 'POST', '/__fake/programs/radio-mute/mute-events', { body: { muted: true } });
+  const unmuted = await call(origin, 'POST', '/__fake/programs/radio-mute/mute-events', {
+    body: { muted: false },
+  });
+  assert.deepEqual(unmuted.body, { ok: true, muted: false });
+  const back = await eventTypes(events, 2_500);
+  assert.ok(back.includes('playback.position'), `after unmute: ${back.join(',')}`);
+  const restored = await call(origin, 'GET', `${program}/playback/state`);
+  assert.equal(restored.body.liquidsoap.connected, true);
+  assert.equal(restored.body.liquidsoap.staleSince, null);
+
+  const refused = await call(origin, 'POST', '/__fake/programs/radio-mute/mute-events', {
+    body: { muted: 'yes' },
+  });
+  assert.equal(refused.status, 400);
+}
+
 test('the fake Palazzo answers the recovery path', async (t) => {
   const fake = await startFakePalazzo({ port: 0, host: '127.0.0.1' });
   origin = `http://127.0.0.1:${fake.port}`;
@@ -106,6 +176,10 @@ test('the fake Palazzo answers the recovery path', async (t) => {
       preparesBindsAndClears,
     );
     await t.test('refuses a malformed preparation', refusesMalformedPreparation);
+    await t.test(
+      'mutes the event stream as Palazzo does with Liquidsoap down',
+      mutesEventsAsLiquidsoapDown,
+    );
   } finally {
     await fake.close();
   }
@@ -130,6 +204,8 @@ test('nothing that ships runs or enables the fake Palazzo', () => {
   for (const file of shipped) {
     const text = readFileSync(file, 'utf8');
     assert.doesNotMatch(text, /fake-palazzo/, `${file} names the fake Palazzo`);
+    // Its control routes, mute-events (#734) among them, are local-walk tools only.
+    assert.doesNotMatch(text, /__fake\/|mute-events/, `${file} names a fake Palazzo control`);
   }
 });
 
