@@ -301,6 +301,7 @@ const FILLER_START_BINDING_RESULTS: readonly FillerStartBindingResult[] = [
   'not-configured',
   'legacy-executor',
 ];
+const FILLER_RELEASE_RESULTS = ['released', 'failed'] as const;
 const PLAYING_TRACK_COVER_LOOKUP_RESULTS: readonly PlayingTrackCoverLookupResult[] =
   ['included', 'absent', 'rejected', 'error'];
 const RECORDING_ACTIONS = new Set(['start', 'stop']);
@@ -383,6 +384,7 @@ export class ManagedMetricsService {
   private readonly playingTrackCoverLookups: Counter<string>;
   private readonly fillerPreparations: Counter<string>;
   private readonly fillerStartBindings: Counter<string>;
+  private readonly fillerReleases: Counter<'leg' | 'result'>;
   private readonly alanaLiveProfileUnknownKeys: Counter<string>;
   private readonly programTemplateUnknowns: Counter<string>;
   private readonly recordingCommands: Counter<string>;
@@ -633,6 +635,15 @@ export class ManagedMetricsService {
       labelNames: ['leg', 'result'],
       registers: [this.registry],
     });
+    this.fillerReleases = new Counter({
+      name: 'alcantara_filler_releases_total',
+      help: 'Active filler versions released after a Stop, by leg and result. A failed release leaves the version active and never fails the Stop.',
+      labelNames: ['leg', 'result'],
+      registers: [this.registry],
+    });
+    for (const leg of FILLER_LEGS)
+      for (const result of FILLER_RELEASE_RESULTS)
+        this.fillerReleases.inc({ leg, result }, 0);
     this.fillerStartBindings = new Counter({
       name: 'alcantara_filler_start_bindings_total',
       help: 'Television Start filler bindings by bounded result.',
@@ -965,6 +976,13 @@ export class ManagedMetricsService {
     result: FillerPreparationResult,
   ): void {
     this.fillerPreparations.inc({ leg, result });
+  }
+
+  recordFillerRelease(
+    leg: (typeof FILLER_LEGS)[number],
+    result: (typeof FILLER_RELEASE_RESULTS)[number],
+  ): void {
+    this.fillerReleases.inc({ leg, result });
   }
 
   recordFillerStartBinding(result: FillerStartBindingResult): void {

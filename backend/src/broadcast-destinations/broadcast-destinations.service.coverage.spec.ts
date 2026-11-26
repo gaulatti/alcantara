@@ -154,7 +154,10 @@ function harness(programType = 'both') {
     alana as unknown as AlanaClient,
     metrics as unknown as ManagedMetricsService,
     // No program filler configured: Start is unchanged (gaulatti/alcantara#126).
-    { televisionStartBinding: jest.fn().mockResolvedValue(null) } as never,
+    {
+      televisionStartBinding: jest.fn().mockResolvedValue(null),
+      releaseTelevision: jest.fn(),
+    } as never,
     { cancelDeletion: jest.fn(), scheduleDeletion: jest.fn() } as never,
   );
   return {

@@ -32,6 +32,15 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
         findUnique: jest.fn().mockResolvedValue(null),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      fillerVersion: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      fillerLeg: {
+        count: jest.fn().mockResolvedValue(0),
+        findFirst: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
       $transaction: jest.fn(async (operations: Promise<unknown>[]) =>
         Promise.all(operations),
       ),
@@ -66,6 +75,7 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       updateMixer: jest.fn().mockResolvedValue(undefined),
       getRadioSettings: jest.fn().mockResolvedValue({ enabled: true }),
       playSong: jest.fn().mockResolvedValue({ ok: true }),
+      isRecoveryRunning: jest.fn().mockResolvedValue(false),
     };
     const engine = {
       enqueueSong: jest.fn().mockResolvedValue([{ id: 'q1' }]),

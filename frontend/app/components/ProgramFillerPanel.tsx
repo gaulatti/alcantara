@@ -111,6 +111,11 @@ export function FillerLegSummary({
   const versions = state.legs[leg]!;
   return (
     <div className="grid gap-3 md:grid-cols-2">
+      {versions.needsPreparing ? (
+        <p role="status" className="text-sm text-amber-300 md:col-span-2">
+          Filler needs preparing again
+        </p>
+      ) : null}
       <VersionSummary
         label="Active this session"
         version={versions.active}

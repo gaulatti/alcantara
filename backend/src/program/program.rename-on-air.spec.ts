@@ -30,6 +30,15 @@ describe('renaming a program that is on air', () => {
           Promise.resolve({ isRunning: where.id === 4 }),
         ),
       },
+      fillerVersion: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      fillerLeg: {
+        count: jest.fn().mockResolvedValue(0),
+        findFirst: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
       $transaction: jest.fn((operations: Promise<unknown>[]) =>
         Promise.all(operations),
       ),
@@ -42,7 +51,7 @@ describe('renaming a program that is on air', () => {
     };
     const service = new ProgramService(
       prisma as never,
-      {} as never,
+      { isRecoveryRunning: jest.fn().mockResolvedValue(false) } as never,
       engine as never,
       undefined,
       undefined,
