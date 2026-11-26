@@ -1,29 +1,25 @@
-import { Client } from 'pg';
 import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 import { PrismaService } from '../prisma.service';
 import { MediaGroupsService } from './media-groups.service';
+
+// CI's coverage step runs without DATABASE_URL and starts this database; a local run sets DATABASE_URL to its own
+// disposable one. Without a database the suite fails rather than passing unrun.
+const CI_DATABASE_URL =
+  'postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci?schema=public';
 
 // The gate for switching media groups to the scoped client (gaulatti/alcantara#122):
 // a team's scoped read returns the rows the unscoped read holds for that team.
 describe('media groups scoped to a team, against Postgres', () => {
   const team = 860_000 + (process.pid % 10_000);
   const other = team + 10_000;
-  const url = process.env.DATABASE_URL;
   const page = { page: 1, limit: 0 };
-  let prisma: PrismaService | null = null;
+  let prisma: PrismaService;
 
   const service = () =>
     new MediaGroupsService(prisma as PrismaService, noRecorder());
 
   beforeAll(async () => {
-    if (!url) return;
-    const probe = new Client({ connectionString: url });
-    try {
-      await probe.connect();
-      await probe.end();
-    } catch {
-      return;
-    }
+    process.env.DATABASE_URL ||= CI_DATABASE_URL;
     prisma = new PrismaService();
     await prisma.$connect();
   });
@@ -39,7 +35,6 @@ describe('media groups scoped to a team, against Postgres', () => {
   });
 
   it("creates, reads and changes only the team's groups and their labels", async () => {
-    if (!prisma) return;
     const mine = await service().create({ name: `mine ${team}` }, team);
     const theirs = await service().create({ name: `theirs ${team}` }, other);
     await expect(

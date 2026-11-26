@@ -148,13 +148,16 @@ describe('read capabilities return what the controller returns', () => {
       page: 2,
       limit: 5,
     });
-    expect(services.groups.findAll).toHaveBeenLastCalledWith({
-      search: 'head',
-      sortBy: 'name',
-      sortOrder: 'asc',
-      page: 2,
-      limit: 5,
-    });
+    expect(services.groups.findAll).toHaveBeenLastCalledWith(
+      {
+        search: 'head',
+        sortBy: 'name',
+        sortOrder: 'asc',
+        page: 2,
+        limit: 5,
+      },
+      7,
+    );
   });
 });
 

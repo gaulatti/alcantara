@@ -1,8 +1,12 @@
-import { Client } from 'pg';
 import { ProgramService } from '../program/program.service';
 import { PrismaService } from '../prisma.service';
 import { forTeam } from '../tenancy/scoped-prisma';
 import { RadioService } from './radio.service';
+
+// CI's coverage step runs without DATABASE_URL and starts this database; a local run sets DATABASE_URL to its own
+// disposable one. Without a database the suite fails rather than passing unrun.
+const CI_DATABASE_URL =
+  'postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci?schema=public';
 
 // The radio's gate for scoping the song libraries (gaulatti/alcantara#122): with
 // every library row on the station's team, the reads the rotation and the
@@ -11,20 +15,12 @@ import { RadioService } from './radio.service';
 // address; these are the lookups behind them.
 describe("the radio's song reads through the team-scoped client, against Postgres", () => {
   const team = 880_000 + (process.pid % 10_000);
-  const url = process.env.DATABASE_URL;
   const address = (name: string) => `https://media.test/${team}/${name}.mp3`;
-  let prisma: PrismaService | null = null;
+  let prisma: PrismaService;
   let ids: number[] = [];
 
   beforeAll(async () => {
-    if (!url) return;
-    const probe = new Client({ connectionString: url });
-    try {
-      await probe.connect();
-      await probe.end();
-    } catch {
-      return;
-    }
+    process.env.DATABASE_URL ||= CI_DATABASE_URL;
     prisma = new PrismaService();
     await prisma.$connect();
     for (const [name, enabled] of [
@@ -64,7 +60,6 @@ describe("the radio's song reads through the team-scoped client, against Postgre
   }
 
   it('selects the same rotation songs', async () => {
-    if (!prisma) return;
     // The enabled songs among the ids a rotation holds, as similarity loads them.
     await expect(
       both((db) =>
@@ -77,7 +72,6 @@ describe("the radio's song reads through the team-scoped client, against Postgre
   });
 
   it('resolves what Palazzo plays to the same song', async () => {
-    if (!prisma) return;
     type Resolve = {
       findSongForAnalysis(
         audioUrl: string,

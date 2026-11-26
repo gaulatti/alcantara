@@ -29,7 +29,11 @@ function build() {
     ).specs(),
     ...new ScenesMcpTools(f.scenes as never, f.programs as never).specs(),
     ...new LayoutsMcpTools(f.layouts as never, f.programs as never).specs(),
-    ...new MediaGroupsMcpTools(f.groups as never, f.programs as never, { teamId: 7 } as never).specs(),
+    ...new MediaGroupsMcpTools(
+      f.groups as never,
+      f.programs as never,
+      { teamId: 7 } as never,
+    ).specs(),
   ];
   return { f, spec: (name: string) => specNamed(specs, name) };
 }
@@ -362,7 +366,7 @@ describe('media_group_remove', () => {
     );
     expect(plan.summary).toMatch(/The media stay/);
     await spec('media_group_remove').run(args, ctx);
-    expect(f.groups.remove).toHaveBeenCalledWith(5);
+    expect(f.groups.remove).toHaveBeenCalledWith(5, 7);
   });
 
   it.each([
