@@ -225,3 +225,42 @@ it("keeps the issues visible when the save refuses the use they were accepted fo
   fireEvent.click(await screen.findByRole("button", { name: "Add anyway" }));
   expect(await screen.findByText("Sequence is locked")).toBeInTheDocument();
 });
+
+it("moves a use up past the cue before it", async () => {
+  await open([plain("a"), ...use("use_gggggggggggg")]);
+  fireEvent.click(within(useRow("Harbor Light")).getByRole("button", { name: "Move the use up" }));
+  await waitFor(() => expect(ids(saved())).toEqual([...ids(use("use_gggggggggggg")), "a"]));
+});
+
+it("closes the label modal with Escape and with Cancel", async () => {
+  await open([...use("use_hhhhhhhhhhhh")]);
+  fireEvent.click(within(useRow("Harbor Light")).getByRole("button", { name: "Change the label" }));
+  await screen.findByRole("combobox", { name: "Media label" });
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("combobox", { name: "Media label" })).toBeNull());
+  fireEvent.click(within(useRow("Harbor Light")).getByRole("button", { name: "Change the label" }));
+  await screen.findByRole("combobox", { name: "Media label" });
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("combobox", { name: "Media label" })).toBeNull());
+});
+
+it("closes the create-rundown dialog with Escape", async () => {
+  await open([]);
+  fireEvent.click(screen.getByRole("button", { name: /New rundown/ }));
+  const name = await screen.findByPlaceholderText("e.g. Main show rundown");
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+  await waitFor(() => expect(name).not.toBeInTheDocument());
+});
+
+it("closes the issues dialog with Escape without adding the use", async () => {
+  vi.mocked(expandRecipe).mockResolvedValue({
+    items: use("use_iiiiiiiiiiii"),
+    issues: [{ code: "artist_label_missing", message: "No media label for The Lighthouse Keepers" }],
+  });
+  await open([]);
+  await addWithRecipe("Harbor Light");
+  const issues = await screen.findByRole("list", { name: "Recipe issues" });
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+  await waitFor(() => expect(issues).not.toBeInTheDocument());
+  expect(updateFlightSequence).not.toHaveBeenCalled();
+});

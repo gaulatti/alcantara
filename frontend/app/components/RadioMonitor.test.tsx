@@ -168,3 +168,16 @@ it("has no shared monitor outside the layout, and a fixture URL keeps its own au
   await act(async () => {});
   expect(transport).not.toHaveBeenCalled();
 });
+
+it("renews the monitor grant five seconds before it expires", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    render(<Console />);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(transport).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(600_000 - 5_000);
+    expect(transport).toHaveBeenCalledTimes(2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
