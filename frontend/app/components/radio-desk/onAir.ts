@@ -163,6 +163,14 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
           ? { id: "monitor", tone: "idle", label: "Monitor unavailable" }
           : { id: "monitor", tone: "idle", label: "Monitor off" },
   ];
+  // While Dead air shows, the good chips stay truthful but neutral, so the red Dead air chip is the
+  // only coloured "all is well / not well" signal on the strip (gaulatti/alcantara#694 closing walk).
+  // Warnings keep their colour: they are a second problem, not a good state.
+  const shownChips = input.outputSilent
+    ? chips.map((chip) =>
+        chip.tone === "ok" ? { ...chip, tone: "idle" as const } : chip,
+      )
+    : chips;
 
   return {
     state: !live
@@ -203,6 +211,6 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
         }
       : null,
     modeLabel: MODE_LABELS[input.mode],
-    chips,
+    chips: shownChips,
   };
 }

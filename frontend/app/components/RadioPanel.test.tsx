@@ -1858,6 +1858,16 @@ describe("dead air", () => {
     ).toBeVisible();
   });
 
+  it("leaves Dead air the only coloured chip on the strip: the good chips render neutral", () => {
+    mount(deadAir({ preparedVersion: null, automation: null, connection: "connected" }));
+    const strip = screen.getByRole("region", { name: "On air" });
+    const tone = (label: string) =>
+      within(strip).getByText(label).closest("[data-tone]")?.getAttribute("data-tone");
+    expect(tone("Dead air")).toBe("bad");
+    expect(tone("Stream verified")).toBe("idle");
+    expect(tone("Engine ready")).toBe("idle");
+  });
+
   it("says to take the silent song off air and prepare a playlist when none is prepared", () => {
     mount(deadAir({ preparedVersion: null, automation: null, connection: "connected" }));
     const alarm = screen.getByRole("alert", { name: "Dead air" });
