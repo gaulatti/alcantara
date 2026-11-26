@@ -19,6 +19,22 @@ const { authFetch, uploadFileToMediaBucket } = vi.hoisted(() => ({
 }));
 
 vi.mock("../services/api", () => ({ authFetch }));
+// Bleecker's Select is Radix-based and jsdom cannot open it; a native select stands in for it.
+vi.mock("@gaulatti/bleecker", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@gaulatti/bleecker")>();
+  return {
+    ...actual,
+    Select: ({ options, onChange, value, ...props }: { options: { value: string; label: string }[]; onChange: (v: string) => void; value: string }) => (
+      <select {...props} value={value} onChange={(event) => onChange(event.target.value)}>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    ),
+  };
+});
 vi.mock("../services/uploads", () => ({
   uploadFileToMediaBucket,
 }));
