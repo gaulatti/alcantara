@@ -385,7 +385,7 @@ Palazzo. Queue changes, cart triggers/search, mute/fader controls, and Stop are
 interactive in this fixture. `state=radio-empty`, `state=radio-offline`, and
 `state=radio-stale` cover the corresponding explicit states;
 `state=radio-dead-air` shows dead air with a prepared, unbound recovery playlist (while Dead air shows, the strip's good chips such as Stream verified and Engine ready stay truthful but neutral, so the red Dead air chip is its only coloured signal; warning chips keep their colour);
-`state=radio-not-configured` shows the engine badge with its reason.
+`state=radio-not-configured` shows the engine badge with its reason. `state=radio-playout-down` shows Palazzo answering with its playout (Liquidsoap) down: the strip's engine chip reads **Playout down** in the bad tone, and Output confidence says to restart playout on the Palazzo host, in place of the dead-air advice, which cannot help then. While playout is down the desk refuses what would be accepted and not air: **Take** and the search's **Take now** say "Playout down: nothing can air. Nothing was taken.", and **Start with fallback** is disabled with that reason; **Stop** stays available.
 `state=radio-external` keeps the reported playing track visible when it is absent
 from the playlist. These fixtures are
 visual verification only; normal authenticated Compose console checks exercise
