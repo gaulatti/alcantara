@@ -1041,6 +1041,37 @@ it("starts and stops the recovery session through Palazzo", async () => {
   );
 });
 
+// gaulatti/alcantara#693 review: one stop while one is on its way. A second hold sends nothing.
+it("sends one recovery stop while one is on its way, however often Stop session is held", async () => {
+  const p = props();
+  p.fixtureData!.recovery = {
+    preparedVersion: "v4",
+    automation: { actualState: "running", filler: { activeVersion: "v4", ready: true } },
+    connection: "connected",
+  } as never;
+  let answerStop: (response: Response) => void = () => {};
+  const transport = radioApi({
+    "/recovery/stop": (() =>
+      new Promise<Response>((resolve) => {
+        answerStop = resolve;
+      })) as never,
+  });
+  mount(p);
+  const stop = screen.getByRole("button", { name: "Stop session" });
+  await hold(stop);
+  await hold(stop);
+  const stops = () =>
+    transport.mock.calls.filter(([url]) =>
+      String(url).includes("/radio/radio-demo/recovery/stop"),
+    );
+  expect(stops()).toHaveLength(1);
+  await act(async () => {
+    answerStop(json({ preparedVersion: "v4", automation: null, connection: "connected" }));
+  });
+  expect(await screen.findByText("Prepared for next session")).toBeInTheDocument();
+  expect(stops()).toHaveLength(1);
+});
+
 it("reports recovery commands Palazzo refused or could not receive", async () => {
   const p = props();
   p.fixtureData!.recovery = {
