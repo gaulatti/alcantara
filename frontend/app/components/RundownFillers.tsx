@@ -53,17 +53,15 @@ export function RundownFillers({
     !!rundown.publishedAt ||
     !!rundown.lastStartedAt ||
     rundown.isRunning;
-  async function fill() {
-    /* v8 ignore next -- the fill button sits in a fieldset disabled while locked, and locked is true whenever there is no rundown, so fill never runs without one; defensive. */
-    if (!rundown) return;
+  async function fill(target: FlightSequence) {
     setBusy(true);
     setError(null);
     setWarnings([]);
     try {
       const preview = await fillRundown(
         programId,
-        rundown.id,
-        rundown.revision,
+        target.id,
+        target.revision,
         items,
         { labelId, artistSeparation: separation },
       );
@@ -118,7 +116,7 @@ export function RundownFillers({
           type="button"
           className="w-full"
           disabled={!labelId || !items.length}
-          onClick={() => void fill()}
+          onClick={rundown ? () => void fill(rundown) : undefined}
         >
           {busy ? "Filling…" : "Preview fillers"}
         </Button>
