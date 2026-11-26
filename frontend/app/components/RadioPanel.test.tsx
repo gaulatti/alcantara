@@ -598,7 +598,9 @@ it("treats every unreachable or refused status endpoint as unverified", async ()
   expect(await screen.findByText("Engine unavailable")).toBeVisible();
   expect(screen.getByText("Output unverified")).toBeVisible();
   expect(screen.getByText("No level sample")).toBeVisible();
-  expect(screen.getByText("No prepared recovery playlist")).toBeInTheDocument();
+  // The recovery status never answered, so there is no last known state to show.
+  expect(screen.getByText("Recovery status unavailable")).toBeInTheDocument();
+  expect(screen.queryByText("No prepared recovery playlist")).toBeNull();
   view.unmount();
 
   radioApi({
@@ -1058,6 +1060,49 @@ it("reloads the log from the API after a command when it is live", async () => {
       loads,
     ),
   );
+});
+
+// Dot's recovery walk: a failed recovery status read used to replace the known state with "No prepared recovery
+// playlist", although a playlist was prepared and airing. The last known state stays, and the panel says it is
+// unavailable until a read answers again.
+it("keeps the last known recovery state and says it is unavailable when the status read fails", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    let recoveryUp = true;
+    radioApi({
+      "/status": () => json({ running: true, uptime: 60_000 }),
+      "/palazzo-status": () => json(props().fixtureData!.palazzo),
+      "/output-confidence": () => json(props().fixtureData!.output),
+      "/recovery": () =>
+        recoveryUp
+          ? json({ preparedVersion: "v7", automation: null, connection: "connected" })
+          : new Error("offline"),
+    });
+    vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+    mount(liveProps());
+    fireEvent.click(screen.getByText("Recovery & session"));
+    expect(await screen.findByText("Prepared for next session")).toBeVisible();
+
+    recoveryUp = false;
+    await act(async () => {
+      vi.advanceTimersByTime(8_000);
+    });
+    expect(await screen.findByText("Recovery status unavailable")).toBeVisible();
+    expect(screen.getByText("Last known: prepared for next session.")).toBeVisible();
+    expect(screen.queryByText("No prepared recovery playlist")).toBeNull();
+
+    // A read that answers again replaces the last known state and clears the notice.
+    recoveryUp = true;
+    await act(async () => {
+      vi.advanceTimersByTime(8_000);
+    });
+    await waitFor(() =>
+      expect(screen.queryByText("Recovery status unavailable")).toBeNull(),
+    );
+    expect(screen.getByText("Prepared for next session")).toBeVisible();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 // gaulatti/alcantara#707: a command failure shows as the alert and enters the session log; when the engine

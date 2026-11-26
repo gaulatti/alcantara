@@ -181,6 +181,17 @@ function notAiredReason(reason: string | null): string {
 /** Why the desk refuses what would be accepted and not air while Palazzo's playout is down. */
 const PLAYOUT_DOWN_REASON = "Playout down: nothing can air";
 
+/** The Recovery & session headline for a recovery status the console has read. */
+function recoveryHeadline(recovery: RecoveryStatus | null): string {
+  return recovery?.automation?.filler.ready
+    ? "Recovery playlist active"
+    : recovery?.connection === "unavailable"
+      ? "Engine unavailable"
+      : recovery?.preparedVersion
+        ? "Prepared for next session"
+        : "No prepared recovery playlist";
+}
+
 export const RadioPanel: React.FC<RadioPanelProps> = ({
   fixtureData,
   programId,
@@ -275,6 +286,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   );
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  // A failed recovery status read keeps the last known state and says it is unavailable (Dot's recovery walk).
+  const [recoveryUnavailable, setRecoveryUnavailable] = useState(false);
 
   const fetchStreamStatus = useCallback(async () => {
     try {
@@ -333,9 +346,12 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
       const response = await fetch(
         apiUrl(`/radio/${encodeURIComponent(programId)}/recovery`),
       );
-      setRecovery(response.ok ? await response.json() : null);
+      if (!response.ok) throw new Error(`recovery status ${response.status}`);
+      setRecovery(await response.json());
+      setRecoveryUnavailable(false);
     } catch {
-      setRecovery(null);
+      // The last known status stays on screen; the panel says it is unavailable.
+      setRecoveryUnavailable(true);
     }
   }, [programId]);
 
@@ -375,6 +391,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     setOutput(null);
     setLogs([]);
     setRecovery(null);
+    setRecoveryUnavailable(false);
     fetchStreamStatus();
     fetchPalazzoStatus();
     fetchAirPlan();
@@ -1157,14 +1174,13 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
               <summary>Recovery & session</summary>
               <div className="console-recovery-content">
                 <strong>
-                  {recovery?.automation?.filler.ready
-                    ? "Recovery playlist active"
-                    : recovery?.connection === "unavailable"
-                      ? "Engine unavailable"
-                      : recovery?.preparedVersion
-                        ? "Prepared for next session"
-                        : "No prepared recovery playlist"}
+                  {recoveryUnavailable
+                    ? "Recovery status unavailable"
+                    : recoveryHeadline(recovery)}
                 </strong>
+                {recoveryUnavailable && recovery ? (
+                  <p>Last known: {recoveryHeadline(recovery).toLowerCase()}.</p>
+                ) : null}
                 <p>
                   Starting binds the prepared playlist. Stopping clears program
                   audio and the binding.
