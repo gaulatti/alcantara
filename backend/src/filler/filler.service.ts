@@ -107,6 +107,10 @@ export class FillerService {
             {
               pending: publicVersion(versions.get(row?.pendingVersionId ?? '')),
               active: publicVersion(versions.get(row?.activeVersionId ?? '')),
+              // A leg that was configured and points at nothing lost its pointers to a rename (#122).
+              ...(row && !row.pendingVersionId && !row.activeVersionId
+                ? { needsPreparing: true }
+                : {}),
             },
           ];
         }),

@@ -200,6 +200,7 @@ export function fakeServices() {
       createProgram: answers(
         stateOf({ programId: 'news', version: undefined }),
       ),
+      hasPreparedFiller: answers(false),
       renameProgram: answers(
         stateOf({ programId: 'news2', version: undefined }),
       ),

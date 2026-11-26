@@ -32,6 +32,11 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
         findUnique: jest.fn().mockResolvedValue(null),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      fillerVersion: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      fillerLeg: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
       $transaction: jest.fn(async (operations: Promise<unknown>[]) =>
         Promise.all(operations),
       ),

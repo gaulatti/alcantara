@@ -8,6 +8,7 @@ import { apiUrl, getApiBaseUrl } from '../utils/apiBaseUrl';
 import { useGlobalProgramId } from '../utils/globalProgram';
 import { hasProgramCapability, resolveProgramOutputUrl, type ProgramTemplateManifest } from '../utils/programTemplate';
 import { AppPage } from '../components/AppPage';
+import { RenameFillerNotice } from '../components/RenameFillerNotice';
 
 interface SceneSummary {
   id: number;
@@ -627,6 +628,7 @@ export default function ProgramsAdmin() {
                 error={!!error}
                 autoFocus
               />
+              {editingProgramId ? <RenameFillerNotice programId={editingProgramId} nextProgramId={programIdInput} /> : null}
             </div>
 
             <div>

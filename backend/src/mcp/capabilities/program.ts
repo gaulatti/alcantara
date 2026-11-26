@@ -257,10 +257,15 @@ export class ProgramMcpTools {
           type: programType.optional(),
           template_url: templateUrlArg,
         },
-        load: (args) => loadProgramLive(this.programs, args.program_id),
+        load: async (args) => ({
+          ...(await loadProgramLive(this.programs, args.program_id)),
+          preparedFiller: await this.programs.hasPreparedFiller(
+            args.program_id,
+          ),
+        }),
         id: (args) => args.program_id,
         plan: (args, live) => ({
-          summary: `Renames program ${args.program_id} to ${args.next_program_id}; the type and template change only when given. Players that use the old id lose it. Live now: ${live.liveText}.`,
+          summary: `Renames program ${args.program_id} to ${args.next_program_id}; the type and template change only when given. Players that use the old id lose it.${live.preparedFiller ? ' Its filler will need preparing again.' : ''} Live now: ${live.liveText}.`,
           affects: [
             {
               kind: 'program',

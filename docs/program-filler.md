@@ -45,6 +45,13 @@ A filler uses only the media assets of the program's team (gaulatti/alcantara#12
 if it did not qualify, and a program with no team is refused (counted as `no-team`). Without a station team (local and
 test) every asset is usable.
 
+## Renaming a program
+
+A rename moves the program's versions and legs to the new id and clears each leg's pending and active pointers, because
+Alana and Palazzo hold a prepared version under the old id (gaulatti/alcantara#122). Start then behaves as with no
+filler, and the panel says **Filler needs preparing again** (`needsPreparing` in the state). The rename dialog and the
+MCP dry run say so beforehand. Renaming onto an id that still holds a deleted program's filler is refused with 409.
+
 ## Start binding
 
 **Television.** `POST /broadcast/programs/:id/start` (`broadcast.operate`) applies binding only when two things hold: the program has a ready television version (pending, else active), and Alana's lifecycle reports `pendingFiller` or `activeFiller` with a `profileChecksum`.

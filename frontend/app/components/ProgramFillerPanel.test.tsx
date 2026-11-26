@@ -200,3 +200,12 @@ it('shows the shared failure message for an error that is not an HTTP response',
   expect(await screen.findByRole('alert')).toBeInTheDocument();
   expect(screen.getByRole('alert').textContent).not.toContain('connection reset');
 });
+
+it('says a leg needs preparing again after a rename left it with nothing prepared', async () => {
+  state = {
+    programId: 'both-1',
+    legs: { radio: { pending: null, active: null, needsPreparing: true } },
+  } as typeof state;
+  render(<ProgramFillerPanel programId="both-1" canManage={false} />);
+  expect(await screen.findByText('Filler needs preparing again')).toBeInTheDocument();
+});

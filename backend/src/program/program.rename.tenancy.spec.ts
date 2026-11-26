@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { FillerBindingService } from '../filler/filler-binding.service';
+import { FillerService } from '../filler/filler.service';
 import { noRecorder } from '../operator-change/operator-change-recorder.testing';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
+import { RadioService } from '../radio/radio.service';
 import { PrismaService } from '../prisma.service';
 import { ProgramService } from './program.service';
 
@@ -35,6 +39,8 @@ describe('renaming a program keeps its Program row, against Postgres', () => {
 
   afterAll(async () => {
     const programId = { startsWith: prefix };
+    await prisma?.fillerLeg.deleteMany({ where: { programId } });
+    await prisma?.fillerVersion.deleteMany({ where: { programId } });
     await prisma?.programState.deleteMany({ where: { programId } });
     await prisma?.program.deleteMany({ where: { programId } });
     await prisma?.$disconnect();
@@ -92,6 +98,120 @@ describe('renaming a program keeps its Program row, against Postgres', () => {
         where: { programId: id('legacy-renamed') },
       }),
     ).resolves.toBe(1);
+  });
+
+  /** A program with a prepared filler on both legs, and radio settings with no recovery playlist of their own. */
+  const configured = async (name: string) => {
+    await service.createProgram(id(name), 'both', null, team);
+    const state = await prisma.programState.findUniqueOrThrow({
+      where: { programId: id(name) },
+    });
+    await prisma.radioSettings.create({ data: { programStateId: state.id } });
+    for (const leg of ['television', 'radio']) {
+      const version = await prisma.fillerVersion.create({
+        data: {
+          id: `${id(name)}-${leg}`,
+          programId: id(name),
+          leg,
+          checksum: 'c',
+          config: { sources: [], mode: 'loop', profileChecksum: 'p' },
+          status: 'ready',
+          createdBy: 'tester',
+        },
+      });
+      await prisma.fillerLeg.create({
+        data: { programId: id(name), leg, activeVersionId: version.id },
+      });
+    }
+  };
+  const binding = () =>
+    new FillerBindingService(prisma, new ManagedMetricsService());
+  const alana = { activeFiller: { profileChecksum: 'p' } } as never;
+  /** What a radio Start with fallback does, down to the version it sends Palazzo. */
+  const radioStart = async (name: string) => {
+    const palazzo = {
+      getAutomation: jest.fn().mockResolvedValue({ lastSequence: 0 }),
+      commandAutomation: jest.fn(),
+    };
+    const radio = new RadioService(
+      prisma,
+      palazzo as never,
+      { get: () => 'http://palazzo:3100' } as never,
+      {} as never,
+      { teamId: team } as never,
+    );
+    return radio
+      .setRecoveryAutomation(id(name), 'start')
+      .then(() => 'started')
+      .catch((error: Error) => error.message);
+  };
+
+  it('moves the filler with the program, and Start then behaves as with no filler', async () => {
+    await configured('filled');
+    await expect(service.hasPreparedFiller(id('filled'))).resolves.toBe(true);
+    // Before the rename the prepared version binds, and Alana, not holding it, refuses.
+    await expect(
+      binding().televisionStartBinding(id('filled'), alana),
+    ).rejects.toThrow('Alana is not prepared');
+
+    await service.renameProgram(id('filled'), id('moved'));
+
+    await expect(service.hasPreparedFiller(id('moved'))).resolves.toBe(false);
+    await expect(
+      prisma.fillerLeg.findMany({
+        where: { programId: id('moved') },
+        select: { leg: true, pendingVersionId: true, activeVersionId: true },
+        orderBy: { leg: 'asc' },
+      }),
+    ).resolves.toEqual([
+      { leg: 'radio', pendingVersionId: null, activeVersionId: null },
+      { leg: 'television', pendingVersionId: null, activeVersionId: null },
+    ]);
+    for (const programId of [id('filled'), id('moved')]) {
+      await expect(
+        prisma.fillerVersion.count({ where: { programId } }),
+      ).resolves.toBe(programId === id('moved') ? 2 : 0);
+    }
+
+    await service.createProgram(id('never'), 'both', null, team);
+    const state = await prisma.programState.findUniqueOrThrow({
+      where: { programId: id('never') },
+    });
+    await prisma.radioSettings.create({ data: { programStateId: state.id } });
+    // Television: no version to bind, exactly as a program that never had a filler.
+    for (const name of ['moved', 'never']) {
+      await expect(
+        binding().televisionStartBinding(id(name), alana),
+      ).resolves.toBeNull();
+    }
+    // Radio: the same answer as the program that never had one, then the same start with the settings' playlist.
+    const never = await radioStart('never');
+    await expect(radioStart('moved')).resolves.toBe(never);
+    expect(never).toBe('prepare a recovery playlist first');
+
+    const view = await new FillerService(
+      prisma,
+      {} as never,
+      {} as never,
+      {} as never,
+      new ManagedMetricsService(),
+      { teamId: team } as never,
+    ).getState(id('moved'));
+    expect(view.legs.radio).toEqual({
+      pending: null,
+      active: null,
+      needsPreparing: true,
+    });
+  });
+
+  it("refuses an id a deleted program's filler still holds", async () => {
+    await prisma.fillerLeg.create({
+      data: { programId: id('held'), leg: 'radio' },
+    });
+    await service.createProgram(id('e'), 'radio', null, team);
+    await expect(
+      service.renameProgram(id('e'), id('held')),
+    ).rejects.toMatchObject({ status: 409 });
   });
 
   it('leaves the row alone when only the type changes', async () => {
