@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Button, Card, Input, SectionHeader } from '@gaulatti/bleecker';
 import {
   BroadcastLayout,
@@ -41,16 +41,18 @@ export default function Preview() {
   const [activeDemo, setActiveDemo] = useState<string>('ticker');
   const [chyronText, setChyronText] = useState('PROGRAM TITLE MESSAGE');
   const [showChyron, setShowChyron] = useState(false);
-  const previewRef = useRef<HTMLElement>(null);
   const [previewWidth, setPreviewWidth] = useState(1920);
-  useEffect(() => {
-    // The preview stage is always mounted before this effect runs, so the ref is set.
-    const element = previewRef.current as HTMLElement;
+  const previewObserver = useRef<ResizeObserver | null>(null);
+  // React hands the stage element over when it mounts, and null when it unmounts.
+  const previewRef = useCallback((element: HTMLElement | null) => {
+    previewObserver.current?.disconnect();
+    previewObserver.current = null;
+    if (!element) return;
     const observer = new ResizeObserver(([entry]) => {
       if (entry) setPreviewWidth(entry.contentRect.width);
     });
     observer.observe(element);
-    return () => observer.disconnect();
+    previewObserver.current = observer;
   }, []);
 
   const renderDemo = () => {
