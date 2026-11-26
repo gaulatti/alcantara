@@ -53,7 +53,7 @@ filler, and the panel says **Filler needs preparing again** (`needsPreparing` in
 MCP dry run say so beforehand. Renaming onto an id that still holds a deleted program's filler, a leg or a version, is refused with 409.
 
 A rename is refused with 409 "Its filler is on air. Stop it before renaming." while either leg has an active version,
-or while Palazzo reports recovery automation running for the program (Palazzo that cannot be asked reports nothing
+or while Palazzo has a recovery session running for the program (automation requested running with a filler bound) (Palazzo that cannot be asked reports nothing
 running). A Stop, radio recovery or television, returns the leg's active version to pending, unless a newer one is
 already pending, so the next Start binds to the same filler. A version made active before this behavior is released by
 the program's next Stop.

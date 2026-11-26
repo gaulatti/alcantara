@@ -30,7 +30,11 @@ describe('renaming a program keeps its Program row, against Postgres', () => {
     service = new ProgramService(
       prisma,
       recovery as never,
-      {} as never,
+      // Nothing is on air, and there is no radio engine to move.
+      {
+        getOnAirView: () => ({ playbackRequestId: null }),
+        renameProgram: () => Promise.resolve(),
+      } as never,
       undefined,
       undefined,
       noRecorder(),

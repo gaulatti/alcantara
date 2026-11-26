@@ -86,6 +86,8 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       handleManualSong: jest.fn(),
       handleSequenceUpdated: jest.fn(),
       handleQueueUpdated: jest.fn(),
+      getOnAirView: jest.fn(() => ({ playbackRequestId: null })),
+      renameProgram: jest.fn().mockResolvedValue(undefined),
     };
     const recorder = noRecorder();
     const service = new ProgramService(
@@ -319,7 +321,7 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       );
       const result = await service.renameProgram('a', 'c');
       expect(prisma.programState.update).toHaveBeenCalledWith({
-        where: { id: 9 },
+        where: expect.objectContaining({ id: 9, activeSceneId: null }),
         data: { programId: 'c' },
       });
       expect(result).toMatchObject({ programId: 'c' });

@@ -180,15 +180,26 @@ describe('recovery playlist with a program radio filler', () => {
   it('reports recovery running only when Palazzo says so', async () => {
     const h = build(null);
     await expect(h.service.isRecoveryRunning('radio-1')).resolves.toBe(false);
-    h.palazzo.getAutomation.mockResolvedValueOnce({ actualState: 'running' });
+    // Palazzo's own words for a running session: requested running, actually ready or degraded, a filler bound.
+    const answers = (requestedState: string, ready: boolean) =>
+      h.palazzo.getAutomation.mockResolvedValueOnce({
+        requestedState,
+        actualState: 'degraded',
+        filler: { ready },
+      });
+    answers('running', true);
     await expect(h.service.isRecoveryRunning('radio-1')).resolves.toBe(true);
+    answers('running', false);
+    await expect(h.service.isRecoveryRunning('radio-1')).resolves.toBe(false);
+    answers('stopped', true);
+    await expect(h.service.isRecoveryRunning('radio-1')).resolves.toBe(false);
     h.palazzo.getAutomation.mockRejectedValueOnce(new Error('down'));
     await expect(h.service.isRecoveryRunning('radio-1')).resolves.toBe(false);
     for (const state of [null, { radioSettings: null }]) {
       h.prisma.programState.findUnique.mockResolvedValueOnce(state);
       await expect(h.service.isRecoveryRunning('radio-1')).resolves.toBe(false);
     }
-    expect(h.palazzo.getAutomation).toHaveBeenCalledTimes(3);
+    expect(h.palazzo.getAutomation).toHaveBeenCalledTimes(5);
   });
 
   it('starts with the legacy prepared version exactly as before when no program filler exists', async () => {

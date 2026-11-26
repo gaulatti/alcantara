@@ -38,7 +38,10 @@ describe('program changes forget the remembered team', () => {
     const service = new ProgramService(
       prisma as never,
       { isRecoveryRunning: jest.fn().mockResolvedValue(false) } as never,
-      {} as never,
+      {
+        getOnAirView: () => ({ playbackRequestId: null }),
+        renameProgram: jest.fn(),
+      } as never,
       undefined,
       undefined,
       noRecorder(),

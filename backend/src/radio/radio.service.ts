@@ -358,8 +358,9 @@ export class RadioService {
   }
 
   /**
-   * Whether Palazzo reports recovery automation running for the program. A program with no engine address, or one
-   * Palazzo cannot be asked about, reports nothing running.
+   * Whether Palazzo has a recovery session running for the program: automation requested running with a filler bound,
+   * which is what the desk's Stop session ends. (Its `actualState` reads `ready` or `degraded` while running, never
+   * `running`.) A program with no engine address, or one Palazzo cannot be asked about, reports nothing running.
    */
   async isRecoveryRunning(programId: string): Promise<boolean> {
     const state = await this.prisma.programState.findUnique({
@@ -373,7 +374,7 @@ export class RadioService {
         this.palazzoUrl(settings),
         programId,
       );
-      return automation.actualState === 'running';
+      return automation.requestedState === 'running' && automation.filler.ready;
     } catch {
       return false;
     }

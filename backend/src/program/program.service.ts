@@ -172,6 +172,9 @@ export const FILLER_ON_AIR_MESSAGE =
 export const LEFTOVER_PROGRAM_ID_MESSAGE =
   "That ID belongs to a deleted show's settings. Choose another ID.";
 
+/** How the refusal to rename a program that is on air begins; the Shows dialog shows such a refusal as it is. */
+export const ON_AIR_RENAME_MESSAGE_START = 'This show is on air';
+
 @Injectable()
 export class ProgramService implements OnModuleInit, OnModuleDestroy {
   private static readonly DEFAULT_PROGRAM_ID = 'main';
@@ -1575,6 +1578,48 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       throw new ConflictException(FILLER_ON_AIR_MESSAGE);
   }
 
+  /**
+   * A rename moves the program's engines and outputs to another id, so a program that is on air is not renamed: it
+   * would go silent, or lose its output.
+   */
+  private async refuseRenameOnAir(
+    programId: string,
+    state: {
+      activeSceneId: number | null;
+      fadeToBlack: boolean;
+      activeFlightSequenceId: number | null;
+    },
+  ): Promise<void> {
+    // A selected log that is not running airs nothing.
+    const log =
+      state.activeFlightSequenceId == null
+        ? null
+        : await this.prisma.flightSequence.findUnique({
+            where: { id: state.activeFlightSequenceId },
+            select: { isRunning: true },
+          });
+    const reasons = [
+      [state.activeSceneId != null, 'a scene is on air'],
+      [!!state.fadeToBlack, 'fade to black is on'],
+      [!!log?.isRunning, 'a log is running'],
+      [
+        !!this.programSongPlaybackByProgramId.get(programId)?.isPlaying ||
+          !!this.songExecutionEngine.getOnAirView(programId).playbackRequestId,
+        'a song is playing',
+      ],
+      [
+        !!this.programSceneInstantPlaybackByProgramId.get(programId)?.isPlaying,
+        'a scene instant is playing',
+      ],
+    ]
+      .filter(([holds]) => holds)
+      .map(([, reason]) => reason as string);
+    if (reasons.length === 0) return;
+    throw new ConflictException(
+      `${ON_AIR_RENAME_MESSAGE_START} (${reasons.join('; ')}). Take it off air before renaming it.`,
+    );
+  }
+
   private requireRecorder(): OperatorChangeRecorder {
     if (!this.recorder) throw new Error('Operator change recorder is required');
     return this.recorder;
@@ -1602,12 +1647,17 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
 
     const existingSource = await this.prisma.programState.findUnique({
       where: { programId: current },
-      select: { id: true, type: true },
+      select: {
+        id: true,
+        type: true,
+        activeSceneId: true,
+        fadeToBlack: true,
+        activeFlightSequenceId: true,
+      },
     });
     if (!existingSource) {
       throw new Error('Program not found');
     }
-
     if (current !== next) {
       await this.refuseRenameWhileFillerAirs(current);
       const existingTarget = await this.prisma.programState.findUnique({
@@ -1657,37 +1707,63 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       Object.assign(updateData, this.programTemplateUpdateData(template));
     }
 
-    const updateState = this.prisma.programState.update({
-      where: { id: existingSource.id },
-      data: updateData,
-    });
+    // The on-air check is the last thing before the write, and the write itself matches the row only while it is
+    // still off air, so a scene or a log that starts in between rolls the rename back. A song playing is known only
+    // in memory: one that starts between this check and the commit is stopped by the engine's move to the new id.
+    if (current !== next) await this.refuseRenameOnAir(current, existingSource);
+    const updateState = () =>
+      this.prisma.programState.update({
+        where:
+          current === next
+            ? { id: existingSource.id }
+            : {
+                id: existingSource.id,
+                activeSceneId: null,
+                fadeToBlack: false,
+                activeFlightSequenceId: existingSource.activeFlightSequenceId,
+                flightSequences: {
+                  none: {
+                    id: existingSource.activeFlightSequenceId ?? 0,
+                    isRunning: true,
+                  },
+                },
+              },
+        data: updateData,
+      });
     if (current === next) {
-      await updateState;
+      await updateState();
     } else {
       // gaulatti/alcantara#122: the Program row carries the program's team and branding, so it is renamed with the
       // program, or the renamed program would belong to no team.
       // Its filler moves with it, marked as not prepared: Alana and Palazzo hold a prepared version under the old
       // id, so a Start binding it under the new one would be refused. With no pointer, Start behaves as it does
       // with no filler, and the desk says it needs preparing again.
-      await this.prisma.$transaction([
-        this.prisma.program.updateMany({
-          where: { programId: current },
-          data: { programId: next },
-        }),
-        this.prisma.fillerVersion.updateMany({
-          where: { programId: current },
-          data: { programId: next },
-        }),
-        this.prisma.fillerLeg.updateMany({
-          where: { programId: current },
-          data: {
-            programId: next,
-            pendingVersionId: null,
-            activeVersionId: null,
-          },
-        }),
-        updateState,
-      ]);
+      try {
+        await this.prisma.$transaction([
+          this.prisma.program.updateMany({
+            where: { programId: current },
+            data: { programId: next },
+          }),
+          this.prisma.fillerVersion.updateMany({
+            where: { programId: current },
+            data: { programId: next },
+          }),
+          this.prisma.fillerLeg.updateMany({
+            where: { programId: current },
+            data: {
+              programId: next,
+              pendingVersionId: null,
+              activeVersionId: null,
+            },
+          }),
+          updateState(),
+        ]);
+      } catch (error) {
+        if ((error as { code?: string }).code !== 'P2025') throw error;
+        throw new ConflictException(
+          `${ON_AIR_RENAME_MESSAGE_START} (it changed while it was being renamed). Take it off air before renaming it.`,
+        );
+      }
     }
     this.programTeams?.invalidate(current);
     this.programTeams?.invalidate(next);
@@ -1742,6 +1818,9 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       });
       this.programSceneInstantPlaybackByProgramId.delete(current);
     }
+    // The radio engine and Palazzo telemetry take up the new id; without this the renamed show has no engine until
+    // its radio is switched off and on.
+    await this.songExecutionEngine.renameProgram(current, next);
     return this.getProgramStateWithScenes(next);
   }
 
@@ -3522,14 +3601,16 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  stopProgramSongForTimedBlock(programId: string) {
-    return this.stopProgramSong(programId, true);
+  /** `fixed_start`: the stop cuts the song for a fixed start, and its as-run end says so (the airing walk). */
+  stopProgramSongForTimedBlock(programId: string, cut?: 'fixed_start') {
+    return this.stopProgramSong(programId, true, false, cut);
   }
 
   private async stopProgramSong(
     programId: string,
     preserveRotation: boolean,
     flightDriven = false,
+    cut?: 'fixed_start',
   ) {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const updatedAt = new Date().toISOString();
@@ -3620,6 +3701,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     if (preserveRotation)
       this.songExecutionEngine.handleStopSong(normalizedProgramId, {
         keepSequence: true,
+        ...(cut ? { endReason: cut } : {}),
       });
     else if (flightDriven)
       this.songExecutionEngine.handleStopSong(normalizedProgramId, {

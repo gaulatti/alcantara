@@ -975,6 +975,14 @@ describe('ProgramService timed-block audio cuts', () => {
       keepSequence: true,
     });
   });
+  it("names a fixed start's cut as the song's end reason (the airing walk)", async () => {
+    const { service, engine } = setup();
+    await service.stopProgramSongForTimedBlock('radio-1', 'fixed_start');
+    expect(engine.handleStopSong).toHaveBeenCalledWith('radio-1', {
+      keepSequence: true,
+      endReason: 'fixed_start',
+    });
+  });
   it('keeps the rotation mode on a stop the flight drives, cueing the engine past the song (#173)', async () => {
     const { service, prisma, engine } = setup();
     await service.takeProgramSongOffAir('radio-1', { flightDriven: true });
