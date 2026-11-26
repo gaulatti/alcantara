@@ -58,6 +58,8 @@ it("sends every rendered channel through the route's normal debounced audio-bus 
     setMixerSaveError: vi.fn(),
     shouldApplyControlUpdatePayload: () => true,
     activeProgramId: "tv-demo",
+    // The program on screen; persistMixerLevels drops an answer for any other (gaulatti/alcantara#682).
+    activeProgramIdRef: { current: "tv-demo" },
     apiUrl: (url: string) => `http://localhost:3007${url}`,
     shouldShowStreamStrip: true,
   };

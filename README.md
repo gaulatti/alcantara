@@ -301,7 +301,13 @@ configurable via `.env`:
   sequencing, and exact selection acknowledgement without AWS or public output;
   it is not a deployment or a substitute for production Alana/Croccante proof.
 
-Source directories are mounted so changes are reflected immediately.
+Source directories are mounted so changes are reflected immediately. On Colima a
+host edit reaches the container without a file event, so the backend's TypeScript
+watcher polls in Compose (`TSC_WATCHFILE` and `TSC_WATCHDIRECTORY` on the `backend`
+service, gaulatti/alcantara#600). A saved `backend/src` file restarts the backend:
+measured at 2-6 s for a file edited recently and about 15 s for one not edited in a
+while (polling slows for files that do not change). The setting is local only: `backend/test/compose-watch-polling.test.js`
+fails if the production image, the deploy script or the deploy workflow sets it.
 
 The local stack never reaches real AWS or another real outside service
 (gaulatti/alcantara#206):
