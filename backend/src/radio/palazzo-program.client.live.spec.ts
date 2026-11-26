@@ -176,6 +176,18 @@ describe('PalazzoProgramClient live input', () => {
     h.client.stop();
   });
 
+  it('keeps a fresh reading while the client has fallen back to polling', async () => {
+    const h = harness(true);
+    h.client.start();
+    await settle();
+    h.push(event(1, 'snapshot', { state: state(1, true, { onAir: true }) }));
+    await settle();
+    // Polling still hears Palazzo; set the state directly, as the client does when the stream drops to polls.
+    (h.client as unknown as { connection: string }).connection = 'polling';
+    expect(h.client.getStatus()).toMatchObject({ live: { onAir: true } });
+    h.client.stop();
+  });
+
   it('treats a reading as not fresh when the stream is no longer heard', async () => {
     const h = harness(true);
     h.client.start();
