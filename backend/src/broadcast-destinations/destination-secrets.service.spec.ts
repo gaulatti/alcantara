@@ -2,6 +2,7 @@
 import { SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
 import {
   DESTINATION_SECRET_PREFIX,
+  DESTINATION_SECRET_RECOVERY_DAYS,
   DestinationSecretsService,
   type DestinationSecretClient,
 } from './destination-secrets.service';
@@ -80,6 +81,46 @@ describe('DestinationSecretsService', () => {
     expect(
       (send.mock.calls[0] as [{ input: Record<string, unknown> }])[0].input,
     ).toEqual({ SecretId: 'arn:x', ForceDeleteWithoutRecovery: true });
+  });
+
+  it('owns only secrets under its own prefix, by name or by ARN (#384)', () => {
+    expect(
+      DestinationSecretsService.ownsSecret('alcantara/destinations/7/yt'),
+    ).toBe(true);
+    expect(
+      DestinationSecretsService.ownsSecret(
+        'arn:aws:secretsmanager:us-east-1:123456789012:secret:alcantara/destinations/7/yt-AbCdEf',
+      ),
+    ).toBe(true);
+    expect(
+      DestinationSecretsService.ownsSecret('broadcast/production/youtube'),
+    ).toBe(false);
+    expect(
+      DestinationSecretsService.ownsSecret(
+        'arn:aws:secretsmanager:us-east-1:123456789012:secret:broadcast/youtube-AbCdEf',
+      ),
+    ).toBe(false);
+    expect(
+      DestinationSecretsService.ownsSecret('alcantara/destinations-other/7'),
+    ).toBe(false);
+  });
+
+  it('schedules a deletion with the recovery window, and cancels it with a restore (#384)', async () => {
+    const service = new DestinationSecretsService();
+    const send = jest.fn().mockResolvedValue({});
+    service.client = { send } as DestinationSecretClient;
+    await service.scheduleDeletion('alcantara/destinations/7/yt');
+    await service.cancelDeletion('alcantara/destinations/7/yt');
+    expect(DESTINATION_SECRET_RECOVERY_DAYS).toBe(30);
+    expect(send.mock.calls[0][0].constructor.name).toBe('DeleteSecretCommand');
+    expect(send.mock.calls[0][0].input).toEqual({
+      SecretId: 'alcantara/destinations/7/yt',
+      RecoveryWindowInDays: 30,
+    });
+    expect(send.mock.calls[1][0].constructor.name).toBe('RestoreSecretCommand');
+    expect(send.mock.calls[1][0].input).toEqual({
+      SecretId: 'alcantara/destinations/7/yt',
+    });
   });
 
   it('builds the Secrets Manager client on first use and reuses it', async () => {

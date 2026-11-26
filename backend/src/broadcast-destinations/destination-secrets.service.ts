@@ -2,6 +2,7 @@ import {
   CreateSecretCommand,
   DeleteSecretCommand,
   PutSecretValueCommand,
+  RestoreSecretCommand,
 } from '@aws-sdk/client-secrets-manager';
 import { Injectable } from '@nestjs/common';
 import { SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
@@ -13,6 +14,9 @@ export interface DestinationSecretClient {
 
 /** The prefix every destination secret is written under (the backend role is scoped to it). */
 export const DESTINATION_SECRET_PREFIX = 'alcantara/destinations';
+
+/** Days a retired destination's secret can still be restored before Secrets Manager deletes it. */
+export const DESTINATION_SECRET_RECOVERY_DAYS = 30;
 
 /**
  * Writes a destination's stream key to Secrets Manager itself (gaulatti/alcantara#376), so the
@@ -63,6 +67,36 @@ export class DestinationSecretsService {
     );
     if (!response.VersionId) throw new Error('secret not written');
     return response.VersionId;
+  }
+
+  /**
+   * True when `secretId` (a name or an ARN) is a secret this backend writes, under
+   * `alcantara/destinations/`. A reference an operator typed by hand may point anywhere and is
+   * never scheduled for deletion.
+   */
+  static ownsSecret(secretId: string): boolean {
+    const name = secretId.includes(':secret:')
+      ? secretId.slice(secretId.indexOf(':secret:') + ':secret:'.length)
+      : secretId;
+    return name.startsWith(`${DESTINATION_SECRET_PREFIX}/`);
+  }
+
+  /**
+   * Schedules a retired destination's secret for deletion after the recovery window
+   * (gaulatti/alcantara#384), so a retire no longer leaves the key in Secrets Manager forever.
+   */
+  async scheduleDeletion(secretId: string): Promise<void> {
+    await this.secrets().send(
+      new DeleteSecretCommand({
+        SecretId: secretId,
+        RecoveryWindowInDays: DESTINATION_SECRET_RECOVERY_DAYS,
+      }),
+    );
+  }
+
+  /** Cancels a scheduled deletion, when a retired destination is restored. */
+  async cancelDeletion(secretId: string): Promise<void> {
+    await this.secrets().send(new RestoreSecretCommand({ SecretId: secretId }));
   }
 
   /**
