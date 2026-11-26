@@ -1,6 +1,24 @@
 import { ConsoleClock } from "../ConsoleSurface";
-import { formatClock, type OnAirView } from "./onAir";
+import { deriveOnAir, formatClock, type OnAirInput, type OnAirView } from "./onAir";
 import { StatePill } from "./primitives";
+import { useOutputUnverified } from "./useOutputUnverified";
+
+/**
+ * The strip as the desk mounts it: it reads the output's freshness itself, so the once-a-second tick renders the
+ * strip and not the desk around it (gaulatti/alcantara#706).
+ */
+export function LiveOnAirStrip({
+  input,
+  output,
+  programId,
+}: {
+  input: Omit<OnAirInput, "outputUnverified">;
+  output: { state: string; lastSampleAt: string | null } | null;
+  programId: string;
+}) {
+  const outputUnverified = useOutputUnverified(output);
+  return <OnAirStrip view={deriveOnAir({ ...input, outputUnverified })} programId={programId} />;
+}
 
 /**
  * The line that never scrolls away: whether the program is on air, what plays, how long is left,
