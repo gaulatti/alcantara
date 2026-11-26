@@ -68,7 +68,11 @@ export function nextUp({
 }): NextUpSong | null {
   const leaves = rotationLeaves(sequence.items);
   const byId = new Map(leaves.map((leaf) => [leaf.id, leaf]));
-  const queued = queue.map((entry) => byId.get(entry.itemId)).find(Boolean);
+  // The entry on air stays in the queue until it ends (PlayNextQueue marks it Playing): it is not next (walk part 4).
+  const queued = queue
+    .filter((entry) => entry.id !== playback?.queueEntryId)
+    .map((entry) => byId.get(entry.itemId))
+    .find(Boolean);
   const describe = (leaf: SongLeaf, via: "queue" | "rotation"): NextUpSong => ({
     itemId: leaf.id,
     via,
