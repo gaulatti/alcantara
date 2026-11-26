@@ -891,6 +891,7 @@ describe('FlightService public lifecycle and clock boundary', () => {
       programId: 'news',
       ready: true,
       issues: [],
+      warnings: [],
     });
     const published = await f.service.publishFlightSequence('news', 7, 1);
     expect(published).toEqual(
@@ -931,6 +932,7 @@ describe('FlightService public lifecycle and clock boundary', () => {
         'Item 1: audio clip unavailable',
         'Item 2: audio clip unavailable',
       ],
+      warnings: [],
     });
     await expect(f.service.publishFlightSequence('news', 7, 1)).rejects.toThrow(
       'audio clip unavailable',
