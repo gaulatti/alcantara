@@ -334,7 +334,7 @@ it("creates a draft block only for a future start", async () => {
   renderRundown();
   await openBlock();
   fireEvent.click(screen.getByRole("button", { name: /New timed block/ }));
-  const start = await screen.findByLabelText("New block");
+  const start = await screen.findByLabelText("Scheduled start");
 
   fireEvent.change(start, { target: { value: "2000-01-01T10:00" } });
   fireEvent.click(screen.getByRole("button", { name: "Create timed block" }));
@@ -360,7 +360,7 @@ it("creates a draft block only for a future start", async () => {
     "11",
   );
   await waitFor(() =>
-    expect(screen.queryByLabelText("New block")).not.toBeInTheDocument(),
+    expect(screen.queryByLabelText("Scheduled start")).not.toBeInTheDocument(),
   );
 });
 
@@ -370,7 +370,7 @@ it("reports a block that could not be created", async () => {
   renderRundown();
   await openBlock();
   fireEvent.click(screen.getByRole("button", { name: /New timed block/ }));
-  fireEvent.change(await screen.findByLabelText("New block"), {
+  fireEvent.change(await screen.findByLabelText("Scheduled start"), {
     target: { value: "2099-01-01T10:00" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Create timed block" }));
@@ -423,15 +423,17 @@ it("starts a new block's first event at its fixed start and appends after a foll
   await screen.findByText(/DRAFT · Revision 3 · 0 events/);
   addFromLibrary(/^Stop program audio/);
   // The first event is fixed at the block start.
-  expect(screen.getByRole("spinbutton", { name: "Fixed start" })).toHaveValue(
-    0,
+  expect(screen.getByRole("textbox", { name: "Fixed start" })).toHaveValue(
+    "+00:00",
   );
   expect(
-    screen.getByRole("spinbutton", { name: "Fixed start" }),
+    screen.getByRole("textbox", { name: "Fixed start" }),
   ).toBeDisabled();
-  fireEvent.change(screen.getByRole("spinbutton", { name: "Fixed start" }), {
+  fireEvent.change(screen.getByRole("textbox", { name: "Fixed start" }), {
     target: { value: "" },
   });
+  // The field is read when it loses focus (D3).
+  fireEvent.blur(screen.getByRole("textbox", { name: "Fixed start" }));
   addFromLibrary(/^Harbor Light/);
   const table = screen.getByRole("table", { name: "Scheduled rundown events" });
   const rows = eventRows(table);
@@ -743,11 +745,12 @@ it("edits a clip's source, duration and fixed start in the inspector", async () 
   });
   expect(within(table).getAllByRole("row")[2]).toHaveTextContent("00:45");
 
-  fireEvent.change(screen.getByRole("spinbutton", { name: "Fixed start" }), {
-    target: { value: "125" },
-  });
+  const fixedStart = screen.getByRole("textbox", { name: "Fixed start" });
+  fireEvent.change(fixedStart, { target: { value: "125" } });
+  fireEvent.blur(fixedStart);
+  expect(fixedStart).toHaveValue("+02:05");
   expect(
-    screen.getByText("+02:05 · Starts on time and cuts the preceding filler."),
+    screen.getByText(/^\d\d:\d\d:\d\d · \+02:05 · Starts on time and cuts the preceding filler\.$/),
   ).toBeVisible();
 
   fireEvent.click(screen.getByRole("button", { name: "Discard" }));
@@ -782,8 +785,8 @@ it("changes an event's song, marks disabled songs and removes events", async () 
     screen.getByRole("heading", { name: "Select an event" }),
   ).toBeVisible();
   fireEvent.click(eventRows(table)[0]);
-  expect(screen.getByRole("spinbutton", { name: "Fixed start" })).toHaveValue(
-    0,
+  expect(screen.getByRole("textbox", { name: "Fixed start" })).toHaveValue(
+    "+00:00",
   );
 });
 
@@ -984,7 +987,67 @@ it("closes the record and new-block dialogs with Escape", async () => {
   fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   await waitFor(() => expect(recording).not.toBeInTheDocument());
   fireEvent.click(screen.getByRole("button", { name: /New timed block/ }));
-  const start = await screen.findByLabelText("New block");
+  const start = await screen.findByLabelText("Scheduled start");
   fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   await waitFor(() => expect(start).not.toBeInTheDocument());
+});
+
+// The walk's D3: the fixed start takes a clock time, +mm:ss or seconds, inside the block's window.
+it("pins an event's fixed start by clock time and refuses a time outside the block", async () => {
+  stubLibrary();
+  vi.mocked(fetchFlightSequences).mockResolvedValue([
+    block(),
+    block({ id: 8, name: "Next", scheduledAt: "2026-11-17T11:00:00" }),
+  ]);
+  renderRundown();
+  const table = await openBlock();
+  fireEvent.click(eventRows(table)[1]);
+  const fixedStart = screen.getByRole("textbox", { name: "Fixed start" });
+  const typeIn = (value: string, key?: string) => {
+    fireEvent.change(fixedStart, { target: { value } });
+    if (key) fireEvent.keyDown(fixedStart, { key });
+    else fireEvent.blur(fixedStart);
+  };
+
+  typeIn("10:15:30", "Enter");
+  expect(fixedStart).toHaveValue("+15:30");
+  expect(
+    screen.getByText("10:15:30 · +15:30 · Starts on time and cuts the preceding filler."),
+  ).toBeVisible();
+  expect(screen.getByText(/Unsaved changes/)).toBeVisible();
+
+  typeIn("09:50");
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "09:50 is before this block starts at 10:00.",
+  );
+  expect(fixedStart).toHaveValue("09:50");
+  expect(fixedStart).toHaveAttribute("aria-invalid", "true");
+  // The stored start is unchanged while the entry is refused.
+  expect(screen.getByText(/^10:15:30 · \+15:30/)).toBeVisible();
+
+  typeIn("11:00");
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "11:00 is after the next block starts at 11:00.",
+  );
+  typeIn("02:00");
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "02:00 is more than 6 hours after this block starts at 10:00.",
+  );
+  typeIn("soon");
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "Enter a clock time (07:10 or 07:10:30), an offset (+05:00) or seconds.",
+  );
+  // A key other than Enter does not read the entry.
+  typeIn("+02:00", "Tab");
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.getByText(/^10:15:30 · \+15:30/)).toBeVisible();
+  fireEvent.blur(fixedStart);
+  expect(fixedStart).toHaveValue("+02:00");
+  expect(screen.getByText(/^10:02:00 · \+02:00/)).toBeVisible();
+  // Leaving the field untouched changes nothing; emptying it follows the previous event.
+  fireEvent.blur(fixedStart);
+  expect(fixedStart).toHaveValue("+02:00");
+  typeIn("  ");
+  expect(fixedStart).toHaveValue("");
+  expect(screen.getByText(/^Follows the previous event\./)).toBeVisible();
 });

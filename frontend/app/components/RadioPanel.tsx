@@ -3,10 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Select } from "@gaulatti/bleecker";
 import { apiUrl } from "../utils/apiBaseUrl";
 import {
-  AlertTriangle,
   List,
   Plus,
-  Radio,
   ArrowUp,
   ArrowDown,
   Trash2,
@@ -31,9 +29,9 @@ import { RadioOutputPlayer } from "./RadioOutputPlayer";
 import { PlaybackBar } from "./PlaybackBar";
 import { useRadioMonitor } from "./RadioMonitor";
 import { HoldButton } from "./radio-desk/HoldButton";
-import { isOutputSampleUnverified } from "./radio-desk/outputFreshness";
-import { deriveOnAir } from "./radio-desk/onAir";
-import { OnAirStrip } from "./radio-desk/OnAirStrip";
+import { OutputReading } from "./radio-desk/OutputReading";
+import type { OnAirInput } from "./radio-desk/onAir";
+import { LiveOnAirStrip } from "./radio-desk/OnAirStrip";
 import { PlaySongNow } from "./radio-desk/PlaySongNow";
 import { PlayoutMode } from "./radio-desk/PlayoutMode";
 import { Meter } from "./radio-desk/primitives";
@@ -487,33 +485,6 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   const currentLogIndex = activeLog?.isRunning
     ? activeLog.items.findIndex((item) => item.id === activeLog.activeItemId)
     : -1;
-  // Freshness is re-read every second, so an output whose samples stop goes unverified without a new answer (#706).
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const tick = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(tick);
-  }, []);
-  const outputUnverified = isOutputSampleUnverified(output, now);
-  const outputTone =
-    output?.state === "silent" || output?.state === "unavailable"
-      ? "live"
-      : output?.state === "audible" && !outputUnverified
-        ? "ready"
-        : "warning";
-  const outputLabel =
-    outputUnverified
-      ? "Output unverified"
-      : output?.state === "audible"
-      ? "Engine audio detected"
-      : output?.state === "silent"
-        ? "Expected audio is silent"
-        : output?.state === "unavailable"
-          ? "Output unavailable"
-          : output?.state === "idle"
-            ? "Output idle"
-            : output?.state === "checking"
-              ? "Checking output"
-              : "Output unverified";
   const engineReady =
     palazzo?.connection === "connected" || palazzo?.connection === "polling";
 
@@ -549,9 +520,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   // Palazzo answers but its playout is down: automation still follows the connection, but the desk refuses
   // what would be accepted and not air (Take, Take now, Start with fallback). Stop stays available.
   const playoutDown = engineReady && palazzo?.playout === "down";
-  const onAirView = deriveOnAir({
+  const onAirInput: Omit<OnAirInput, "outputUnverified"> = {
     playback: programSongPlayback,
-    outputUnverified,
     next,
     mode: rotation.mode,
     streamRunning: stream === null ? null : isLive,
@@ -565,7 +535,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     monitor: monitor ? monitor.state : "unavailable",
     outputSilent: output?.state === "silent",
     playoutDown,
-  });
+  };
   const recoveryControlsRef = useRef<HTMLDetailsElement>(null);
   const openRecoveryControls = () => {
     const controls = recoveryControlsRef.current;
@@ -600,7 +570,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
 
   return (
     <div className="broadcast-console radio-console" data-console="radio">
-      <OnAirStrip view={onAirView} programId={programId} />
+      <LiveOnAirStrip input={onAirInput} output={output} programId={programId} />
       <div className="radio-console-scroll">
         <div className="radio-workspace">
           <ConsolePanel
@@ -997,21 +967,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
               className="console-panel radio-next"
               aria-label="Output confidence"
             >
-              <div className="flex items-center justify-between gap-2">
-                <span className="console-eyebrow">Output confidence</span>
-                {outputTone === "live" ? (
-                  <AlertTriangle size={14} />
-                ) : (
-                  <Radio size={14} />
-                )}
-              </div>
-              <span
-                role="status"
-                className="console-status mt-2"
-                data-tone={outputTone}
-              >
-                {outputLabel}
-              </span>
+              <OutputReading output={output} />
               {playoutDown ? (
                 // Palazzo answers but its playout (Liquidsoap) is down: nothing airs, the recovery playlist
                 // included, so the dead-air advice would not help. The cure is on the Palazzo host.
