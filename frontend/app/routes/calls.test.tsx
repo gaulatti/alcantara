@@ -1,5 +1,5 @@
 import {
-  cleanup,
+  act,  cleanup,
   fireEvent,
   render,
   screen,
@@ -783,4 +783,18 @@ it("does not start a second guest's talkback while the first is being set up", a
   await waitFor(() => expect(lk.state.rooms[0]?.published).toEqual(["talkback:inv-1"]));
   expect(lk.state.rooms).toHaveLength(1);
   expect(lk.state.rooms[0].published).toEqual(["talkback:inv-1"]);
+});
+
+it("asks for the guest-call state again every three seconds", async () => {
+  const calls = serve();
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    render(<CallsRoute />);
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    const before = calls.length;
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(calls.length).toBeGreaterThan(before);
+  } finally {
+    vi.useRealTimers();
+  }
 });

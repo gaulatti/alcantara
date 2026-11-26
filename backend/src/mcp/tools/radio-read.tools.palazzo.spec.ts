@@ -598,6 +598,14 @@ async function build() {
     new FastifyAdapter(),
     { logger: false },
   );
+  // What the real auth guard puts on every request; no team is configured here.
+  app
+    .getHttpAdapter()
+    .getInstance()
+    .addHook('onRequest', (request: object, _reply: unknown, done) => {
+      Object.assign(request, { user: { authorization: { teamId: 0 } } });
+      done();
+    });
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
   await listenOnLoopback(app.getHttpServer());

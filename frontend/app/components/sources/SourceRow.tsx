@@ -107,11 +107,7 @@ export function SourceRow({
               ? availability.reason
               : 'Cannot preview in current lifecycle'
           }
-          onClick={() => {
-            if (canPreview) {
-              onToggleSelect(source);
-            }
-          }}
+          onClick={canPreview ? () => onToggleSelect(source) : undefined}
           className={`h-7 w-7 p-0 ${
             !canPreview ? 'opacity-30 cursor-not-allowed' : ''
           }`}
