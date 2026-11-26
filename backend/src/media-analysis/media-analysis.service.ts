@@ -66,6 +66,8 @@ interface Candidate {
   analysisUpdatedAt: Date | null;
   attempts: number | null;
   sourceChanged: boolean;
+  /** The stored row's status; null when there is no row. */
+  status?: string | null;
   /** The cue rule a re-analysis request asked for (1 = the rule before #235, 2 = rule C); null means the current rule. */
   requestedRuleVersion?: number | null;
   /** True when the asset is analysed and only lacks a stored length (#296). */
@@ -74,6 +76,14 @@ interface Candidate {
   remaining: bigint | number;
   /** Analysed assets still without a stored length that can be measured now. */
   backfillRemaining?: bigint | number;
+}
+
+/**
+ * Whether this run measures again a file that already has a good result for it. Such a run never takes that result
+ * away: the row stays a success with its cues and loudness while the run is claimed and when it fails (#235).
+ */
+export function keepsResult(candidate: Candidate): boolean {
+  return candidate.status === 'success' && !candidate.sourceChanged;
 }
 
 /** The wait after a run that took `elapsedMs`, whatever its outcome. */
@@ -300,6 +310,7 @@ export class MediaAnalysisService
                a."createdAt" AS "createdAt",
                m."updatedAt" AS "analysisUpdatedAt",
                m."attempts" AS "attempts",
+               m."status" AS "status",
                m."requestedRuleVersion" AS "requestedRuleVersion",
                (m."assetId" IS NOT NULL AND m."sourceUrl" IS DISTINCT FROM a."sourceUrl") AS "sourceChanged",
                COALESCE(
@@ -320,7 +331,7 @@ export class MediaAnalysisService
         LEFT JOIN "MediaAssetAnalysis" m ON m."assetId" = a."id"
         WHERE a."mediaType" = 'AUDIO'
       )
-      SELECT "assetId", "sourceUrl", "analysisUpdatedAt", "attempts", "sourceChanged", "requestedRuleVersion",
+      SELECT "assetId", "sourceUrl", "analysisUpdatedAt", "attempts", "sourceChanged", "requestedRuleVersion", "status", "status",
              NOT "due" AS "backfill",
              COUNT(*) FILTER (WHERE "due") OVER () AS "remaining",
              COUNT(*) FILTER (WHERE NOT "due") OVER () AS "backfillRemaining"
@@ -344,7 +355,12 @@ export class MediaAnalysisService
 
     if (previousAttempts >= MAX_ATTEMPTS) {
       // The last run was claimed and never finished, so the failure is final.
-      if (await this.settle(candidate, this.failure('interrupted', now))) {
+      if (
+        await this.settle(
+          candidate,
+          this.failure(candidate, 'interrupted', now),
+        )
+      ) {
         this.finish(candidate, 'failure', startedAt, 'interrupted');
       }
       return;
@@ -357,7 +373,7 @@ export class MediaAnalysisService
       await this.store({
         candidate,
         previousAttempts,
-        data: this.failure('unsupported-source', now),
+        data: this.failure(candidate, 'unsupported-source', now),
         outcome: 'failure',
         error: 'unsupported-source',
         analysisMs: Date.now() - startedAt,
@@ -384,7 +400,7 @@ export class MediaAnalysisService
       const backoff = failure.retryable
         ? RETRY_BACKOFF_MS[attempts - 1]
         : undefined;
-      const data = this.failure(failure.code, now, backoff);
+      const data = this.failure(candidate, failure.code, now, backoff);
       await this.store({
         candidate,
         previousAttempts,
@@ -491,7 +507,7 @@ export class MediaAnalysisService
         where: {
           assetId: result.candidate.assetId,
           sourceUrl: result.candidate.sourceUrl,
-          status: 'pending',
+          status: keepsResult(result.candidate) ? 'success' : 'pending',
         },
         data: {
           attempts: result.previousAttempts,
@@ -563,16 +579,27 @@ export class MediaAnalysisService
   // A failed row keeps no measurement. It is retried after the backoff when one
   // is given: never after the last run or a failure that cannot change.
   private failure(
+    candidate: Candidate,
     code: FailureCode,
     now: Date,
     backoff?: number,
   ): Prisma.MediaAssetAnalysisUpdateManyMutationInput {
+    const nextAttemptAt =
+      backoff === undefined ? null : new Date(now.getTime() + backoff);
+    // A re-run that failed records why and keeps what the last good run measured; a final failure also drops the
+    // requested rule, so a later request starts from the current one.
+    if (keepsResult(candidate)) {
+      return {
+        error: code,
+        nextAttemptAt,
+        ...(nextAttemptAt ? {} : { requestedRuleVersion: null }),
+      };
+    }
     return {
       status: 'failed',
       ...EMPTY_MEASUREMENT,
       error: code,
-      nextAttemptAt:
-        backoff === undefined ? null : new Date(now.getTime() + backoff),
+      nextAttemptAt,
     };
   }
 
@@ -584,7 +611,8 @@ export class MediaAnalysisService
     now: Date,
   ): Promise<boolean> {
     const lease = {
-      status: 'pending',
+      // A re-run of a good result stays a success, so playout keeps its cues and loudness while it runs.
+      status: keepsResult(candidate) ? 'success' : 'pending',
       attempts,
       nextAttemptAt: new Date(now.getTime() + LEASE_MS),
       sourceUrl: candidate.sourceUrl,
@@ -627,7 +655,7 @@ export class MediaAnalysisService
       where: {
         assetId: candidate.assetId,
         sourceUrl: candidate.sourceUrl,
-        status: 'pending',
+        status: keepsResult(candidate) ? 'success' : 'pending',
       },
       data,
     });

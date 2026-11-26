@@ -107,6 +107,132 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
+// gaulatti/alcantara#235, production 2026-11-26: a re-analysis of songs analysed three times before was marked
+// `interrupted` without running, because the attempts of earlier successful runs still counted, and the failed run
+// replaced their cue points and loudness with nulls.
+describe('a re-analysis of a good result never takes it away', () => {
+  const again = (overrides: Record<string, unknown> = {}) =>
+    candidate({
+      analysisUpdatedAt: new Date('2026-11-24T00:00:00.000Z'),
+      attempts: 0,
+      status: 'success',
+      ...overrides,
+    });
+  const writes = (prisma: ReturnType<typeof setup>['prisma']) =>
+    (
+      prisma.mediaAssetAnalysis.updateMany.mock.calls as unknown as Array<
+        [{ where: Record<string, unknown>; data: Record<string, unknown> }]
+      >
+    ).map(([call]) => call);
+  const MEASURED = [
+    'cueInSeconds',
+    'cueOutSeconds',
+    'integratedLufs',
+    'truePeakDbtp',
+    'durationSeconds',
+    'ruleVersion',
+  ];
+
+  it('stays a success while the run is claimed, and writes the new result to the success row', async () => {
+    const { service, prisma } = setup([[again()]]);
+    await service.runOnce(NOW);
+    const [claim, store] = writes(prisma);
+    expect(claim.data.status).toBe('success');
+    expect(MEASURED.some((name) => name in claim.data)).toBe(false);
+    expect(store.where.status).toBe('success');
+    expect(store.data).toMatchObject({ status: 'success', cueOutSeconds: 238 });
+  });
+
+  it('records only why a run failed, keeps the request for a retry and drops it when final', async () => {
+    for (const [attempts, retried] of [
+      [0, true],
+      [2, false],
+    ] as const) {
+      const { service, prisma, analyzer } = setup([
+        [again({ attempts, requestedRuleVersion: 2 })],
+      ]);
+      analyzer.analyze.mockRejectedValueOnce(
+        new AudioAnalysisError('source-unavailable'),
+      );
+      await service.runOnce(NOW);
+      const failed = writes(prisma)[1];
+      expect(failed.where.status).toBe('success');
+      expect(failed.data.error).toBe('source-unavailable');
+      expect('status' in failed.data).toBe(false);
+      expect(MEASURED.some((name) => name in failed.data)).toBe(false);
+      expect(failed.data.nextAttemptAt !== null).toBe(retried);
+      expect('requestedRuleVersion' in failed.data).toBe(!retried);
+    }
+  });
+
+  it('keeps the result of a row whose attempts are already spent: interrupted is recorded, nothing is erased', async () => {
+    const { service, prisma, analyzer } = setup([[again({ attempts: 3 })]]);
+    await service.runOnce(NOW);
+    expect(analyzer.analyze).not.toHaveBeenCalled();
+    const [only] = writes(prisma);
+    expect(only.data).toEqual(
+      expect.objectContaining({
+        error: 'interrupted',
+        nextAttemptAt: null,
+        requestedRuleVersion: null,
+      }),
+    );
+    expect('status' in only.data).toBe(false);
+    expect(MEASURED.some((name) => name in only.data)).toBe(false);
+  });
+
+  it('still fails a first analysis and a changed file, which have no good result to keep', async () => {
+    for (const overrides of [
+      { status: null },
+      { status: 'failed' },
+      { sourceChanged: true },
+    ]) {
+      const { service, prisma, analyzer } = setup([[again(overrides)]]);
+      analyzer.analyze.mockRejectedValueOnce(new AudioAnalysisError('silent'));
+      await service.runOnce(NOW);
+      expect(writes(prisma)[0].data.status).toBe('pending');
+      expect(writes(prisma)[1].data).toMatchObject({
+        status: 'failed',
+        cueOutSeconds: null,
+        integratedLufs: null,
+      });
+    }
+  });
+
+  it('gives the claim of a kept result back on the success row when its write keeps failing', async () => {
+    const { service, prisma } = setup([[again()]]);
+    const lost = new Prisma.PrismaClientKnownRequestError('unreachable', {
+      code: 'P1001',
+      clientVersion: 'test',
+    });
+    prisma.mediaAssetAnalysis.updateMany.mockImplementation((async (call: {
+      data: Record<string, unknown>;
+    }) => {
+      if (call.data.status === 'success' && 'cueOutSeconds' in call.data)
+        throw lost;
+      return { count: 1 };
+    }) as never);
+    for (let run = 0; run <= MAX_WRITE_RETRIES; run += 1)
+      await service.runOnce(NOW);
+    const released = writes(prisma).at(-1)!;
+    expect(released.where.status).toBe('success');
+    expect(released.data).toEqual({
+      attempts: 0,
+      nextAttemptAt: expect.any(Date),
+    });
+  });
+
+  it('reads the row status in the candidate query', async () => {
+    const { service, prisma } = setup([[]]);
+    await service.runOnce(NOW);
+    const [query] = prisma.$queryRaw.mock.calls[0] as unknown as [
+      { sql: string },
+    ];
+    expect(query.sql).toContain('m."status" AS "status"');
+    expect(query.sql).toContain('"requestedRuleVersion", "status",');
+  });
+});
+
 describe('MediaAnalysisService.runOnce', () => {
   it('selects the newest audio asset that is unanalysed, stale or due, by the clock it is given', async () => {
     const { service, prisma, analyzer } = setup([[]]);

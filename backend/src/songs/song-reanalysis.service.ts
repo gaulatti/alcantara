@@ -14,6 +14,9 @@ import { PrismaService } from '../prisma.service';
 /** The most songs one re-analysis request may name: the rollout of a new cue rule is paced in small batches. */
 export const MAX_REANALYSIS_BATCH = 25;
 
+/** The analyses that are settled and may be asked again; a `pending` one is already being measured. */
+const FINISHED = ['success', 'failed'] as const;
+
 /**
  * The rule a re-analysis runs on: C2 (the current rule, the default), C (the rule before the clamp, where a tail
  * beyond the bound keeps rule 1's edge) or previous (rule 1, before #235). Older rules are a way back that needs no deploy.
@@ -66,8 +69,8 @@ export class SongReanalysisService {
   }
 
   /**
-   * Makes the finished analyses of the named songs due now; they keep their cue points until the new result replaces
-   * them. Refused with 409 `on_air` (listing each song and its programs) when any named song is on air, checked here
+   * Makes the finished analyses of the named songs due now; they keep their cue points and loudness until a new result
+   * replaces them, also while the run is claimed and when it fails. Refused with 409 `on_air` (listing each song and its programs) when any named song is on air, checked here
    * again at queue time so a stale plan cannot take a live song's cues away. Songs that are not found or have no
    * finished analysis are listed, not queued.
    */
@@ -97,15 +100,19 @@ export class SongReanalysisService {
     const rows = await this.prisma.mediaAssetAnalysis.findMany({
       where: {
         assetId: { in: ids.map((id) => `song:${id}`) },
-        status: 'success',
+        // A failed analysis can be asked again too: it is how a song that lost its result gets one back (#235).
+        status: { in: [...FINISHED] },
       },
       select: { assetId: true },
     });
     const queued = new Set(rows.map((row) => row.assetId));
     const { count } = await this.prisma.mediaAssetAnalysis.updateMany({
-      where: { assetId: { in: [...queued] }, status: 'success' },
+      where: { assetId: { in: [...queued] }, status: { in: [...FINISHED] } },
       data: {
         nextAttemptAt: now,
+        // A request starts a fresh retry budget: runs from earlier analyses do not count against it.
+        attempts: 0,
+        error: null,
         // The request names the rule of the next run; the default rule clears an earlier request for the previous one.
         requestedRuleVersion: requested === CUE_RULE_VERSION ? null : requested,
       },

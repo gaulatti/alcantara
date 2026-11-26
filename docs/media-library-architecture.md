@@ -200,12 +200,17 @@ per analysed song and edge, `applied` (the edge moved from rule 1's), `unchanged
 
 **Re-analysing songs.** `POST /songs/reanalysis` (`song.manage`; MCP
 `song_request_reanalysis`) takes 1 to 25 song ids and makes their finished
-analyses due now. The job takes them one at a time under the duty cycle above; a
-song keeps its current cue points until its new result replaces them, and while
-its analysis runs it is `pending` (it plays without cue points for those seconds),
-so a song that is on air is refused: `409 on_air` (MCP `on_air`, listed per song in
-the dry run) for a song a program is playing or has announced to Palazzo as the next
-song, checked again when the songs are queued. None of the batch is queued then.
+(`success` or `failed`) analyses due now, with a fresh retry budget (`attempts` 0). The job takes
+them one at a time under the duty cycle above. A re-run never takes a good result
+away: the row stays `success` with its cues and loudness while the run is claimed,
+playout keeps using them, and a run that fails records only `error` (and retries
+under the usual backoff); only a successful run replaces the result. (Until
+2026-11-26 a claimed re-run was `pending` and a failed one stored nulls, and the
+attempts of earlier runs counted, so a third re-analysis was `interrupted` without
+running and erased the result.) A song that is on air is still refused: `409
+on_air` (MCP `on_air`, listed per song in the dry run) for a song a program is
+playing or has announced to Palazzo as the next song, checked again when the songs
+are queued. None of the batch is queued then.
 Nothing re-analyses the catalogue by itself: a new rule is rolled out in staged,
 paced batches, and `ruleVersion` says which rule each song has. Reverting needs no
 deploy: the request takes an optional `rule`: `C2` (the default and current rule, version 3),
