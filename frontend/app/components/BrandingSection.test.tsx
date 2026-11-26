@@ -40,13 +40,12 @@ describe('BrandingSection', () => {
     expect(calls[0]).toMatchObject({ method: 'GET' });
   });
 
-  it('refuses an http logo and sends nothing', async () => {
+  it('shows the stored logo as a preview and its address, and offers no typed address', async () => {
     render(<BrandingSection programId='fictional-main' />);
-    const logo = await screen.findByDisplayValue('https://media.example.test/logo.png');
-    fireEvent.change(logo, { target: { value: 'http://media.example.test/logo.png' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save branding' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('The logo must be an https address.');
-    expect(calls.some((call) => call.method === 'PUT')).toBe(false);
+    expect(await screen.findByRole('img', { name: 'Current logo' })).toHaveAttribute('src', 'https://media.example.test/logo.png');
+    expect(screen.getByText('https://media.example.test/logo.png')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('https://media.example.test/logo.png')).toBeNull();
+    expect(screen.getByRole('group', { name: 'Logo' })).toBeInTheDocument();
   });
 
   it('saves the marks once and shows the stored result', async () => {
@@ -127,7 +126,7 @@ describe('BrandingSection failures and cleared marks', () => {
     expect(JSON.parse(puts[0])).toMatchObject({ callsign: null, logoUrl: null });
   });
 
-  it('clears a stored logo to null when its address is emptied', async () => {
+  it('clears a stored logo to null with Remove logo', async () => {
     puts = [];
     vi.stubGlobal(
       'fetch',
@@ -140,9 +139,94 @@ describe('BrandingSection failures and cleared marks', () => {
       }),
     );
     render(<BrandingSection programId='fictional-main' />);
-    fireEvent.change(await screen.findByDisplayValue('https://media.example.test/logo.png'), { target: { value: '' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove logo' }));
+    expect(screen.getByText('No logo.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove logo' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Save branding' }));
     await waitFor(() => expect(puts).toHaveLength(1));
     expect(JSON.parse(puts[0])).toMatchObject({ logoUrl: null });
+  });
+
+  it('still refuses a stored address that is not https, and sends nothing', async () => {
+    puts = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method === 'PUT') puts.push(init.body as string);
+        return new Response(JSON.stringify({ logoUrl: 'http://media.example.test/old.png' }), { status: 200 });
+      }),
+    );
+    render(<BrandingSection programId='fictional-main' />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Save branding' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('The logo must be an https address.');
+    expect(puts).toHaveLength(0);
+  });
+});
+
+describe('BrandingSection logo from the media library', () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it('picks an https image, stores its public address, and clears an earlier logo error', async () => {
+    const puts: string[] = [];
+    const urls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        urls.push(url);
+        if (url.includes('/media?')) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                { id: 7, name: 'Fictional logo', imageUrl: 'https://media.example.test/fictional.png' },
+                { id: 8, name: 'Old upload', imageUrl: 'http://media.example.test/old.png' },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        if (init?.method === 'PUT') {
+          puts.push(init.body as string);
+          return new Response(init.body as string, { status: 200 });
+        }
+        return new Response(JSON.stringify({ logoUrl: 'http://media.example.test/stale.png' }), { status: 200 });
+      }),
+    );
+    render(<BrandingSection programId='fictional-main' />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Save branding' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('The logo must be an https address.');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose from the media library' }));
+    expect(await screen.findByRole('button', { name: 'Old upload (not an https address)' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Use Fictional logo' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('img', { name: 'Current logo' })).toHaveAttribute('src', 'https://media.example.test/fictional.png');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save branding' }));
+    });
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(JSON.parse(puts[0])).toMatchObject({ logoUrl: 'https://media.example.test/fictional.png' });
+    expect(urls.some((url) => url.includes('/media?') && url.includes('limit=60'))).toBe(true);
+  });
+
+  it('closes the picker without changing the logo', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.includes('/media?')
+          ? new Response(JSON.stringify({ data: [] }), { status: 200 })
+          : new Response(JSON.stringify({ logoUrl: 'https://media.example.test/logo.png' }), { status: 200 }),
+      ),
+    );
+    render(<BrandingSection programId='fictional-main' />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Choose from the media library' }));
+    expect(await screen.findByText('The media library has no images yet.')).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByText('The media library has no images yet.')).toBeNull());
+    expect(screen.getByRole('img', { name: 'Current logo' })).toHaveAttribute('src', 'https://media.example.test/logo.png');
   });
 });
