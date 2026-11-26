@@ -201,6 +201,7 @@ export interface BackgroundAudioAsset {
 
 export interface ProgramAudioBusSettings {
   songSequence: unknown | null;
+  sequenceVersion?: string;
   songQueue?: ProgramSongQueueEntry[];
   mixerSettings?: unknown | null;
 }

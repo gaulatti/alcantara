@@ -454,13 +454,22 @@ export class ProgramController {
   @RequirePermission(ALCANTARA_PERMISSIONS.program.operate)
   async updateProgramAudioBusById(
     @Param('programId') programId: string,
-    @Body() data: { songSequence?: unknown; mixerSettings?: unknown },
+    @Body()
+    data: {
+      songSequence?: unknown;
+      mixerSettings?: unknown;
+      sequenceVersion?: unknown;
+    },
   ) {
     await this.programService.refuseOperatorStartWhileEngineUnavailable(
       data,
       programId,
     );
-    return this.programService.updateProgramAudioBus(data, programId);
+    return this.programService.updateProgramAudioBus(
+      data,
+      programId,
+      'console',
+    );
   }
 
   @Post('activate')

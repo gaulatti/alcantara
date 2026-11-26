@@ -11,6 +11,8 @@ interface PlaylistSheetPanelProps {
   songCatalog: SongCatalogItem[];
   programSongPlayback: ProgramSongPlaybackState | null;
   isSaving: boolean;
+  /** Why the last save of the rotation was refused. */
+  error?: string | null;
   onChange: (sequence: ProgramSongSequence) => void;
   onTakeSelection?: (sequence: ProgramSongSequence) => Promise<void> | void;
 }
@@ -22,6 +24,7 @@ export function PlaylistSheetPanel({
   songCatalog,
   programSongPlayback,
   isSaving,
+  error,
   onChange,
   onTakeSelection,
 }: PlaylistSheetPanelProps) {
@@ -37,6 +40,11 @@ export function PlaylistSheetPanel({
         <div className='mb-2 text-xs text-text-secondary dark:text-text-secondary'>
           {isSaving ? 'Saving…' : ''}
         </div>
+        {error && (
+          <p role='alert' className='mb-2 text-sm text-terracotta'>
+            {error}
+          </p>
+        )}
         <ProgramSongSequenceEditor
           sequence={sequence}
           songCatalog={songCatalog}

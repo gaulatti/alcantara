@@ -344,6 +344,14 @@ function buildVersion(): string {
   return /^[A-Za-z0-9._-]{1,64}$/.test(candidate) ? candidate : 'unknown';
 }
 
+const SONG_SEQUENCE_SAVE_RESULTS = [
+  'versioned',
+  'unversioned',
+  'refused_missing',
+  'refused_stale',
+  'refused_emptying',
+] as const;
+
 @Injectable()
 export class ManagedMetricsService {
   readonly registry = new Registry();
@@ -356,6 +364,7 @@ export class ManagedMetricsService {
   private readonly artistLabelWrites: Counter<string>;
   private readonly operatorChangeRecords: Counter<string>;
   private readonly recipeExpansions: Counter<string>;
+  private readonly songSequenceSaves: Counter<'result'>;
   private readonly songPlaybackWrites: Counter<string>;
   private readonly recipeRebuilds: Counter<string>;
   private readonly recipeDeletes: Counter<string>;
@@ -471,6 +480,14 @@ export class ManagedMetricsService {
     });
     for (const result of SONG_PLAYBACK_WRITE_RESULTS)
       this.songPlaybackWrites.inc({ result }, 0);
+    this.songSequenceSaves = new Counter({
+      name: 'alcantara_song_sequence_saves_total',
+      help: 'Operator saves of a rotation, by result: versioned, unversioned (a client that sends no version), or refused because the version was missing or stale, or the save would have emptied the rotation. Exposed from 0.',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    for (const result of SONG_SEQUENCE_SAVE_RESULTS)
+      this.songSequenceSaves.inc({ result }, 0);
     this.recipeExpansions = new Counter({
       name: 'alcantara_recipe_expansions_total',
       help: 'Rundown recipe uses previewed or built, by result.',
@@ -684,6 +701,12 @@ export class ManagedMetricsService {
       labelNames: ['state', 'result'],
       registers: [this.registry],
     });
+  }
+
+  recordSongSequenceSave(
+    result: (typeof SONG_SEQUENCE_SAVE_RESULTS)[number],
+  ): void {
+    this.songSequenceSaves.inc({ result });
   }
 
   recordHttp(
