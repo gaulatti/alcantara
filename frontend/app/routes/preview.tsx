@@ -16,7 +16,7 @@ import {
   ModoItalianoGiorgiaPodcastPlayer,
   ModoItalianoGiorgiaArtistBumper
 } from '../components';
-import { OVERLAY_COMPONENTS, getComponentMetadata } from '../models/components';
+import { OVERLAY_COMPONENTS, getDefaultPropsForComponent } from '../models/components';
 
 const STAGE_CLASS = 'relative min-h-screen bg-deep-sea';
 const STAGE_CENTER_CLASS = 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center text-white';
@@ -44,8 +44,8 @@ export default function Preview() {
   const previewRef = useRef<HTMLElement>(null);
   const [previewWidth, setPreviewWidth] = useState(1920);
   useEffect(() => {
-    const element = previewRef.current;
-    if (!element) return;
+    // The preview stage is always mounted before this effect runs, so the ref is set.
+    const element = previewRef.current as HTMLElement;
     const observer = new ResizeObserver(([entry]) => {
       if (entry) setPreviewWidth(entry.contentRect.width);
     });
@@ -140,8 +140,7 @@ export default function Preview() {
           </div>
         );
       case 'reloj-digital-loop-clock': {
-        const metadata = getComponentMetadata('reloj-digital-loop-clock');
-        const defaultProps = metadata?.defaultProps || {};
+        const defaultProps = getDefaultPropsForComponent('reloj-digital-loop-clock');
         return (
           <div className={`${STAGE_CLASS}`}>
             <RelojDigitalLoopClock timezone={defaultProps.timezone} textSequence={defaultProps.textSequence} ctaSequence={defaultProps.ctaSequence} />
