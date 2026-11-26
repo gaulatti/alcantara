@@ -46,3 +46,12 @@
 [data-radix-popper-content-wrapper] {
     z-index: 1300 !important;
 }
+
+/* One focus indicator for every link, button and field, shown only for keyboard focus
+   (:focus-visible), so a mouse press looks the same as before. The consoles set --focus-ring to
+   their own ready colour. :where keeps the rule at zero specificity, so a component's own
+   focus-visible style still takes precedence. */
+:where(a[href], button, summary, input, select, [role="button"], [role="tab"]):focus-visible {
+  outline: 2px solid var(--focus-ring, var(--app-sea));
+  outline-offset: 2px;
+}
