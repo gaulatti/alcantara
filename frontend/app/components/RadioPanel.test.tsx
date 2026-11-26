@@ -2193,3 +2193,13 @@ it("confirms an advanced rundown on screen, and shows the refusal when it fails"
   expect(await screen.findByText("Cue refused")).toBeVisible();
   expect(screen.queryByText("Advanced to the next cue.")).toBeNull();
 });
+
+// Advance pressed while the engine's feedback is stale says the command is only sent, not that it took.
+it("says Sent and waits for the engine when Advance is pressed while its feedback is stale", async () => {
+  const p = props();
+  p.programSongPlayback = { ...p.programSongPlayback!, telemetryStale: true };
+  mount(p);
+  fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
+  expect(await screen.findByText("Sent: waiting for the engine to confirm.")).toBeVisible();
+  expect(screen.queryByText("Advanced to the next cue.")).toBeNull();
+});

@@ -439,12 +439,16 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
         await startFlight(programId);
       }
       /* v8 ignore stop */
+      // Until the engine confirms (its telemetry is fresh and it is ready), the command is only sent: say so.
+      const confirmed = engineReady && programSongPlayback?.telemetryStale !== true;
       setQueueStatus(
-        action === "advance"
-          ? "Advanced to the next cue."
-          : action === "stop"
-            ? "Rundown stopped."
-            : "Rundown started.",
+        !confirmed
+          ? "Sent: waiting for the engine to confirm."
+          : action === "advance"
+            ? "Advanced to the next cue."
+            : action === "stop"
+              ? "Rundown stopped."
+              : "Rundown started.",
       );
       await refreshLogs();
     } catch (cause) {
