@@ -27,7 +27,11 @@ function build() {
       f.templates as never,
       { teamId: 7 } as never,
     ).specs(),
-    ...new ScenesMcpTools(f.scenes as never, f.programs as never).specs(),
+    ...new ScenesMcpTools(
+      f.scenes as never,
+      f.programs as never,
+      { teamId: 7 } as never,
+    ).specs(),
     ...new LayoutsMcpTools(f.layouts as never, f.programs as never).specs(),
     ...new MediaGroupsMcpTools(f.groups as never, f.programs as never).specs(),
   ];
@@ -256,7 +260,7 @@ describe('scene_remove', () => {
       /The console deletes it even when it is on air/,
     );
     await spec('scene_remove').run(args, ctx);
-    expect(f.scenes.remove).toHaveBeenCalledWith(3);
+    expect(f.scenes.remove).toHaveBeenCalledWith(3, 7);
   });
 
   it.each([
