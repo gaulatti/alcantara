@@ -200,7 +200,7 @@ per analysed song and edge, `applied` (the edge moved from rule 1's), `unchanged
 
 **Re-analysing songs.** `POST /songs/reanalysis` (`song.manage`; MCP
 `song_request_reanalysis`) takes 1 to 25 song ids and makes their finished
-analyses due now, with a fresh retry budget (`attempts` 0). The job takes
+(`success` or `failed`) analyses due now, with a fresh retry budget (`attempts` 0). The job takes
 them one at a time under the duty cycle above. A re-run never takes a good result
 away: the row stays `success` with its cues and loudness while the run is claimed,
 playout keeps using them, and a run that fails records only `error` (and retries

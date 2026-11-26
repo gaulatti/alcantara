@@ -52,12 +52,15 @@ describe('SongReanalysisService', () => {
     expect(prisma.mediaAssetAnalysis.findMany).toHaveBeenCalledWith({
       where: {
         assetId: { in: ['song:1', 'song:2', 'song:3'] },
-        status: 'success',
+        status: { in: ['success', 'failed'] },
       },
       select: { assetId: true },
     });
     expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenCalledWith({
-      where: { assetId: { in: ['song:1', 'song:3'] }, status: 'success' },
+      where: {
+        assetId: { in: ['song:1', 'song:3'] },
+        status: { in: ['success', 'failed'] },
+      },
       data: {
         nextAttemptAt: NOW,
         attempts: 0,
@@ -75,7 +78,10 @@ describe('SongReanalysisService', () => {
     ) => {
       await service.request([1], rule, NOW);
       expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith({
-        where: { assetId: { in: ['song:1'] }, status: 'success' },
+        where: {
+          assetId: { in: ['song:1'] },
+          status: { in: ['success', 'failed'] },
+        },
         data: {
           nextAttemptAt: NOW,
           attempts: 0,

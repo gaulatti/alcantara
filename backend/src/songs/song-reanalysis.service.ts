@@ -14,6 +14,9 @@ import { PrismaService } from '../prisma.service';
 /** The most songs one re-analysis request may name: the rollout of a new cue rule is paced in small batches. */
 export const MAX_REANALYSIS_BATCH = 25;
 
+/** The analyses that are settled and may be asked again; a `pending` one is already being measured. */
+const FINISHED = ['success', 'failed'] as const;
+
 /**
  * The rule a re-analysis runs on: C2 (the current rule, the default), C (the rule before the clamp, where a tail
  * beyond the bound keeps rule 1's edge) or previous (rule 1, before #235). Older rules are a way back that needs no deploy.
@@ -97,13 +100,14 @@ export class SongReanalysisService {
     const rows = await this.prisma.mediaAssetAnalysis.findMany({
       where: {
         assetId: { in: ids.map((id) => `song:${id}`) },
-        status: 'success',
+        // A failed analysis can be asked again too: it is how a song that lost its result gets one back (#235).
+        status: { in: [...FINISHED] },
       },
       select: { assetId: true },
     });
     const queued = new Set(rows.map((row) => row.assetId));
     const { count } = await this.prisma.mediaAssetAnalysis.updateMany({
-      where: { assetId: { in: [...queued] }, status: 'success' },
+      where: { assetId: { in: [...queued] }, status: { in: [...FINISHED] } },
       data: {
         nextAttemptAt: now,
         // A request starts a fresh retry budget: runs from earlier analyses do not count against it.
