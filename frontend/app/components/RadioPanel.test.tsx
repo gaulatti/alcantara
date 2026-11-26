@@ -1035,10 +1035,11 @@ it("starts and stops the recovery session through Palazzo", async () => {
       String(url).includes("/radio/radio-demo/recovery/stop"),
     ),
   ).toHaveLength(1);
-  expect(screen.getByRole("link", { name: "Configure" })).toHaveAttribute(
-    "href",
-    "/radio-settings",
-  );
+  const configure = screen.getByRole("link", { name: "Configure" });
+  expect(configure).toHaveAttribute("href", "/radio-settings");
+  // Keyboard focus shows a ring: the link has no border or background, so without these classes it has no focus indicator.
+  expect(configure.className).toContain("focus-visible:ring-2");
+  expect(configure.className).toContain("focus-visible:ring-sea");
 });
 
 // gaulatti/alcantara#693 review: one stop while one is on its way. A second hold sends nothing.

@@ -1042,7 +1042,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   >
                     Hold · stop session
                   </HoldButton>
-                  <Link to="/radio-settings">Configure</Link>
+                  <Link to="/radio-settings" className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sea">Configure</Link>
                 </div>
                 {recoveryError && <p role="alert">{recoveryError}</p>}
               </div>

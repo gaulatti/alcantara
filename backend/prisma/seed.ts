@@ -2,6 +2,11 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { createPostgresAdapter } from '../src/prisma-adapter';
 import {
+  DEMO_SONG_IDS,
+  demoAudioClient,
+  seedDemoAudio,
+} from '../src/seed/demo-audio';
+import {
   syncAudioClipAsset,
   syncImageAsset,
   syncSongAsset,
@@ -182,6 +187,24 @@ async function main() {
       enabled: true,
     },
   });
+  // Local demo songs for a recovery playlist and a filler (gaulatti/alcantara#206): their audio is one fictional tone
+  // uploaded to the Compose localstack, so each download comes from the local media store. The seeded songs above keep
+  // their existing audio.
+  const demoAudioUrl = await seedDemoAudio(process.env, demoAudioClient(process.env));
+  for (const [index, id] of DEMO_SONG_IDS.entries()) {
+    const demoSong = {
+      artist: 'Seed Artist',
+      title: `Local demo tone ${index + 1}`,
+      audioUrl: demoAudioUrl,
+      enabled: true,
+    };
+    const song = await prisma.song.upsert({
+      where: { id },
+      update: demoSong,
+      create: { id, ...demoSong },
+    });
+    await syncSongAsset(prisma, song);
+  }
   await prisma.songIntro.upsert({
     where: { songId: assignedSong.id },
     update: { instantId: assignedIntro.id, programId: 'main' },
@@ -269,14 +292,33 @@ async function main() {
     loop: false,
     startedAt: 0,
   };
-  await Promise.all(
-    [mainProgram.id, radioProgram.id].map((id) =>
-      prisma.programState.update({
-        where: { id },
-        data: { songSequence: songSequence as any },
-      }),
-    ),
-  );
+  // The radio-demo program plays the demo songs, which have no intro. The seeded song 9001 keeps its intro on main
+  // (a song has one intro, and that intro belongs to main), so radio-demo must not play it: its intro would belong
+  // to another program and the strip would read "Intro unavailable".
+  const radioSongSequence = {
+    mode: 'manual',
+    items: DEMO_SONG_IDS.map((id, index) => ({
+      id: `seed-song-${id}`,
+      kind: 'preset',
+      songId: id,
+      artist: 'Seed Artist',
+      title: `Local demo tone ${index + 1}`,
+      coverUrl: '/cover.jpg',
+      audioUrl: demoAudioUrl,
+    })),
+    activeItemId: `seed-song-${DEMO_SONG_IDS[0]}`,
+    intervalMs: 0,
+    loop: false,
+    startedAt: 0,
+  };
+  await prisma.programState.update({
+    where: { id: mainProgram.id },
+    data: { songSequence: songSequence as any },
+  });
+  await prisma.programState.update({
+    where: { id: radioProgram.id },
+    data: { songSequence: radioSongSequence as any },
+  });
 
   const demoLayout = await prisma.layout.upsert({
     where: { name: 'Local operator demo' },
