@@ -370,6 +370,8 @@ it("shows explicit empty states without hiding transport or inventing a countdow
   p.instants = [];
   p.programSongPlayback = null;
   p.fixtureData!.logs = [];
+  // Nothing airs: with audible output the strip would name the fallback playlist (D7).
+  p.fixtureData!.output = { ...p.fixtureData!.output, state: "idle", outputRms: 0 };
   mount(p);
   expect(screen.getByText(/Nothing on air/)).toBeVisible();
   expect(screen.getByText("Off air")).toBeVisible();
@@ -378,6 +380,52 @@ it("shows explicit empty states without hiding transport or inventing a countdow
     screen.queryByRole("button", { name: "Start rundown" }),
   ).not.toBeInTheDocument();
   expect(screen.getByText("Filler rotation is empty")).toBeVisible();
+});
+
+// D7, from the recovery walk: Palazzo's fallback playlist on air with no song commanded read "Off air". The desk is
+// not told about live input or scene audio, so it cannot rule them out and never claims the fallback playlist
+// (Wakko's #804 review).
+it("says audio is on air, not from the rundown, when no song is commanded and the output is audible", () => {
+  const p = props();
+  p.programSongPlayback = null;
+  p.fixtureData!.logs = [];
+  mount(p);
+  const strip = screen.getByRole("region", { name: "On air" });
+  expect(strip).toHaveAttribute("data-state", "off-rundown");
+  expect(within(strip).getByRole("status")).toHaveTextContent(
+    "Audio on air · not from the rundown",
+  );
+  expect(within(strip).getByRole("status")).toHaveAttribute("data-tone", "live");
+  expect(within(strip).queryByText("Fallback playlist on air")).toBeNull();
+  expect(within(strip).queryByText("Off air")).toBeNull();
+  expect(within(strip).queryByText(/Nothing on air/)).toBeNull();
+});
+
+it("counts an airing instant as another source, and an ended one as none", () => {
+  const p = props();
+  p.programSongPlayback = null;
+  p.fixtureData!.logs = [];
+  p.instantPlayback = {
+    1: { startedAtMs: Date.now() - 1_000, endsAtMs: Date.now() + 5_000 },
+    2: { startedAtMs: Date.now() - 9_000, endsAtMs: Date.now() - 1_000 },
+    3: { startedAtMs: Date.now() - 1_000, endsAtMs: null },
+  };
+  mount(p);
+  expect(screen.getByRole("region", { name: "On air" })).toHaveAttribute(
+    "data-state",
+    "off-rundown",
+  );
+});
+
+it("never shows audible output in the live tone while playout is down", () => {
+  const p = props();
+  p.programSongPlayback = null;
+  p.fixtureData!.logs = [];
+  p.fixtureData!.palazzo = { ...p.fixtureData!.palazzo, playout: "down" };
+  mount(p);
+  const strip = screen.getByRole("region", { name: "On air" });
+  expect(strip).toHaveAttribute("data-state", "audio-unconfirmed");
+  expect(within(strip).getByRole("status")).toHaveAttribute("data-tone", "warn");
 });
 
 it("renders reported metadata when the playing track is absent from the playlist", () => {

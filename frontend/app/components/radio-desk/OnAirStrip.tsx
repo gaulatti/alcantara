@@ -32,7 +32,11 @@ export function OnAirStrip({
   view: OnAirView;
   programId: string;
 }) {
-  const on = view.state !== "off-air";
+  // A song's title and clock; audio with no song commanded has neither (D7), so it gets its own line.
+  const fallback = view.state === "fallback";
+  const offRundown =
+    view.state === "off-rundown" || view.state === "audio-unconfirmed";
+  const on = view.state !== "off-air" && !fallback && !offRundown;
   return (
     <section
       aria-label="On air"
@@ -41,11 +45,12 @@ export function OnAirStrip({
     >
       <StatePill
         tone={
-          view.state === "on-air"
+          view.state === "on-air" || fallback || view.state === "off-rundown"
             ? "live"
             : view.state === "delayed" ||
                 view.state === "unconfirmed" ||
-                view.state === "unverified"
+                view.state === "unverified" ||
+                view.state === "audio-unconfirmed"
               ? "warn"
               : "idle"
         }
@@ -67,12 +72,33 @@ export function OnAirStrip({
               ) : null}
             </p>
           </>
+        ) : fallback ? (
+          <>
+            <p className="truncate text-sm font-semibold">Fallback playlist</p>
+            <p className="truncate text-xs text-text-secondary">
+              Palazzo's local playlist, no song commanded · {programId}
+            </p>
+          </>
+        ) : offRundown ? (
+          <>
+            <p className="truncate text-sm font-semibold">
+              Audio not from the rundown
+            </p>
+            <p className="truncate text-xs text-text-secondary">
+              No song commanded · {programId}
+            </p>
+          </>
         ) : (
           <p className="text-sm text-text-secondary">
             Nothing on air · {programId}
           </p>
         )}
       </div>
+      {view.state === "audio-unconfirmed" ? (
+        <span className="text-xs text-amber-200">No engine confirmation</span>
+      ) : fallback || offRundown ? (
+        <span className="text-xs text-text-secondary">No song clock</span>
+      ) : null}
       {on ? (
         <div
           className="font-mono tabular-nums"
