@@ -2202,3 +2202,13 @@ it("says a truly empty rotation is empty, and offers no load error", () => {
   expect(screen.getByText("Filler rotation is empty")).toBeVisible();
   expect(screen.queryByText("Couldn't load the rotation")).toBeNull();
 });
+
+// The rotation-load error replaces the rotation editor only: taking the song off air stays available (an on-air control).
+it("keeps Stop the song on air working while the rotation-load error is shown", async () => {
+  const p = props();
+  p.fixtureData!.logs = [];
+  mount({ ...p, rotationLoadError: true, onRetryRotation: vi.fn() });
+  expect(screen.getByText("Couldn't load the rotation")).toBeVisible();
+  await hold(screen.getByRole("button", { name: "Stop the song on air" }));
+  await waitFor(() => expect(p.onTakeOffAir).toHaveBeenCalledOnce());
+});
