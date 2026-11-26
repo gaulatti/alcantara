@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -13,6 +14,7 @@ import { ManagedMetricsService } from '../observability/managed-metrics.service'
 import { AlanaClient, AlanaRequestError } from './alana.client';
 import { catalogRow, cleanName } from './catalog-row';
 import { FillerBindingService } from '../filler/filler-binding.service';
+import { DestinationSecretsService } from './destination-secrets.service';
 import {
   canonicalJson,
   DESTINATION_ID_PATTERN,
@@ -37,11 +39,14 @@ type StoredCommand = Prisma.BroadcastDestinationCommandGetPayload<{
 
 @Injectable()
 export class BroadcastDestinationsService {
+  private readonly logger = new Logger(BroadcastDestinationsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly alana: AlanaClient,
     private readonly metrics: ManagedMetricsService,
     private readonly fillers: FillerBindingService,
+    private readonly secrets: DestinationSecretsService,
   ) {}
 
   /**
@@ -106,12 +111,65 @@ export class BroadcastDestinationsService {
     );
   }
 
+  /**
+   * Retires or restores a destination (gaulatti/alcantara#384 for its secret).
+   * - Retire: the row is retired first; then a secret this backend wrote (under
+   *   `alcantara/destinations/`, from the Add form) is scheduled for deletion after the recovery
+   *   window. A failure there leaves the secret as before, logged and counted, and the retire stands.
+   * - Restore: the scheduled deletion is cancelled first; if that fails the restore is refused and
+   *   the row stays retired, so a selectable destination never points at a secret about to go.
+   * A hand-typed secret reference (no `service`) is never touched. Repeating a retire or a restore
+   * changes nothing and calls Secrets Manager no more.
+   */
   async setRetired(destinationId: string, retired: boolean) {
     validateDestinationId(destinationId);
+    const existing = await this.prisma.broadcastDestination.findUnique({
+      where: { id: destinationId },
+    });
+    if (!existing) throw new NotFoundException('Destination not found');
+    const changes = (existing.retiredAt !== null) !== retired;
+    const owned =
+      existing.service !== null &&
+      DestinationSecretsService.ownsSecret(existing.secretId);
+
+    if (!retired && changes && owned) {
+      try {
+        await this.secrets.cancelDeletion(existing.secretId);
+        this.metrics.recordBroadcastDestination('restore_secret', 'succeeded');
+      } catch {
+        this.metrics.recordBroadcastDestination('restore_secret', 'failed');
+        throw new ServiceUnavailableException(
+          'The destination key could not be restored, so the destination stays retired',
+        );
+      }
+    }
+
+    const updated = await this.update(destinationId, {
+      retiredAt: retired ? (existing.retiredAt ?? new Date()) : null,
+    });
+
+    if (retired && changes && owned) {
+      try {
+        await this.secrets.scheduleDeletion(existing.secretId);
+        this.metrics.recordBroadcastDestination('retire_secret', 'succeeded');
+      } catch {
+        this.metrics.recordBroadcastDestination('retire_secret', 'failed');
+        this.logger.warn(
+          `Destination ${destinationId} was retired, but its key could not be scheduled for deletion; it stays in Secrets Manager`,
+        );
+      }
+    }
+    return updated;
+  }
+
+  private async update(
+    destinationId: string,
+    data: Prisma.BroadcastDestinationUpdateInput,
+  ) {
     try {
       return await this.prisma.broadcastDestination.update({
         where: { id: destinationId },
-        data: { retiredAt: retired ? new Date() : null },
+        data,
       });
     } catch (error) {
       if (
