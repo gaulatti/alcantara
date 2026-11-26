@@ -10,8 +10,9 @@ import {
   OnModuleInit,
   OnModuleDestroy,
   NotFoundException,
+  ConflictException,
 } from '@nestjs/common';
-import { MediaAssetKind, type Prisma } from '@prisma/client';
+import { MediaAssetKind, Prisma } from '@prisma/client';
 import { Subject, Observable, type Subscription } from 'rxjs';
 import {
   OperatorChangeRecorder,
@@ -1287,7 +1288,9 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     if (!template) {
       return {
         templateUrl: null,
-        templateManifest: null,
+        // SQL NULL, not JSON null: a plain null writes JSON null to this Json column, which an audio-only
+        // (radio) row's check constraint refuses, so no radio show could be created or kept radio.
+        templateManifest: Prisma.DbNull,
         templateVerifiedAt: null,
       };
     }
@@ -1496,7 +1499,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     });
 
     if (existing) {
-      throw new Error('Program already exists');
+      throw new ConflictException('Program already exists');
     }
 
     // gaulatti/alcantara#335: the Program row (which carries the team and owns branding) is created
@@ -1563,7 +1566,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         select: { id: true },
       });
       if (existingTarget) {
-        throw new Error('Target program id already exists');
+        throw new ConflictException('Target program id already exists');
       }
     }
 
