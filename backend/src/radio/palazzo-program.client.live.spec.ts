@@ -120,6 +120,8 @@ describe('PalazzoProgramClient live input', () => {
   it('is absent from the status until a snapshot says whether live input is on the air', async () => {
     const h = harness(true);
     expect(h.client.getStatus()).not.toHaveProperty('live');
+    // With no reading there is nothing to be fresh.
+    expect(h.client.liveFresh()).toBe(false);
     h.client.start();
     await settle();
     h.push(event(1, 'snapshot', { state: state(1, true) }));
