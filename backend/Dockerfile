@@ -17,15 +17,22 @@ RUN mkdir -p /app/certs \
       https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
     && test -s /app/certs/global-bundle.pem
 
-# Install dependencies
-COPY package*.json ./
-RUN pnpm install --no-frozen-lockfile
+# Install exactly the workspace lockfile's versions (gaulatti/alcantara#581). The build context is the
+# repository root, so pnpm-lock.yaml is present, and a lockfile out of step with a package.json fails the
+# build instead of resolving newer versions than CI tested. The other workspace manifests are copied so
+# the lockfile's importers match; only the backend's dependencies are installed.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY backend/package.json backend/
+COPY frontend/package.json frontend/
+COPY infra/aws/package.json infra/aws/
+RUN pnpm install --frozen-lockfile --filter backend
 
 # Copy app source and build
-COPY . .
+COPY backend/ backend/
+WORKDIR /app/backend
 RUN pnpm run prisma:generate
 RUN pnpm run build
-RUN test -f /app/dist/src/proto/authorization.proto && test -f /app/dist/src/proto/application_access.proto
+RUN test -f /app/backend/dist/src/proto/authorization.proto && test -f /app/backend/dist/src/proto/application_access.proto
 
 ENV ALCANTARA_BUILD_VERSION=${ALCANTARA_BUILD_VERSION}
 

@@ -48,6 +48,7 @@ describe('catalogue, preference and ticket contracts through Fastify HTTP', () =
     },
     {
       path: 'media',
+      scoped: true,
       controller: MediaController,
       token: MediaService,
       service: methods(['findAll', 'findOne', 'create', 'update', 'remove']),
@@ -59,6 +60,7 @@ describe('catalogue, preference and ticket contracts through Fastify HTTP', () =
     },
     {
       path: 'media-groups',
+      scoped: true,
       controller: MediaGroupsController,
       token: MediaGroupsService,
       service: methods(['findAll', 'findOne', 'create', 'update', 'remove']),
@@ -80,6 +82,7 @@ describe('catalogue, preference and ticket contracts through Fastify HTTP', () =
     },
     {
       path: 'stingers',
+      scoped: true,
       controller: StingersController,
       token: StingersService,
       service: methods(['findAll', 'create', 'update', 'remove']),
@@ -322,7 +325,10 @@ describe('catalogue, preference and ticket contracts through Fastify HTTP', () =
         url: `/${name}${query}`,
       });
       expect(response.statusCode).toBe(200);
-      expect(item.service.findAll).toHaveBeenCalledWith(expected);
+      expect(item.service.findAll).toHaveBeenCalledWith(
+        expected,
+        ...('scoped' in item ? [identity.authorization.teamId] : []),
+      );
     },
   );
 

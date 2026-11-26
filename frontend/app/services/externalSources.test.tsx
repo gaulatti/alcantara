@@ -76,6 +76,12 @@ describe('externalSources service', () => {
       await expect(fetchExternalSources()).rejects.toThrow('Permission denied');
     });
 
+    it('names the status when an error response has no body at all', async () => {
+      vi.mocked(authFetch).mockResolvedValueOnce(new Response('', { status: 500 }));
+
+      await expect(fetchExternalSources()).rejects.toThrow('Failed to fetch external sources (500)');
+    });
+
     it('throws generic error when error response is plain text', async () => {
       vi.mocked(authFetch).mockResolvedValueOnce(
         new Response('Service Unavailable', {

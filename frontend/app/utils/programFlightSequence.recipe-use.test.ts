@@ -36,3 +36,12 @@ describe('normalizeFlightCue keeps the recipe-use tag', () => {
     expect(normalizeFlightCue({ id: 'plain', kind: 'playSong', songId: 42 })?.recipeUse).toBeUndefined();
   });
 });
+
+// gaulatti/alcantara#527 (untriaged gaps): a tag whose params are not an object is dropped and the cue kept.
+describe('normalizeFlightCue with a tag whose params are not an object', () => {
+  it('drops the tag and keeps the cue', () => {
+    const parsed = normalizeFlightCue(cue({ ...tag, params: 'not-an-object' }));
+    expect(parsed?.id).toBe('use-1.song');
+    expect(parsed?.recipeUse).toBeUndefined();
+  });
+});
