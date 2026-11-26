@@ -12,6 +12,7 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
+import { SceneAssetScope } from './scene-asset-scope';
 import { MediaAssetKind, Prisma } from '@prisma/client';
 import { Subject, Observable, type Subscription } from 'rxjs';
 import {
@@ -236,6 +237,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     @Optional()
     private readonly outputConfidence?: RadioOutputConfidenceService,
     @Optional() private readonly recorder?: OperatorChangeRecorder,
+    @Optional() private readonly sceneAssets?: SceneAssetScope,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -818,24 +820,27 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     return value;
   }
 
-  async updateBroadcastSettings(data: {
-    enabled?: boolean;
-    startTime?: string | null;
-    mixerChannels?: unknown;
-    mainMasterVolume?: number;
-    songMasterVolume?: number;
-    instantMasterVolume?: number;
-    streamMasterVolume?: number;
-    sceneInstantMasterVolume?: number;
-    songMuted?: boolean;
-    instantMuted?: boolean;
-    streamMuted?: boolean;
-    sceneInstantMuted?: boolean;
-    songSolo?: boolean;
-    instantSolo?: boolean;
-    streamSolo?: boolean;
-    sceneInstantSolo?: boolean;
-  }, teamId = 0) {
+  async updateBroadcastSettings(
+    data: {
+      enabled?: boolean;
+      startTime?: string | null;
+      mixerChannels?: unknown;
+      mainMasterVolume?: number;
+      songMasterVolume?: number;
+      instantMasterVolume?: number;
+      streamMasterVolume?: number;
+      sceneInstantMasterVolume?: number;
+      songMuted?: boolean;
+      instantMuted?: boolean;
+      streamMuted?: boolean;
+      sceneInstantMuted?: boolean;
+      songSolo?: boolean;
+      instantSolo?: boolean;
+      streamSolo?: boolean;
+      sceneInstantSolo?: boolean;
+    },
+    teamId = 0,
+  ) {
     const currentRaw = await this.ensureBroadcastSettings();
     // One row for the whole installation (gaulatti/alcantara#122): only its own team may change it. `0` means no team
     // is configured, which production refuses.
@@ -2573,14 +2578,18 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       volume: number;
     };
     if (mediaAssetId !== null) {
-      const asset = await this.prisma.mediaAsset.findFirst({
-        where: {
-          id: mediaAssetId,
-          enabled: true,
-          backgroundAudio: { isNot: null },
-        },
-        include: { backgroundAudio: true, audioClip: true },
-      });
+      const read = (db: PrismaService) =>
+        db.mediaAsset.findFirst({
+          where: {
+            id: mediaAssetId,
+            enabled: true,
+            backgroundAudio: { isNot: null },
+          },
+          include: { backgroundAudio: true, audioClip: true },
+        });
+      const asset = this.sceneAssets
+        ? await this.sceneAssets.read(normalizedProgramId, read)
+        : await read(this.prisma);
       if (!asset || !asset.backgroundAudio) {
         throw new NotFoundException(
           'Configured background audio asset not found',

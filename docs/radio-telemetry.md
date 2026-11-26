@@ -598,6 +598,12 @@ program's team (gaulatti/alcantara#122).
 program has no team, with `path` one of `generate`, `validate`, `cue`, `recipe` and
 `recovery`. A refused read treats the songs as missing. It should stay at `0`.
 
+Starting a scene's background audio reads the program team's media asset
+(gaulatti/alcantara#122). It is on air, so what the team cannot serve is read as
+before, from every asset, and counted in
+`alcantara_scene_asset_scope_refusals_total{reason}`, with `reason` one of
+`no-team`, `other-team` and `lookup-failed`, all exported at 0. It should stay at `0`.
+
 ## Song analysis drop metric
 
 `alcantara_radio_analysis_dropped_total{result}` counts analysis-derived segue or loudness that the radio service left off a song command or next-song announcement, with `segueMode` on, because Palazzo would reject it or because the song had no analysis to send. The song still plays without the dropped group. `result` is one of `segue-invalid` (cue, fade or overlap values outside Palazzo's bounds), `segue-beyond-duration` (cue-out after the song's duration), `segue-edge-bound` (one cue edge would trim more than 10 s, or is negative or not finite; the other edge is still sent, gaulatti/alcantara#234), `loudness-invalid` (integrated loudness outside -70 to 0 LUFS, true peak above +6 dBTP, or a non-finite value), `ambiguous-match` (the command named no song and more than one song shares its audio URL, so no analysis was applied), or, for a song sent with no analysis at all (gaulatti/alcantara#255): `no-asset` (no library song matches, or the song has no media asset), `not-analyzed` (the asset's analysis is missing, pending or failed) or `lookup-failed` (the song or analysis lookup itself failed). In these last three cases the song is still sent, unchanged, without segue or loudness normalization. The counter counts commands, not aired songs: the same check runs for a song command and for a next-song announcement, so one song can count twice (announced, then commanded after a refused or replaced announcement), and a withdrawn announcement counts a song that never aired. Read it as an upper bound on songs sent without analysis, by reason. Not counted here: an analysis that succeeded but measured no loudness (it airs without normalization; its cue group is counted as `none` only when it also has no cues). Every result is exported at 0 from start-up. Labels never include songs, URLs or program IDs. Each song with a drop is also logged once as `radio.song_analysis_dropped`. See [program-playout.md](program-playout.md).

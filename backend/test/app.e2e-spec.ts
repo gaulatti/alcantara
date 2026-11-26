@@ -12,6 +12,8 @@ import {
 import request from 'supertest';
 import { listenOnLoopback } from './loopback-supertest';
 import { AppModule } from './../src/app.module';
+import { ProgramService } from './../src/program/program.service';
+import { SceneAssetScope } from './../src/program/scene-asset-scope';
 
 describe('AppController (e2e)', () => {
   let app: NestFastifyApplication;
@@ -33,6 +35,14 @@ describe('AppController (e2e)', () => {
   // Without this the open database pool and the app's timers keep Jest alive after the run.
   afterEach(async () => {
     await app.close();
+  });
+
+  // The scope is an optional dependency, so a wiring mistake would not fail start-up (gaulatti/alcantara#122).
+  it('gives the program service the scene asset scope', () => {
+    const programs = app.get(ProgramService) as unknown as {
+      sceneAssets?: unknown;
+    };
+    expect(programs.sceneAssets).toBe(app.get(SceneAssetScope));
   });
 
   it('/ (GET)', () => {

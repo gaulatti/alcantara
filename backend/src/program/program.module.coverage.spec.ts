@@ -11,6 +11,7 @@ import { ProgramController } from './program.controller';
 import { ProgramModule } from './program.module';
 import { ProgramRealtimeService } from './program.realtime.service';
 import { ProgramService } from './program.service';
+import { SceneAssetScope } from './scene-asset-scope';
 import { ProgramTemplateService } from './program-template.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { RecipeMcpTools } from '../mcp/capabilities/recipes';
@@ -152,6 +153,7 @@ describe('ProgramModule wiring', () => {
     ]);
     expect(Reflect.getMetadata('providers', ProgramModule)).toEqual([
       ProgramService,
+      SceneAssetScope,
       ProgramRealtimeService,
       FlightService,
       ProgramTemplateService,
