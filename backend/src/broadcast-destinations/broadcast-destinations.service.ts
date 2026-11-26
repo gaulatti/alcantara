@@ -3,7 +3,6 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
-  Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -13,7 +12,6 @@ import { PrismaService } from '../prisma.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { AlanaClient, AlanaRequestError } from './alana.client';
 import { catalogRow, cleanName } from './catalog-row';
-import { DestinationSecretsService } from './destination-secrets.service';
 import { FillerBindingService } from '../filler/filler-binding.service';
 import {
   canonicalJson,
@@ -37,13 +35,6 @@ type StoredCommand = Prisma.BroadcastDestinationCommandGetPayload<{
   };
 }>;
 
-/** Only a secret this application wrote is ever deleted or restored. */
-function ownsSecret(secretId: string | null | undefined): secretId is string {
-  return (
-    typeof secretId === 'string' && DestinationSecretsService.owns(secretId)
-  );
-}
-
 @Injectable()
 export class BroadcastDestinationsService {
   constructor(
@@ -51,10 +42,7 @@ export class BroadcastDestinationsService {
     private readonly alana: AlanaClient,
     private readonly metrics: ManagedMetricsService,
     private readonly fillers: FillerBindingService,
-    private readonly secrets: DestinationSecretsService,
   ) {}
-
-  private readonly logger = new Logger(BroadcastDestinationsService.name);
 
   /**
    * `callerTeam` narrows the list to that team's destinations, so it never offers one the ingest
@@ -118,25 +106,10 @@ export class BroadcastDestinationsService {
     );
   }
 
-  /**
-   * Retiring keeps the destination and its history, and schedules the deletion of the key this application wrote
-   * (recoverable for RETIRED_SECRET_RECOVERY_DAYS); restoring cancels it first, so a restored destination never
-   * points at a secret that is about to vanish.
-   */
   async setRetired(destinationId: string, retired: boolean) {
     validateDestinationId(destinationId);
-    const existing = await this.prisma.broadcastDestination.findUnique({
-      where: { id: destinationId },
-      select: { secretId: true, retiredAt: true },
-    });
-    // A repeat of the state the row is already in touches no secret.
-    const changes = (existing?.retiredAt != null) !== retired;
-    if (!retired && changes && ownsSecret(existing?.secretId)) {
-      await this.bringBackSecret(existing.secretId);
-    }
-    let updated;
     try {
-      updated = await this.prisma.broadcastDestination.update({
+      return await this.prisma.broadcastDestination.update({
         where: { id: destinationId },
         data: { retiredAt: retired ? new Date() : null },
       });
@@ -149,46 +122,6 @@ export class BroadcastDestinationsService {
       }
       throw error;
     }
-    if (retired && changes && ownsSecret(updated?.secretId)) {
-      await this.scheduleSecretDeletion(updated.secretId);
-    }
-    return updated;
-  }
-
-  // Best effort: the retire stands even when the provider refuses; the failure is counted and logged without the id.
-  private async scheduleSecretDeletion(secretId: string): Promise<void> {
-    const sharing = await this.prisma.broadcastDestination.count({
-      where: { secretId, retiredAt: null },
-    });
-    if (sharing > 0) return;
-    try {
-      await this.secrets.scheduleDeletion(secretId);
-      this.metrics.recordBroadcastDestination('retire_secret', 'succeeded');
-    } catch {
-      this.metrics.recordBroadcastDestination('retire_secret', 'failed');
-      this.logger.warn(
-        'A retired destination secret could not be scheduled for deletion',
-      );
-    }
-  }
-
-  private async bringBackSecret(secretId: string): Promise<void> {
-    let outcome: 'kept' | 'gone';
-    try {
-      outcome = await this.secrets.cancelDeletion(secretId);
-    } catch {
-      this.metrics.recordBroadcastDestination('restore_secret', 'failed');
-      throw new BadGatewayException(
-        'The destination key could not be brought back; try again',
-      );
-    }
-    if (outcome === 'gone') {
-      this.metrics.recordBroadcastDestination('restore_secret', 'conflict');
-      throw new ConflictException(
-        'The destination key was deleted after the recovery window; add the destination again',
-      );
-    }
-    this.metrics.recordBroadcastDestination('restore_secret', 'succeeded');
   }
 
   async reorderDestinations(rawIds: unknown) {

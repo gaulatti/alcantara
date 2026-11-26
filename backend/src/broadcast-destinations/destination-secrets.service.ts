@@ -2,7 +2,6 @@ import {
   CreateSecretCommand,
   DeleteSecretCommand,
   PutSecretValueCommand,
-  RestoreSecretCommand,
 } from '@aws-sdk/client-secrets-manager';
 import { Injectable } from '@nestjs/common';
 import { SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
@@ -14,9 +13,6 @@ export interface DestinationSecretClient {
 
 /** The prefix every destination secret is written under (the backend role is scoped to it). */
 export const DESTINATION_SECRET_PREFIX = 'alcantara/destinations';
-
-/** How long a retired destination's secret can still be brought back (Secrets Manager's default window). */
-export const RETIRED_SECRET_RECOVERY_DAYS = 30;
 
 /**
  * Writes a destination's stream key to Secrets Manager itself (gaulatti/alcantara#376), so the
@@ -80,40 +76,5 @@ export class DestinationSecretsService {
         ForceDeleteWithoutRecovery: true,
       }),
     );
-  }
-
-  /** Whether this application wrote the secret: older destinations may name secrets it must not touch. */
-  static owns(secretId: string): boolean {
-    return (
-      secretId.startsWith(`${DESTINATION_SECRET_PREFIX}/`) ||
-      secretId.includes(`:secret:${DESTINATION_SECRET_PREFIX}/`)
-    );
-  }
-
-  /** A retired destination's key is deleted after the recovery window, never immediately. */
-  async scheduleDeletion(secretId: string): Promise<void> {
-    await this.secrets().send(
-      new DeleteSecretCommand({
-        SecretId: secretId,
-        RecoveryWindowInDays: RETIRED_SECRET_RECOVERY_DAYS,
-      }),
-    );
-  }
-
-  /**
-   * Brings back the secret of a restored destination. `gone` means the window had passed and there is no key left;
-   * `kept` covers a secret that was never scheduled for deletion.
-   */
-  async cancelDeletion(secretId: string): Promise<'kept' | 'gone'> {
-    try {
-      await this.secrets().send(
-        new RestoreSecretCommand({ SecretId: secretId }),
-      );
-      return 'kept';
-    } catch (error) {
-      const name = (error as { name?: string }).name;
-      if (name === 'ResourceNotFoundException') return 'gone';
-      throw error;
-    }
   }
 }

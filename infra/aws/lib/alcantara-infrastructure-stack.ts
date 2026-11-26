@@ -60,8 +60,9 @@ export class AlcantaraInfrastructureStack extends Stack {
           ],
           resources: [mediaBucket.bucketArn, `${mediaBucket.bucketArn}/*`],
         }),
-        // gaulatti/alcantara#384: the destination secrets the backend writes (#376), and nothing else. RestoreSecret
-        // cancels the scheduled deletion of a destination that is restored.
+        // gaulatti/alcantara#384: the destination secrets the backend writes (#376), and nothing else; the same grant as
+        // the AlcantaraDestinationKeys inline policy on the host role. RestoreSecret cancels the scheduled deletion of a
+        // destination that is restored.
         new PolicyStatement({
           actions: [
             "secretsmanager:CreateSecret",
