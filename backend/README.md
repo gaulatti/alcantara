@@ -97,8 +97,11 @@ The PostgreSQL integration and migration specs skip unless they can reach a data
 (`operator-change-migration`, `operator-change-library-migration`) may create scratch
 databases; the CI user can, so CI points it at the same `alcantara_ci` server.
 `media-analysis/ffmpeg-audio.fixtures.spec.ts` runs the real `ffmpeg` and `ffprobe`
-and skips where they are not installed. CI sets both URLs on the coverage step and
-installs ffmpeg, so none of these skip there. Locally, use the `pgvector/pgvector:pg17`
+and skips where they are not installed. Its cue points depend on the ffmpeg version:
+they pass on production's 8.1.3 and fail on the Ubuntu runner's apt 8.0.1. CI therefore
+runs `ffmpeg` and `ffprobe` from the image `backend/Dockerfile` builds from (the
+`.nvmrc` Node Alpine image with `apk add ffmpeg`), through shims on the runner's PATH.
+CI sets both URLs on the coverage step, so none of these skip there. Locally, use the `pgvector/pgvector:pg17`
 image CI uses (a migration needs the `vector` extension), migrate it, and export both URLs.
 
 ## Deployment
