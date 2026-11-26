@@ -17,7 +17,7 @@ const BASE = 'http://palazzo:3100';
 /** A fetch that never answers: it settles only when its signal aborts, as a frozen engine would. */
 const frozenFetch = () =>
   jest.fn(
-    (_url: string, init: { signal?: AbortSignal }) =>
+    (_url: string, init: { method?: string; signal?: AbortSignal }) =>
       new Promise<Response>((_resolve, reject) => {
         init.signal?.addEventListener('abort', () =>
           reject(init.signal?.reason ?? new Error('aborted')),
@@ -64,30 +64,91 @@ describe('PalazzoMachineClient request timeout', () => {
     expect(PALAZZO_COMMAND_TIMEOUT_MS).toBe(10_000);
   });
 
-  it('turns a command the engine never answers into unavailable when the timeout fires', async () => {
+  /** Runs a command against a frozen engine, firing each attempt's timeout, and records every attempt. */
+  async function runFrozen(
+    command: (client: PalazzoMachineClient) => Promise<unknown>,
+  ) {
     const timeouts = controlledTimeouts();
-    const { client, metrics } = build(frozenFetch());
+    const fetchImpl = frozenFetch();
+    const { client, metrics } = build(fetchImpl);
     let settled = false;
-    const outcome = client.stopSong(BASE, 'radio-1').then(
+    const outcome = command(client).then(
       () => null,
       (error: unknown) => {
         settled = true;
         return error;
       },
     );
-    // A song stop is retried: each attempt gets its own bounded wait, and the engine answers none of them.
     for (let attempt = 0; attempt < 10 && !settled; attempt += 1) {
       await new Promise((resolve) => setImmediate(resolve));
       if (!settled) timeouts.fire();
     }
     const error = await outcome;
+    const attempts = fetchImpl.mock.calls.map(
+      ([url, init]: [string, { method?: string }]) =>
+        `${init.method ?? 'GET'} ${url.replace(`${BASE}/v1/programs/radio-1`, '')}`,
+    );
+    return { error, attempts, timeouts, metrics };
+  }
+
+  it('fails a song stop after its first timeout and never sends it twice', async () => {
+    const { error, attempts, timeouts, metrics } = await runFrozen((client) =>
+      client.stopSong(BASE, 'radio-1'),
+    );
     expect(error).toBeInstanceOf(PalazzoMachineError);
     expect((error as PalazzoMachineError).reason).toBe('unavailable');
-    expect(timeouts.spy).toHaveBeenCalledWith(PALAZZO_COMMAND_TIMEOUT_MS);
+    // One attempt only: a late first stop plus a retry could stop the next song.
+    expect(attempts).toEqual(['POST /playback/song/stop']);
+    expect(timeouts.spy.mock.calls).toEqual([[PALAZZO_COMMAND_TIMEOUT_MS]]);
+    expect(metrics.recordMachineRetry).not.toHaveBeenCalled();
     expect(metrics.recordMachineRequest).toHaveBeenCalledWith(
       'song-stop',
       'unavailable',
     );
+  });
+
+  it.each([
+    [
+      'an instant stop',
+      (c: PalazzoMachineClient) => c.stopInstants(BASE, 'radio-1'),
+      'POST /playback/instant/stop',
+    ],
+    [
+      'a next withdrawal',
+      (c: PalazzoMachineClient) => c.withdrawNext(BASE, 'radio-1'),
+      'DELETE /playback/next',
+    ],
+  ])('does not resend %s after a timeout', async (_name, command, attempt) => {
+    const { error, attempts, metrics } = await runFrozen(command);
+    expect((error as PalazzoMachineError).reason).toBe('unavailable');
+    expect(attempts).toEqual([attempt]);
+    expect(metrics.recordMachineRetry).not.toHaveBeenCalled();
+  });
+
+  it('retries a read after each timeout, every attempt bounded', async () => {
+    const { error, attempts, timeouts, metrics } = await runFrozen((client) =>
+      client.getMixer(BASE, 'radio-1'),
+    );
+    expect((error as PalazzoMachineError).reason).toBe('unavailable');
+    expect(attempts).toEqual(['GET /mixer', 'GET /mixer', 'GET /mixer']);
+    expect(timeouts.spy).toHaveBeenCalledTimes(3);
+    expect(metrics.recordMachineRetry).toHaveBeenCalledTimes(2);
+  });
+
+  it('still retries a song stop the engine refused with a server error', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(new Response('', { status: 503 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    const { client, metrics } = build(fetchImpl);
+    await client.stopSong(BASE, 'radio-1');
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(metrics.recordMachineRetry).toHaveBeenCalledWith('song-stop');
   });
 
   it('does not bound the long-lived event stream', async () => {
