@@ -34,6 +34,7 @@ import type { OnAirInput } from "./radio-desk/onAir";
 import { LiveOnAirStrip } from "./radio-desk/OnAirStrip";
 import { PlaySongNow } from "./radio-desk/PlaySongNow";
 import { PlayoutMode } from "./radio-desk/PlayoutMode";
+import { MixerFader } from "./radio-desk/MixerFader";
 import { Meter } from "./radio-desk/primitives";
 import { RadioTransport } from "./radio-desk/RadioTransport";
 import {
@@ -43,7 +44,7 @@ import {
   type NextUpSong,
 } from "./radio-desk/songs";
 import { InstantsPanel } from "./panels";
-import { dbToFader, faderToDb } from "../utils/audioTaper";
+import { faderToDb } from "../utils/audioTaper";
 import { engineUnavailableLabel } from "../utils/palazzoReason";
 import {
   fetchFlightSequences,
@@ -1411,22 +1412,10 @@ function RadioMixerChannel({
     <section className="console-channel" aria-label={`${label} mixer channel`}>
       <div className="console-channel-label">{label}</div>
       <div className="console-channel-db">{level}</div>
-      <input
-        type="range"
-        min={0}
-        max={1}
-        step={0.01}
+      <MixerFader
+        label={`${label} level`}
         value={channel.volume}
-        onChange={(event) => onVolumeChange(Number(event.target.value))}
-        onKeyDown={(event) => {
-          // Up and down move the fader one decibel, not one hundredth of its travel.
-          if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
-          event.preventDefault();
-          const current = Number.isFinite(db) ? db : -80;
-          const target = current + (event.key === "ArrowUp" ? 1 : -1);
-          onVolumeChange(Math.max(0, Math.min(1, dbToFader(target))));
-        }}
-        aria-label={`${label} level`}
+        onChange={onVolumeChange}
       />
       <Meter
         label={`${label} live peak`}

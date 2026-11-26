@@ -2010,8 +2010,13 @@ it("moves a fader one decibel with the arrow keys", () => {
   const down = (p.onSongVolumeChange as ReturnType<typeof vi.fn>).mock
     .calls[1][0] as number;
   expect(faderToDb(down) - faderToDb(0.7)).toBeCloseTo(-1, 1);
+  // Walk part 4: Left and Right step a decibel as well on these horizontal faders, never a hundredth of the travel.
   fireEvent.keyDown(fader, { key: "ArrowLeft" });
-  expect(p.onSongVolumeChange).toHaveBeenCalledTimes(2);
+  const left = (p.onSongVolumeChange as ReturnType<typeof vi.fn>).mock
+    .calls[2][0] as number;
+  expect(faderToDb(left) - faderToDb(0.7)).toBeCloseTo(-1, 1);
+  fireEvent.keyDown(fader, { key: "Escape" });
+  expect(p.onSongVolumeChange).toHaveBeenCalledTimes(3);
 });
 
 it("shows the live level, its peak and the held peak beside a fader when the program publishes them", () => {
