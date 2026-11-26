@@ -517,16 +517,34 @@ export class PalazzoMachineClient {
     lastEventId: string | null,
     signal: AbortSignal,
   ): Promise<Response> {
-    const response = await this.request(
-      palazzoUrl,
-      programId,
-      '/playback/events',
-      {
+    // gaulatti/alcantara#734: the handshake is bounded like any command, so a reconnect to a hung Palazzo gives up
+    // after PALAZZO_COMMAND_TIMEOUT_MS. The stream itself is long-lived: once the headers arrive only the caller's
+    // signal ends it.
+    const handshake = new AbortController();
+    const follow = () => handshake.abort(signal.reason);
+    if (signal.aborted) follow();
+    else signal.addEventListener('abort', follow, { once: true });
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      handshake.abort(new DOMException('handshake timed out', 'TimeoutError'));
+    }, PALAZZO_COMMAND_TIMEOUT_MS);
+    let response: Response;
+    try {
+      response = await this.request(palazzoUrl, programId, '/playback/events', {
         operation: 'event-connect',
         lastEventId: lastEventId ?? undefined,
-        signal,
-      },
-    );
+        signal: handshake.signal,
+      });
+    } catch (error) {
+      if (timedOut) {
+        this.metrics.recordMachineRequest('event-connect', 'unavailable');
+        throw new PalazzoMachineError('unavailable');
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
     if (
       !response.body ||
       !response.headers

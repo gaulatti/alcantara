@@ -6,9 +6,14 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { PompeiiService } from '../auth/pompeii.service';
 import { PrismaService } from '../prisma.service';
-import { RadioMetricsService } from './radio-metrics.service';
+import { forTeam } from '../tenancy/scoped-prisma';
+import {
+  RadioMetricsService,
+  type SimilarityScopePath,
+} from './radio-metrics.service';
 import {
   collectProgramSongLeaves,
   normalizeProgramSongSequence,
@@ -80,6 +85,11 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
   private readonly cycles = new Map<string, ArtistCycleState>();
   private readonly vectors = new Map<VectorKey, number[]>();
   private catalog = new Map<number, CatalogSong>();
+  // gaulatti/alcantara#122: the index is shared by every program, so each pick keeps only the songs of the
+  // program's team. Loaded with the settings and the embeddings.
+  private readonly songTeams = new Map<number, number | null>();
+  private readonly programTeams = new Map<string, number | null>();
+  private readonly refused = new Set<string>();
   private readonly insertCounts = new Map<string, number>();
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   // Set once the first load of settings and embeddings has finished, whether
@@ -98,6 +108,7 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly metrics: RadioMetricsService,
+    private readonly pompeii: PompeiiService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -152,7 +163,72 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
     return [...this.settings.values()].some((s) => s.mode !== 'off');
   }
 
+  /**
+   * The team whose songs a program reads: `null` when it has none, and `0` when no station team is configured, which
+   * stays unscoped.
+   */
+  private async teamOf(programId: string): Promise<number | null> {
+    if (this.pompeii.teamId === 0) return 0;
+    const program = await this.prisma.program.findUnique({
+      where: { programId },
+      select: { teamId: true },
+    });
+    return program?.teamId && program.teamId > 0 ? program.teamId : null;
+  }
+
+  /** The songs a program may read, or `null` (counted) when it has no team. */
+  private async songScope(
+    path: SimilarityScopePath,
+    programId: string,
+  ): Promise<{ team: number; db: PrismaService } | null> {
+    const team = await this.teamOf(programId);
+    if (team === null) {
+      this.refuse(path, programId);
+      return null;
+    }
+    return {
+      team,
+      db:
+        team > 0
+          ? (forTeam(this.prisma, team) as unknown as PrismaService)
+          : this.prisma,
+    };
+  }
+
+  private refuse(path: SimilarityScopePath, programId: string) {
+    this.metrics.recordSimilarityScopeRefusal(path);
+    const key = `${path}|${programId}`;
+    if (this.refused.has(key)) return;
+    this.refused.add(key);
+    this.logger.warn(
+      `Program ${programId} has no team; similarity ${path} reads no songs`,
+    );
+  }
+
+  /** Which indexed songs a pick for this program may use. */
+  private pickable(programId: string): (songId: number) => boolean {
+    if (this.pompeii.teamId === 0) return () => true;
+    const team = this.programTeams.get(programId);
+    if (!team || team <= 0) {
+      this.refuse('propose', programId);
+      return () => false;
+    }
+    return (songId) => this.songTeams.get(songId) === team;
+  }
+
+  private async loadProgramTeams(): Promise<void> {
+    if (this.pompeii.teamId === 0) return;
+    const programs = await this.prisma.program.findMany({
+      select: { programId: true, teamId: true },
+    });
+    this.programTeams.clear();
+    for (const program of programs) {
+      this.programTeams.set(program.programId, program.teamId);
+    }
+  }
+
   async reloadSettings(): Promise<void> {
+    await this.loadProgramTeams();
     const rows = await this.prisma.radioSettings.findMany({
       select: {
         similarityMode: true,
@@ -194,10 +270,15 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
         segment: string;
         windowSeconds: number;
         vector: string;
+        teamId: number | null;
       }[]
-    >`SELECT "songId", "segment", "windowSeconds", "vector"::text AS "vector"
-      FROM "SongEmbedding" WHERE "model" = ${SIMILARITY_MODEL.name}`;
+    >`SELECT e."songId", e."segment", e."windowSeconds", e."vector"::text AS "vector", s."teamId"
+      FROM "SongEmbedding" e JOIN "Song" s ON s."id" = e."songId"
+      WHERE e."model" = ${SIMILARITY_MODEL.name}`;
+    await this.loadProgramTeams();
     this.vectors.clear();
+    this.songTeams.clear();
+    for (const row of rows) this.songTeams.set(row.songId, row.teamId);
     for (const row of rows) {
       this.vectors.set(
         vectorKey(row.songId, row.segment, row.windowSeconds),
@@ -253,9 +334,11 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
     const inSequence = new Set<number>();
     const sequenceCandidates: SimilarityCandidate[] = [];
     const leafByItemId = new Map<string, ProgramResolvedSongLeaf>();
+    const pickable = this.pickable(programId);
     for (const { leaf, blocked } of input.leaves) {
       if (!leaf.songId || !leaf.audioUrl) continue;
       inSequence.add(leaf.songId);
+      if (!pickable(leaf.songId)) continue;
       leafByItemId.set(leaf.id, leaf);
       sequenceCandidates.push({
         songId: leaf.songId,
@@ -283,7 +366,7 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
     ) {
       const extras: SimilarityCandidate[] = [];
       for (const song of this.catalog.values()) {
-        if (inSequence.has(song.id)) continue;
+        if (inSequence.has(song.id) || !pickable(song.id)) continue;
         const itemId = `${CATALOG_ITEM_PREFIX}${song.id}`;
         leafByItemId.set(itemId, {
           id: itemId,
@@ -411,10 +494,13 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
         if (id) ids.add(id);
       }
     }
-    const songs = await this.prisma.song.findMany({
-      where: { id: { in: [...ids] } },
-      select: { id: true, artist: true, title: true },
-    });
+    const scope = await this.songScope('decisions', programId);
+    const songs = scope
+      ? await scope.db.song.findMany({
+          where: { id: { in: [...ids] } },
+          select: { id: true, artist: true, title: true },
+        })
+      : [];
     const byId = new Map(songs.map((s) => [s.id, s]));
     const label = (id: number | null) => {
       if (!id) return null;
@@ -446,17 +532,24 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
     });
     const windowSeconds =
       dbSettings?.similarityWindowSeconds ?? settings.windowSeconds;
-    const [enabledSongs, embedded] = await Promise.all([
-      this.prisma.song.count({ where: { enabled: true } }),
-      this.prisma.$queryRaw<{ count: bigint }[]>`
-        SELECT COUNT(*)::bigint AS count FROM (
-          SELECT e."songId" FROM "SongEmbedding" e
-          JOIN "Song" s ON s."id" = e."songId" AND s."enabled" = true
-          WHERE e."model" = ${SIMILARITY_MODEL.name}
-            AND e."windowSeconds" = ${windowSeconds}
-          GROUP BY e."songId" HAVING COUNT(DISTINCT e."segment") = 2
-        ) complete`,
-    ]);
+    const scope = await this.songScope('coverage', programId);
+    // Raw SQL is not scoped by the client, so the join names the team.
+    const ofTeam = scope?.team
+      ? Prisma.sql`AND s."teamId" = ${scope.team}`
+      : Prisma.empty;
+    const [enabledSongs, embedded] = scope
+      ? await Promise.all([
+          scope.db.song.count({ where: { enabled: true } }),
+          this.prisma.$queryRaw<{ count: bigint }[]>`
+            SELECT COUNT(*)::bigint AS count FROM (
+              SELECT e."songId" FROM "SongEmbedding" e
+              JOIN "Song" s ON s."id" = e."songId" AND s."enabled" = true ${ofTeam}
+              WHERE e."model" = ${SIMILARITY_MODEL.name}
+                AND e."windowSeconds" = ${windowSeconds}
+              GROUP BY e."songId" HAVING COUNT(DISTINCT e."segment") = 2
+            ) complete`,
+        ])
+      : [0, []];
     const embeddedCount = Number(embedded[0]?.count ?? 0);
     return {
       model: SIMILARITY_MODEL,
@@ -495,11 +588,14 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
         ),
       ];
     }
-    const songs = await this.prisma.song.findMany({
-      where: { enabled: true, ...(songIds ? { id: { in: songIds } } : {}) },
-      orderBy: { id: 'asc' },
-      select: { id: true, artist: true, title: true, audioUrl: true },
-    });
+    const songScope = await this.songScope('export', programId);
+    const songs = songScope
+      ? await songScope.db.song.findMany({
+          where: { enabled: true, ...(songIds ? { id: { in: songIds } } : {}) },
+          orderBy: { id: 'asc' },
+          select: { id: true, artist: true, title: true, audioUrl: true },
+        })
+      : [];
     const existing = await this.prisma.$queryRaw<
       { songId: number; segment: string; audioSha256: string }[]
     >`SELECT "songId", "segment", "audioSha256" FROM "SongEmbedding"
@@ -543,7 +639,8 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async storeEmbeddings(payload: unknown) {
+  /** Stores embeddings for songs of the program's team only. */
+  async storeEmbeddings(payload: unknown, programId: string) {
     const header = validateEmbeddingUploadHeader(payload);
     if (!header.ok) throw new BadRequestException(header.reason);
     const upload = payload as EmbeddingUploadPayload;
@@ -555,13 +652,16 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
     const ids = upload.songs
       .map((s) => s?.songId)
       .filter((id): id is number => Number.isInteger(id));
+    const scope = await this.songScope('upload', programId);
     const known = new Set(
-      (
-        await this.prisma.song.findMany({
-          where: { id: { in: ids } },
-          select: { id: true },
-        })
-      ).map((s) => s.id),
+      scope
+        ? (
+            await scope.db.song.findMany({
+              where: { id: { in: ids } },
+              select: { id: true },
+            })
+          ).map((s) => s.id)
+        : [],
     );
 
     const results: {

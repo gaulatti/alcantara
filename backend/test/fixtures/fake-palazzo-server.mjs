@@ -93,6 +93,9 @@ function program(programId) {
     replay: [],
     snapshotById: new Map(),
     subscribers: new Set(),
+    // mute-events (gaulatti/alcantara#734): Liquidsoap is down; the sampling loop emits nothing.
+    liquidsoapDown: false,
+    staleSince: null,
     lastSampleAt: null,
     lastHeartbeatAt: 0,
     track: null,
@@ -187,8 +190,8 @@ function playbackState(p) {
     status: p.track ? 'playing' : 'idle',
     liquidsoap: {
       running: true,
-      connected: true,
-      staleSince: null,
+      connected: !p.liquidsoapDown,
+      staleSince: p.staleSince,
       lastSampleAt: p.lastSampleAt,
     },
     icecast: { connected: true },
@@ -321,6 +324,8 @@ function subscribe(p, req, res) {
 function tick() {
   const now = Date.now();
   for (const p of programs.values()) {
+    // As in Palazzo, every one of these comes from a Liquidsoap sample: with Liquidsoap down there is none.
+    if (p.liquidsoapDown) continue;
     p.lastSampleAt = new Date(now).toISOString();
     emit(p, 'audio.levels', levels(p));
     emit(p, 'playback.position', {
@@ -952,6 +957,7 @@ async function route(req, res, url) {
     if (action === '' && method === 'GET') {
       answer = {
         silent: p.silent,
+        eventsMuted: p.liquidsoapDown,
         state: playbackState(p),
         automation: lifecycleState(p),
         next: p.next ? { playbackId: p.next.song.playbackId, bumper: p.next.bumper ?? null } : null,
@@ -964,6 +970,21 @@ async function route(req, res, url) {
       if (typeof body?.silent !== 'boolean') throw new HttpError(400, 'silent must be a boolean');
       p.silent = body.silent;
       answer = { ok: true, silent: p.silent };
+    } else if (action === '/mute-events' && method === 'POST') {
+      // Palazzo with Liquidsoap down (gaulatti/palazzo playback-telemetry.service.ts markDisconnected): one
+      // telemetry.disconnected, then a silent event stream, while the HTTP API, the state endpoint included,
+      // still answers. Unmuting is Liquidsoap coming back: telemetry.connected, then the sampling loop again.
+      if (typeof body?.muted !== 'boolean') throw new HttpError(400, 'muted must be a boolean');
+      if (body.muted && !p.liquidsoapDown) {
+        p.liquidsoapDown = true;
+        p.staleSince = new Date().toISOString();
+        emit(p, 'telemetry.disconnected', { staleSince: p.staleSince });
+      } else if (!body.muted && p.liquidsoapDown) {
+        p.liquidsoapDown = false;
+        p.staleSince = null;
+        emit(p, 'telemetry.connected', {});
+      }
+      answer = { ok: true, muted: p.liquidsoapDown };
     } else if (action === '/end-track' && method === 'POST') {
       clearTimeout(p.pendingStart);
       naturalEnd(p);

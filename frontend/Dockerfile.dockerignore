@@ -1,0 +1,16 @@
+# The production image (gaulatti/alcantara#741) builds from the repository root and needs only the workspace manifests,
+# the lockfile and the frontend source. Host dependencies and build output stay out of the context.
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!backend/package.json
+!infra/aws/package.json
+!frontend/
+frontend/node_modules
+frontend/build
+frontend/.react-router
+frontend/coverage
+frontend/.env
+frontend/npm-debug.log*
+frontend/pnpm-debug.log*

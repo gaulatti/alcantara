@@ -581,7 +581,7 @@ it("treats every unreachable or refused status endpoint as unverified", async ()
     "alert",
   );
   expect(screen.getByText("Stream unverified")).toBeVisible();
-  expect(screen.getByText("Engine unavailable")).toBeVisible();
+  expect(await screen.findByText("Engine unavailable")).toBeVisible();
   expect(screen.getByText("Output unverified")).toBeVisible();
   expect(screen.getByText("No level sample")).toBeVisible();
   expect(screen.getByText("No prepared recovery playlist")).toBeInTheDocument();
@@ -613,7 +613,34 @@ it("treats every unreachable or refused status endpoint as unverified", async ()
         .mock.calls.some(([url]) => String(url).includes("/palazzo-status")),
     ).toBe(true),
   );
-  expect(screen.getByText("Engine unavailable")).toBeVisible();
+  expect(await screen.findByText("Engine unavailable")).toBeVisible();
+});
+
+// The #734 walk: a page reload left the desk reading "Engine unavailable" for seconds while the engine was fine, only
+// because its first engine status had not answered yet. Unknown reads as unknown until an answer, a failure included.
+it("reads Checking engine, never Engine unavailable, until the first engine status answers", async () => {
+  let answer: (response: Response) => void = () => undefined;
+  radioApi({
+    "/palazzo-status": () => undefined,
+  });
+  vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+    if (String(input).includes("/palazzo-status"))
+      return new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    return new Response("null", { status: 404 });
+  });
+  vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+  mount(liveProps());
+  const strip = screen.getByRole("region", { name: "On air" });
+  const chip = await within(strip).findByText("Checking engine");
+  expect(chip.closest("[data-tone]")).toHaveAttribute("data-tone", "idle");
+  expect(within(strip).queryByText(/Engine unavailable/)).toBeNull();
+
+  // The answer decides: here the engine really is unavailable.
+  answer(json({ ...props().fixtureData!.palazzo, connection: "unavailable" }));
+  expect(await within(strip).findByText(/Engine unavailable/)).toBeVisible();
+  expect(within(strip).queryByText("Checking engine")).toBeNull();
 });
 
 // gaulatti/alcantara#706: six seconds without a fresh output sample turn audible output into Output unverified and
@@ -749,6 +776,83 @@ it("describes each event of the on-air rundown and its timing", () => {
   expect(rows[5]).toHaveTextContent("Unavailable audio");
   expect(screen.getByText("6 events")).toBeVisible();
   expect(screen.getByText(/ON AIR · Revision 1/)).toBeVisible();
+});
+
+// gaulatti/alcantara#726: a cue the as-run logged as not aired shows as skipped, never played.
+it("shows a not-aired cue as skipped with its reason, and keeps aired cues played", () => {
+  const p = props();
+  const log = onAirLog(p);
+  log.scheduledAt = new Date(Date.now() - 120_000).toISOString();
+  log.activeItemId = "cue-4";
+  log.items = [
+    { id: "cue-1", kind: "playSong", songId: 1, clockOffsetSeconds: 0 },
+    { id: "cue-2", kind: "playSong", songId: 1, clockOffsetSeconds: 60 },
+    { id: "cue-3", kind: "playSong", songId: 1 },
+    { id: "cue-4", kind: "playSong", songId: 1 },
+    { id: "cue-5", kind: "playSong", songId: 1 },
+  ];
+  log.cueOutcomes = [
+    { cueId: "cue-2", state: "not-aired", reason: "engine_unavailable" },
+    { cueId: "cue-3", state: "not-aired", reason: null },
+  ];
+  mount(p);
+  const rows = within(
+    screen.getByRole("list", { name: "On-air rundown" }),
+  ).getAllByRole("listitem");
+  expect(rows[0]).toHaveTextContent("PLAYED");
+  expect(rows[0]).toHaveAttribute("data-skipped", "false");
+  expect(rows[1]).toHaveTextContent("SKIPPED");
+  expect(rows[1]).not.toHaveTextContent("PLAYED");
+  expect(rows[1]).toHaveAttribute("data-skipped", "true");
+  expect(rows[1]).toHaveAttribute("data-played", "false");
+  const reason = within(rows[1]).getByLabelText(
+    "Skipped: not aired, the engine was unavailable",
+  );
+  expect(reason).toHaveAttribute(
+    "title",
+    "not aired, the engine was unavailable",
+  );
+  expect(within(rows[2]).getByLabelText("Skipped: not aired")).toHaveTextContent(
+    "SKIPPED",
+  );
+  expect(rows[3]).toHaveTextContent("NOW");
+  expect(rows[4]).toHaveTextContent("NEXT");
+});
+
+it("names an unknown not-aired reason as the as-run logged it", () => {
+  const p = props();
+  const log = onAirLog(p);
+  log.scheduledAt = new Date(Date.now() - 60_000).toISOString();
+  log.activeItemId = "cue-2";
+  log.items = [
+    { id: "cue-1", kind: "playSong", songId: 1, clockOffsetSeconds: 0 },
+    { id: "cue-2", kind: "playSong", songId: 1 },
+  ];
+  log.cueOutcomes = [
+    { cueId: "cue-1", state: "not-aired", reason: "audio_missing" },
+  ];
+  mount(p);
+  expect(
+    screen.getByLabelText("Skipped: not aired (audio_missing)"),
+  ).toBeVisible();
+});
+
+it("marks rows by position when the backend sends no cue outcomes", () => {
+  const p = props();
+  const log = onAirLog(p);
+  log.scheduledAt = new Date(Date.now() - 60_000).toISOString();
+  log.activeItemId = "cue-2";
+  log.items = [
+    { id: "cue-1", kind: "playSong", songId: 1, clockOffsetSeconds: 0 },
+    { id: "cue-2", kind: "playSong", songId: 1 },
+  ];
+  delete log.cueOutcomes;
+  mount(p);
+  const rows = within(
+    screen.getByRole("list", { name: "On-air rundown" }),
+  ).getAllByRole("listitem");
+  expect(rows[0]).toHaveTextContent("PLAYED");
+  expect(screen.queryByText("SKIPPED")).toBeNull();
 });
 
 it("reorders and removes events in the persisted log, and reloads it after a refused change", async () => {
@@ -1837,4 +1941,131 @@ it("says On air only for an engine-confirmed song, and refuses Take while the en
   expect(screen.queryByText("On air")).not.toBeInTheDocument();
   expect(screen.getByText("Not confirmed")).toBeVisible();
   expect(screen.getByText(/Take is unavailable until the engine is back/)).toBeVisible();
+});
+
+// gaulatti/alcantara#694: dead air shows in the on-air strip, and the alarm names the action that cures it for
+// the recovery state the desk knows.
+describe("dead air", () => {
+  const deadAir = (
+    recovery: NonNullable<ReturnType<typeof props>["fixtureData"]>["recovery"],
+  ) => {
+    const p = props();
+    p.fixtureData!.output.state = "silent" as never;
+    p.fixtureData!.recovery = recovery;
+    return p;
+  };
+
+  it("leads the on-air strip with a dead-air chip", () => {
+    mount(deadAir({ preparedVersion: null, automation: null, connection: "connected" }));
+    expect(
+      within(screen.getByRole("region", { name: "On air" })).getByText("Dead air"),
+    ).toBeVisible();
+  });
+
+  it("leaves Dead air the only coloured chip on the strip: the good chips render neutral", () => {
+    mount(deadAir({ preparedVersion: null, automation: null, connection: "connected" }));
+    const strip = screen.getByRole("region", { name: "On air" });
+    const tone = (label: string) =>
+      within(strip).getByText(label).closest("[data-tone]")?.getAttribute("data-tone");
+    expect(tone("Dead air")).toBe("bad");
+    expect(tone("Stream verified")).toBe("idle");
+    expect(tone("Engine ready")).toBe("idle");
+  });
+
+  it("says to take the silent song off air and prepare a playlist when none is prepared", () => {
+    mount(deadAir({ preparedVersion: null, automation: null, connection: "connected" }));
+    const alarm = screen.getByRole("alert", { name: "Dead air" });
+    expect(alarm).toHaveTextContent(
+      "Hold Stop to take the silent song off air. No recovery playlist is prepared.",
+    );
+    expect(within(alarm).getByRole("link", { name: "Prepare a recovery playlist" })).toHaveAttribute(
+      "href",
+      "/radio-settings",
+    );
+  });
+
+  it("says to take the silent song off air, then start the prepared fallback, and opens recovery", () => {
+    mount(deadAir({ preparedVersion: "v4", automation: null, connection: "connected" }));
+    const alarm = screen.getByRole("alert", { name: "Dead air" });
+    expect(alarm).toHaveTextContent(
+      "Hold Stop to take the silent song off air, then Start with fallback.",
+    );
+    const controls = screen.getByLabelText("Recovery controls") as HTMLDetailsElement;
+    // jsdom has no scrollIntoView; the button opens the controls and brings them into view.
+    const scrolled = vi.fn();
+    controls.scrollIntoView = scrolled;
+    expect(controls.open).toBe(false);
+    fireEvent.click(within(alarm).getByRole("button", { name: "Go to recovery" }));
+    expect(controls.open).toBe(true);
+    expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
+  });
+
+  it("says the bound playlist plays once the silent song is off air", () => {
+    mount(
+      deadAir({
+        preparedVersion: "v4",
+        automation: { actualState: "running", filler: { activeVersion: "v4", ready: true } },
+        connection: "connected",
+      } as never),
+    );
+    expect(screen.getByRole("alert", { name: "Dead air" })).toHaveTextContent(
+      "Hold Stop to take the silent song off air. The recovery playlist is bound and plays once the queue runs dry.",
+    );
+  });
+
+  it("claims nothing about a playlist while the recovery status is unknown or the engine unavailable", () => {
+    for (const recovery of [
+      null,
+      { preparedVersion: "v4", automation: null, connection: "unavailable" },
+      { preparedVersion: null, automation: null, connection: "unavailable" },
+    ]) {
+      const view = mount(deadAir(recovery as never));
+      const alarm = screen.getByRole("alert", { name: "Dead air" });
+      expect(alarm).toHaveTextContent(
+        "Hold Stop to take the silent song off air. The recovery status is unavailable: check the engine before relying on the fallback.",
+      );
+      expect(alarm).not.toHaveTextContent(/prepared|Start with fallback/);
+      expect(within(alarm).queryByRole("button", { name: "Go to recovery" })).toBeNull();
+      expect(within(alarm).queryByRole("link")).toBeNull();
+      view.unmount();
+    }
+  });
+
+  it("clears the chip and the alarm on the same desk when audio returns", async () => {
+    let state = "silent";
+    radioApi({
+      "/status": () => json({ running: true, uptime: 60_000 }),
+      "/palazzo-status": () => json(props().fixtureData!.palazzo),
+      "/output-confidence": () =>
+        json({
+          state,
+          expectedAudio: true,
+          outputRms: state === "silent" ? 0 : 0.2,
+          lastSampleAt: new Date().toISOString(),
+          quietForMs: state === "silent" ? 12_000 : null,
+        }),
+      "/recovery": () =>
+        json({ preparedVersion: "v4", automation: null, connection: "connected" }),
+    });
+    vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+    mount(liveProps());
+    const strip = screen.getByRole("region", { name: "On air" });
+    expect(await within(strip).findByText("Dead air")).toBeVisible();
+    expect(screen.getByRole("alert", { name: "Dead air" })).toBeVisible();
+    // The next air-plan poll reads audible output.
+    state = "audible";
+    await waitFor(() => expect(within(strip).queryByText("Dead air")).toBeNull(), {
+      timeout: 4_000,
+    });
+    expect(screen.queryByRole("alert", { name: "Dead air" })).toBeNull();
+    expect(screen.getByText("Engine audio detected")).toBeVisible();
+  });
+
+  it("shows no dead-air alarm while the output is audible", () => {
+    mount(props());
+    expect(screen.queryByRole("alert", { name: "Dead air" })).toBeNull();
+    expect(
+      within(screen.getByRole("region", { name: "On air" })).queryByText("Dead air"),
+    ).toBeNull();
+  });
 });

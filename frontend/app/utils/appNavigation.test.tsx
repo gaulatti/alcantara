@@ -61,7 +61,7 @@ describe("program-aware application navigation", () => {
       includeDeveloperTools: true,
     }).find((section) => section.id === "developer")!;
     const names = developer.items.map((item) => item.label);
-    expect(names).toHaveLength(9);
+    expect(names).toHaveLength(10);
     expect(new Set(names).size).toBe(names.length);
     // The sidebar truncates a nested label at about 18 characters.
     for (const name of names) expect(name.length).toBeLessThanOrEqual(17);

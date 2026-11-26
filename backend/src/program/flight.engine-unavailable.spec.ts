@@ -39,6 +39,7 @@ function harness(programState: unknown) {
     program as any,
     metrics,
     noRecorder(),
+    { teamId: 0 } as never,
   );
   return { prisma, program, metrics, internals: service as any };
 }
@@ -108,9 +109,30 @@ describe('rundown song with the engine off', () => {
         state: 'not-aired',
         endReason: 'engine_unavailable',
         at: expect.any(Date),
+        flightSequenceId: null,
+        flightCueId: null,
       },
     });
     expect(refusedCount(h.metrics)).toBe(1);
+  });
+
+  it('names the rundown and cue it skipped, so the rundown shows it as skipped (#726)', async () => {
+    const h = harness({ type: 'radio', radioSettings: { enabled: false } });
+    h.internals.runtimes.set('radio-1', { sequenceId: 7 });
+    await expect(
+      h.internals.executePlaySongCue('radio-1', {
+        id: 'top-of-hour',
+        kind: 'playSong',
+        songId: 101,
+      }),
+    ).rejects.toBeInstanceOf(AutomationEngineUnavailableError);
+    expect(h.prisma.asRunRecord.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        state: 'not-aired',
+        flightSequenceId: 7,
+        flightCueId: 'top-of-hour',
+      }),
+    });
   });
 
   it.each([

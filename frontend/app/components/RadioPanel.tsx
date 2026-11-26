@@ -164,6 +164,13 @@ interface RecoveryStatus {
 /** The command failures the Radio desk keeps for this session, newest first (gaulatti/alcantara#707). */
 const SESSION_LOG_LIMIT = 20;
 
+/** Why a rundown cue was not aired, as the as-run logged it (gaulatti/alcantara#726). */
+function notAiredReason(reason: string | null): string {
+  if (reason === "engine_unavailable")
+    return "not aired, the engine was unavailable";
+  return reason ? `not aired (${reason})` : "not aired";
+}
+
 export const RadioPanel: React.FC<RadioPanelProps> = ({
   fixtureData,
   programId,
@@ -218,6 +225,10 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   const [palazzo, setPalazzo] = useState<PalazzoStatus | null>(
     fixtureData?.palazzo ?? null,
   );
+  // Until the first engine status answers, the engine's state is unknown, not unavailable: a fresh desk (or a page
+  // reload) would otherwise read "Engine unavailable" for a round trip (#734 walk). Any answer, a failed one
+  // included, ends the wait.
+  const [palazzoAnswered, setPalazzoAnswered] = useState(!!fixtureData);
   const [addSongId, setAddSongId] = useState("");
   const [logBusy, setLogBusy] = useState(false);
   const [logLoadError, setLogLoadError] = useState<string | null>(null);
@@ -278,6 +289,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     } catch {
       setPalazzo(null);
     }
+    setPalazzoAnswered(true);
   }, [programId]);
 
   const fetchAirPlan = useCallback(async () => {
@@ -345,6 +357,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     if (fixtureData) return;
     setStream(null);
     setPalazzo(null);
+    setPalazzoAnswered(false);
     setOutput(null);
     setLogs([]);
     setRecovery(null);
@@ -496,11 +509,20 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     streamRunning: stream === null ? null : isLive,
     engine: {
       connected: engineReady,
+      unknown: !palazzoAnswered,
       degraded: palazzo?.degraded === true,
       unavailableLabel: engineUnavailableLabel(palazzo),
       detail: palazzo?.detail ?? null,
     },
     monitor: monitor ? monitor.state : "unavailable",
+    outputSilent: output?.state === "silent",
+  };
+  const recoveryControlsRef = useRef<HTMLDetailsElement>(null);
+  const openRecoveryControls = () => {
+    const controls = recoveryControlsRef.current;
+    if (!controls) return;
+    controls.open = true;
+    controls.scrollIntoView({ block: "nearest" });
   };
   const takeRotationSong = async (itemId: string) => {
     const selection = { ...rotation, activeItemId: itemId, startedAt: Date.now() };
@@ -677,12 +699,18 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     const successor = activeLog.items[index + 1];
                     const movable =
                       !locked && cue.clockOffsetSeconds === undefined;
+                    // gaulatti/alcantara#726: a cue the as-run logged as not aired is skipped, never played.
+                    const notAired = activeLog.cueOutcomes?.find(
+                      (outcome) => outcome.cueId === cue.id,
+                    );
+                    const played = index < currentLogIndex && !notAired;
                     return (
                       <li
                         key={cue.id}
                         className="console-log-row"
                         data-active={active}
-                        data-played={index < currentLogIndex}
+                        data-played={played}
+                        data-skipped={!!notAired}
                       >
                         <time>
                           {cue.clockOffsetSeconds === undefined
@@ -712,15 +740,25 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                         <span className="tabular-nums text-xs text-text-secondary">
                           {song?.durationMs ? formatTime(song.durationMs) : "—"}
                         </span>
-                        <span className="console-eyebrow">
-                          {active
-                            ? "NOW"
-                            : next
-                              ? "NEXT"
-                              : index < currentLogIndex
-                                ? "PLAYED"
-                                : String(index + 1).padStart(2, "0")}
-                        </span>
+                        {notAired && !active && !next ? (
+                          <span
+                            className="console-eyebrow"
+                            title={notAiredReason(notAired.reason)}
+                            aria-label={`Skipped: ${notAiredReason(notAired.reason)}`}
+                          >
+                            SKIPPED
+                          </span>
+                        ) : (
+                          <span className="console-eyebrow">
+                            {active
+                              ? "NOW"
+                              : next
+                                ? "NEXT"
+                                : played
+                                  ? "PLAYED"
+                                  : String(index + 1).padStart(2, "0")}
+                          </span>
+                        )}
                         <div className="console-log-actions">
                           <Button
                             type="button"
@@ -903,6 +941,56 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
               aria-label="Output confidence"
             >
               <OutputReading output={output} />
+              {output?.state === "silent" ? (
+                // Dead air names the action that cures it (gaulatti/alcantara#694). Palazzo's
+                // recovery playlist plays when the live queue runs dry, so the silent song comes off
+                // air first.
+                <div
+                  role="alert"
+                  aria-label="Dead air"
+                  className="mt-2 flex flex-col items-start gap-1.5 text-xs text-terracotta"
+                >
+                  {!recovery || recovery.connection !== "connected" ? (
+                    // The desk cannot say what recovery is ready, so it claims nothing about a playlist
+                    // (gaulatti/alcantara#694 review).
+                    <p>
+                      Hold Stop to take the silent song off air. The recovery
+                      status is unavailable: check the engine before relying on
+                      the fallback.
+                    </p>
+                  ) : recovery.automation?.filler.ready ? (
+                    <p>
+                      Hold Stop to take the silent song off air. The recovery
+                      playlist is bound and plays once the queue runs dry.
+                    </p>
+                  ) : recovery.preparedVersion ? (
+                    <>
+                      <p>
+                        Hold Stop to take the silent song off air, then Start
+                        with fallback.
+                      </p>
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="secondary"
+                        onClick={openRecoveryControls}
+                      >
+                        Go to recovery
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <p>
+                        Hold Stop to take the silent song off air. No recovery
+                        playlist is prepared.
+                      </p>
+                      <Link to="/radio-settings">
+                        Prepare a recovery playlist
+                      </Link>
+                    </>
+                  )}
+                </div>
+              ) : null}
               <p className="mt-2 text-xs text-text-secondary">
                 Palazzo mix level before Icecast.
               </p>
@@ -1010,6 +1098,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
               )}
             </ConsolePanel>
             <details
+              ref={recoveryControlsRef}
               className="console-panel console-recovery"
               aria-label="Recovery controls"
             >

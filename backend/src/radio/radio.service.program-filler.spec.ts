@@ -58,6 +58,7 @@ function build(
     palazzo,
     { get: jest.fn() } as any,
     metrics,
+    { teamId: 0 } as never,
   );
   return { service, prisma, palazzo, metrics, leg: () => radioLeg };
 }

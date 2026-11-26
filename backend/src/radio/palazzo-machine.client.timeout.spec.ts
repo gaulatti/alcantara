@@ -19,6 +19,8 @@ const frozenFetch = () =>
   jest.fn(
     (_url: string, init: { method?: string; signal?: AbortSignal }) =>
       new Promise<Response>((_resolve, reject) => {
+        // As a real fetch, a signal that is already aborted rejects at once.
+        if (init.signal?.aborted) reject(init.signal.reason);
         init.signal?.addEventListener('abort', () =>
           reject(init.signal?.reason ?? new Error('aborted')),
         );
@@ -168,6 +170,77 @@ describe('PalazzoMachineClient request timeout', () => {
       new AbortController().signal,
     );
     expect(timeouts.spy).not.toHaveBeenCalled();
+  });
+
+  describe('event-connect handshake (#734)', () => {
+    afterEach(() => jest.useRealTimers());
+
+    it('gives up a handshake a hung Palazzo never answers after the command timeout', async () => {
+      jest.useFakeTimers();
+      const fetchImpl = frozenFetch();
+      const { client, metrics } = build(fetchImpl);
+      const caller = new AbortController();
+      const outcome = client
+        .connectEvents(BASE, 'radio-1', null, caller.signal)
+        .then(null, (error: unknown) => error);
+      await jest.advanceTimersByTimeAsync(PALAZZO_COMMAND_TIMEOUT_MS - 1);
+      expect(metrics.recordMachineRequest).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(1);
+      const error = await outcome;
+      expect(error).toBeInstanceOf(PalazzoMachineError);
+      expect((error as PalazzoMachineError).reason).toBe('unavailable');
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(metrics.recordMachineRequest).toHaveBeenCalledWith(
+        'event-connect',
+        'unavailable',
+      );
+      // The caller's own signal is untouched.
+      expect(caller.signal.aborted).toBe(false);
+    });
+
+    it('leaves the stream open past the timeout once the headers arrive, and the caller still ends it', async () => {
+      jest.useFakeTimers();
+      let streamSignal: AbortSignal | undefined;
+      const fetchImpl = jest.fn(
+        async (_url: string, init: { signal?: AbortSignal }) => {
+          streamSignal = init.signal;
+          return new Response(new ReadableStream(), {
+            status: 200,
+            headers: { 'content-type': 'text/event-stream' },
+          });
+        },
+      );
+      const { client } = build(fetchImpl);
+      const caller = new AbortController();
+      await client.connectEvents(BASE, 'radio-1', null, caller.signal);
+      await jest.advanceTimersByTimeAsync(PALAZZO_COMMAND_TIMEOUT_MS * 3);
+      expect(streamSignal?.aborted).toBe(false);
+      caller.abort(new Error('client stopped'));
+      expect(streamSignal?.aborted).toBe(true);
+    });
+
+    it('rethrows the caller abort that comes before the headers', async () => {
+      const { client } = build(frozenFetch());
+      const caller = new AbortController();
+      const connecting = client.connectEvents(
+        BASE,
+        'radio-1',
+        null,
+        caller.signal,
+      );
+      await Promise.resolve();
+      caller.abort(new Error('client stopped'));
+      await expect(connecting).rejects.toThrow('client stopped');
+    });
+
+    it('follows a caller signal that is already aborted', async () => {
+      const { client } = build(frozenFetch());
+      const caller = new AbortController();
+      caller.abort(new Error('already stopped'));
+      await expect(
+        client.connectEvents(BASE, 'radio-1', null, caller.signal),
+      ).rejects.toThrow('already stopped');
+    });
   });
 
   it('still rethrows the caller abort when the caller cancels first', async () => {

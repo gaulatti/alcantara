@@ -581,6 +581,23 @@ an already-playing queue head and resume without losing or duplicating it.
 
 `alcantara_radio_similarity_total{result}` counts similarity picker outcomes with the bounded results `selected`, `fallback-no-candidate`, `fallback-no-embedding`, `shadow-recorded` and `decision-persistence-failed`. It is silent while every station is `off`. Labels never include songs, artists, URLs or program IDs. See [song-similarity.md](song-similarity.md).
 
+As-run reads only the songs and media assets of the program's team (gaulatti/alcantara#122).
+`alcantara_as_run_scope_refusals_total{path}` counts reads refused because the
+program has no team, with `path` one of `attribute`, `export`, `summary` and `list`.
+A refused attribution is still recorded, without a song or asset. It should stay at `0`.
+
+Similarity reads only the songs of the program's team (gaulatti/alcantara#122).
+`alcantara_similarity_scope_refusals_total{path}` counts reads refused because the
+program has no team, with `path` one of `propose`, `decisions`, `coverage`, `export`
+and `upload`. A refused pick leaves the choice to the playlist cursor. It should
+stay at `0`.
+
+Radio logs, recipes, cues and the recovery filler read only the songs of the
+program's team (gaulatti/alcantara#122).
+`alcantara_log_song_scope_refusals_total{path}` counts reads refused because the
+program has no team, with `path` one of `generate`, `validate`, `cue`, `recipe` and
+`recovery`. A refused read treats the songs as missing. It should stay at `0`.
+
 ## Song analysis drop metric
 
 `alcantara_radio_analysis_dropped_total{result}` counts analysis-derived segue or loudness that the radio service left off a song command or next-song announcement, with `segueMode` on, because Palazzo would reject it or because the song had no analysis to send. The song still plays without the dropped group. `result` is one of `segue-invalid` (cue, fade or overlap values outside Palazzo's bounds), `segue-beyond-duration` (cue-out after the song's duration), `segue-edge-bound` (one cue edge would trim more than 10 s, or is negative or not finite; the other edge is still sent, gaulatti/alcantara#234), `loudness-invalid` (integrated loudness outside -70 to 0 LUFS, true peak above +6 dBTP, or a non-finite value), `ambiguous-match` (the command named no song and more than one song shares its audio URL, so no analysis was applied), or, for a song sent with no analysis at all (gaulatti/alcantara#255): `no-asset` (no library song matches, or the song has no media asset), `not-analyzed` (the asset's analysis is missing, pending or failed) or `lookup-failed` (the song or analysis lookup itself failed). In these last three cases the song is still sent, unchanged, without segue or loudness normalization. The counter counts commands, not aired songs: the same check runs for a song command and for a next-song announcement, so one song can count twice (announced, then commanded after a refused or replaced announcement), and a withdrawn announcement counts a song that never aired. Read it as an upper bound on songs sent without analysis, by reason. Not counted here: an analysis that succeeded but measured no loudness (it airs without normalization; its cue group is counted as `none` only when it also has no cues). Every result is exported at 0 from start-up. Labels never include songs, URLs or program IDs. Each song with a drop is also logged once as `radio.song_analysis_dropped`. See [program-playout.md](program-playout.md).
@@ -679,6 +696,26 @@ stop the song that followed. They fail after the first timeout instead, so a fro
 stop in about 10 s. They still retry a server error (429 or 5xx) or a refused connection, which Palazzo answered or
 never received. The event stream is long-lived and output-monitor has its own 10 s bound, so neither uses this
 one. A caller's own cancellation still wins.
+
+## A silent event stream (#734)
+
+A hung Palazzo (connections accepted, nothing answered) keeps its event stream open and silent. Palazzo emits
+`playback.position` every second and a `heartbeat` every 10 s from its Liquidsoap sample loop (gaulatti/palazzo
+`src/stream/playback-telemetry.service.ts`, heartbeat at L556 on main 706c383), so a stream that delivers no byte
+for `PALAZZO_EVENT_IDLE_MS` (30 s, three heartbeats) is treated as lost:
+
+- The client drops the stream and counts it in `alcantara_palazzo_event_stream_idle_disconnects_total`. The
+  program reads `connecting` with detail `sse idle: no event for 30 s`, which does **not** freeze automation.
+- It then polls the state endpoint and reconnects as for any lost stream. A Palazzo that still answers is back to
+  `polling`, then `connected` with a fresh snapshot, and automation is never frozen. This includes a Palazzo whose
+  Liquidsoap is down: it sends one `telemetry.disconnected` and then nothing, so it reconnects about every 31 s
+  while that lasts.
+- A hung Palazzo fails the state poll (10 s, #717). The program reads `unavailable` and the song engine freezes, as
+  for an unreachable Palazzo: Take is refused, and timed-block cues are held under #719's grace.
+- The event-stream handshake is bounded at `PALAZZO_COMMAND_TIMEOUT_MS` (10 s) until the response headers arrive,
+  so a reconnect to a hung Palazzo cannot wait forever. A timed-out handshake counts as
+  `alcantara_palazzo_machine_requests_total{operation="event-connect",result="unavailable"}`. The stream itself stays
+  long-lived.
 
 ## Two sources on the program bus (#242)
 

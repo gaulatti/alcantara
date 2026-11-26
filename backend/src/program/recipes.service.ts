@@ -316,16 +316,19 @@ export class RecipesService {
     callerTeam: number | undefined,
   ): Promise<{ items: FlightCue[]; issues: RecipeIssue[] }> {
     const issues: RecipeIssue[] = [];
-    const song = await this.prisma.song.findUnique({
-      where: { id: songId },
-      select: {
-        id: true,
-        artist: true,
-        title: true,
-        enabled: true,
-        audioUrl: true,
-      },
-    });
+    const songDb = await this.flights.programSongDb('recipe', programId);
+    const song = songDb
+      ? await songDb.song.findUnique({
+          where: { id: songId },
+          select: {
+            id: true,
+            artist: true,
+            title: true,
+            enabled: true,
+            audioUrl: true,
+          },
+        })
+      : null;
     if (!song || !song.enabled || !song.audioUrl?.trim())
       issues.push({
         code: 'song_unavailable',

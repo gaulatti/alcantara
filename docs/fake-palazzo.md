@@ -21,7 +21,8 @@ docker compose --profile fake-palazzo up --build
 - **Enable radio first.** The seed turns radio off for `main` and `radio-demo`. Enable it in **Radio settings**;
   Alcántara then starts its Palazzo telemetry client against the fake.
 - **Control routes.** Call them from inside the network, for example
-  `docker compose exec palazzo wget -qO- http://localhost:3100/__fake/log`.
+  `docker compose exec palazzo wget -qO- http://127.0.0.1:3100/__fake/log`. Use `127.0.0.1`: inside the container
+  `localhost` resolves to IPv6 first, which the fake does not listen on, so `wget` is refused.
 
 ## A dead-air walk
 
@@ -30,7 +31,7 @@ docker compose --profile fake-palazzo up --build
 2. **Make the output silent** while the track keeps playing:
    ```bash
    docker compose exec palazzo wget -qO- --header 'Content-Type: application/json' \
-     --post-data '{"silent":true}' http://localhost:3100/__fake/programs/radio-demo/silence
+     --post-data '{"silent":true}' http://127.0.0.1:3100/__fake/programs/radio-demo/silence
    ```
    After 10 s below 0.001 RMS, output confidence reads silent and the desk shows dead air.
 3. **Prepare a recovery playlist** in Radio settings (**Prepared local playlist**). The fake answers `ready`
@@ -70,6 +71,7 @@ fake restarts.
 | --- | --- |
 | `GET /__fake/health` | `{ok: true, programs}` |
 | `POST /__fake/programs/{id}/silence` `{"silent": true\|false}` | Dead air: every level, output included, reads 0 while the track keeps playing. |
+| `POST /__fake/programs/{id}/mute-events` `{"muted": true\|false}` | Liquidsoap down, as Palazzo reports it (#734): one `telemetry.disconnected`, then nothing on the event stream (no levels, position or heartbeat), while every HTTP route still answers and the state reads `liquidsoap.connected: false` with a `staleSince`. A reconnect still gets its snapshot. Unmuting emits `telemetry.connected` and the stream resumes. |
 | `POST /__fake/programs/{id}/end-track` | Ends the current track now, as a natural end, and goes into any announced song. |
 | `GET /__fake/programs/{id}` | Internal state: silence flag, playback, automation, next, instants, fillers, mixer, subscriber count. |
 | `GET /__fake/log[?since=n]` | The requests received: `n`, `at`, `method`, `path`, selected headers (`accept`, `content-type`, `idempotency-key`, `x-command-sequence`, `x-filler-version`, `last-event-id`), parsed `body`, and `status`. It keeps the last 2000. Control GETs and the health check are not logged. |
@@ -116,10 +118,29 @@ Left out or simplified:
   (`assertProgram`); the fake serves any valid program id.
 - **No persistence, no `/metrics`, no `/proxy-audio`, no authentication.**
 
+## A Liquidsoap-down walk (#734)
+
+Alcántara drops an event stream that sends nothing for 30 s. With Palazzo answering but Liquidsoap down, that drop
+must reconnect without ever freezing automation (only a hung Palazzo, which also fails the state poll, freezes it):
+
+1. Enable radio and play a song, as above.
+2. Mute the event stream:
+   ```bash
+   docker compose exec palazzo wget -qO- --header 'Content-Type: application/json' \
+     --post-data '{"muted":true}' http://127.0.0.1:3100/__fake/programs/radio-demo/mute-events
+   ```
+3. About 30 s later the backend logs `Palazzo event stream for radio-demo sent nothing for 30 s; reconnecting`, and
+   `GET /radio/radio-demo/palazzo-status` goes `connecting`, then `polling` or `connected`. It never reads
+   `unavailable`, and the backend never logs `Freezing radio automation`. While muted, this repeats about every 31 s.
+4. Unmute with `{"muted":false}`; the stream resumes and the drops stop.
+
+To see a hung Palazzo instead (which does freeze, at about 40 s), run `docker compose pause palazzo`.
+
 ## Tests
 
 `backend/test/fake-palazzo.test.mjs`, part of `pnpm --dir backend run test:deployment`, has two parts:
 - **The fake itself:** it starts the fake on a free local port and checks the recovery path (prepare, read back,
-  bind on start, clear on stop) and a malformed preparation.
+  bind on start, clear on stop), a malformed preparation, and `mute-events` (a silent stream that still gets its
+  snapshot, a state that reports Liquidsoap down, and the stream resuming on unmute).
 - **The shipping guard:** it checks that the fake is behind its profile in `compose.yml` and named nowhere that
   ships.

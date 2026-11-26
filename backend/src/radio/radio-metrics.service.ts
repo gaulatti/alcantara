@@ -164,6 +164,22 @@ export type AnalysisDropResult =
   | 'not-analyzed'
   | 'lookup-failed';
 
+export type AsRunScopePath = 'attribute' | 'export' | 'summary' | 'list';
+
+export type SimilarityScopePath =
+  | 'propose'
+  | 'decisions'
+  | 'coverage'
+  | 'export'
+  | 'upload';
+
+export type LogSongScopePath =
+  | 'generate'
+  | 'validate'
+  | 'cue'
+  | 'recipe'
+  | 'recovery';
+
 export type SimilarityActionResult =
   | 'selected'
   | 'fallback-no-candidate'
@@ -296,6 +312,8 @@ const RADIO_LOG_RESULTS = [
   'started',
   'start-failed',
   'cue-failed',
+  'cue-retried',
+  'cue-skipped',
   'preflight-failed',
   'poll-failed',
 ] as const;
@@ -434,6 +452,29 @@ const NEXT_ANNOUNCEMENT_RESULTS: NextAnnouncementResult[] = [
 
 const HANDOFF_PATHS: HandoffPath[] = ['preloaded', 'command', 'race_replaced'];
 
+const AS_RUN_SCOPE_PATHS: AsRunScopePath[] = [
+  'attribute',
+  'export',
+  'summary',
+  'list',
+];
+
+const SIMILARITY_SCOPE_PATHS: SimilarityScopePath[] = [
+  'propose',
+  'decisions',
+  'coverage',
+  'export',
+  'upload',
+];
+
+const LOG_SONG_SCOPE_PATHS: LogSongScopePath[] = [
+  'generate',
+  'validate',
+  'cue',
+  'recipe',
+  'recovery',
+];
+
 const SIMILARITY_ACTION_RESULTS: SimilarityActionResult[] = [
   'selected',
   'fallback-no-candidate',
@@ -487,6 +528,8 @@ export class RadioMetricsService {
   private readonly connectionsByState = new Map<string, number>();
   private reconnectAttempts = 0;
   private reconnectFailures = 0;
+  /** Event streams aborted after PALAZZO_EVENT_IDLE_MS without a byte (gaulatti/alcantara#734). */
+  private eventStreamIdleDisconnects = 0;
   private readonly snapshotReconciliation = new Map<string, number>();
   private readonly eventsIgnored = new Map<string, number>();
   private readonly unknownValues = new Map<string, number>();
@@ -503,6 +546,9 @@ export class RadioMetricsService {
   private songQueueDepth = 0;
   private readonly highRotationActions = new Map<string, number>();
   private readonly similarityActions = new Map<string, number>();
+  private readonly asRunScopeRefusals = new Map<string, number>();
+  private readonly similarityScopeRefusals = new Map<string, number>();
+  private readonly logSongScopeRefusals = new Map<string, number>();
   private readonly analysisDrops = new Map<string, number>();
   private readonly cueGroups = new Map<string, number>();
   private readonly nextAnnouncements = new Map<string, number>();
@@ -533,6 +579,10 @@ export class RadioMetricsService {
 
   recordReconnectFailure(): void {
     this.reconnectFailures += 1;
+  }
+
+  recordEventStreamIdleDisconnect(): void {
+    this.eventStreamIdleDisconnects += 1;
   }
 
   recordSnapshotReconciliation(result: SnapshotReconciliationResult): void {
@@ -626,6 +676,30 @@ export class RadioMetricsService {
     this.highRotationActions.set(
       result,
       (this.highRotationActions.get(result) ?? 0) + 1,
+    );
+  }
+
+  recordAsRunScopeRefusal(path: AsRunScopePath): void {
+    if (!AS_RUN_SCOPE_PATHS.includes(path)) return;
+    this.asRunScopeRefusals.set(
+      path,
+      (this.asRunScopeRefusals.get(path) ?? 0) + 1,
+    );
+  }
+
+  recordSimilarityScopeRefusal(path: SimilarityScopePath): void {
+    if (!SIMILARITY_SCOPE_PATHS.includes(path)) return;
+    this.similarityScopeRefusals.set(
+      path,
+      (this.similarityScopeRefusals.get(path) ?? 0) + 1,
+    );
+  }
+
+  recordLogSongScopeRefusal(path: LogSongScopePath): void {
+    if (!LOG_SONG_SCOPE_PATHS.includes(path)) return;
+    this.logSongScopeRefusals.set(
+      path,
+      (this.logSongScopeRefusals.get(path) ?? 0) + 1,
     );
   }
 
@@ -825,6 +899,9 @@ export class RadioMetricsService {
       '# HELP alcantara_palazzo_reconnect_failures_total Palazzo SSE reconnect failures.',
       '# TYPE alcantara_palazzo_reconnect_failures_total counter',
       `alcantara_palazzo_reconnect_failures_total ${this.reconnectFailures}`,
+      '# HELP alcantara_palazzo_event_stream_idle_disconnects_total Palazzo event streams dropped after 30 s without an event, then reconnected.',
+      '# TYPE alcantara_palazzo_event_stream_idle_disconnects_total counter',
+      `alcantara_palazzo_event_stream_idle_disconnects_total ${this.eventStreamIdleDisconnects}`,
       '# HELP alcantara_palazzo_snapshot_reconciliation_total Palazzo snapshot reconciliation results.',
       '# TYPE alcantara_palazzo_snapshot_reconciliation_total counter',
     );
@@ -939,12 +1016,39 @@ export class RadioMetricsService {
       );
     }
     lines.push(
+      '# HELP alcantara_as_run_scope_refusals_total As-run song reads refused because the program has no team, by bounded path.',
+      '# TYPE alcantara_as_run_scope_refusals_total counter',
+    );
+    for (const path of AS_RUN_SCOPE_PATHS) {
+      lines.push(
+        `alcantara_as_run_scope_refusals_total{path="${path}"} ${this.asRunScopeRefusals.get(path) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_log_song_scope_refusals_total Log, recipe, cue and recovery song reads refused because the program has no team, by bounded path.',
+      '# TYPE alcantara_log_song_scope_refusals_total counter',
+    );
+    for (const path of LOG_SONG_SCOPE_PATHS) {
+      lines.push(
+        `alcantara_log_song_scope_refusals_total{path="${path}"} ${this.logSongScopeRefusals.get(path) ?? 0}`,
+      );
+    }
+    lines.push(
       '# HELP alcantara_radio_similarity_total Similarity picker outcomes by bounded result.',
       '# TYPE alcantara_radio_similarity_total counter',
     );
     for (const result of SIMILARITY_ACTION_RESULTS) {
       lines.push(
         `alcantara_radio_similarity_total{result="${result}"} ${this.similarityActions.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_similarity_scope_refusals_total Similarity reads refused because the program has no team, by bounded path.',
+      '# TYPE alcantara_similarity_scope_refusals_total counter',
+    );
+    for (const path of SIMILARITY_SCOPE_PATHS) {
+      lines.push(
+        `alcantara_similarity_scope_refusals_total{path="${path}"} ${this.similarityScopeRefusals.get(path) ?? 0}`,
       );
     }
     lines.push(

@@ -89,6 +89,11 @@ rows. Reconciliation uses a 60-second transaction budget so production-sized
 catalogs can complete atomically without inheriting Prisma's five-second
 interactive-transaction default. Startup fails if reconciliation fails.
 
+A new mirrored asset takes the team of its row (gaulatti/alcantara#122). After
+reconciliation commits, startup gives each asset with no team its row's team, at
+most 500 rows per statement, each statement committing on its own, and logs
+`Media asset teams filled: N`. An asset that has a team is never changed.
+
 Scene background selection now stores `sceneInstant.assetId` and resolves the
 typed background capability directly. Existing scene metadata containing only
 `sceneInstant.instantId` remains readable and playable; the control UI maps that

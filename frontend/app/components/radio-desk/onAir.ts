@@ -17,7 +17,7 @@ export type OnAirState =
   | "unverified";
 
 export interface OnAirChip {
-  id: "stream" | "engine" | "monitor";
+  id: "output" | "stream" | "engine" | "monitor";
   tone: StatePillTone;
   label: string;
   title?: string;
@@ -57,12 +57,16 @@ export interface OnAirInput {
   streamRunning: boolean | null;
   engine: {
     connected: boolean;
+    /** No engine status has answered yet: its state is unknown, never shown as unavailable. */
+    unknown?: boolean;
     degraded: boolean;
     unavailableLabel: string;
     /** What the backend says about the engine; shown as the chip's tooltip. */
     detail?: string | null;
   };
   monitor: "stopped" | "buffering" | "playing" | "unavailable";
+  /** Output confidence reads silent: a song is expected to play, but the output is quiet (#694). */
+  outputSilent?: boolean;
 }
 
 const MODE_LABELS = {
@@ -115,6 +119,19 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
       : elapsed;
 
   const chips: OnAirChip[] = [
+    // Dead air leads the chips, so the strip never reads as all good while the output is silent
+    // (gaulatti/alcantara#694).
+    ...(input.outputSilent
+      ? [
+          {
+            id: "output" as const,
+            tone: "bad" as const,
+            label: "Dead air",
+            title:
+              "Expected audio is silent: a song is playing but the output is quiet.",
+          },
+        ]
+      : []),
     input.streamRunning === null
       ? { id: "stream", tone: "warn", label: "Stream unverified" }
       : input.streamRunning
@@ -134,12 +151,19 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
             label: "Engine ready",
             title: input.engine.detail ?? undefined,
           }
-      : {
-          id: "engine",
-          tone: "warn",
-          label: input.engine.unavailableLabel,
-          title: input.engine.detail ?? undefined,
-        },
+      : input.engine.unknown
+        ? {
+            id: "engine",
+            tone: "idle",
+            label: "Checking engine",
+            title: "Waiting for the engine's first status.",
+          }
+        : {
+            id: "engine",
+            tone: "warn",
+            label: input.engine.unavailableLabel,
+            title: input.engine.detail ?? undefined,
+          },
     input.monitor === "playing"
       ? { id: "monitor", tone: "info", label: "Listening" }
       : input.monitor === "buffering"
@@ -148,6 +172,14 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
           ? { id: "monitor", tone: "idle", label: "Monitor unavailable" }
           : { id: "monitor", tone: "idle", label: "Monitor off" },
   ];
+  // While Dead air shows, the good chips stay truthful but neutral, so the red Dead air chip is the
+  // only coloured "all is well / not well" signal on the strip (gaulatti/alcantara#694 closing walk).
+  // Warnings keep their colour: they are a second problem, not a good state.
+  const shownChips = input.outputSilent
+    ? chips.map((chip) =>
+        chip.tone === "ok" ? { ...chip, tone: "idle" as const } : chip,
+      )
+    : chips;
 
   return {
     state: !live
@@ -188,6 +220,6 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
         }
       : null,
     modeLabel: MODE_LABELS[input.mode],
-    chips,
+    chips: shownChips,
   };
 }

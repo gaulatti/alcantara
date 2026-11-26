@@ -93,6 +93,7 @@ describe('as-run plays whose end never arrived (#241)', () => {
     const metrics = new RadioMetricsService();
     const service = new AsRunService(
       store.prisma as unknown as PrismaService,
+      { teamId: 0 } as never,
       undefined,
       metrics,
     );
