@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
 import { ProgramService } from '../../program/program.service';
+import { PompeiiService } from '../../auth/pompeii.service';
 import { StingersService } from '../../stingers/stingers.service';
 import { McpToolProvider, type McpToolSpec } from '../contract';
 import { programsAffected, whyNot } from './on-air';
@@ -46,11 +47,15 @@ export class StingersMcpTools {
   constructor(
     private readonly stingers: StingersService,
     private readonly programs: ProgramService,
+    private readonly pompeii: PompeiiService,
   ) {}
 
   /** The stinger and the programs that use it, and those of them on air. */
   private async stingerInUse(stingerId: number) {
-    const stinger = (await this.stingers.findOne(stingerId)) as StingerRow;
+    const stinger = (await this.stingers.findOne(
+      stingerId,
+      this.pompeii.teamId,
+    )) as StingerRow;
     const list =
       (await this.programs.listPrograms()) as unknown as ListedWithStingers[];
     const uses = (program: ListedWithStingers) =>
@@ -78,7 +83,7 @@ export class StingersMcpTools {
         permission: permissions.read,
         untrusted: STINGER_UNTRUSTED,
         shape: {},
-        run: () => this.stingers.findAll(),
+        run: () => this.stingers.findAll(this.pompeii.teamId),
       }),
       actionSpec({
         name: 'stinger_create_stinger',
@@ -102,12 +107,15 @@ export class StingersMcpTools {
           recoverable: true,
         }),
         run: (args) =>
-          this.stingers.create({
-            name: args.name,
-            videoUrl: args.video_url,
-            cutPointMs: args.cut_point_ms,
-            enabled: args.enabled,
-          }),
+          this.stingers.create(
+            {
+              name: args.name,
+              videoUrl: args.video_url,
+              cutPointMs: args.cut_point_ms,
+              enabled: args.enabled,
+            },
+            this.pompeii.teamId,
+          ),
       }),
       actionSpec({
         name: 'stinger_update_stinger',
@@ -144,6 +152,7 @@ export class StingersMcpTools {
               cutPointMs: args.cut_point_ms,
               enabled: args.enabled,
             }),
+            this.pompeii.teamId,
           ),
       }),
       actionSpec({
@@ -173,7 +182,8 @@ export class StingersMcpTools {
               `stinger ${args.stinger_id} is used by program(s) on air whose scene changes play it: ${onAirIn.join(', ')}`,
             ],
           ]),
-        run: (args) => this.stingers.remove(args.stinger_id),
+        run: (args) =>
+          this.stingers.remove(args.stinger_id, this.pompeii.teamId),
       }),
     ];
   }

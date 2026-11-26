@@ -7,14 +7,14 @@
 services:
   access-fake:
     build:
-      context: ./backend
-      dockerfile: Dockerfile.dev
-    working_dir: /app
+      context: .
+      dockerfile: backend/Dockerfile.dev
+    working_dir: /app/backend
     command:
       [
         "node",
-        "/app/access-fake/fake-pompeii-access.mjs",
-        "/app/src/proto/application_access.proto",
+        "/app/backend/access-fake/fake-pompeii-access.mjs",
+        "/app/backend/src/proto/application_access.proto",
         "50087",
       ]
     environment:
@@ -22,8 +22,8 @@ services:
       # alcantara:access:manage.
       FAKE_CALLER: ${FAKE_CALLER:-manager}
     volumes:
-      - ./scripts/access-fake/fake-pompeii-access.mjs:/app/access-fake/fake-pompeii-access.mjs:ro
-      - ./backend/src/proto:/app/src/proto:ro
+      - ./scripts/access-fake/fake-pompeii-access.mjs:/app/backend/access-fake/fake-pompeii-access.mjs:ro
+      - ./backend/src/proto:/app/backend/src/proto:ro
     networks:
       default:
         aliases:

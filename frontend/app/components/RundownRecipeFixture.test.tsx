@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { RundownRecipeFixture } from "./RundownRecipeFixture";
 
@@ -15,4 +15,14 @@ it("draws the rundown-recipe fixture: uses as rows, the one on air open, a parti
   expect(parts).toHaveLength(2);
   expect(parts[0]).toHaveTextContent("Partial use");
   expect(screen.getByRole("button", { name: "Recipes" })).toBeInTheDocument();
+});
+
+it("runs every control on the fixture: the use row buttons and the library entries", () => {
+  render(<RundownRecipeFixture />);
+  for (const title of ["Move the use up", "Move the use down", "Change the label", "Detach: edit these steps by hand", "Remove the use"])
+    for (const button of screen.queryAllByRole("button", { name: title })) if (!(button as HTMLButtonElement).disabled) fireEvent.click(button);
+  fireEvent.keyDown(screen.getByLabelText("Search the library"), { key: "Enter" });
+  fireEvent.click(screen.getByRole("button", { name: "Recipes" }));
+  fireEvent.keyDown(screen.getByLabelText("Search the library"), { key: "Enter" });
+  expect(screen.getByRole("region", { name: "Rundown library" })).toBeInTheDocument();
 });

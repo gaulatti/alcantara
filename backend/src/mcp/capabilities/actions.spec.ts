@@ -154,13 +154,16 @@ const ROWS: Row[] = [
       { args: {} },
     ],
     rest: (c, a) =>
-      c.program.updateBroadcastSettings({
-        enabled: a.enabled as boolean,
-        startTime: a.start_time as string,
-        songMasterVolume: a.song_master_volume as number,
-        mixerChannels: a.mixer_channels,
-        songMuted: a.song_muted as boolean,
-      } as never),
+      c.program.updateBroadcastSettings(
+        {
+          enabled: a.enabled as boolean,
+          startTime: a.start_time as string,
+          songMasterVolume: a.song_master_volume as number,
+          mixerChannels: a.mixer_channels,
+          songMuted: a.song_muted as boolean,
+        } as never,
+        { user: { authorization: { teamId: 7 } } },
+      ),
     service: (f) => f.programs.updateBroadcastSettings,
     confirm: ['broadcast-settings', 'global'],
   },
@@ -588,11 +591,14 @@ const ROWS: Row[] = [
       { args: { name: 'G', description: null, media_ids: [11] } },
     ],
     rest: (c, a) =>
-      c.groups.create({
-        name: 'G',
-        description: a.description as null,
-        mediaIds: a.media_ids as number[],
-      }),
+      c.groups.create(
+        {
+          name: 'G',
+          description: a.description as null,
+          mediaIds: a.media_ids as number[],
+        },
+        GROUP_TEAM,
+      ),
     service: (f) => f.groups.create,
     expected: (rest) => ({
       id: rest.id,
@@ -609,11 +615,15 @@ const ROWS: Row[] = [
       { args: { media_group_id: 5, description: null, media_ids: [] } },
     ],
     rest: (c, a) =>
-      c.groups.update('5', {
-        ...(a.name ? { name: a.name as string } : {}),
-        ...(a.media_ids ? { mediaIds: a.media_ids as number[] } : {}),
-        ...('description' in a ? { description: a.description as null } : {}),
-      }),
+      c.groups.update(
+        '5',
+        {
+          ...(a.name ? { name: a.name as string } : {}),
+          ...(a.media_ids ? { mediaIds: a.media_ids as number[] } : {}),
+          ...('description' in a ? { description: a.description as null } : {}),
+        },
+        GROUP_TEAM,
+      ),
     service: (f) => f.groups.update,
     expected: (rest) => ({
       id: rest.id,
@@ -626,12 +636,13 @@ const ROWS: Row[] = [
   {
     name: 'media_group_remove',
     cases: [{ args: { media_group_id: 5 } }],
-    rest: (c) => c.groups.remove('5'),
+    rest: (c) => c.groups.remove('5', GROUP_TEAM),
     service: (f) => f.groups.remove,
     confirm: ['5', 'Headlines'],
   },
 ];
 
+const GROUP_TEAM = { user: { authorization: { teamId: 7 } } };
 const SCENE_TEAM = { user: { authorization: { teamId: 7 } } };
 const TEAM_REQUEST = { user: { authorization: { teamId: 7 } } };
 
@@ -663,7 +674,11 @@ function build() {
       f.programs as never,
       { teamId: 7 } as never,
     ).specs(),
-    ...new MediaGroupsMcpTools(f.groups as never, f.programs as never).specs(),
+    ...new MediaGroupsMcpTools(
+      f.groups as never,
+      f.programs as never,
+      { teamId: 7 } as never,
+    ).specs(),
   ];
   return { f, controllers, specs };
 }

@@ -136,7 +136,7 @@ jobs:
             -f backend/Dockerfile \
             -t ghcr.io/${{ github.repository }}:${{ github.sha }} \
             -t ghcr.io/${{ github.repository }}:latest \
-            backend
+            .
 
       - name: Verify production migrations are non-interactive and repeatable
         run: |
