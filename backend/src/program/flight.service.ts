@@ -749,7 +749,11 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
   private async preflightClockItems(
     programId: string,
     items: FlightCue[],
-    timing?: { scheduledAt: Date; rotationMode: string | null; hasFollowingBlock: boolean },
+    timing?: {
+      scheduledAt: Date;
+      rotationMode: string | null;
+      hasFollowingBlock: boolean;
+    },
   ) {
     this.validateClockItems(items);
     const songIds = [
@@ -810,7 +814,8 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
           issues.push(`Item ${index + 1}: audio clip unavailable`);
       }
     }
-    if (timing) warnings.push(...this.clockTimingWarnings(items, playableSongs, timing));
+    if (timing)
+      warnings.push(...this.clockTimingWarnings(items, playableSongs, timing));
     // A block whose show's radio is not set up, or is off, would air nothing: say so, without blocking, since the
     // engine may be set up before the block starts (the rundown-building walk; GM's decision D1).
     if (engine === 'not-configured')
@@ -832,10 +837,16 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
   private clockTimingWarnings(
     items: FlightCue[],
     playableSongs: Map<number, { durationMs: number | null }>,
-    timing: { scheduledAt: Date; rotationMode: string | null; hasFollowingBlock: boolean },
+    timing: {
+      scheduledAt: Date;
+      rotationMode: string | null;
+      hasFollowingBlock: boolean;
+    },
   ): string[] {
     const clock = (seconds: number) =>
-      new Date(timing.scheduledAt.getTime() + seconds * 1000).toISOString().slice(11, 16);
+      new Date(timing.scheduledAt.getTime() + seconds * 1000)
+        .toISOString()
+        .slice(11, 16);
     const warnings: string[] = [];
     let cursor = 0;
     let endKnown = true;
@@ -843,7 +854,9 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     for (const cue of items) {
       const start = cue.clockOffsetSeconds ?? cursor;
       if (cue.clockOffsetSeconds !== undefined && unknownBefore.some(Boolean)) {
-        warnings.push(`May be cut by the fixed start at ${clock(cue.clockOffsetSeconds)}.`);
+        warnings.push(
+          `May be cut by the fixed start at ${clock(cue.clockOffsetSeconds)}.`,
+        );
       }
       let duration: number | null = 0;
       if (cue.songId) {
@@ -858,7 +871,11 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       if (duration === null) endKnown = false;
       cursor = start + (duration ?? 0);
     }
-    if (endKnown && timing.rotationMode === 'manual' && !timing.hasFollowingBlock) {
+    if (
+      endKnown &&
+      timing.rotationMode === 'manual' &&
+      !timing.hasFollowingBlock
+    ) {
       warnings.push(
         `After this block nothing is scheduled and the rotation is Manual: the station goes silent at ${clock(cursor)}.`,
       );
@@ -880,14 +897,18 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         select: { songSequence: true },
       }),
       this.prisma.flightSequence.findMany({
-        where: { programStateId: state.id, scheduledAt: { gt: sequence.scheduledAt } },
+        where: {
+          programStateId: state.id,
+          scheduledAt: { gt: sequence.scheduledAt },
+        },
         select: { id: true },
         take: 1,
       }),
     ]);
     const rotationMode =
-      rotation?.songSequence && typeof (rotation.songSequence as { mode?: unknown }).mode === 'string'
-        ? ((rotation.songSequence as { mode: string }).mode)
+      rotation?.songSequence &&
+      typeof (rotation.songSequence as { mode?: unknown }).mode === 'string'
+        ? (rotation.songSequence as { mode: string }).mode
         : null;
     return this.preflightClockItems(
       programId,
