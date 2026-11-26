@@ -136,6 +136,30 @@ describe('PalazzoProgramClient playout state', () => {
     }
   });
 
+  it('reports one status per change: the first snapshot, and a later one that changes playout', async () => {
+    const h = harness(true);
+    h.client.start();
+    await settle();
+    h.push(event(1, 'snapshot', { state: state(1, true) }));
+    await settle();
+    // Connected and playout up arrive together, not as two statuses.
+    expect(h.statuses).toEqual([
+      expect.objectContaining({ connection: 'connected', playout: 'up' }),
+    ]);
+    h.push(event(2, 'snapshot', { state: state(2, true) }));
+    await settle();
+    expect(h.statuses).toHaveLength(1);
+    // Already connected: only playout changes, and it is still reported.
+    h.push(event(3, 'snapshot', { state: state(3, false) }));
+    await settle();
+    expect(h.statuses).toHaveLength(2);
+    expect(h.statuses[1]).toMatchObject({
+      connection: 'connected',
+      playout: 'down',
+    });
+    h.client.stop();
+  });
+
   it('follows telemetry.disconnected and telemetry.connected, and reports each change once', async () => {
     const h = harness(true);
     h.client.start();

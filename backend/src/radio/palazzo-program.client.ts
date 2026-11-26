@@ -357,7 +357,15 @@ export class PalazzoProgramClient {
       // long-lived stream to close before marking it connected leaves the
       // automation engine permanently "unreconciled" during healthy service
       // and prevents idle startup recovery.
-      this.setConnection('connected', null);
+      // Playout is part of the same status as the connection: one change, one status.
+      const playout = state.liquidsoap.connected ? 'up' : 'down';
+      const playoutChanged = this.playout !== playout;
+      this.playout = playout;
+      if (!this.setConnection('connected', null) && playoutChanged)
+        this.options.callbacks.onStatus(
+          this.options.programId,
+          this.getStatus(),
+        );
       this.emitSnapshot(state);
       return;
     }
@@ -666,8 +674,8 @@ export class PalazzoProgramClient {
   private setConnection(
     state: PalazzoConnectionState,
     detail: string | null,
-  ): void {
-    if (this.connection === state && this.detail === detail) return;
+  ): boolean {
+    if (this.connection === state && this.detail === detail) return false;
     const previous = this.connection;
     this.connection = state;
     this.detail = detail;
@@ -678,6 +686,7 @@ export class PalazzoProgramClient {
       this.options.metrics.recordConnectionState(state, 1);
     }
     this.options.callbacks.onStatus(this.options.programId, this.getStatus());
+    return true;
   }
 }
 
