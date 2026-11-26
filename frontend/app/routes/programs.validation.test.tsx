@@ -41,7 +41,7 @@ it("refuses a show without an ID with a complete message", async () => {
     (await screen.findAllByRole("button", { name: /Create show/ }))[0],
   );
   const dialog = await screen.findByRole("dialog", { name: "Create show" });
-  fireEvent.change(within(dialog).getByPlaceholderText("main"), {
+  fireEvent.change(within(dialog).getByLabelText("Show ID"), {
     target: { value: "   " },
   });
   fireEvent.click(within(dialog).getByRole("button", { name: "Create show" }));

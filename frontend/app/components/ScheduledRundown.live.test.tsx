@@ -334,7 +334,7 @@ it("creates a draft block only for a future start", async () => {
   renderRundown();
   await openBlock();
   fireEvent.click(screen.getByRole("button", { name: /New timed block/ }));
-  const start = await screen.findByLabelText("New block");
+  const start = await screen.findByLabelText("Scheduled start");
 
   fireEvent.change(start, { target: { value: "2000-01-01T10:00" } });
   fireEvent.click(screen.getByRole("button", { name: "Create timed block" }));
@@ -360,7 +360,7 @@ it("creates a draft block only for a future start", async () => {
     "11",
   );
   await waitFor(() =>
-    expect(screen.queryByLabelText("New block")).not.toBeInTheDocument(),
+    expect(screen.queryByLabelText("Scheduled start")).not.toBeInTheDocument(),
   );
 });
 
@@ -370,7 +370,7 @@ it("reports a block that could not be created", async () => {
   renderRundown();
   await openBlock();
   fireEvent.click(screen.getByRole("button", { name: /New timed block/ }));
-  fireEvent.change(await screen.findByLabelText("New block"), {
+  fireEvent.change(await screen.findByLabelText("Scheduled start"), {
     target: { value: "2099-01-01T10:00" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Create timed block" }));
@@ -984,7 +984,7 @@ it("closes the record and new-block dialogs with Escape", async () => {
   fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   await waitFor(() => expect(recording).not.toBeInTheDocument());
   fireEvent.click(screen.getByRole("button", { name: /New timed block/ }));
-  const start = await screen.findByLabelText("New block");
+  const start = await screen.findByLabelText("Scheduled start");
   fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   await waitFor(() => expect(start).not.toBeInTheDocument());
 });

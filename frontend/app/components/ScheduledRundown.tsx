@@ -882,7 +882,7 @@ export default function ScheduledRundown({
         <label className="block text-sm">
           Scheduled start
           <Input
-            aria-label="New block"
+            aria-label="Scheduled start"
             type="datetime-local"
             step="60"
             value={startTime}
