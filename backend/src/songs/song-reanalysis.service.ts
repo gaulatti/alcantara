@@ -113,6 +113,8 @@ export class SongReanalysisService {
         // A request starts a fresh retry budget: runs from earlier analyses do not count against it.
         attempts: 0,
         error: null,
+        claimedAt: null,
+        interruptions: 0,
         // The request names the rule of the next run; the default rule clears an earlier request for the previous one.
         requestedRuleVersion: requested === CUE_RULE_VERSION ? null : requested,
       },

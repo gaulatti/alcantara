@@ -490,6 +490,7 @@ route list, so it marks a route the list does not name yet. `status_class` is `2
 | `alcantara_outbound_fetch_total`               | `path`, `result`                    | Fetches of supplied URLs under the outbound-request policy ([outbound-requests.md](outbound-requests.md)) |
 | `alcantara_media_analysis_duration_seconds`    | `result`                            | Wall time of one audio asset analysis          |
 | `alcantara_media_analysis_backlog_assets`      | none                                | Audio assets still waiting for analysis        |
+| `alcantara_media_analysis_interrupted_runs_total` | `outcome`                        | Claims a stopped process left, found at start  |
 
 `alcantara_media_analyses_total{result}` counts audio asset analysis runs:
 `success` (measurements stored), `retry` (failed and scheduled again) and
