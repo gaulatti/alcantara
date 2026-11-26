@@ -41,7 +41,7 @@ export function OnAirStrip({
     <section
       aria-label="On air"
       data-state={view.state}
-      className="sticky top-0 z-20 flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-sand/30 bg-deep-sea px-4 py-2.5 text-text-primary"
+      className="sticky top-0 z-20 flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-sand/30 bg-deep-sea px-3 py-1.5 text-text-primary md:gap-x-5 md:gap-y-2 md:px-4 md:py-2.5"
     >
       <StatePill
         tone={
@@ -58,7 +58,7 @@ export function OnAirStrip({
         pulse={view.state === "on-air"}
         live
       />
-      <div className="min-w-0 flex-1 basis-64">
+      <div className="min-w-0 flex-1 basis-40 md:basis-64">
         {on ? (
           <>
             <p className="truncate text-sm font-semibold">{view.title}</p>
@@ -129,7 +129,7 @@ export function OnAirStrip({
           )}
         </div>
       ) : null}
-      <div className="min-w-0 basis-56 text-xs">
+      <div className="min-w-0 flex-1 basis-40 text-xs md:flex-none md:basis-56">
         <p className="text-text-secondary">Next · {view.modeLabel}</p>
         {view.next ? (
           <p className="truncate">
@@ -145,8 +145,8 @@ export function OnAirStrip({
           <p className="text-text-secondary">Nothing cued</p>
         )}
       </div>
-      {/* On a phone the chips share one row that scrolls sideways (#610); wider screens wrap them. */}
-      <div className="flex w-full min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto md:w-auto md:flex-wrap md:overflow-visible [&>*]:shrink-0">
+      {/* On a phone the chips share one line with the clock and scroll sideways (#610); wider screens wrap them. */}
+      <div className="flex min-w-0 flex-1 basis-40 flex-nowrap items-center gap-1.5 overflow-x-auto md:flex-none md:basis-auto md:flex-wrap md:overflow-visible [&>*]:shrink-0">
         {view.chips.map((chip) => (
           <StatePill
             key={chip.id}

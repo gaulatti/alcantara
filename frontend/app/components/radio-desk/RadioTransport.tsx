@@ -143,7 +143,7 @@ export function RadioTransport({
     <div
       role="group"
       aria-label="Radio transport"
-      className="flex flex-wrap items-center gap-3 border-t border-sand/30 bg-deep-sea/95 px-4 py-2.5"
+      className="flex flex-wrap items-center gap-2 border-t border-sand/30 bg-deep-sea/95 px-3 py-1.5 md:gap-3 md:px-4 md:py-2.5"
     >
       <button
         type="button"
@@ -186,8 +186,9 @@ export function RadioTransport({
         {armed ? (
           <span className="inline-flex items-center gap-2 text-accent-yellow">
             <StatePill tone="arm" label="Cued" />
-            {armed.title} — {armed.artist}. Take or press Space within 5 s; Esc
-            clears it.
+            {armed.title} — {armed.artist}. Take
+            <span className="pointer-coarse:hidden"> or press Space</span> within 5 s
+            <span className="pointer-coarse:hidden">; Esc clears it</span>.
           </span>
         ) : waitingFor ? (
           <span className="inline-flex items-center gap-2 text-accent-yellow">
@@ -200,9 +201,14 @@ export function RadioTransport({
           <span className="text-text-primary">On air: {onAir.title}.</span>
         ) : (
           <span className="text-text-secondary">
-            {next
-              ? `Next: ${next.title}. Cue next (N), then Take (Space).`
-              : "Nothing cued."}
+            {next ? (
+              <>
+                Next: {next.title}. Cue next<span className="pointer-coarse:hidden"> (N)</span>, then Take
+                <span className="pointer-coarse:hidden"> (Space)</span>.
+              </>
+            ) : (
+              "Nothing cued."
+            )}
           </span>
         )}
         {engineUnavailable && !note ? (
