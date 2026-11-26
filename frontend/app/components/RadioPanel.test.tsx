@@ -342,6 +342,20 @@ it("presents stale timing explicitly and never turns unavailable output into hea
   expect(screen.queryByText("Engine audio detected")).not.toBeInTheDocument();
 });
 
+// The airing walk's W5: with Palazzo answering and its playout down, a playing song is never On air, in the strip,
+// the rotation rows or the rundown's playback bar, even with fresh output samples.
+it("never shows On air or a running clock while playout is down", () => {
+  const p = props();
+  p.fixtureData!.palazzo = { ...p.fixtureData!.palazzo, playout: "down" };
+  mount(p);
+  const strip = screen.getByRole("region", { name: "On air" });
+  expect(within(strip).getByText("Not confirmed")).toBeVisible();
+  expect(within(strip).getByText("Playout down")).toBeVisible();
+  expect(screen.queryByText("On air")).not.toBeInTheDocument();
+  expect(screen.queryByText("Remaining")).not.toBeInTheDocument();
+  expect(screen.getAllByText("No engine confirmation").length).toBeGreaterThanOrEqual(2);
+});
+
 it("calls a stale report from a connected engine delayed, with no frozen clock", () => {
   const p = props();
   p.programSongPlayback = { ...p.programSongPlayback!, telemetryStale: true };

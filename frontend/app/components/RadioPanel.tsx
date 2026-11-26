@@ -516,9 +516,12 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     programSongPlayback,
     rotation.activeItemId ?? null,
   );
-  // A row shows "On air" only for a song the engine has confirmed (gaulatti/alcantara#609).
+  // A row shows "On air" only for a song the engine has confirmed (gaulatti/alcantara#609), never while
+  // its playout is down (W5).
   const confirmedLiveLeaf =
-    engineReady && programSongPlayback?.telemetryStale !== true
+    engineReady &&
+    palazzo?.playout !== "down" &&
+    programSongPlayback?.telemetryStale !== true
       ? liveLeaf
       : null;
   const next = nextUp({
@@ -1217,7 +1220,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
       <PlaybackBar
         sequence={rotation}
         programSongPlayback={programSongPlayback}
-        engineUnconfirmed={!engineReady}
+        // Playout down confirms nothing either (W5): the bar holds its clock, as the strip does.
+        engineUnconfirmed={!engineReady || playoutDown}
         onChange={(next) => {
           /* v8 ignore start -- PlaybackBar renders only in the timed block, where its sequence-change controls are hidden, so this save callback is never invoked */
           void Promise.resolve(onSaveSongSequence(next)).catch((cause) =>
