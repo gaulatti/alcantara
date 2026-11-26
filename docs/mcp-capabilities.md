@@ -259,7 +259,7 @@ titles) are user text and sit under `untrusted`.
 | Capability | Permission | Answers like |
 |---|---|---|
 | `program_list_flight_sequences_by_id` | `flight.read` | `GET /program/:programId/flight` (every sequence with its cues, schedule, publication state, revision and `isRunning`) |
-| `program_preflight_flight_sequence_by_id` | `flight.read` | `GET /program/:programId/flight/:sequenceId/preflight` (`ready` and the `issues` found; a sequence with no scheduled start is `invalid`) |
+| `program_preflight_flight_sequence_by_id` | `flight.read` | `GET /program/:programId/flight/:sequenceId/preflight` (`ready`, the `issues` found, and `warnings` that never block a start, such as a song of unknown duration, under `untrusted` like every `warnings` field; a sequence with no scheduled start is `invalid`) |
 | `program_list_recipes_by_id` | `flight.read` | `GET /program/:programId/recipes` (each rundown recipe with its scenes, transition, hold, enabled steps and revision; gaulatti/alcantara#424) |
 | `program_expand_recipe_by_id` | `flight.read` | `POST /program/:programId/recipes/:recipeId/expand` (the cues one use would add for a song, and its issues; writes nothing) |
 

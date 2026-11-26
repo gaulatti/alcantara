@@ -806,6 +806,7 @@ describe('MCP radio read tools against a fake Palazzo and the console endpoints'
                 preflight: {
                   ready: preflight.ready,
                   issue_count: preflight.issues.length,
+                  warning_count: preflight.warnings.length,
                 },
               }
             : {}),

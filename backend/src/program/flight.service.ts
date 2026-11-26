@@ -499,7 +499,9 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       typeof value !== 'string' ||
       !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00(?:\.000)?Z$/.test(value)
     ) {
-      throw new BadRequestException('scheduledAt must be an ISO time');
+      throw new BadRequestException(
+        'scheduledAt must be a whole minute, ISO time',
+      );
     }
     const parsed = new Date(value);
     if (
@@ -677,11 +679,16 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       instants.map((instant) => [instant.id, instant]),
     );
     const issues: string[] = [];
+    // Warnings never block a start: a song of unknown length still plays, but
+    // the block's later times are estimates around it.
+    const warnings: string[] = [];
     for (const [index, cue] of items.entries()) {
       if (cue.songId) {
         const song = playableSongs.get(cue.songId);
         if (!song?.enabled || !song.audioUrl.trim())
           issues.push(`Item ${index + 1}: song unavailable`);
+        else if (song.durationMs == null)
+          warnings.push(`Item ${index + 1}: song duration unknown`);
       }
       for (const id of [cue.instantId, cue.voiceTrackInstantId]) {
         if (!id) continue;
@@ -690,7 +697,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
           issues.push(`Item ${index + 1}: audio clip unavailable`);
       }
     }
-    return { programId, ready: issues.length === 0, issues };
+    return { programId, ready: issues.length === 0, issues, warnings };
   }
 
   async preflightFlightSequence(programId: string, sequenceId: number) {
