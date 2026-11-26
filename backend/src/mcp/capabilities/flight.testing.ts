@@ -53,6 +53,8 @@ export function fakeFlight() {
       ready: false,
       issues: ['Item 1: song unavailable'],
     }),
+    // The program team's song reads (#122): no team here, so no stored lengths and no overrun.
+    programSongDb: answers(null),
     publishFlightSequence: answers({
       ...clocked,
       publishedAt: new Date('2026-11-12T10:00:00.000Z'),

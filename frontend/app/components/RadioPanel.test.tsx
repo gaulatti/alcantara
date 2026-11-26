@@ -757,6 +757,16 @@ it("refuses Take, Take now and Start with fallback while playout is down, and ke
     await within(dialog).findByText("Playout down: nothing can air. Nothing was taken."),
   ).toBeVisible();
   expect(p.onTakeSelection).not.toHaveBeenCalled();
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Play a song now" })).toBeNull());
+
+  // The airing walk's W4: a rotation row's Take on air refused nothing and the song was sent to Palazzo.
+  const rows = screen.getAllByRole("button", { name: "Take on air" });
+  fireEvent.click(rows[1]);
+  expect(
+    await screen.findByText("Playout down: nothing can air. Nothing was taken."),
+  ).toBeVisible();
+  expect(p.onTakeSelection).not.toHaveBeenCalled();
 });
 
 it("reads Engine ready when Palazzo reports its playout up", async () => {

@@ -59,6 +59,15 @@ const DEFAULT_STALENESS_MS = 15_000;
  */
 export const PALAZZO_EVENT_IDLE_MS = 30_000;
 
+/** Events Palazzo emits only from a Liquidsoap sample (gaulatti/palazzo playback-telemetry.service.ts apply). */
+const LIQUIDSOAP_SAMPLE_EVENTS: readonly string[] = [
+  'audio.levels',
+  'playback.position',
+  'heartbeat',
+];
+const isLiquidsoapSampleEvent = (type: string) =>
+  LIQUIDSOAP_SAMPLE_EVENTS.includes(type);
+
 /**
  * Consumes one Palazzo instance's authoritative playback telemetry for one
  * radio-capable program.
@@ -93,6 +102,8 @@ export class PalazzoProgramClient {
   private lastSnapshotAt: number | null = null;
   private connection: PalazzoConnectionState = 'connecting';
   private playout: 'up' | 'down' | null = null;
+  /** When Palazzo last reported its playout, up or down (a snapshot or a telemetry event). */
+  private playoutReportedAt: number | null = null;
   private detail: string | null = null;
   private sseLoopRunning = false;
   private pollInFlight = false;
@@ -125,6 +136,24 @@ export class PalazzoProgramClient {
       detail: this.detail,
       playout: this.playout,
     };
+  }
+
+  /**
+   * The playout report a take is judged by (the airing walk's D4): `down` only for an explicit Liquidsoap-down report
+   * that is fresh, `stale` for a down report older than its window or from a client no longer hearing Palazzo, and
+   * `unknown` when Palazzo has not reported its playout yet. With Liquidsoap down the event stream is silent, so the
+   * report is renewed by the snapshot of each idle reconnect: its window is the idle watchdog plus the staleness window.
+   */
+  playoutReport(now = Date.now()): 'up' | 'down' | 'stale' | 'unknown' {
+    if (this.playout === null || this.playoutReportedAt === null)
+      return 'unknown';
+    if (this.playout === 'up') return 'up';
+    const hearing =
+      this.connection === 'connected' || this.connection === 'polling';
+    return hearing &&
+      now - this.playoutReportedAt <= PALAZZO_EVENT_IDLE_MS + this.stalenessMs
+      ? 'down'
+      : 'stale';
   }
 
   start(): void {
@@ -361,6 +390,7 @@ export class PalazzoProgramClient {
       const playout = state.liquidsoap.connected ? 'up' : 'down';
       const playoutChanged = this.playout !== playout;
       this.playout = playout;
+      this.playoutReportedAt = Date.now();
       if (!this.setConnection('connected', null) && playoutChanged)
         this.options.callbacks.onStatus(
           this.options.programId,
@@ -415,6 +445,11 @@ export class PalazzoProgramClient {
     this.touch(event);
     if (event.type === 'telemetry.disconnected') this.setPlayout('down');
     else if (event.type === 'telemetry.connected') this.setPlayout('up');
+    // Palazzo emits levels, position and heartbeat only from a Liquidsoap sample (after its telemetry.connected), so
+    // any of them proves playout is back: a down report must not refuse takes after recovery (D4), even when the
+    // telemetry.connected itself was lost in a replay gap.
+    else if (this.playout === 'down' && isLiquidsoapSampleEvent(event.type))
+      this.setPlayout('up');
     if (isEnginePlaybackEvent(event.type)) {
       this.options.callbacks.onEvent(this.options.programId, event);
     }
@@ -666,6 +701,7 @@ export class PalazzoProgramClient {
 
   /** Playout up or down is reported, not acted on: the engine still follows `connection` alone. */
   private setPlayout(next: 'up' | 'down'): void {
+    this.playoutReportedAt = Date.now();
     if (this.playout === next) return;
     this.playout = next;
     this.options.callbacks.onStatus(this.options.programId, this.getStatus());
