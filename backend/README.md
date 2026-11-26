@@ -91,6 +91,18 @@ than `alcantara_ci`.
 
 ## Deployment
 
+The production image installs exactly the versions in the workspace `pnpm-lock.yaml`,
+the same ones CI tests (gaulatti/alcantara#581). It builds from the repository root
+(`docker build -f backend/Dockerfile .`), so the lockfile is in the build context.
+`backend/Dockerfile.dockerignore` limits that context to the workspace manifests, the
+lockfile and the backend source. `pnpm install --frozen-lockfile` fails the build when
+the lockfile is out of step with a `package.json`; run `pnpm install` at the root and
+commit the lockfile. In the image the backend lives at `/app/backend`, which is the
+working directory, and the RDS bundle stays at `/app/certs`.
+`backend/test/backend-image-lockfile.test.js` (`test:deployment`) fails if the image or
+the deploy workflow goes back to a floating install. The development image
+(`Dockerfile.dev`, used by Compose) still installs without the lockfile.
+
 Production uses committed Prisma migrations. The deployment workflow runs
 `pnpm run db:migrate:deploy` in a one-shot container before replacing the live
 backend, and the image repeats the same idempotent command before application
