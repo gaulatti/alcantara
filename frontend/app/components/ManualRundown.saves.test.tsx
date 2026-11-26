@@ -270,13 +270,13 @@ it("keeps an edit when the cue is moved and another deleted before it is saved",
 it("deletes the open sequence after confirming, and clears the cue list only for it", async () => {
   const server = await openRundown([]);
   const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
-  fireEvent.click(screen.getByRole("button", { name: "Delete", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Delete" }));
   expect(confirm).toHaveBeenCalledWith("Delete this flight sequence?");
   expect(deleteFlightSequence).not.toHaveBeenCalled();
 
   confirm.mockReturnValue(true);
   vi.mocked(deleteFlightSequence).mockResolvedValue(undefined as never);
-  fireEvent.click(screen.getByRole("button", { name: "Delete", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Delete" }));
   expect(await screen.findByText("Sequence deleted.")).toBeInTheDocument();
   expect(deleteFlightSequence).toHaveBeenCalledWith(expect.anything(), 1);
   expect(screen.queryByText(`Cue 0 of 0`)).toBeNull();
