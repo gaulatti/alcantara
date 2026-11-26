@@ -59,7 +59,11 @@ function build() {
     },
   };
   const specs = [
-    ...new SongsMcpTools(services.songs as never, programs as never).specs(),
+    ...new SongsMcpTools(
+      services.songs as never,
+      programs as never,
+      { teamId: 7 } as never,
+    ).specs(),
     ...new MediaMcpTools(
       services.media as never,
       programs as never,
@@ -68,6 +72,7 @@ function build() {
     ...new MediaAssetsMcpTools(
       services.assets as never,
       programs as never,
+      { teamId: 7 } as never,
     ).specs(),
   ];
   const live = (overrides: Record<string, unknown>) =>
@@ -171,7 +176,7 @@ describe('song_remove', () => {
     await expect(spec('song_remove').run(args, ctx)).resolves.toMatchObject({
       result: { deletedSongId: 7 },
     });
-    expect(services.songs.remove).toHaveBeenCalledWith(7);
+    expect(services.songs.remove).toHaveBeenCalledWith(7, 7);
   });
 
   it('reports an unknown song as not_found', async () => {
@@ -283,7 +288,7 @@ describe('media_asset_remove_standalone_asset', () => {
     await spec('media_asset_remove_standalone_asset').run(args, ctx);
     expect(services.assets.removeStandaloneAsset).toHaveBeenCalledWith(
       'media:abc',
-      { permissions: ['alcantara:access'] },
+      { permissions: ['alcantara:access'], teamId: 7 },
     );
   });
 
@@ -351,6 +356,7 @@ describe('media_asset_remove_label', () => {
     await spec('media_asset_remove_label').run(args, ctx);
     expect(services.assets.removeLabel).toHaveBeenCalledWith('label-1', {
       permissions: ['alcantara:access'],
+      teamId: 7,
     });
   });
 });

@@ -8,25 +8,31 @@ import { RadioService } from './radio.service';
 const CI_DATABASE_URL =
   'postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci?schema=public';
 
-// The radio's gate for scoping the song libraries (gaulatti/alcantara#122): with
-// every library row on the station's team, the reads the rotation and the
-// Palazzo resolve path make find the same songs through the team-scoped client
-// as through the unscoped one. Rotation sequences name songs by id and by audio
-// address; these are the lookups behind them.
+// The radio's gate for scoping the song libraries (gaulatti/alcantara#122): the
+// reads the rotation and the Palazzo resolve path make, through the station
+// team's scoped client, find every one of its songs and none of another team's.
+// The engine's reads are unscoped today, and still find all of the station's.
+// Rotation sequences name songs by id and by audio address; these are the
+// lookups behind them.
 describe("the radio's song reads through the team-scoped client, against Postgres", () => {
   const team = 880_000 + (process.pid % 10_000);
+  const otherTeam = team + 10_000;
   const address = (name: string) => `https://media.test/${team}/${name}.mp3`;
   let prisma: PrismaService;
   let ids: number[] = [];
+  let otherIds: number[] = [];
 
   beforeAll(async () => {
     process.env.DATABASE_URL ||= CI_DATABASE_URL;
     prisma = new PrismaService();
     await prisma.$connect();
-    for (const [name, enabled] of [
-      ['one', true],
-      ['two', true],
-      ['off', false],
+    // The length tells one song from another in the analysis lookup, which returns no id.
+    for (const [name, enabled, owner, durationMs] of [
+      ['one', true, team, 1000],
+      ['two', true, team, 2000],
+      ['off', false, team, 3000],
+      ['theirs', true, otherTeam, 4000],
+      ['theirs-off', false, otherTeam, 5000],
     ] as const) {
       const song = await prisma.song.create({
         data: {
@@ -35,82 +41,99 @@ describe("the radio's song reads through the team-scoped client, against Postgre
           audioUrl: address(name),
           coverUrl: `https://media.test/${team}/${name}.jpg`,
           enabled,
-          teamId: team,
+          durationMs,
+          teamId: owner,
         },
       });
-      ids.push(song.id);
+      (owner === team ? ids : otherIds).push(song.id);
     }
   });
 
   afterAll(async () => {
-    await prisma?.song.deleteMany({ where: { teamId: team } });
+    await prisma?.song.deleteMany({
+      where: { teamId: { in: [team, otherTeam] } },
+    });
     await prisma?.$disconnect();
     ids = [];
+    otherIds = [];
   });
 
-  const clients = () => [
-    prisma as PrismaService,
-    forTeam(prisma as PrismaService, team) as unknown as PrismaService,
-  ];
+  const scoped = () =>
+    forTeam(prisma as PrismaService, team) as unknown as PrismaService;
 
-  async function both<T>(read: (db: PrismaService) => Promise<T>) {
-    const [unscoped, scoped] = await Promise.all(clients().map(read));
-    expect(scoped).toEqual(unscoped);
-    return scoped;
-  }
+  type Resolve = {
+    findSongForAnalysis(
+      audioUrl: string,
+      songId: number | undefined,
+      drops: string[],
+    ): Promise<{ durationMs: number | null } | null>;
+  };
+  type Cover = {
+    storedCoverUrl(audioUrl: string): Promise<string | undefined>;
+  };
+  const radio = (db: PrismaService) =>
+    Object.assign(Object.create(RadioService.prototype) as object, {
+      prisma: db,
+    }) as unknown as Resolve;
+  const programs = (db: PrismaService) =>
+    Object.assign(Object.create(ProgramService.prototype) as object, {
+      prisma: db,
+    }) as unknown as Cover;
+  const idsOf = (rows: { id: number }[]) => rows.map((row) => row.id);
 
-  it('selects the same rotation songs', async () => {
-    // The enabled songs among the ids a rotation holds, as similarity loads them.
+  it("reads exactly the station team's songs through the scoped client", async () => {
     await expect(
-      both((db) =>
-        db.song.findMany({
-          where: { enabled: true, id: { in: ids } },
-          orderBy: { id: 'asc' },
-        }),
-      ),
-    ).resolves.toHaveLength(2);
+      scoped()
+        .song.findMany({ orderBy: { id: 'asc' } })
+        .then(idsOf),
+    ).resolves.toEqual(ids);
   });
 
-  it('resolves what Palazzo plays to the same song', async () => {
-    type Resolve = {
-      findSongForAnalysis(
-        audioUrl: string,
-        songId: number | undefined,
-        drops: string[],
-      ): Promise<unknown>;
-    };
-    type Cover = {
-      storedCoverUrl(audioUrl: string): Promise<string | undefined>;
-    };
-    const radio = (db: PrismaService) =>
-      Object.assign(Object.create(RadioService.prototype) as object, {
-        prisma: db,
-      }) as unknown as Resolve;
-    const programs = (db: PrismaService) =>
-      Object.assign(Object.create(ProgramService.prototype) as object, {
-        prisma: db,
-      }) as unknown as Cover;
+  it('selects every enabled station song for the rotation, scoped or as the engine reads today', async () => {
+    // The enabled songs among the ids a rotation holds, as similarity loads them.
+    const rotation = (db: PrismaService, held: number[]) =>
+      db.song
+        .findMany({
+          where: { enabled: true, id: { in: held } },
+          orderBy: { id: 'asc' },
+        })
+        .then(idsOf);
+    const held = [...ids, ...otherIds];
+    await expect(rotation(scoped(), held)).resolves.toEqual(ids.slice(0, 2));
+    await expect(rotation(prisma, ids)).resolves.toEqual(ids.slice(0, 2));
+  });
 
+  it("resolves what Palazzo plays to the station's song, never another team's", async () => {
     for (const [index, name] of ['one', 'two'].entries()) {
-      await expect(
-        both((db) =>
+      for (const db of [prisma, scoped()]) {
+        await expect(
           radio(db).findSongForAnalysis(address(name), undefined, []),
-        ),
-      ).resolves.not.toBeNull();
-      await expect(
-        both((db) =>
+        ).resolves.toMatchObject({ durationMs: (index + 1) * 1000 });
+        await expect(
           radio(db).findSongForAnalysis(address(name), ids[index], []),
-        ),
-      ).resolves.not.toBeNull();
-      await expect(
-        both((db) => programs(db).storedCoverUrl(address(name))),
-      ).resolves.toBe(`https://media.test/${team}/${name}.jpg`);
-      // The engine's match of an unannounced track by its address.
-      await expect(
-        both((db) =>
-          db.song.findMany({ where: { audioUrl: address(name) }, take: 2 }),
-        ),
-      ).resolves.toHaveLength(1);
+        ).resolves.toMatchObject({ durationMs: (index + 1) * 1000 });
+        await expect(programs(db).storedCoverUrl(address(name))).resolves.toBe(
+          `https://media.test/${team}/${name}.jpg`,
+        );
+        // The engine's match of an unannounced track by its address.
+        await expect(
+          db.song
+            .findMany({ where: { audioUrl: address(name) }, take: 2 })
+            .then(idsOf),
+        ).resolves.toEqual([ids[index]]);
+      }
     }
+    await expect(
+      radio(scoped()).findSongForAnalysis(address('theirs'), undefined, []),
+    ).resolves.toBeNull();
+    await expect(
+      radio(scoped()).findSongForAnalysis(address('theirs'), otherIds[0], []),
+    ).resolves.toBeNull();
+    await expect(
+      programs(scoped()).storedCoverUrl(address('theirs')),
+    ).resolves.toBeUndefined();
+    await expect(
+      scoped().song.findMany({ where: { audioUrl: address('theirs') } }),
+    ).resolves.toEqual([]);
   });
 });

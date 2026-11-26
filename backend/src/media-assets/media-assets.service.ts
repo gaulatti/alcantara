@@ -22,6 +22,7 @@ import {
   assertCanManageMediaAsset,
   readableMediaAssetWhere,
 } from './media-asset-authorization';
+import { forTeam } from '../tenancy/scoped-prisma';
 
 const MEDIA_ASSET_INCLUDE = {
   image: true,
@@ -62,6 +63,8 @@ type MediaLabelRecord = Prisma.MediaLabelGetPayload<{
 
 export interface MediaAssetAuthorization {
   permissions: string[];
+  /** The caller's team (gaulatti/alcantara#122); absent or `0` means no team is configured. */
+  teamId?: number;
 }
 
 interface FindAssetsInput {
@@ -107,10 +110,20 @@ export class MediaAssetsService {
     private readonly recorder: OperatorChangeRecorder,
   ) {}
 
+  /**
+   * The assets, labels and groups of one team. The public label images, analyses and nested relations are not scoped.
+   */
+  private db({ teamId }: MediaAssetAuthorization): PrismaService {
+    return teamId
+      ? (forTeam(this.prisma, teamId) as unknown as PrismaService)
+      : this.prisma;
+  }
+
   async findAll(
     input: FindAssetsInput,
     authorization: MediaAssetAuthorization,
   ) {
+    const db = this.db(authorization);
     const filters: Prisma.MediaAssetWhereInput[] = [
       readableMediaAssetWhere(authorization.permissions),
     ];
@@ -138,14 +151,14 @@ export class MediaAssetsService {
     const where: Prisma.MediaAssetWhereInput = { AND: filters };
     const skip = (input.page - 1) * input.limit;
     const [assets, total] = await Promise.all([
-      this.prisma.mediaAsset.findMany({
+      db.mediaAsset.findMany({
         where,
         include: MEDIA_ASSET_INCLUDE,
         orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
         skip,
         take: input.limit,
       }),
-      this.prisma.mediaAsset.count({ where }),
+      db.mediaAsset.count({ where }),
     ]);
 
     const audioIds = assets
@@ -168,7 +181,8 @@ export class MediaAssetsService {
   }
 
   async findOne(id: string, authorization: MediaAssetAuthorization) {
-    const asset = await this.prisma.mediaAsset.findFirst({
+    const db = this.db(authorization);
+    const asset = await db.mediaAsset.findFirst({
       where: {
         AND: [
           { id: this.requiredId(id, 'asset id') },
@@ -185,11 +199,12 @@ export class MediaAssetsService {
     input: { name?: unknown; sourceUrl?: unknown; defaultVolume?: unknown },
     authorization: MediaAssetAuthorization,
   ) {
+    const db = this.db(authorization);
     assertCanManageBackgroundAudio(authorization.permissions);
     const name = this.requiredString(input.name, 'name');
     const sourceUrl = this.requiredString(input.sourceUrl, 'sourceUrl');
     const defaultVolume = this.volume(input.defaultVolume);
-    const asset = await this.prisma.mediaAsset.create({
+    const asset = await db.mediaAsset.create({
       data: {
         id: `media:${randomUUID()}`,
         mediaType: MediaAssetType.AUDIO,
@@ -206,8 +221,9 @@ export class MediaAssetsService {
     id: string,
     authorization: MediaAssetAuthorization,
   ) {
+    const db = this.db(authorization);
     const assetId = this.requiredId(id, 'asset id');
-    const asset = await this.prisma.mediaAsset.findUnique({
+    const asset = await db.mediaAsset.findUnique({
       where: { id: assetId },
       include: MEDIA_ASSET_INCLUDE,
     });
@@ -224,7 +240,7 @@ export class MediaAssetsService {
         'Use the capability-specific editor to delete this media asset',
       );
     }
-    await this.prisma.mediaAsset.delete({ where: { id: assetId } });
+    await db.mediaAsset.delete({ where: { id: assetId } });
     return { deletedMediaAssetId: assetId };
   }
 
@@ -233,16 +249,17 @@ export class MediaAssetsService {
     labelIdsValue: unknown,
     authorization: MediaAssetAuthorization,
   ) {
+    const db = this.db(authorization);
     const assetId = this.requiredId(id, 'asset id');
     const labelIds = this.normalizeIds(labelIdsValue, 'labelIds');
-    const asset = await this.prisma.mediaAsset.findUnique({
+    const asset = await db.mediaAsset.findUnique({
       where: { id: assetId },
       include: MEDIA_ASSET_INCLUDE,
     });
     if (!asset) throw new NotFoundException('Media asset not found');
     assertCanManageMediaAsset(asset, authorization.permissions);
 
-    const labels = await this.prisma.mediaLabel.findMany({
+    const labels = await db.mediaLabel.findMany({
       where: { id: { in: labelIds } },
       select: { id: true },
     });
@@ -261,7 +278,7 @@ export class MediaAssetsService {
     }
 
     try {
-      await this.prisma.$transaction(
+      await db.$transaction(
         async (tx) => {
           // Allocate positions only after locking the label rows in a stable order.
           // Concurrent uploads otherwise read the same maximum and collide on
@@ -318,6 +335,7 @@ export class MediaAssetsService {
     input: FindLabelsInput,
     authorization: MediaAssetAuthorization,
   ) {
+    const db = this.db(authorization);
     const search = input.search?.trim();
     const where: Prisma.MediaLabelWhereInput = search
       ? { name: { contains: search, mode: 'insensitive' } }
@@ -325,7 +343,7 @@ export class MediaAssetsService {
     const skip = (input.page - 1) * input.limit;
     const readableWhere = readableMediaAssetWhere(authorization.permissions);
     const [labels, total] = await Promise.all([
-      this.prisma.mediaLabel.findMany({
+      db.mediaLabel.findMany({
         where,
         include: {
           assets: {
@@ -338,7 +356,7 @@ export class MediaAssetsService {
         skip,
         take: input.limit,
       }),
-      this.prisma.mediaLabel.count({ where }),
+      db.mediaLabel.count({ where }),
     ]);
 
     return {
@@ -353,7 +371,8 @@ export class MediaAssetsService {
   }
 
   async findLabel(id: string, authorization: MediaAssetAuthorization) {
-    const label = await this.prisma.mediaLabel.findUnique({
+    const db = this.db(authorization);
+    const label = await db.mediaLabel.findUnique({
       where: { id: this.requiredId(id, 'label id') },
       include: {
         assets: {
@@ -407,11 +426,12 @@ export class MediaAssetsService {
     input: { name?: unknown; description?: unknown },
     authorization: MediaAssetAuthorization,
   ) {
+    const db = this.db(authorization);
     assertCanManageLabels(authorization.permissions);
     const name = this.requiredString(input.name, 'name');
     const description = this.optionalString(input.description, 'description');
     try {
-      const label = await this.prisma.mediaLabel.create({
+      const label = await db.mediaLabel.create({
         data: { name, description },
         include: MEDIA_LABEL_INCLUDE,
       });
@@ -426,10 +446,11 @@ export class MediaAssetsService {
     input: { name?: unknown; description?: unknown },
     authorization: MediaAssetAuthorization,
   ) {
+    const db = this.db(authorization);
     const actor = this.recorder.actor();
     assertCanManageLabels(authorization.permissions);
     const labelId = this.requiredId(id, 'label id');
-    const existing = await this.prisma.mediaLabel.findUnique({
+    const existing = await db.mediaLabel.findUnique({
       where: { id: labelId },
       select: { id: true },
     });
@@ -442,7 +463,7 @@ export class MediaAssetsService {
       data.description = this.optionalString(input.description, 'description');
     }
     try {
-      const label = await this.prisma.$transaction(async (tx) => {
+      const label = await db.$transaction(async (tx) => {
         if (Object.keys(data).length > 0) {
           await tx.mediaLabel.update({ where: { id: labelId }, data });
         }
@@ -461,10 +482,14 @@ export class MediaAssetsService {
             data: mediaGroupData,
           });
         }
-        return tx.mediaLabel.findUniqueOrThrow({
+        const query = {
           where: { id: labelId },
           include: MEDIA_LABEL_INCLUDE,
-        });
+        };
+        // findUniqueOrThrow is refused on the team-scoped client.
+        return authorization.teamId
+          ? (await tx.mediaLabel.findUnique(query))!
+          : tx.mediaLabel.findUniqueOrThrow(query);
       });
       const mapped = this.mapLabel(label);
       // The change is final; recording who made it never blocks it (gaulatti/alcantara#236).
@@ -495,16 +520,17 @@ export class MediaAssetsService {
     assetIdsValue: unknown,
     authorization: MediaAssetAuthorization,
   ) {
+    const db = this.db(authorization);
     const actor = this.recorder.actor();
     const labelId = this.requiredId(id, 'label id');
     const assetIds = this.normalizeIds(assetIdsValue, 'assetIds');
-    const label = await this.prisma.mediaLabel.findUnique({
+    const label = await db.mediaLabel.findUnique({
       where: { id: labelId },
       select: { id: true },
     });
     if (!label) throw new NotFoundException('Media label not found');
 
-    const currentAssignments = await this.prisma.mediaAssetLabel.findMany({
+    const currentAssignments = await db.mediaAssetLabel.findMany({
       where: { labelId },
       select: { assetId: true },
     });
@@ -514,7 +540,7 @@ export class MediaAssetsService {
         ...assetIds,
       ]),
     ];
-    const assets = await this.prisma.mediaAsset.findMany({
+    const assets = await db.mediaAsset.findMany({
       where: { id: { in: affectedAssetIds } },
       include: MEDIA_ASSET_INCLUDE,
     });
@@ -539,7 +565,7 @@ export class MediaAssetsService {
       );
     }
 
-    await this.prisma.$transaction(
+    await db.$transaction(
       async (tx) => {
         await tx.$queryRaw`SELECT "id" FROM "MediaLabel" WHERE "id" = ${labelId} FOR UPDATE`;
         await tx.mediaAssetLabel.deleteMany({ where: { labelId } });
@@ -577,15 +603,16 @@ export class MediaAssetsService {
   }
 
   async removeLabel(id: string, authorization: MediaAssetAuthorization) {
+    const db = this.db(authorization);
     assertCanManageLabels(authorization.permissions);
     const labelId = this.requiredId(id, 'label id');
-    const existing = await this.prisma.mediaLabel.findUnique({
+    const existing = await db.mediaLabel.findUnique({
       where: { id: labelId },
       select: { id: true },
     });
     if (!existing) throw new NotFoundException('Media label not found');
 
-    await this.prisma.$transaction(async (tx) => {
+    await db.$transaction(async (tx) => {
       const legacyGroupId = this.legacyGroupId(labelId);
       if (legacyGroupId !== null) {
         await tx.mediaGroup.delete({ where: { id: legacyGroupId } });

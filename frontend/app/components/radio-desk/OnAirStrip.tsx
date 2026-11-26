@@ -25,12 +25,15 @@ export function OnAirStrip({
         tone={
           view.state === "on-air"
             ? "live"
-            : view.state === "delayed" || view.state === "unconfirmed"
+            : view.state === "delayed" ||
+                view.state === "unconfirmed" ||
+                view.state === "unverified"
               ? "warn"
               : "idle"
         }
         label={view.label}
         pulse={view.state === "on-air"}
+        live
       />
       <div className="min-w-0 flex-1 basis-64">
         {on ? (
@@ -66,14 +69,19 @@ export function OnAirStrip({
           ) : view.state === "delayed" ? (
             <span className="text-xs text-amber-200">No live clock</span>
           ) : (
-            <>
+            // While the output is unverified the clock keeps its place but is dimmed (#706).
+            <span
+              data-testid="on-air-clock"
+              data-dimmed={view.state === "unverified" ? "true" : undefined}
+              className={view.state === "unverified" ? "opacity-40" : undefined}
+            >
               <span className="text-xs text-text-secondary">
                 {formatClock(view.elapsedMs)}
               </span>{" "}
               <strong className="text-lg">
                 −{formatClock(view.remainingMs)}
               </strong>
-            </>
+            </span>
           )}
         </div>
       ) : null}
@@ -93,7 +101,8 @@ export function OnAirStrip({
           <p className="text-text-secondary">Nothing cued</p>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-1.5">
+      {/* On a phone the chips share one row that scrolls sideways (#610); wider screens wrap them. */}
+      <div className="flex w-full min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto md:w-auto md:flex-wrap md:overflow-visible [&>*]:shrink-0">
         {view.chips.map((chip) => (
           <StatePill
             key={chip.id}

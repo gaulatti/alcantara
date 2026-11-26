@@ -90,7 +90,11 @@ export interface SongPlaybackData {
 }
 
 export type IntroPlaybackStatus =
-  'none' | 'pending' | 'playing' | 'completed' | 'degraded';
+  | 'none'
+  | 'pending'
+  | 'playing'
+  | 'completed'
+  | 'degraded';
 
 export type SongEngineEvent =
   | { type: 'playback_update'; programId: string; playback: SongPlaybackData }
@@ -388,6 +392,8 @@ interface SongEngineState {
   announcementChain: Promise<void>;
   /** Palazzo boot from the latest snapshot. */
   palazzoBootId: string | null;
+  /** The library song of each playback this engine commanded, announced or adopted, newest last. */
+  commandedSongs?: Map<string, number>;
   /** Boot of a Palazzo without the next route (404); undefined when supported. */
   nextUnsupportedBootId?: string | null;
   /** Announced songs replaced at the handoff before their start arrived. */
@@ -449,7 +455,10 @@ export type SongEngineTrackEvent = {
  * longer the engine's successor, so the engine replaced it at once.
  */
 export type SongEngineEndReason =
-  'stopped' | 'replaced' | 'superseded' | 'preempted';
+  | 'stopped'
+  | 'replaced'
+  | 'superseded'
+  | 'preempted';
 
 /**
  * Drives radio automation from authoritative Palazzo playback state.
@@ -1232,6 +1241,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       highRotation: playlistSong?.highRotation === true,
       actor,
     };
+    this.rememberSong(state, playbackRequestId, state.activeSong.songId);
     this.emitPlaybackActive(programId, state.activeSong);
     void this.publishNowPlaying(programId, state.activeSong);
     this.startProgress(programId);
@@ -1323,6 +1333,32 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * The library song of a playback this engine commanded, announced or adopted, or null when it has no record of
+   * it. The as-run log attributes by this before the audio address, which two songs can share.
+   */
+  songIdForPlayback(
+    programId: string,
+    playbackRequestId: string,
+  ): number | null {
+    return (
+      this.states.get(programId)?.commandedSongs?.get(playbackRequestId) ?? null
+    );
+  }
+
+  private rememberSong(
+    state: SongEngineState,
+    playbackRequestId: string,
+    songId: number | null | undefined,
+  ): void {
+    if (!songId) return;
+    const songs = (state.commandedSongs ??= new Map<string, number>());
+    songs.set(playbackRequestId, songId);
+    if (songs.size > MAX_ENDED_REQUEST_IDS) {
+      songs.delete(songs.keys().next().value as string);
+    }
+  }
+
   getPlaybackState(programId: string): SongPlaybackData | null {
     const s = this.states.get(programId)?.activeSong;
     return s ? this.playbackData(programId, s) : null;
@@ -1387,10 +1423,12 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(
         `Freezing radio automation for ${programId}: Palazzo ${status.connection}`,
       );
+      this.flightService.handleEngineAvailability(programId, false);
     } else if (!unavailable && state.frozen) {
       state.frozen = false;
       state.reconciled = false;
       this.logger.log(`Unfreezing radio automation for ${programId}`);
+      this.flightService.handleEngineAvailability(programId, true);
     }
     this.emit({ type: 'radio_leg_status', programId, status });
   }
@@ -1677,29 +1715,32 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         if (!activeSong.coverUrl && typeof event.data.coverUrl === 'string') {
           activeSong.coverUrl = event.data.coverUrl;
         }
-        activeSong.authoritativeStartedAt = Date.now();
+        // A snapshot may already have recorded this start (gaulatti/alcantara#716): the late event
+        // then keeps that start and position, and is not recorded again.
+        const alreadyStarted = activeSong.authoritativeStartedAt !== null;
+        const startedAt = activeSong.authoritativeStartedAt ?? Date.now();
+        if (!alreadyStarted) {
+          activeSong.authoritativeStartedAt = startedAt;
+          activeSong.authoritativePositionMs = 0;
+          activeSong.authoritativeUpdatedAt = Date.now();
+        }
         // A song on the air ends a run of failed commands (#230).
         state.commandRetries = 0;
-        activeSong.authoritativePositionMs = 0;
-        activeSong.authoritativeUpdatedAt = Date.now();
         this.metrics.recordTrackTransition('adopted');
-        this.recordHighRotationStarted(
-          programId,
-          state,
-          activeSong,
-          activeSong.authoritativeStartedAt,
-        );
+        this.recordHighRotationStarted(programId, state, activeSong, startedAt);
         this.emitPlaybackUpdate(programId, activeSong);
-        this.emitTrackEvent(
-          programId,
-          event.type,
-          requestId,
-          event.data,
-          false,
-          undefined,
-          undefined,
-          activeSong.actor,
-        );
+        if (!alreadyStarted) {
+          this.emitTrackEvent(
+            programId,
+            event.type,
+            requestId,
+            event.data,
+            false,
+            undefined,
+            undefined,
+            activeSong.actor,
+          );
+        }
         this.refreshAnnouncement(programId);
       } else if (this.acceptAnnouncedStart(programId, state, requestId)) {
         // The announced song started, under overlap or at the handoff.
@@ -1946,6 +1987,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       effects,
     };
     state.announcement = announcement;
+    this.rememberSong(state, announcement.playbackId, leaf.songId);
     let result: Awaited<ReturnType<RadioService['announceNext']>>;
     try {
       result = await this.radioService.announceNext(
@@ -2355,6 +2397,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     state.noPlaybackSince = null;
     song.playbackRequestId = playbackRequestId;
     song.promoted = false;
+    this.rememberSong(state, playbackRequestId, song.songId);
     this.logger.log(
       `Announced song was not ready on ${programId}; commanding it (${playbackRequestId})`,
     );
@@ -2481,6 +2524,33 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   // Internals
   // ---------------------------------------------------------------------
 
+  /**
+   * The playing snapshot is the first sign that the commanded song started: it
+   * does what its `track.started` would have, with one inferred as-run start at
+   * Palazzo's reported time, else now. A late event adds no second row: the
+   * as-run log keeps one per play and state.
+   */
+  private inferMissedStart(
+    programId: string,
+    state: SongEngineState,
+    song: ActiveSong,
+  ): void {
+    const startedAt = song.authoritativeStartedAt ?? Date.now();
+    song.authoritativeStartedAt = startedAt;
+    state.pendingRequestIds.delete(song.playbackRequestId);
+    this.recordHighRotationStarted(programId, state, song, startedAt);
+    this.emitTrackEvent(
+      programId,
+      'track.started',
+      song.playbackRequestId,
+      { title: song.title, artist: song.artist, url: song.audioUrl },
+      true,
+      undefined,
+      new Date(startedAt),
+      song.actor,
+    );
+  }
+
   private reconcilePlayingSnapshot(
     programId: string,
     state: SongEngineState,
@@ -2493,6 +2563,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       if (!song.coverUrl && snapshot.track?.coverUrl) {
         song.coverUrl = snapshot.track.coverUrl;
       }
+      // No start yet: its event was missed, for example a song commanded while
+      // the telemetry stream was reconnecting (gaulatti/alcantara#716).
+      const startMissed =
+        song.authoritativeStartedAt === null && !song.asRunClosed;
       const startedAt = Date.parse(snapshot.track?.startedAt ?? '');
       if (Number.isFinite(startedAt)) {
         song.authoritativeStartedAt = startedAt;
@@ -2502,6 +2576,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       );
       song.authoritativeUpdatedAt = Date.now();
       state.busyWithForeignTrack = false;
+      if (startMissed) this.inferMissedStart(programId, state, song);
       this.emitPlaybackUpdate(programId, song);
       return;
     }
@@ -2895,6 +2970,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     const authoritativeStartedAt = Number.isFinite(parsedStartedAt)
       ? parsedStartedAt
       : Date.now() - positionMs;
+    this.rememberSong(state, requestId, source.songId);
     state.activeSong = {
       token: source.token,
       playbackRequestId: requestId,
@@ -3641,6 +3717,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     const playbackRequestId = promote
       ? announced.playbackId
       : (queueEntry?.playbackRequestId ?? randomUUID());
+    this.rememberSong(state, playbackRequestId, resolved.songId);
     if (handoff) {
       state.announcement = null;
       if (promote) {
@@ -3870,6 +3947,11 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         if (state.activeSong?.playbackRequestId === playbackRequestId) {
           state.activeSong.playbackRequestId = result.playbackRequestId;
         }
+        this.rememberSong(
+          state,
+          result.playbackRequestId,
+          state.commandedSongs?.get(playbackRequestId),
+        );
       }
       return;
     }

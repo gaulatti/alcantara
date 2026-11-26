@@ -60,15 +60,14 @@ export function RadioLogGenerator({
         row === index ? { ...slot, ...patch } : slot,
       ),
     }));
-  const generate = async () => {
-    if (!log) return;
+  const generate = async (current: FlightSequence) => {
     setBusy(true);
     setError(null);
     try {
       const generated = await generateTaggedLog(
         programId,
-        log.id,
-        log.revision,
+        current.id,
+        current.revision,
         rules,
       );
       if (mounted.current && currentTarget.current === requestTarget)
@@ -200,7 +199,7 @@ export function RadioLogGenerator({
         <Button
           type="button"
           className="w-full"
-          onClick={() => void generate()}
+          onClick={log ? () => void generate(log) : undefined}
           disabled={rules.slots.some((slot) => !slot.labelId)}
         >
           {busy

@@ -45,6 +45,8 @@ export function RadioTransport({
   const [error, setError] = useState<string | null>(null);
   // The song taken last, until the engine confirms it on air.
   const [waitingFor, setWaitingFor] = useState<NextUpSong | null>(null);
+  // Set once a stop is confirmed; the status line announces it, and the next cue or take clears it.
+  const [stopped, setStopped] = useState(false);
 
   useEffect(() => {
     if (waitingFor && confirmedItemId === waitingFor.itemId) setWaitingFor(null);
@@ -52,6 +54,7 @@ export function RadioTransport({
 
   const cue = useCallback(() => {
     setError(null);
+    setStopped(false);
     if (!next) {
       setNote("Nothing to cue: the rotation has no next song.");
       return;
@@ -69,6 +72,7 @@ export function RadioTransport({
     }
     setNote(null);
     setError(null);
+    setStopped(false);
     if (engineUnavailable) {
       setWaitingFor(null);
       setNote(`${engineUnavailable}. Nothing was taken.`);
@@ -84,8 +88,11 @@ export function RadioTransport({
 
   const stopSong = useCallback(async () => {
     setError(null);
+    setStopped(false);
     try {
       await onTakeOffAir();
+      setWaitingFor(null);
+      setStopped(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The stop was refused");
     }
@@ -172,6 +179,8 @@ export function RadioTransport({
             <StatePill tone="arm" label="Taken" />
             {waitingFor.title}: waiting for the engine to confirm it on air.
           </span>
+        ) : stopped ? (
+          <span className="text-text-primary">Stopped.</span>
         ) : (
           <span className="text-text-secondary">
             {next

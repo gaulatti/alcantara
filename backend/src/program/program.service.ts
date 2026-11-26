@@ -10,8 +10,9 @@ import {
   OnModuleInit,
   OnModuleDestroy,
   NotFoundException,
+  ConflictException,
 } from '@nestjs/common';
-import { MediaAssetKind, type Prisma } from '@prisma/client';
+import { MediaAssetKind, Prisma } from '@prisma/client';
 import { Subject, Observable, type Subscription } from 'rxjs';
 import {
   OperatorChangeRecorder,
@@ -49,6 +50,7 @@ import {
   collectHighRotationProgramSongLeaves,
   countProgramSongLeavesBySong,
   normalizeProgramSongSequence,
+  type ProgramSongSequence,
 } from '../radio/song-sequence.utils';
 import { MAX_HIGH_ROTATION_SONGS } from '../radio/song-rotation.utils';
 import {
@@ -136,6 +138,28 @@ export interface ProgramPlayingTrack {
   startedAt: string;
   /** The song record's stored public https cover (gaulatti/alcantara#179). */
   coverUrl?: string;
+}
+
+/**
+ * Whether writing `next` over `stored` would start a song (gaulatti/alcantara#609): a different
+ * song becomes active, or an idle manual rotation switches to Autoplay or Shuffle. Edits that keep
+ * the active song, and stopping (no active song), start nothing.
+ */
+export function startsSongPlayback(
+  stored: ProgramSongSequence | null,
+  next: ProgramSongSequence | null,
+): boolean {
+  if (!next) return false;
+  if (
+    next.activeItemId !== null &&
+    next.activeItemId !== (stored?.activeItemId ?? null)
+  )
+    return true;
+  const automatic = (mode: string | undefined) =>
+    mode === 'autoplay' || mode === 'shuffle';
+  return (
+    automatic(next.mode) && !automatic(stored?.mode) && next.items.length > 0
+  );
 }
 
 @Injectable()
@@ -1264,7 +1288,9 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     if (!template) {
       return {
         templateUrl: null,
-        templateManifest: null,
+        // SQL NULL, not JSON null: a plain null writes JSON null to this Json column, which an audio-only
+        // (radio) row's check constraint refuses, so no radio show could be created or kept radio.
+        templateManifest: Prisma.DbNull,
         templateVerifiedAt: null,
       };
     }
@@ -1473,7 +1499,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     });
 
     if (existing) {
-      throw new Error('Program already exists');
+      throw new ConflictException('Program already exists');
     }
 
     // gaulatti/alcantara#335: the Program row (which carries the team and owns branding) is created
@@ -1540,7 +1566,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         select: { id: true },
       });
       if (existingTarget) {
-        throw new Error('Target program id already exists');
+        throw new ConflictException('Target program id already exists');
       }
     }
 
@@ -1777,6 +1803,40 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       mixerSettings,
       version: this.getProgramTopicVersion(normalizedProgramId, 'audioBus'),
     };
+  }
+
+  /**
+   * gaulatti/alcantara#609: an operator's audio-bus write that would start a song on a radio-only
+   * program is refused (409, `reason: "engine_unavailable"`) while its engine is off. Scheduled
+   * rundown automation does not come through here.
+   */
+  async refuseOperatorStartWhileEngineUnavailable(
+    data: unknown,
+    programId: string,
+  ): Promise<void> {
+    if (
+      !data ||
+      typeof data !== 'object' ||
+      !Object.prototype.hasOwnProperty.call(data, 'songSequence')
+    )
+      return;
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const current = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
+      select: { type: true, songSequence: true },
+    });
+    if (current?.type !== 'radio') return;
+    if (
+      startsSongPlayback(
+        normalizeProgramSongSequence(current.songSequence),
+        normalizeProgramSongSequence(
+          (data as { songSequence?: unknown }).songSequence,
+        ),
+      )
+    )
+      await this.radioService.refuseStartWhileEngineUnavailable(
+        normalizedProgramId,
+      );
   }
 
   async updateProgramAudioBus(

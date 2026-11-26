@@ -63,9 +63,10 @@ it('uses the device time format when the time zone data is unavailable', () => {
 });
 
 it('reads a missing time part as 00', () => {
-  vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(
-    () => ({ formatToParts: () => [] }) as unknown as Intl.DateTimeFormat,
-  );
+  // A function, not an arrow: vitest 4 spies on constructors, and the code under test calls `new`.
+  vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(function () {
+    return { formatToParts: () => [] } as unknown as Intl.DateTimeFormat;
+  });
   expect(clock(render(<RelojDigitalLoopClock />).container)).toBe('00:00:00');
 });
 

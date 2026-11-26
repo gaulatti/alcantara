@@ -103,7 +103,8 @@ export class SimilarityMcpTools {
           affects: [],
           recoverable: true,
         }),
-        run: (args) => this.similarity.storeEmbeddings(args.upload),
+        run: (args) =>
+          this.similarity.storeEmbeddings(args.upload, args.program_id),
       }),
     ];
   }

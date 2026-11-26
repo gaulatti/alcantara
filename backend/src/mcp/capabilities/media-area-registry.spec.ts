@@ -190,6 +190,7 @@ describe('song, media, asset and similarity capabilities through the registry', 
     await capability('media_asset_find_all', {});
     expect(fakes.assets.findAll).toHaveBeenCalledWith(expect.anything(), {
       permissions: [permissions.access, permissions.song.read],
+      teamId: 7,
     });
     await module.close();
   });

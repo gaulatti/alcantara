@@ -23,7 +23,7 @@ function setup() {
   const tx = {
     song: {
       update: jest.fn(async () => ({ ...row, enabled: false })),
-      findUniqueOrThrow: jest.fn(async () => ({ ...row, enabled: false })),
+      findUnique: jest.fn(async () => ({ ...row, enabled: false })),
     },
     mediaAsset: { upsert: jest.fn(async () => ({ id: 'asset-9' })) },
   };
@@ -47,7 +47,7 @@ jest.mock('../media-assets/media-asset-sync', () => ({
 describe('SongsService operator change records', () => {
   it('names a legacy chart field by its generic name, and keeps the enabled flag before and after', async () => {
     const { service, recorder } = setup();
-    await service.update(9, { earoneRank: 3, enabled: false });
+    await service.update(9, { earoneRank: 3, enabled: false }, 0);
     expect(recorder.record).toHaveBeenCalledWith(
       expect.objectContaining({
         actor: mcpActor,
@@ -66,7 +66,7 @@ describe('SongsService operator change records', () => {
 
   it('keeps the generic name when the caller used it', async () => {
     const { service, recorder } = setup();
-    await service.update(9, { externalChartSpins: 12 });
+    await service.update(9, { externalChartSpins: 12 }, 0);
     expect(recorder.record.mock.calls[0][0].summary.changed).toEqual([
       'externalChartSpins',
     ]);

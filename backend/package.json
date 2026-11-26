@@ -26,7 +26,7 @@
     "test:cov": "pnpm run test:coverage-tooling && node scripts/run-source-coverage.cjs",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "test:deployment": "node --test test/deployment-gate.test.js test/print-metrics-token.test.js test/runtime-secret-contract.test.js test/alana-recording-fixture.test.mjs test/node-version.test.js test/frontend-deploy-cache.test.js test/backend-image-lockfile.test.js test/livekit-helix.test.js",
+    "test:deployment": "node --test test/deployment-gate.test.js test/print-metrics-token.test.js test/runtime-secret-contract.test.js test/alana-recording-fixture.test.mjs test/node-version.test.js test/frontend-deploy-cache.test.js test/backend-image-lockfile.test.js test/frontend-image-lockfile.test.js test/livekit-helix.test.js test/compose-watch-polling.test.js test/fake-palazzo.test.mjs",
     "seed": "ts-node prisma/seed.ts",
     "principals:export": "ts-node src/identity/principals-cli.main.ts export",
     "principals:report": "ts-node src/identity/principals-cli.main.ts report",

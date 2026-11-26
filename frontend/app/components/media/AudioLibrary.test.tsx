@@ -367,7 +367,10 @@ it("says when a clip cannot be played", async () => {
 it("leaves other audio alone: leaving the library pauses only the transport", () => {
   const listener = document.createElement("audio");
   document.body.append(listener);
-  const listenerPause = vi.spyOn(listener, "pause");
+  // An own property, not vi.spyOn: the prototype pause spy above is what the transport calls, and
+  // vitest 4 returns that same spy for an inherited method.
+  const listenerPause = vi.fn();
+  listener.pause = listenerPause;
   const { unmount } = render(
     <AudioLibrary
       assets={ASSETS}

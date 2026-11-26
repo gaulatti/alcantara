@@ -284,7 +284,7 @@ export class McpRadioReadTools implements McpToolProviderShape {
     return tool({
       name: 'get_rundown',
       title: 'Rundown',
-      description: `Lists the program's rundown sequences (flight logs) with the active one and, for each clocked log that has not started, a preflight summary (ready and the number of issues). Cue contents are not listed, only their count. ${UNTRUSTED_NOTE}`,
+      description: `Lists the program's rundown sequences (flight logs) with the active one and, for each clocked log that has not started, a preflight summary (ready, the number of issues, and the number of warnings that never block a start). Cue contents are not listed, only their count. ${UNTRUSTED_NOTE}`,
       permission: ALCANTARA_PERMISSIONS.flight.read,
       tier: 'R',
       firstClass: true,
@@ -322,6 +322,7 @@ export class McpRadioReadTools implements McpToolProviderShape {
                     preflight: {
                       ready: preflight.ready,
                       issue_count: preflight.issues.length,
+                      warning_count: preflight.warnings.length,
                     },
                   }
                 : {}),
@@ -566,13 +567,17 @@ export class McpRadioReadTools implements McpToolProviderShape {
       },
       run: (args) =>
         guarded(async (): Promise<McpOutcome> => {
-          const found = await this.songs.findAll({
-            search: args.query,
-            sortBy: 'artist',
-            sortOrder: 'asc',
-            page: 1,
-            limit: args.limit ?? MCP_READ_LIMITS.songSearchDefault,
-          });
+          // Radio reads stay unscoped (team 0) until the radio switch of gaulatti/alcantara#122.
+          const found = await this.songs.findAll(
+            {
+              search: args.query,
+              sortBy: 'artist',
+              sortOrder: 'asc',
+              page: 1,
+              limit: args.limit ?? MCP_READ_LIMITS.songSearchDefault,
+            },
+            0,
+          );
           const analyses = await this.songs.findAnalyses(
             found.data
               .map((song) => song.assetId)
@@ -608,7 +613,8 @@ export class McpRadioReadTools implements McpToolProviderShape {
       shape: { song_id: z.number().int().min(1) },
       run: (args) =>
         guarded(async (): Promise<McpOutcome> => {
-          const song = await this.songs.findOne(args.song_id);
+          // Unscoped like the search above (#122).
+          const song = await this.songs.findOne(args.song_id, undefined, 0);
           const analysis = song.assetId
             ? ((await this.songs.findAnalyses([song.assetId])).get(
                 song.assetId,

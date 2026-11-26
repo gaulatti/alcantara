@@ -7,10 +7,12 @@ import {
   Post,
   Put,
   Query,
+  Req,
 } from '@nestjs/common';
 import { SongsService } from './songs.service';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { RequirePermission } from '../auth/require-permission.decorator';
+import { callerTeam, type TeamRequest } from '../tenancy/caller-team';
 
 @Controller('songs')
 @RequirePermission(ALCANTARA_PERMISSIONS.song.read)
@@ -19,6 +21,7 @@ export class SongsController {
 
   @Get()
   async findAll(
+    @Req() request: TeamRequest,
     @Query('search') search?: string,
     @Query('enabled') enabled?: string,
     @Query('sortBy') sortBy?: string,
@@ -27,23 +30,31 @@ export class SongsController {
     @Query('limit') limit?: string,
     @Query('programId') programId?: string,
   ) {
-    return this.songsService.findAll({
-      search,
-      enabled: enabled === undefined ? undefined : enabled === 'true',
-      sortBy,
-      sortOrder,
-      page: page ? Math.max(1, Number(page)) : 1,
-      limit: limit ? Math.max(0, Number(limit)) : 50,
-      programId,
-    });
+    return this.songsService.findAll(
+      {
+        search,
+        enabled: enabled === undefined ? undefined : enabled === 'true',
+        sortBy,
+        sortOrder,
+        page: page ? Math.max(1, Number(page)) : 1,
+        limit: limit ? Math.max(0, Number(limit)) : 50,
+        programId,
+      },
+      callerTeam(request),
+    );
   }
 
   @Get(':id')
   async findOne(
     @Param('id') id: string,
+    @Req() request: TeamRequest,
     @Query('programId') programId?: string,
   ) {
-    return this.songsService.findOne(Number(id), programId);
+    return this.songsService.findOne(
+      Number(id),
+      programId,
+      callerTeam(request),
+    );
   }
 
   @Post()
@@ -68,8 +79,9 @@ export class SongsController {
       programId?: string;
       introInstantId?: number | null;
     },
+    @Req() request: TeamRequest,
   ) {
-    return this.songsService.create(data);
+    return this.songsService.create(data, callerTeam(request));
   }
 
   @Put(':id')
@@ -95,13 +107,14 @@ export class SongsController {
       programId?: string;
       introInstantId?: number | null;
     },
+    @Req() request: TeamRequest,
   ) {
-    return this.songsService.update(Number(id), data);
+    return this.songsService.update(Number(id), data, callerTeam(request));
   }
 
   @Delete(':id')
   @RequirePermission(ALCANTARA_PERMISSIONS.song.manage)
-  async remove(@Param('id') id: string) {
-    return this.songsService.remove(Number(id));
+  async remove(@Param('id') id: string, @Req() request: TeamRequest) {
+    return this.songsService.remove(Number(id), callerTeam(request));
   }
 }

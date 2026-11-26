@@ -1,9 +1,7 @@
+import { PalazzoMachineClient } from './palazzo-machine.client';
 import { BadGatewayException, BadRequestException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import {
-  PalazzoInstantRefusedException,
-  RadioService,
-} from './radio.service';
+import { PalazzoInstantRefusedException, RadioService } from './radio.service';
 import { PalazzoMachineError } from './palazzo-machine.client';
 
 const BUCKET = 'media-bucket';
@@ -57,7 +55,9 @@ function build(settings: Record<string, unknown> | null = defaultSettings()) {
     recordCueGroup: jest.fn(),
     recordEngineDegraded: jest.fn(),
   };
-  const service = new RadioService(prisma, palazzo, config, metrics);
+  const service = new RadioService(prisma, palazzo, config, metrics, {
+    teamId: 0,
+  } as never);
   jest.spyOn(service['logger'], 'error').mockImplementation();
   return { service, prisma, palazzo, config, configValues, metrics };
 }
@@ -240,6 +240,9 @@ describe('RadioService coverage', () => {
   });
 
   describe('prepareRecoveryPlaylist audio sources', () => {
+    // The refusal says what the audio must be, naming the variable, never the bucket itself.
+    const ACCEPTED =
+      'an https URL on the managed media bucket (MEDIA_S3_BUCKET), with no port or credentials';
     const withSong = (audioUrl: string) => {
       const ctx = build();
       ctx.prisma.song.findMany.mockResolvedValue([
@@ -251,7 +254,7 @@ describe('RadioService coverage', () => {
     it('rejects an unparsable URL', async () => {
       const { service } = withSong('not a url');
       await expect(service.prepareRecoveryPlaylist('p', [1])).rejects.toThrow(
-        'recovery song has an invalid URL',
+        `recovery song 1 has no absolute audio URL; it needs ${ACCEPTED}`,
       );
     });
 
@@ -265,7 +268,7 @@ describe('RadioService coverage', () => {
       const { service } = withSong(url);
       const fetchSpy = jest.spyOn(global, 'fetch');
       await expect(service.prepareRecoveryPlaylist('p', [1])).rejects.toThrow(
-        'recovery audio must use the managed media bucket',
+        `recovery song 1 audio must be ${ACCEPTED}`,
       );
       expect(fetchSpy).not.toHaveBeenCalled();
     });
@@ -939,95 +942,239 @@ describe('RadioService coverage', () => {
       // Case 1: no song found
       prisma.song.findUnique.mockResolvedValueOnce(null);
       await expect(
-        service.playSong('p', 'u', undefined, undefined, 'req-1', undefined, undefined, 999),
+        service.playSong(
+          'p',
+          'u',
+          undefined,
+          undefined,
+          'req-1',
+          undefined,
+          undefined,
+          999,
+        ),
       ).resolves.toEqual({ ok: true, playbackRequestId: 'song-1' });
 
       // Case 2: song has no assetId
       prisma.song.findUnique.mockResolvedValueOnce({ id: 101, assetId: null });
       await expect(
-        service.playSong('p', 'u', undefined, undefined, 'req-2', undefined, undefined, 101),
+        service.playSong(
+          'p',
+          'u',
+          undefined,
+          undefined,
+          'req-2',
+          undefined,
+          undefined,
+          101,
+        ),
       ).resolves.toEqual({ ok: true, playbackRequestId: 'song-1' });
 
       // Case 3: analysis row is failed
-      prisma.song.findUnique.mockResolvedValueOnce({ id: 101, assetId: 'asset-failed' });
+      prisma.song.findUnique.mockResolvedValueOnce({
+        id: 101,
+        assetId: 'asset-failed',
+      });
       prisma.mediaAssetAnalysis.findUnique.mockResolvedValueOnce({
         status: 'failed',
         error: 'corrupt file',
       });
       await expect(
-        service.playSong('p', 'u', undefined, undefined, 'req-3', undefined, undefined, 101),
+        service.playSong(
+          'p',
+          'u',
+          undefined,
+          undefined,
+          'req-3',
+          undefined,
+          undefined,
+          101,
+        ),
       ).resolves.toEqual({ ok: true, playbackRequestId: 'song-1' });
 
       // Case 4: analysis query throws
-      prisma.song.findUnique.mockResolvedValueOnce({ id: 101, assetId: 'asset-err' });
-      prisma.mediaAssetAnalysis.findUnique.mockRejectedValueOnce(new Error('db connection lost'));
+      prisma.song.findUnique.mockResolvedValueOnce({
+        id: 101,
+        assetId: 'asset-err',
+      });
+      prisma.mediaAssetAnalysis.findUnique.mockRejectedValueOnce(
+        new Error('db connection lost'),
+      );
       await expect(
-        service.playSong('p', 'u', undefined, undefined, 'req-4', undefined, undefined, 101),
+        service.playSong(
+          'p',
+          'u',
+          undefined,
+          undefined,
+          'req-4',
+          undefined,
+          undefined,
+          101,
+        ),
       ).resolves.toEqual({ ok: true, playbackRequestId: 'song-1' });
     });
   });
 
   describe('playSong analysis validation (segueMode on)', () => {
-    const OFF_COMMAND = { playbackId: 'req', url: 'u', title: undefined, artist: undefined, coverUrl: undefined, intro: undefined };
-    const VALID_SEGUE = { cueInSeconds: 1, cueOutSeconds: 170, fadeInSeconds: 0.5, fadeOutSeconds: 2, overlapSeconds: 3 };
+    const OFF_COMMAND = {
+      playbackId: 'req',
+      url: 'u',
+      title: undefined,
+      artist: undefined,
+      coverUrl: undefined,
+      intro: undefined,
+    };
+    const VALID_SEGUE = {
+      cueInSeconds: 1,
+      cueOutSeconds: 170,
+      fadeInSeconds: 0.5,
+      fadeOutSeconds: 2,
+      overlapSeconds: 3,
+    };
     const VALID_LOUDNESS = { integratedLufs: -14, truePeakDbtp: -1 };
-    const NO_SEGUE = { cueInSeconds: null, cueOutSeconds: null, fadeInSeconds: null, fadeOutSeconds: null, overlapSeconds: null };
+    const NO_SEGUE = {
+      cueInSeconds: null,
+      cueOutSeconds: null,
+      fadeInSeconds: null,
+      fadeOutSeconds: null,
+      overlapSeconds: null,
+    };
     const NO_LOUDNESS = { integratedLufs: null, truePeakDbtp: null };
 
-    function onWithAnalysis(analysis: Record<string, unknown>, durationMs: number | null = 180000) {
+    function onWithAnalysis(
+      analysis: Record<string, unknown>,
+      durationMs: number | null = 180000,
+    ) {
       const built = build({ ...defaultSettings(), segueMode: 'on' });
       built.palazzo.playSong.mockResolvedValue({ playbackRequestId: 'req' });
-      built.prisma.song.findUnique.mockResolvedValue({ assetId: 'asset-1', durationMs });
-      built.prisma.mediaAssetAnalysis.findUnique.mockResolvedValue({ status: 'success', ...analysis });
+      built.prisma.song.findUnique.mockResolvedValue({
+        assetId: 'asset-1',
+        durationMs,
+      });
+      built.prisma.mediaAssetAnalysis.findUnique.mockResolvedValue({
+        status: 'success',
+        ...analysis,
+      });
       jest.spyOn(built.service['logger'], 'warn').mockImplementation();
       return built;
     }
     const sent = (palazzo: any) => palazzo.playSong.mock.calls.at(-1)[2];
-    const play = (service: any) => service.playSong('p', 'u', undefined, undefined, 'req', undefined, undefined, 7);
+    const play = (service: any) =>
+      service.playSong(
+        'p',
+        'u',
+        undefined,
+        undefined,
+        'req',
+        undefined,
+        undefined,
+        7,
+      );
 
     it.each([
-      ['loudness below -70 LUFS', { ...NO_SEGUE, integratedLufs: -71, truePeakDbtp: -1 }, 'loudness-invalid'],
-      ['true peak above +6 dBTP', { ...NO_SEGUE, integratedLufs: -14, truePeakDbtp: 6.5 }, 'loudness-invalid'],
-      ['overlap longer than the cue span', { ...NO_LOUDNESS, ...VALID_SEGUE, cueInSeconds: 1, cueOutSeconds: 175, overlapSeconds: 175 }, 'segue-invalid'],
-    ])('drops %s and sends the segueMode-off command, so the song plays', async (_name, analysis, reason) => {
-      const { service, palazzo, metrics } = onWithAnalysis(analysis);
-      await expect(play(service)).resolves.toEqual({ ok: true, playbackRequestId: 'req' });
-      expect(sent(palazzo)).toEqual(OFF_COMMAND);
-      expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith(reason);
-      expect(metrics.recordAnalysisDrop).toHaveBeenCalledTimes(1);
-    });
+      [
+        'loudness below -70 LUFS',
+        { ...NO_SEGUE, integratedLufs: -71, truePeakDbtp: -1 },
+        'loudness-invalid',
+      ],
+      [
+        'true peak above +6 dBTP',
+        { ...NO_SEGUE, integratedLufs: -14, truePeakDbtp: 6.5 },
+        'loudness-invalid',
+      ],
+      [
+        'overlap longer than the cue span',
+        {
+          ...NO_LOUDNESS,
+          ...VALID_SEGUE,
+          cueInSeconds: 1,
+          cueOutSeconds: 175,
+          overlapSeconds: 175,
+        },
+        'segue-invalid',
+      ],
+    ])(
+      'drops %s and sends the segueMode-off command, so the song plays',
+      async (_name, analysis, reason) => {
+        const { service, palazzo, metrics } = onWithAnalysis(analysis);
+        await expect(play(service)).resolves.toEqual({
+          ok: true,
+          playbackRequestId: 'req',
+        });
+        expect(sent(palazzo)).toEqual(OFF_COMMAND);
+        expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith(reason);
+        expect(metrics.recordAnalysisDrop).toHaveBeenCalledTimes(1);
+      },
+    );
 
     it('drops an invalid edge on its own (#234), keeping the valid edge and loudness', async () => {
       // An invalid cue-in (negative, or past the bound) is not applied; the valid cue-out still is.
       for (const cueInSeconds of [-1, 170]) {
-        const { service, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, cueInSeconds, ...VALID_LOUDNESS });
+        const { service, palazzo, metrics } = onWithAnalysis({
+          ...VALID_SEGUE,
+          cueInSeconds,
+          ...VALID_LOUDNESS,
+        });
         await play(service);
-        expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, duration: 180, loudness: VALID_LOUDNESS, segue: { ...VALID_SEGUE, cueInSeconds: 0 } });
-        expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith('segue-edge-bound');
+        expect(sent(palazzo)).toEqual({
+          ...OFF_COMMAND,
+          duration: 180,
+          loudness: VALID_LOUDNESS,
+          segue: { ...VALID_SEGUE, cueInSeconds: 0 },
+        });
+        expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith(
+          'segue-edge-bound',
+        );
         expect(metrics.recordCueGroup).toHaveBeenCalledWith('head_filled');
       }
     });
 
     it('drops invalid loudness but keeps valid cue points', async () => {
-      const { service, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, integratedLufs: Number.NaN, truePeakDbtp: -1 });
+      const { service, palazzo, metrics } = onWithAnalysis({
+        ...VALID_SEGUE,
+        integratedLufs: Number.NaN,
+        truePeakDbtp: -1,
+      });
       await play(service);
-      expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, duration: 180, segue: VALID_SEGUE });
-      expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith('loudness-invalid');
+      expect(sent(palazzo)).toEqual({
+        ...OFF_COMMAND,
+        duration: 180,
+        segue: VALID_SEGUE,
+      });
+      expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith(
+        'loudness-invalid',
+      );
     });
 
     it('treats a cue-out beyond the song duration as no tail trim, keeping the head (#234)', async () => {
-      const { service, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, ...VALID_LOUDNESS }, 150000);
+      const { service, palazzo, metrics } = onWithAnalysis(
+        { ...VALID_SEGUE, ...VALID_LOUDNESS },
+        150000,
+      );
       await play(service);
-      expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, duration: 150, loudness: VALID_LOUDNESS, segue: { ...VALID_SEGUE, cueOutSeconds: 150 } });
-      expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith('segue-edge-bound');
+      expect(sent(palazzo)).toEqual({
+        ...OFF_COMMAND,
+        duration: 150,
+        loudness: VALID_LOUDNESS,
+        segue: { ...VALID_SEGUE, cueOutSeconds: 150 },
+      });
+      expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith(
+        'segue-edge-bound',
+      );
       // Within the duration the same segue is kept, and a song with no stored duration is not bounded.
       const within = onWithAnalysis({ ...VALID_SEGUE, ...NO_LOUDNESS }, 170000);
       await play(within.service);
-      expect(sent(within.palazzo)).toEqual({ ...OFF_COMMAND, duration: 170, segue: VALID_SEGUE });
+      expect(sent(within.palazzo)).toEqual({
+        ...OFF_COMMAND,
+        duration: 170,
+        segue: VALID_SEGUE,
+      });
       const unknown = onWithAnalysis({ ...VALID_SEGUE, ...NO_LOUDNESS }, null);
       await play(unknown.service);
       // No stored duration: none is sent, and Palazzo applies the cue-out as sent.
-      expect(sent(unknown.palazzo)).toEqual({ ...OFF_COMMAND, segue: VALID_SEGUE });
+      expect(sent(unknown.palazzo)).toEqual({
+        ...OFF_COMMAND,
+        segue: VALID_SEGUE,
+      });
       expect(unknown.metrics.recordAnalysisDrop).not.toHaveBeenCalled();
     });
 
@@ -1035,80 +1182,169 @@ describe('RadioService coverage', () => {
     // (cue-in 0, cue-out the duration), each edge is bounded at 10 s, and
     // the group's shape is counted.
     it.each([
-      ['a tail-only song (the 536)', { cueInSeconds: null, cueOutSeconds: 176 }, { cueInSeconds: 0, cueOutSeconds: 176 }, 'head_filled'],
-      ['a head-only song (the 13)', { cueInSeconds: 2.5, cueOutSeconds: null }, { cueInSeconds: 2.5, cueOutSeconds: 180 }, 'tail_filled'],
-      ['a song with both edges', { cueInSeconds: 1, cueOutSeconds: 177 }, { cueInSeconds: 1, cueOutSeconds: 177 }, 'both'],
-    ])('sends a full cue group for %s', async (_name, cues, expected, shape) => {
-      const { service, palazzo, metrics } = onWithAnalysis({ ...NO_LOUDNESS, fadeInSeconds: null, fadeOutSeconds: null, overlapSeconds: null, ...cues });
-      await play(service);
-      expect(sent(palazzo)).toEqual({
-        ...OFF_COMMAND,
-        // The duration the group was checked against, so Palazzo bounds and counts the tail.
-        duration: 180,
-        segue: { ...expected, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 0 },
-      });
-      expect(metrics.recordCueGroup).toHaveBeenCalledWith(shape);
-      expect(metrics.recordAnalysisDrop).not.toHaveBeenCalled();
-    });
+      [
+        'a tail-only song (the 536)',
+        { cueInSeconds: null, cueOutSeconds: 176 },
+        { cueInSeconds: 0, cueOutSeconds: 176 },
+        'head_filled',
+      ],
+      [
+        'a head-only song (the 13)',
+        { cueInSeconds: 2.5, cueOutSeconds: null },
+        { cueInSeconds: 2.5, cueOutSeconds: 180 },
+        'tail_filled',
+      ],
+      [
+        'a song with both edges',
+        { cueInSeconds: 1, cueOutSeconds: 177 },
+        { cueInSeconds: 1, cueOutSeconds: 177 },
+        'both',
+      ],
+    ])(
+      'sends a full cue group for %s',
+      async (_name, cues, expected, shape) => {
+        const { service, palazzo, metrics } = onWithAnalysis({
+          ...NO_LOUDNESS,
+          fadeInSeconds: null,
+          fadeOutSeconds: null,
+          overlapSeconds: null,
+          ...cues,
+        });
+        await play(service);
+        expect(sent(palazzo)).toEqual({
+          ...OFF_COMMAND,
+          // The duration the group was checked against, so Palazzo bounds and counts the tail.
+          duration: 180,
+          segue: {
+            ...expected,
+            fadeInSeconds: 0,
+            fadeOutSeconds: 0,
+            overlapSeconds: 0,
+          },
+        });
+        expect(metrics.recordCueGroup).toHaveBeenCalledWith(shape);
+        expect(metrics.recordAnalysisDrop).not.toHaveBeenCalled();
+      },
+    );
 
     it('does not apply an edge that would trim more than 10 s, and counts it', async () => {
       // Tail of 12 s (cue-out 168 of 180) is over the bound; the head of 2 s is kept.
-      const { service, palazzo, metrics } = onWithAnalysis({ ...NO_LOUDNESS, fadeInSeconds: null, fadeOutSeconds: null, overlapSeconds: null, cueInSeconds: 2, cueOutSeconds: 168 });
+      const { service, palazzo, metrics } = onWithAnalysis({
+        ...NO_LOUDNESS,
+        fadeInSeconds: null,
+        fadeOutSeconds: null,
+        overlapSeconds: null,
+        cueInSeconds: 2,
+        cueOutSeconds: 168,
+      });
       await play(service);
-      expect(sent(palazzo).segue).toEqual({ cueInSeconds: 2, cueOutSeconds: 180, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 0 });
+      expect(sent(palazzo).segue).toEqual({
+        cueInSeconds: 2,
+        cueOutSeconds: 180,
+        fadeInSeconds: 0,
+        fadeOutSeconds: 0,
+        overlapSeconds: 0,
+      });
       expect(sent(palazzo).duration).toBe(180);
-      expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith('segue-edge-bound');
+      expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith(
+        'segue-edge-bound',
+      );
       expect(metrics.recordCueGroup).toHaveBeenCalledWith('tail_filled');
       // Both edges over the bound: no group at all.
-      const both = onWithAnalysis({ ...NO_LOUDNESS, cueInSeconds: 11, cueOutSeconds: 160 });
+      const both = onWithAnalysis({
+        ...NO_LOUDNESS,
+        cueInSeconds: 11,
+        cueOutSeconds: 160,
+      });
       await play(both.service);
       expect(sent(both.palazzo)).toEqual(OFF_COMMAND);
-      expect(both.metrics.recordAnalysisDrop.mock.calls).toEqual([['segue-edge-bound'], ['segue-edge-bound']]);
+      expect(both.metrics.recordAnalysisDrop.mock.calls).toEqual([
+        ['segue-edge-bound'],
+        ['segue-edge-bound'],
+      ]);
       expect(both.metrics.recordCueGroup).toHaveBeenCalledWith('none');
     });
 
     it('treats a cue-out past the stored duration as no tail trim and keeps the head', async () => {
       // durationMs 180 s, analysed cue-out 181.2 s: the file is a little longer than the stored duration.
-      const { service, palazzo, metrics } = onWithAnalysis({ ...NO_LOUDNESS, fadeInSeconds: null, fadeOutSeconds: null, overlapSeconds: null, cueInSeconds: 1.5, cueOutSeconds: 181.2 });
+      const { service, palazzo, metrics } = onWithAnalysis({
+        ...NO_LOUDNESS,
+        fadeInSeconds: null,
+        fadeOutSeconds: null,
+        overlapSeconds: null,
+        cueInSeconds: 1.5,
+        cueOutSeconds: 181.2,
+      });
       await play(service);
-      expect(sent(palazzo).segue).toEqual({ cueInSeconds: 1.5, cueOutSeconds: 180, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 0 });
-      expect(metrics.recordAnalysisDrop.mock.calls).toEqual([['segue-edge-bound']]);
+      expect(sent(palazzo).segue).toEqual({
+        cueInSeconds: 1.5,
+        cueOutSeconds: 180,
+        fadeInSeconds: 0,
+        fadeOutSeconds: 0,
+        overlapSeconds: 0,
+      });
+      expect(metrics.recordAnalysisDrop.mock.calls).toEqual([
+        ['segue-edge-bound'],
+      ]);
       expect(metrics.recordCueGroup).toHaveBeenCalledWith('tail_filled');
     });
 
-    it('keeps today\'s behaviour without a stored duration: both measured cues or none', async () => {
-      const tailOnly = onWithAnalysis({ ...NO_LOUDNESS, cueInSeconds: null, cueOutSeconds: 176 }, null);
+    it("keeps today's behaviour without a stored duration: both measured cues or none", async () => {
+      const tailOnly = onWithAnalysis(
+        { ...NO_LOUDNESS, cueInSeconds: null, cueOutSeconds: 176 },
+        null,
+      );
       await play(tailOnly.service);
       expect(sent(tailOnly.palazzo)).toEqual(OFF_COMMAND);
       expect(tailOnly.metrics.recordCueGroup).toHaveBeenCalledWith('none');
     });
 
     it('counts a song analysed with neither edge as none', async () => {
-      const { service, palazzo, metrics } = onWithAnalysis({ ...NO_LOUDNESS, cueInSeconds: null, cueOutSeconds: null });
+      const { service, palazzo, metrics } = onWithAnalysis({
+        ...NO_LOUDNESS,
+        cueInSeconds: null,
+        cueOutSeconds: null,
+      });
       await play(service);
       expect(sent(palazzo)).toEqual(OFF_COMMAND);
       expect(metrics.recordCueGroup).toHaveBeenCalledWith('none');
     });
 
     it('applies no analysis when more than one song shares the audio URL', async () => {
-      const { service, prisma, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, ...VALID_LOUDNESS });
+      const { service, prisma, palazzo, metrics } = onWithAnalysis({
+        ...VALID_SEGUE,
+        ...VALID_LOUDNESS,
+      });
       prisma.song.findMany.mockResolvedValue([
         { assetId: 'asset-1', durationMs: 180000 },
         { assetId: 'asset-2', durationMs: 180000 },
       ]);
-      await expect(service.playSong('p', 'u', undefined, undefined, 'req')).resolves.toEqual({ ok: true, playbackRequestId: 'req' });
-      expect(prisma.song.findMany).toHaveBeenCalledWith({ where: { audioUrl: 'u' }, select: { assetId: true, durationMs: true }, take: 2 });
+      await expect(
+        service.playSong('p', 'u', undefined, undefined, 'req'),
+      ).resolves.toEqual({ ok: true, playbackRequestId: 'req' });
+      expect(prisma.song.findMany).toHaveBeenCalledWith({
+        where: { audioUrl: 'u' },
+        select: { assetId: true, durationMs: true },
+        take: 2,
+      });
       expect(prisma.mediaAssetAnalysis.findUnique).not.toHaveBeenCalled();
       expect(sent(palazzo)).toEqual(OFF_COMMAND);
       // Counted once, as ambiguous: never also as no-asset (#255).
-      expect(metrics.recordAnalysisDrop.mock.calls).toEqual([['ambiguous-match']]);
+      expect(metrics.recordAnalysisDrop.mock.calls).toEqual([
+        ['ambiguous-match'],
+      ]);
     });
 
     // gaulatti/alcantara#255: a song no library song matches is sent without analysis, and counted.
     it('applies no analysis and counts no-asset when no song has the audio URL', async () => {
-      const { service, prisma, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, ...VALID_LOUDNESS });
+      const { service, prisma, palazzo, metrics } = onWithAnalysis({
+        ...VALID_SEGUE,
+        ...VALID_LOUDNESS,
+      });
       prisma.song.findMany.mockResolvedValue([]);
-      await expect(service.playSong('p', 'u', undefined, undefined, 'req')).resolves.toEqual({ ok: true, playbackRequestId: 'req' });
+      await expect(
+        service.playSong('p', 'u', undefined, undefined, 'req'),
+      ).resolves.toEqual({ ok: true, playbackRequestId: 'req' });
       expect(prisma.mediaAssetAnalysis.findUnique).not.toHaveBeenCalled();
       expect(sent(palazzo)).toEqual(OFF_COMMAND);
       expect(metrics.recordAnalysisDrop.mock.calls).toEqual([['no-asset']]);
@@ -1116,35 +1352,83 @@ describe('RadioService coverage', () => {
 
     // gaulatti/alcantara#255: a failed lookup still sends the song, and is counted and logged.
     it.each([
-      ['the song lookup', (prisma: any) => prisma.song.findUnique.mockRejectedValue(new Error('db down'))],
-      ['the analysis lookup', (prisma: any) => prisma.mediaAssetAnalysis.findUnique.mockRejectedValue(new Error('db down'))],
-    ])('sends the song without analysis and counts lookup-failed when %s fails', async (_name, fail) => {
-      const { service, prisma, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, ...VALID_LOUDNESS });
-      fail(prisma);
-      jest.spyOn(service['logger'], 'warn').mockImplementation();
-      await expect(play(service)).resolves.toEqual({ ok: true, playbackRequestId: 'req' });
-      expect(sent(palazzo)).toEqual(OFF_COMMAND);
-      expect(metrics.recordAnalysisDrop.mock.calls).toEqual([['lookup-failed']]);
-      expect(service['logger'].warn).toHaveBeenCalledWith(expect.objectContaining({
-        event: 'radio.song_analysis_dropped',
-        reasons: ['lookup-failed'],
-      }));
-      // The error text never reaches the log or a label.
-      expect(JSON.stringify((service['logger'].warn as jest.Mock).mock.calls)).not.toContain('db down');
-    });
+      [
+        'the song lookup',
+        (prisma: any) =>
+          prisma.song.findUnique.mockRejectedValue(new Error('db down')),
+      ],
+      [
+        'the analysis lookup',
+        (prisma: any) =>
+          prisma.mediaAssetAnalysis.findUnique.mockRejectedValue(
+            new Error('db down'),
+          ),
+      ],
+    ])(
+      'sends the song without analysis and counts lookup-failed when %s fails',
+      async (_name, fail) => {
+        const { service, prisma, palazzo, metrics } = onWithAnalysis({
+          ...VALID_SEGUE,
+          ...VALID_LOUDNESS,
+        });
+        fail(prisma);
+        jest.spyOn(service['logger'], 'warn').mockImplementation();
+        await expect(play(service)).resolves.toEqual({
+          ok: true,
+          playbackRequestId: 'req',
+        });
+        expect(sent(palazzo)).toEqual(OFF_COMMAND);
+        expect(metrics.recordAnalysisDrop.mock.calls).toEqual([
+          ['lookup-failed'],
+        ]);
+        expect(service['logger'].warn).toHaveBeenCalledWith(
+          expect.objectContaining({
+            event: 'radio.song_analysis_dropped',
+            reasons: ['lookup-failed'],
+          }),
+        );
+        // The error text never reaches the log or a label.
+        expect(
+          JSON.stringify((service['logger'].warn as jest.Mock).mock.calls),
+        ).not.toContain('db down');
+      },
+    );
 
     it('also validates segue and loudness the caller supplies', async () => {
       const { service, prisma, palazzo, metrics } = onWithAnalysis({});
-      await service.playSong('p', 'u', undefined, undefined, 'req', undefined, undefined, undefined, 100, { ...VALID_SEGUE, cueOutSeconds: 120 }, { integratedLufs: -80, truePeakDbtp: 0 });
+      await service.playSong(
+        'p',
+        'u',
+        undefined,
+        undefined,
+        'req',
+        undefined,
+        undefined,
+        undefined,
+        100,
+        { ...VALID_SEGUE, cueOutSeconds: 120 },
+        { integratedLufs: -80, truePeakDbtp: 0 },
+      );
       expect(prisma.song.findUnique).not.toHaveBeenCalled();
       expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, duration: 100 });
-      expect(metrics.recordAnalysisDrop.mock.calls).toEqual([['segue-beyond-duration'], ['loudness-invalid']]);
+      expect(metrics.recordAnalysisDrop.mock.calls).toEqual([
+        ['segue-beyond-duration'],
+        ['loudness-invalid'],
+      ]);
     });
 
     it('counts every drop and logs once per song with the reasons and no audio URL', async () => {
-      const { service, metrics } = onWithAnalysis({ ...VALID_SEGUE, cueInSeconds: 200, integratedLufs: 1, truePeakDbtp: 0 });
+      const { service, metrics } = onWithAnalysis({
+        ...VALID_SEGUE,
+        cueInSeconds: 200,
+        integratedLufs: 1,
+        truePeakDbtp: 0,
+      });
       await play(service);
-      expect(metrics.recordAnalysisDrop.mock.calls).toEqual([['segue-edge-bound'], ['loudness-invalid']]);
+      expect(metrics.recordAnalysisDrop.mock.calls).toEqual([
+        ['segue-edge-bound'],
+        ['loudness-invalid'],
+      ]);
       expect(service['logger'].warn).toHaveBeenCalledTimes(1);
       expect(service['logger'].warn).toHaveBeenCalledWith({
         event: 'radio.song_analysis_dropped',
@@ -1153,48 +1437,113 @@ describe('RadioService coverage', () => {
         songId: 7,
         reasons: ['segue-edge-bound', 'loudness-invalid'],
       });
-      expect(JSON.stringify((service['logger'].warn as jest.Mock).mock.calls)).not.toContain('"u"');
+      expect(
+        JSON.stringify((service['logger'].warn as jest.Mock).mock.calls),
+      ).not.toContain('"u"');
     });
 
     // gaulatti/alcantara#255: what airs is unchanged; only the gap is counted and logged.
     it.each([
-      ['the song has no asset', () => ({ songRow: { assetId: null, durationMs: 180000 }, analysisRow: null }), ['no-asset']],
-      ['no library song has the id', () => ({ songRow: null, analysisRow: null }), ['no-asset']],
-      ['the asset has no analysis row', () => ({ songRow: { assetId: 'asset-1', durationMs: 180000 }, analysisRow: null }), ['not-analyzed']],
-      ['the analysis is still pending', () => ({ songRow: { assetId: 'asset-1', durationMs: 180000 }, analysisRow: { status: 'pending', ...NO_SEGUE, ...NO_LOUDNESS } }), ['not-analyzed']],
-      ['the analysis failed', () => ({ songRow: { assetId: 'asset-1', durationMs: 180000 }, analysisRow: { status: 'failed', ...NO_SEGUE, ...NO_LOUDNESS } }), ['not-analyzed']],
-      ['the analysis has no measurements', () => ({ songRow: { assetId: 'asset-1', durationMs: 180000 }, analysisRow: { status: 'success', ...NO_SEGUE, ...NO_LOUDNESS } }), []],
-    ])('plays a song whose %s with the same command segue off sends', async (_name, fixture, reasons) => {
-      const { songRow, analysisRow } = fixture();
-      const on = build({ ...defaultSettings(), segueMode: 'on' });
-      const off = build({ ...defaultSettings(), segueMode: 'off' });
-      for (const built of [on, off]) {
-        built.palazzo.playSong.mockResolvedValue({ playbackRequestId: 'req' });
-        built.prisma.song.findUnique.mockResolvedValue(songRow);
-        built.prisma.mediaAssetAnalysis.findUnique.mockResolvedValue(analysisRow);
-        jest.spyOn(built.service['logger'], 'warn').mockImplementation();
-        await expect(play(built.service)).resolves.toEqual({ ok: true, playbackRequestId: 'req' });
-      }
-      expect(JSON.stringify(on.palazzo.playSong.mock.calls)).toBe(JSON.stringify(off.palazzo.playSong.mock.calls));
-      expect(sent(on.palazzo)).toEqual(OFF_COMMAND);
-      expect(on.metrics.recordAnalysisDrop.mock.calls).toEqual(reasons.map((reason) => [reason]));
-      if (reasons.length) {
-        expect(on.service['logger'].warn).toHaveBeenCalledWith(expect.objectContaining({
-          event: 'radio.song_analysis_dropped',
-          playbackRequestId: 'req',
-          reasons,
-        }));
-      } else {
-        expect(on.service['logger'].warn).not.toHaveBeenCalled();
-      }
-      // Segue off looks nothing up, so it counts nothing.
-      expect(off.metrics.recordAnalysisDrop).not.toHaveBeenCalled();
-    });
+      [
+        'the song has no asset',
+        () => ({
+          songRow: { assetId: null, durationMs: 180000 },
+          analysisRow: null,
+        }),
+        ['no-asset'],
+      ],
+      [
+        'no library song has the id',
+        () => ({ songRow: null, analysisRow: null }),
+        ['no-asset'],
+      ],
+      [
+        'the asset has no analysis row',
+        () => ({
+          songRow: { assetId: 'asset-1', durationMs: 180000 },
+          analysisRow: null,
+        }),
+        ['not-analyzed'],
+      ],
+      [
+        'the analysis is still pending',
+        () => ({
+          songRow: { assetId: 'asset-1', durationMs: 180000 },
+          analysisRow: { status: 'pending', ...NO_SEGUE, ...NO_LOUDNESS },
+        }),
+        ['not-analyzed'],
+      ],
+      [
+        'the analysis failed',
+        () => ({
+          songRow: { assetId: 'asset-1', durationMs: 180000 },
+          analysisRow: { status: 'failed', ...NO_SEGUE, ...NO_LOUDNESS },
+        }),
+        ['not-analyzed'],
+      ],
+      [
+        'the analysis has no measurements',
+        () => ({
+          songRow: { assetId: 'asset-1', durationMs: 180000 },
+          analysisRow: { status: 'success', ...NO_SEGUE, ...NO_LOUDNESS },
+        }),
+        [],
+      ],
+    ])(
+      'plays a song whose %s with the same command segue off sends',
+      async (_name, fixture, reasons) => {
+        const { songRow, analysisRow } = fixture();
+        const on = build({ ...defaultSettings(), segueMode: 'on' });
+        const off = build({ ...defaultSettings(), segueMode: 'off' });
+        for (const built of [on, off]) {
+          built.palazzo.playSong.mockResolvedValue({
+            playbackRequestId: 'req',
+          });
+          built.prisma.song.findUnique.mockResolvedValue(songRow);
+          built.prisma.mediaAssetAnalysis.findUnique.mockResolvedValue(
+            analysisRow,
+          );
+          jest.spyOn(built.service['logger'], 'warn').mockImplementation();
+          await expect(play(built.service)).resolves.toEqual({
+            ok: true,
+            playbackRequestId: 'req',
+          });
+        }
+        expect(JSON.stringify(on.palazzo.playSong.mock.calls)).toBe(
+          JSON.stringify(off.palazzo.playSong.mock.calls),
+        );
+        expect(sent(on.palazzo)).toEqual(OFF_COMMAND);
+        expect(on.metrics.recordAnalysisDrop.mock.calls).toEqual(
+          reasons.map((reason) => [reason]),
+        );
+        if (reasons.length) {
+          expect(on.service['logger'].warn).toHaveBeenCalledWith(
+            expect.objectContaining({
+              event: 'radio.song_analysis_dropped',
+              playbackRequestId: 'req',
+              reasons,
+            }),
+          );
+        } else {
+          expect(on.service['logger'].warn).not.toHaveBeenCalled();
+        }
+        // Segue off looks nothing up, so it counts nothing.
+        expect(off.metrics.recordAnalysisDrop).not.toHaveBeenCalled();
+      },
+    );
 
     it('logs nothing and counts nothing when the analysis is valid', async () => {
-      const { service, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, ...VALID_LOUDNESS });
+      const { service, palazzo, metrics } = onWithAnalysis({
+        ...VALID_SEGUE,
+        ...VALID_LOUDNESS,
+      });
       await play(service);
-      expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, duration: 180, segue: VALID_SEGUE, loudness: VALID_LOUDNESS });
+      expect(sent(palazzo)).toEqual({
+        ...OFF_COMMAND,
+        duration: 180,
+        segue: VALID_SEGUE,
+        loudness: VALID_LOUDNESS,
+      });
       expect(metrics.recordAnalysisDrop).not.toHaveBeenCalled();
       expect(service['logger'].warn).not.toHaveBeenCalled();
     });
@@ -1211,7 +1560,9 @@ describe('RadioService coverage', () => {
       const { service, palazzo } = build();
       palazzo.stopSong.mockRejectedValue(new Error('x'));
       await expect(service.stopSong('p')).rejects.toThrow(
-        new BadGatewayException('Palazzo rejected the song stop'),
+        new BadGatewayException(
+          'Palazzo did not answer; the song stop was not confirmed',
+        ),
       );
       expect(service['logger'].error).toHaveBeenCalledWith({
         event: 'palazzo.machine.failed',
@@ -1219,6 +1570,164 @@ describe('RadioService coverage', () => {
         programId: 'p',
         reason: 'unavailable',
       });
+    });
+
+    it.each<[string, unknown, string]>([
+      [
+        'no answer',
+        new PalazzoMachineError('unavailable'),
+        'Palazzo did not answer; the song stop was not confirmed',
+      ],
+      [
+        'a dropped socket',
+        new Error('socket hang up'),
+        'Palazzo did not answer; the song stop was not confirmed',
+      ],
+      [
+        'an answer that does not confirm',
+        new PalazzoMachineError('malformed'),
+        "Palazzo's answer to the song stop did not confirm it",
+      ],
+      [
+        'a refusal',
+        new PalazzoMachineError('rejected', 409),
+        'Palazzo rejected the song stop',
+      ],
+      [
+        'a rate limit',
+        new PalazzoMachineError('rejected', 429),
+        'Palazzo rejected the song stop',
+      ],
+      [
+        'an authorization refusal',
+        new PalazzoMachineError('unauthorized', 401),
+        'Palazzo rejected the song stop',
+      ],
+      [
+        "another program's engine",
+        new PalazzoMachineError('cross-program'),
+        'Palazzo rejected the song stop',
+      ],
+      [
+        'a local refusal',
+        new PalazzoMachineError('rejected'),
+        'The song stop was not sent to Palazzo: Alcántara refused it',
+      ],
+      [
+        'a server error',
+        new PalazzoMachineError('rejected', 500),
+        'Palazzo answered the song stop with an error; it was not confirmed',
+      ],
+      [
+        'a bad gateway',
+        new PalazzoMachineError('rejected', 502),
+        'Palazzo answered the song stop with an error; it was not confirmed',
+      ],
+      [
+        'an unavailable proxy',
+        new PalazzoMachineError('rejected', 503),
+        'Palazzo answered the song stop with an error; it was not confirmed',
+      ],
+      [
+        'a gateway timeout',
+        new PalazzoMachineError('rejected', 504),
+        'Palazzo answered the song stop with an error; it was not confirmed',
+      ],
+    ])('words %s truthfully', async (_case, error, message) => {
+      const { service, palazzo } = build();
+      palazzo.stopSong.mockRejectedValueOnce(error);
+      await expect(service.stopSong('main')).rejects.toThrow(
+        new BadGatewayException(message),
+      );
+    });
+
+    it('words the mixer update and the instant stop the same way', async () => {
+      const { service, palazzo } = build();
+      palazzo.updateMixer.mockRejectedValueOnce(
+        new PalazzoMachineError('rejected', 400),
+      );
+      await expect(service.updateMixer('main', {} as never)).rejects.toThrow(
+        'Palazzo rejected the radio mixer update',
+      );
+      palazzo.stopInstants.mockRejectedValueOnce(
+        new PalazzoMachineError('rejected', 503),
+      );
+      await expect(service.stopAllInstants('main')).rejects.toThrow(
+        'Palazzo answered the instant stop with an error; it was not confirmed',
+      );
+    });
+
+    it('reports a missing Palazzo address as such, before anything is sent', async () => {
+      const { service, palazzo } = build({
+        ...defaultSettings(),
+        palazzoUrl: ' ',
+      });
+      for (const command of [
+        () => service.stopSong('main'),
+        () => service.updateMixer('main', {} as never),
+        () => service.stopAllInstants('main'),
+      ]) {
+        await expect(command()).rejects.toThrow(
+          'Palazzo URL is not configured',
+        );
+      }
+      expect(palazzo.stopSong).not.toHaveBeenCalled();
+      expect(palazzo.updateMixer).not.toHaveBeenCalled();
+      expect(palazzo.stopInstants).not.toHaveBeenCalled();
+    });
+
+    // Through the real client, so the wording is tied to what the client actually throws.
+    const throughClient = (url: string, answer: () => Response) => {
+      const ctx = build({ ...defaultSettings(), palazzoUrl: url });
+      const fetchImpl = jest.fn(async () => answer());
+      const client = new PalazzoMachineClient(
+        {
+          get: (key: string) =>
+            key === 'PALAZZO_ALLOWED_URLS' ? 'http://palazzo:3100' : undefined,
+        } as never,
+        {
+          recordMachineRequest: jest.fn(),
+          recordMachineRetry: jest.fn(),
+        } as never,
+        fetchImpl as never,
+      );
+      Object.assign(ctx.service, { palazzo: client });
+      return { ...ctx, fetchImpl };
+    };
+
+    it('says an unapproved address was not sent, and sends nothing', async () => {
+      const { service, fetchImpl } = throughClient(
+        'http://other:3100',
+        () => new Response('{"ok":true}'),
+      );
+      await expect(service.stopSong('main')).rejects.toThrow(
+        'The song stop was not sent to Palazzo: Alcántara refused it',
+      );
+      expect(fetchImpl).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [
+        503,
+        'Palazzo answered the song stop with an error; it was not confirmed',
+      ],
+      [409, 'Palazzo rejected the song stop'],
+    ])('words an HTTP %i from the real client', async (status, message) => {
+      const { service } = throughClient(
+        'http://palazzo:3100',
+        () => new Response('', { status }),
+      );
+      await expect(service.stopSong('main')).rejects.toThrow(message);
+    });
+
+    it('says a readable answer without ok did not confirm the command', async () => {
+      const { service } = throughClient(
+        'http://palazzo:3100',
+        () => new Response('{"ok":false}'),
+      );
+      await expect(service.stopSong('main')).rejects.toThrow(
+        "Palazzo's answer to the song stop did not confirm it",
+      );
     });
 
     it('plays an instant with a supplied or generated request id', async () => {
@@ -1255,14 +1764,18 @@ describe('RadioService coverage', () => {
       expect(notReady).toBeInstanceOf(PalazzoInstantRefusedException);
       expect(notReady).toBeInstanceOf(BadGatewayException);
       expect((notReady as PalazzoInstantRefusedException).retryable).toBe(true);
-      expect((notReady as PalazzoInstantRefusedException).message).toBe('Palazzo rejected the instant');
+      expect((notReady as PalazzoInstantRefusedException).message).toBe(
+        'Palazzo rejected the instant',
+      );
       for (const error of [
         new PalazzoMachineError('rejected', 400),
         new PalazzoMachineError('rejected'),
         new PalazzoMachineError('unavailable', 409),
         new Error('x'),
       ]) {
-        expect(((await outcome(error)) as PalazzoInstantRefusedException).retryable).toBe(false);
+        expect(
+          ((await outcome(error)) as PalazzoInstantRefusedException).retryable,
+        ).toBe(false);
       }
     });
 
@@ -1283,7 +1796,9 @@ describe('RadioService coverage', () => {
       );
       palazzo.updateMixer.mockRejectedValue(new Error('x'));
       await expect(service.updateMixer('p', mixer)).rejects.toThrow(
-        new BadGatewayException('Palazzo rejected the radio mixer update'),
+        new BadGatewayException(
+          'Palazzo did not answer; the radio mixer update was not confirmed',
+        ),
       );
     });
 
@@ -1306,7 +1821,9 @@ describe('RadioService coverage', () => {
       );
       palazzo.stopInstants.mockRejectedValue(new Error('x'));
       await expect(service.stopAllInstants('p')).rejects.toThrow(
-        new BadGatewayException('Palazzo rejected the instant stop'),
+        new BadGatewayException(
+          'Palazzo did not answer; the instant stop was not confirmed',
+        ),
       );
     });
   });

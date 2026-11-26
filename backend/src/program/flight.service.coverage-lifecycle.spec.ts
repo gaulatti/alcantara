@@ -60,6 +60,7 @@ function harness(stateExtra: Record<string, unknown> = {}) {
     program as any,
     metrics,
     noRecorder(),
+    { teamId: 0 } as never,
   );
   jest.spyOn(console, 'log').mockImplementation(() => undefined);
   return {

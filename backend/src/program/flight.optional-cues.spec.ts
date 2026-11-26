@@ -44,6 +44,7 @@ function fixture(items: unknown[]) {
     programs,
     new RadioMetricsService(),
     noRecorder(),
+    { teamId: 0 } as never,
   );
   return { service, state, sequence, prisma, programs, channels };
 }

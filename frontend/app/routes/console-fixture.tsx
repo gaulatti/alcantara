@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import { Button, IconButton } from "@gaulatti/bleecker";
 import { TooltipButton } from "../components/BleeckerButtons";
 import { useSearchParams } from "react-router";
@@ -123,6 +123,19 @@ const consoleInstants = [
   enabled: index !== 5,
   position: index,
 }));
+
+// radio-unverified: audible output whose last sample is 10 s old, so the desk shows Output unverified (#706).
+type RadioFixtureData = NonNullable<ComponentProps<typeof RadioPanel>["fixtureData"]>;
+function withSampleAge(fixture: string, data: RadioFixtureData): RadioFixtureData {
+  if (fixture !== "radio-unverified") return data;
+  return {
+    ...data,
+    output: {
+      ...data.output,
+      lastSampleAt: new Date(Date.now() - 10_000).toISOString(),
+    },
+  };
+}
 
 export default function ConsoleFixture() {
   const [params] = useSearchParams();
@@ -352,7 +365,7 @@ export default function ConsoleFixture() {
         <div className="flex h-full min-h-0">
           <RadioPanel
             programId="fixture"
-            fixtureData={{
+            fixtureData={withSampleAge(fixture, {
               monitorAudioUrl: new URL(
                 "/fifthbell/audio/pipes.ogg",
                 window.location.origin,
@@ -386,20 +399,33 @@ export default function ConsoleFixture() {
                     ? "unavailable"
                     : fixture === "radio-empty"
                       ? "idle"
-                      : "audible",
+                      : fixture === "radio-dead-air"
+                        ? "silent"
+                        : "audible",
                 expectedAudio: fixture !== "radio-empty",
-                outputRms: fixture === "radio-empty" ? 0 : 0.08,
+                outputRms:
+                  fixture === "radio-empty" || fixture === "radio-dead-air"
+                    ? 0
+                    : 0.08,
                 lastSampleAt: new Date().toISOString(),
-                quietForMs: null,
+                quietForMs: fixture === "radio-dead-air" ? 15_000 : null,
               },
-              recovery: {
-                preparedVersion: "fixture-filler",
-                connection: "connected",
-                automation: {
-                  actualState: "ready",
-                  filler: { activeVersion: "fixture-filler", ready: true },
-                },
-              },
+              // Dead air with a recovery playlist prepared but not yet bound (gaulatti/alcantara#694).
+              recovery:
+                fixture === "radio-dead-air"
+                  ? {
+                      preparedVersion: "fixture-filler",
+                      connection: "connected",
+                      automation: null,
+                    }
+                  : {
+                      preparedVersion: "fixture-filler",
+                      connection: "connected",
+                      automation: {
+                        actualState: "ready",
+                        filler: { activeVersion: "fixture-filler", ready: true },
+                      },
+                    },
               logs:
                 fixture === "radio-empty" || fixture === "radio-continuous"
                   ? []
@@ -418,7 +444,22 @@ export default function ConsoleFixture() {
                         })),
                         loop: false,
                         isRunning: true,
-                        activeItemId: "fixture-cue-1",
+                        // radio-skipped (#726): the second event was not aired, the block went on.
+                        activeItemId:
+                          fixture === "radio-skipped"
+                            ? "fixture-cue-3"
+                            : "fixture-cue-1",
+                        ...(fixture === "radio-skipped"
+                          ? {
+                              cueOutcomes: [
+                                {
+                                  cueId: "fixture-cue-2",
+                                  state: "not-aired" as const,
+                                  reason: "engine_unavailable",
+                                },
+                              ],
+                            }
+                          : {}),
                         scheduledAt: new Date().toISOString(),
                         publishedAt: new Date().toISOString(),
                         lastStartedAt: new Date().toISOString(),
@@ -427,7 +468,7 @@ export default function ConsoleFixture() {
                         updatedAt: new Date().toISOString(),
                       },
                     ],
-            }}
+            })}
             songSequence={songs}
             songQueue={songQueue}
             songCatalog={consoleSongs.items

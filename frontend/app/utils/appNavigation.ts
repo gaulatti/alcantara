@@ -117,6 +117,11 @@ export function getAppNavigationSections({
           label: "Continuous radio",
         },
         {
+          id: "radio-skipped-fixture",
+          href: "/console-fixture?state=radio-skipped",
+          label: "Skipped cue",
+        },
+        {
           id: "rundown-desk-fixture",
           href: "/console-fixture?state=rundown-desk",
           label: "Rundown desk",
