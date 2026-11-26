@@ -1124,6 +1124,24 @@ describe('a start missed across a reconnect', () => {
     ]);
   });
 
+  it('keeps the on-air clock at the inferred start when the event arrives late', () => {
+    const { engine, tracked, requestId } = commanded();
+    engine.handlePalazzoSnapshot('radio-1', playing(requestId));
+    const inferred = stateOf(engine).activeSong!;
+    const startedAt = inferred.authoritativeStartedAt;
+    const positionMs = inferred.authoritativePositionMs;
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: requestId },
+    });
+    expect(startedAt).toBe(Date.parse('2026-01-01T00:00:00.000Z'));
+    expect(stateOf(engine).activeSong).toMatchObject({
+      authoritativeStartedAt: startedAt,
+      authoritativePositionMs: positionMs,
+    });
+    expect(tracked.map((event) => event.type)).toEqual(['track.started']);
+  });
+
   it('infers nothing when the start event came first', async () => {
     const { engine, requestId, recorded } = commanded();
     engine.handlePalazzoEvent('radio-1', {

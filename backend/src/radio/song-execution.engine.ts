@@ -1684,29 +1684,32 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         if (!activeSong.coverUrl && typeof event.data.coverUrl === 'string') {
           activeSong.coverUrl = event.data.coverUrl;
         }
-        activeSong.authoritativeStartedAt = Date.now();
+        // A snapshot may already have recorded this start (gaulatti/alcantara#716): the late event
+        // then keeps that start and position, and is not recorded again.
+        const alreadyStarted = activeSong.authoritativeStartedAt !== null;
+        const startedAt = activeSong.authoritativeStartedAt ?? Date.now();
+        if (!alreadyStarted) {
+          activeSong.authoritativeStartedAt = startedAt;
+          activeSong.authoritativePositionMs = 0;
+          activeSong.authoritativeUpdatedAt = Date.now();
+        }
         // A song on the air ends a run of failed commands (#230).
         state.commandRetries = 0;
-        activeSong.authoritativePositionMs = 0;
-        activeSong.authoritativeUpdatedAt = Date.now();
         this.metrics.recordTrackTransition('adopted');
-        this.recordHighRotationStarted(
-          programId,
-          state,
-          activeSong,
-          activeSong.authoritativeStartedAt,
-        );
+        this.recordHighRotationStarted(programId, state, activeSong, startedAt);
         this.emitPlaybackUpdate(programId, activeSong);
-        this.emitTrackEvent(
-          programId,
-          event.type,
-          requestId,
-          event.data,
-          false,
-          undefined,
-          undefined,
-          activeSong.actor,
-        );
+        if (!alreadyStarted) {
+          this.emitTrackEvent(
+            programId,
+            event.type,
+            requestId,
+            event.data,
+            false,
+            undefined,
+            undefined,
+            activeSong.actor,
+          );
+        }
         this.refreshAnnouncement(programId);
       } else if (this.acceptAnnouncedStart(programId, state, requestId)) {
         // The announced song started, under overlap or at the handoff.
