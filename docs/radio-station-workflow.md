@@ -66,6 +66,14 @@ field and appear in no rundown's outcomes.
 
 The Radio desk separates **Stream verified** (Liquidsoap and Icecast transport) from output confidence. It shows fresh sampled output as detected, checking, silent after ten seconds below 0.001 RMS while song playback is expected, idle, unavailable, or unverified. A sample older than fifteen seconds cannot prove audio. This is a level check, not a listener-side measurement.
 
+**Dead air** (#694): while output confidence reads silent, the on-air strip leads with a **Dead air** chip and the
+Output confidence alarm names the next step. Because Palazzo's local playlist plays only when the live song queue
+runs dry, the silent song comes off air first: hold Stop, then **Start with fallback** when a recovery playlist is
+prepared (**Go to recovery** opens Recovery & session), or **Prepare a recovery playlist** when none is. When one
+is already bound, it plays once the queue runs dry. While the recovery status is unknown or the engine is
+unavailable, the alarm says to take the silent song off air and check the engine, and claims nothing about a
+playlist. The `state=radio-dead-air` fixture shows this state.
+
 **Engine audio detected** measures Palazzo's post-master mix before Icecast.
 **Listen** returns Icecast audio through Palazzo and Alcántara's
 backends using the station's existing private Palazzo connection. It requires no
