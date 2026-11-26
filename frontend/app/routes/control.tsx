@@ -2932,6 +2932,12 @@ export default function Control() {
         );
         return;
       }
+      if (data.type === "radio_log_cue_skipped") {
+        setRadioPlayoutError(
+          "A timed cue was skipped: the engine was unavailable past its one-minute grace. The block goes on with the next cue.",
+        );
+        return;
+      }
       if (
         data.type === "radio_log_start_failed" ||
         data.type === "radio_log_cue_failed"
