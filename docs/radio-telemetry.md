@@ -657,6 +657,15 @@ says what happened, so an outage is not shown as a refusal:
 The same wording applies to the mixer update and the instant stop. The failure is counted in
 `alcantara_palazzo_machine_requests_total` with its result, as before.
 
+## Palazzo command timeout (#717)
+
+Every Palazzo machine command (song, stop, next, instant, mixer, filler and automation requests, and state reads)
+is bounded at `PALAZZO_COMMAND_TIMEOUT_MS` (10 s) per attempt. A frozen engine, one that accepts connections but
+answers nothing, then fails the command as `unavailable`, counted in `alcantara_palazzo_machine_requests_total`,
+instead of holding the operator's request until it answers. A retryable command retries as before, each attempt
+with its own bound. The event stream is long-lived and output-monitor has its own 10 s bound, so neither uses this
+one. A caller's own cancellation still wins.
+
 ## Two sources on the program bus (#242)
 
 Alcántara does not hold or delay a command while a spot is on air (decided on #242). Instead it detects, read-only,
