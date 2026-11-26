@@ -41,6 +41,10 @@ All routes sit under `/broadcast/programs/:programId/fillers`.
 
 **Radio preparation** uses Palazzo's `PUT /fillers/:version` with the mode and seed, through the existing private Palazzo URL allowlist.
 
+A filler uses only the media assets of the program's team (gaulatti/alcantara#122): another team's asset is refused as
+if it did not qualify, and a program with no team is refused (counted as `no-team`). Without a station team (local and
+test) every asset is usable.
+
 ## Start binding
 
 **Television.** `POST /broadcast/programs/:id/start` (`broadcast.operate`) applies binding only when two things hold: the program has a ready television version (pending, else active), and Alana's lifecycle reports `pendingFiller` or `activeFiller` with a `profileChecksum`.
@@ -57,7 +61,7 @@ All routes sit under `/broadcast/programs/:programId/fillers`.
 
 | Metric | Labels |
 | --- | --- |
-| `alcantara_filler_preparations_total{leg,result}` | `leg` is `television` or `radio`; `result` is `ready`, `failed`, `unavailable` or `profile-unavailable` |
+| `alcantara_filler_preparations_total{leg,result}` | `leg` is `television` or `radio`; `result` is `ready`, `failed`, `unavailable`, `profile-unavailable` or `no-team` |
 | `alcantara_filler_start_bindings_total{result}` | `bound`, `mismatch`, `not-configured` or `legacy-executor` |
 | `alcantara_alana_live_profile_unknown_keys_total` | no labels; one per live-profile key Alcantara does not know (never the key name) |
 | `alcantara_dependency_operations_total{dependency="alana",...}` | gains the `profile` and `prepare` operations |

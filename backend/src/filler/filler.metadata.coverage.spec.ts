@@ -47,11 +47,15 @@ describe('filler decorator metadata', () => {
         PalazzoMachineClient: undefined,
       }));
       jest.doMock('@nestjs/config', () => ({ ConfigService: undefined }));
+      jest.doMock('../auth/pompeii.service', () => ({
+        PompeiiService: undefined,
+      }));
       jest.dontMock('./filler.service');
       const { FillerService } = require('./filler.service') as {
         FillerService: object;
       };
       expect(Reflect.getMetadata('design:paramtypes', FillerService)).toEqual([
+        Object,
         Object,
         Object,
         Object,

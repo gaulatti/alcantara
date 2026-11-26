@@ -1043,6 +1043,7 @@ describe('ProgramService constructor metadata with unresolved imports', () => {
       jest.doMock('../radio/radio-output-confidence.service', () => ({}));
       jest.doMock('../operator-change/operator-change-recorder', () => ({}));
       jest.doMock('../radio/playout-song-scope', () => ({}));
+      jest.doMock('./scene-asset-scope', () => ({}));
       jest.doMock('../tenancy/program-team-access', () => ({}));
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -1062,6 +1063,7 @@ describe('ProgramService constructor metadata with unresolved imports', () => {
           'Object',
           'Object',
           'Object',
+          'Object',
         ]);
       } finally {
         jest.dontMock('../prisma.service');
@@ -1071,6 +1073,7 @@ describe('ProgramService constructor metadata with unresolved imports', () => {
         jest.dontMock('../radio/radio-output-confidence.service');
         jest.dontMock('../operator-change/operator-change-recorder');
         jest.dontMock('../radio/playout-song-scope');
+        jest.dontMock('./scene-asset-scope');
         jest.dontMock('../tenancy/program-team-access');
       }
     });

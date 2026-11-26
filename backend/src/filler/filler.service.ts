@@ -8,7 +8,9 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Prisma, type FillerVersion } from '@prisma/client';
 import { createHash, randomUUID } from 'node:crypto';
+import { PompeiiService } from '../auth/pompeii.service';
 import { PrismaService } from '../prisma.service';
+import { forTeam } from '../tenancy/scoped-prisma';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import {
   AlanaClient,
@@ -52,7 +54,30 @@ export class FillerService {
     private readonly palazzo: PalazzoMachineClient,
     private readonly config: ConfigService,
     private readonly metrics: ManagedMetricsService,
+    private readonly pompeii: PompeiiService,
   ) {}
+
+  /**
+   * The media assets a program's filler may use (gaulatti/alcantara#122): its team's, all of them when no station team
+   * is configured. A program with no team can use none; the refusal is counted.
+   */
+  private async assetDb(
+    programId: string,
+    leg: FillerLegName,
+  ): Promise<PrismaService> {
+    if (this.pompeii.teamId === 0) return this.prisma;
+    const program = await this.prisma.program.findUnique({
+      where: { programId },
+      select: { teamId: true },
+    });
+    if (program?.teamId && program.teamId > 0) {
+      return forTeam(this.prisma, program.teamId) as unknown as PrismaService;
+    }
+    this.metrics.recordFillerPreparation(leg, 'no-team');
+    throw new BadRequestException(
+      'this program has no team, so it can use no media asset',
+    );
+  }
 
   async getState(programId: string) {
     const program = await this.requireProgram(programId);
@@ -97,7 +122,8 @@ export class FillerService {
     const program = await this.requireProgram(programId);
     this.requireLeg(program.type, 'television');
     const assetId = requireAssetId(input.assetId);
-    const asset = await this.prisma.mediaAsset.findUnique({
+    const assetDb = await this.assetDb(programId, 'television');
+    const asset = await assetDb.mediaAsset.findUnique({
       where: { id: assetId },
       select: { id: true, enabled: true, mediaType: true, sourceUrl: true },
     });
@@ -204,7 +230,8 @@ export class FillerService {
     if (!settings) {
       throw new BadGatewayException('Radio settings are unavailable');
     }
-    const assets = await this.prisma.mediaAsset.findMany({
+    const assetDb = await this.assetDb(programId, 'radio');
+    const assets = await assetDb.mediaAsset.findMany({
       where: { id: { in: assetIds as string[] } },
       select: { id: true, enabled: true, mediaType: true, sourceUrl: true },
     });

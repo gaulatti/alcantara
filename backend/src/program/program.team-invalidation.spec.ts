@@ -30,6 +30,7 @@ describe('program changes forget the remembered team', () => {
       undefined,
       noRecorder(),
       undefined,
+      undefined,
       programTeams as never,
     );
     jest

@@ -18,6 +18,7 @@ import { NowPlayingPublisherService } from './../src/radio/now-playing-publisher
 import { PlayoutSongScope } from './../src/radio/playout-song-scope';
 import { RadioService } from './../src/radio/radio.service';
 import { SongExecutionEngine } from './../src/radio/song-execution.engine';
+import { SceneAssetScope } from './../src/program/scene-asset-scope';
 
 describe('AppController (e2e)', () => {
   let app: NestFastifyApplication;
@@ -54,6 +55,13 @@ describe('AppController (e2e)', () => {
         (app.get(service) as unknown as { songScope?: unknown }).songScope,
       ).toBe(scope);
     }
+  });
+
+  it('gives the program service the scene asset scope', () => {
+    const programs = app.get(ProgramService) as unknown as {
+      sceneAssets?: unknown;
+    };
+    expect(programs.sceneAssets).toBe(app.get(SceneAssetScope));
   });
 
   it('/ (GET)', () => {

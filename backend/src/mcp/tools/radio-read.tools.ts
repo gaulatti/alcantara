@@ -6,6 +6,7 @@ import {
 import { z } from 'zod';
 import { AsRunService } from '../../as-run/as-run.service';
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
+import { PompeiiService } from '../../auth/pompeii.service';
 import { FlightService } from '../../program/flight.service';
 import { ProgramService } from '../../program/program.service';
 import { PalazzoRadioTelemetryService } from '../../radio/palazzo-telemetry.service';
@@ -110,6 +111,7 @@ export class McpRadioReadTools implements McpToolProviderShape {
     private readonly asRun: AsRunService,
     private readonly songs: SongsService,
     private readonly feed: McpChangeFeed,
+    private readonly pompeii: PompeiiService,
   ) {}
 
   specs(): McpToolSpec[] {
@@ -567,7 +569,7 @@ export class McpRadioReadTools implements McpToolProviderShape {
       },
       run: (args) =>
         guarded(async (): Promise<McpOutcome> => {
-          // Radio reads stay unscoped (team 0) until the radio switch of gaulatti/alcantara#122.
+          // The station team's songs only (gaulatti/alcantara#122).
           const found = await this.songs.findAll(
             {
               search: args.query,
@@ -576,7 +578,7 @@ export class McpRadioReadTools implements McpToolProviderShape {
               page: 1,
               limit: args.limit ?? MCP_READ_LIMITS.songSearchDefault,
             },
-            0,
+            this.pompeii.teamId,
           );
           const analyses = await this.songs.findAnalyses(
             found.data
@@ -613,8 +615,12 @@ export class McpRadioReadTools implements McpToolProviderShape {
       shape: { song_id: z.number().int().min(1) },
       run: (args) =>
         guarded(async (): Promise<McpOutcome> => {
-          // Unscoped like the search above (#122).
-          const song = await this.songs.findOne(args.song_id, undefined, 0);
+          // Another team's song is not found, as in the search above (#122).
+          const song = await this.songs.findOne(
+            args.song_id,
+            undefined,
+            this.pompeii.teamId,
+          );
           const analysis = song.assetId
             ? ((await this.songs.findAnalyses([song.assetId])).get(
                 song.assetId,

@@ -219,6 +219,13 @@ const PROGRAM_TEAM_CHECK_RESULTS = new Set([
   'unowned',
   'lookup-failed',
 ]);
+/** gaulatti/alcantara#122: why a scene background asset read was not served by the program's team. */
+export type SceneAssetScopeReason = 'no-team' | 'other-team' | 'lookup-failed';
+const SCENE_ASSET_SCOPE_REASONS = new Set<string>([
+  'no-team',
+  'other-team',
+  'lookup-failed',
+]);
 const PREFERENCE_ACTIONS = new Set([
   'read',
   'write',
@@ -256,13 +263,16 @@ export type FillerPreparationResult =
   | 'ready'
   | 'failed'
   | 'unavailable'
-  | 'profile-unavailable';
+  | 'profile-unavailable'
+  // The program has no team, so no media asset may be used (gaulatti/alcantara#122).
+  | 'no-team';
 const FILLER_LEGS = ['television', 'radio'] as const;
 const FILLER_PREPARATION_RESULTS: readonly FillerPreparationResult[] = [
   'ready',
   'failed',
   'unavailable',
   'profile-unavailable',
+  'no-team',
 ];
 /** What a television Start did with the program filler (gaulatti/alcantara#126). */
 export type FillerStartBindingResult =
@@ -351,6 +361,7 @@ export class ManagedMetricsService {
   private readonly recipeDeletes: Counter<string>;
   private readonly sceneHandoffs: Counter<string>;
   private readonly programTeamChecks: Counter<string>;
+  private readonly sceneAssetScopeRefusals: Counter<string>;
   private readonly jobLastSuccess: Gauge<string>;
   private readonly preferenceOperations: Counter<string>;
   private readonly broadcastDestinationOperations: Counter<string>;
@@ -486,6 +497,14 @@ export class ManagedMetricsService {
     });
     for (const result of PROGRAM_TEAM_CHECK_RESULTS)
       this.programTeamChecks.inc({ result }, 0);
+    this.sceneAssetScopeRefusals = new Counter({
+      name: 'alcantara_scene_asset_scope_refusals_total',
+      help: 'Scene background asset reads the program team could not serve, read unscoped instead, by reason. Exposed from 0.',
+      labelNames: ['reason'],
+      registers: [this.registry],
+    });
+    for (const reason of SCENE_ASSET_SCOPE_REASONS)
+      this.sceneAssetScopeRefusals.inc({ reason }, 0);
     this.sceneHandoffs = new Counter({
       name: 'alcantara_scene_handoffs_total',
       help: 'Atomic Program and Preview scene handoff persistence outcomes.',
@@ -782,6 +801,12 @@ export class ManagedMetricsService {
   ): void {
     this.programTeamChecks.inc({
       result: bounded(result, PROGRAM_TEAM_CHECK_RESULTS),
+    });
+  }
+
+  recordSceneAssetScopeRefusal(reason: SceneAssetScopeReason): void {
+    this.sceneAssetScopeRefusals.inc({
+      reason: bounded(reason, SCENE_ASSET_SCOPE_REASONS),
     });
   }
 

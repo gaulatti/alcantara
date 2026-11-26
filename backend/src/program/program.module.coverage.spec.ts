@@ -14,6 +14,7 @@ import { ProgramTeamAccess } from '../tenancy/program-team-access';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ProgramTeamInterceptor } from '../tenancy/program-team.interceptor';
 import { ProgramService } from './program.service';
+import { SceneAssetScope } from './scene-asset-scope';
 import { ProgramTemplateService } from './program-template.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { RecipeMcpTools } from '../mcp/capabilities/recipes';
@@ -156,6 +157,7 @@ describe('ProgramModule wiring', () => {
     ]);
     expect(Reflect.getMetadata('providers', ProgramModule)).toEqual([
       ProgramService,
+      SceneAssetScope,
       ProgramRealtimeService,
       FlightService,
       ProgramTemplateService,
