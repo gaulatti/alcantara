@@ -23,12 +23,16 @@ describe('ScenesService neutral bracket entry points', () => {
     await expect(service.openBracketVoting(3, { matchId: 2 })).resolves.toEqual(
       { id: 3 },
     );
-    expect(draw).toHaveBeenCalledWith(3, { seed: 7 });
-    expect(vote).toHaveBeenCalledWith(3, {
-      matchId: 1,
-      voterId: 'v',
-      songId: null,
-    });
-    expect(open).toHaveBeenCalledWith(3, { matchId: 2 });
+    expect(draw).toHaveBeenCalledWith(3, { seed: 7 }, 0);
+    expect(vote).toHaveBeenCalledWith(
+      3,
+      {
+        matchId: 1,
+        voterId: 'v',
+        songId: null,
+      },
+      0,
+    );
+    expect(open).toHaveBeenCalledWith(3, { matchId: 2 }, 0);
   });
 });

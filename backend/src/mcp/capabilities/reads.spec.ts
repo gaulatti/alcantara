@@ -47,7 +47,11 @@ const specs = [
     {} as never,
     { teamId: 7 } as never,
   ).specs(),
-  ...new ScenesMcpTools(services.scenes as never, {} as never).specs(),
+  ...new ScenesMcpTools(
+    services.scenes as never,
+    {} as never,
+    { teamId: 7 } as never,
+  ).specs(),
   ...new LayoutsMcpTools(
     services.layouts as never,
     {} as never,
@@ -70,6 +74,7 @@ beforeEach(() => {
   services.groups.findAll.mockResolvedValue(mediaGroupsPage);
 });
 
+const SCENE_TEAM = { user: { authorization: { teamId: 7 } } };
 const TEAM_REQUEST = { user: { authorization: { teamId: 7 } } };
 
 describe('read capabilities return what the controller returns', () => {
@@ -93,10 +98,12 @@ describe('read capabilities return what the controller returns', () => {
 
   it('scene_find_all and scene_find_one', async () => {
     expect(rebuilt(await run('scene_find_all', {}))).toEqual(
-      asRest(await controllers.scenes.findAll()),
+      asRest(await controllers.scenes.findAll(SCENE_TEAM)),
     );
     const one = await run('scene_find_one', { scene_id: 3 });
-    expect(rebuilt(one)).toEqual(asRest(await controllers.scenes.findOne('3')));
+    expect(rebuilt(one)).toEqual(
+      asRest(await controllers.scenes.findOne('3', SCENE_TEAM)),
+    );
     expect(one).toMatchObject({
       id: 3,
       untrusted: {
