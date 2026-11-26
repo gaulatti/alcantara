@@ -103,10 +103,12 @@ describe('ProgramController delegation', () => {
     await expect(controller.getBroadcastSettings()).resolves.toEqual(
       sentinel('getBroadcastSettings'),
     );
-    await expect(controller.updateBroadcastSettings(body)).resolves.toEqual(
-      sentinel('updateBroadcastSettings'),
-    );
-    expect(program.updateBroadcastSettings).toHaveBeenCalledWith(body);
+    await expect(
+      controller.updateBroadcastSettings(body, {
+        user: { authorization: { teamId: 7 } },
+      }),
+    ).resolves.toEqual(sentinel('updateBroadcastSettings'));
+    expect(program.updateBroadcastSettings).toHaveBeenCalledWith(body, 7);
   });
 
   it('delegates program-scoped reads', async () => {

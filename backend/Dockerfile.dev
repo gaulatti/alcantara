@@ -9,12 +9,19 @@ RUN npm install -g pnpm@9
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN pnpm install --no-frozen-lockfile --ignore-scripts
+# Install exactly the workspace lockfile's versions, as the production image does (gaulatti/alcantara#590,
+# #581). The build context is the repository root; a lockfile out of step with a package.json fails the
+# build. Only the backend's dependencies are installed. The backend lives at /app/backend.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY backend/package.json backend/
+COPY frontend/package.json frontend/
+COPY infra/aws/package.json infra/aws/
+RUN pnpm install --frozen-lockfile --ignore-scripts --filter backend
 
-COPY prisma ./prisma
+WORKDIR /app/backend
+COPY backend/prisma ./prisma
 RUN pnpm prisma:generate
 
-COPY . .
+COPY backend/ ./
 
 CMD ["pnpm", "start:dev"]

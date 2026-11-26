@@ -154,13 +154,16 @@ const ROWS: Row[] = [
       { args: {} },
     ],
     rest: (c, a) =>
-      c.program.updateBroadcastSettings({
-        enabled: a.enabled as boolean,
-        startTime: a.start_time as string,
-        songMasterVolume: a.song_master_volume as number,
-        mixerChannels: a.mixer_channels,
-        songMuted: a.song_muted as boolean,
-      } as never),
+      c.program.updateBroadcastSettings(
+        {
+          enabled: a.enabled as boolean,
+          startTime: a.start_time as string,
+          songMasterVolume: a.song_master_volume as number,
+          mixerChannels: a.mixer_channels,
+          songMuted: a.song_muted as boolean,
+        } as never,
+        { user: { authorization: { teamId: 7 } } },
+      ),
     service: (f) => f.programs.updateBroadcastSettings,
     confirm: ['broadcast-settings', 'global'],
   },
