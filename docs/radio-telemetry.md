@@ -666,6 +666,20 @@ A program with no Palazzo address answers "Palazzo URL is not configured". The s
 update and the instant stop. A command that reached the client is counted in
 `alcantara_palazzo_machine_requests_total` with its result, as before.
 
+## Palazzo command timeout (#717)
+
+Every Palazzo machine command (song, stop, next, instant, mixer, filler and automation requests, and state reads)
+is bounded at `PALAZZO_COMMAND_TIMEOUT_MS` (10 s) per attempt. A frozen engine, one that accepts connections but
+answers nothing, then fails the command as `unavailable`, counted in `alcantara_palazzo_machine_requests_total`,
+instead of holding the operator's request until it answers. A retryable command retries as before, each attempt
+with its own bound, except after a timeout: a timed-out attempt may still reach Palazzo late, so only a read, a PUT
+of the whole state, or a command with an idempotency key is sent again then. A song stop, an instant stop and a next
+withdrawal carry no key, and Palazzo cannot scope them to one playback, so a late first stop plus its retry could
+stop the song that followed. They fail after the first timeout instead, so a frozen engine answers an operator's
+stop in about 10 s. They still retry a server error (429 or 5xx) or a refused connection, which Palazzo answered or
+never received. The event stream is long-lived and output-monitor has its own 10 s bound, so neither uses this
+one. A caller's own cancellation still wins.
+
 ## Two sources on the program bus (#242)
 
 Alcántara does not hold or delay a command while a spot is on air (decided on #242). Instead it detects, read-only,

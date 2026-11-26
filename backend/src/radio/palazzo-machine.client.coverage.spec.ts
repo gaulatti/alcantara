@@ -175,7 +175,7 @@ describe('PalazzoMachineClient coverage', () => {
         method: 'POST',
         headers: { Accept: 'application/json' },
         body: undefined,
-        signal: undefined,
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -202,7 +202,7 @@ describe('PalazzoMachineClient coverage', () => {
           'X-Filler-Version': 'v1',
         },
         body: undefined,
-        signal: undefined,
+        signal: expect.any(AbortSignal),
       });
       await client.connectEvents(
         BASE,
@@ -227,7 +227,7 @@ describe('PalazzoMachineClient coverage', () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(mixer),
-        signal: undefined,
+        signal: expect.any(AbortSignal),
       });
     });
 
