@@ -1,0 +1,46 @@
+{
+  "about": "The rundown overrun rule shared by the frontend (rundownTiming, timelineLayout) and its backend port (rundownOverrunMs, #788). Both test suites run every case, so the two cannot drift unnoticed. Song lengths are in milliseconds; null is an unknown length.",
+  "cases": [
+    {
+      "name": "content running past a fixed start is cut there, from each fixed start",
+      "songs": { "1": 240000, "2": 180000 },
+      "items": [
+        { "id": "a", "kind": "playSong", "songId": 1, "clockOffsetSeconds": 0 },
+        { "id": "b", "kind": "playSong", "songId": 2 },
+        { "id": "c", "kind": "playSong", "songId": 1, "clockOffsetSeconds": 300 },
+        { "id": "d", "kind": "instant", "instantId": 9, "durationMs": 70000 },
+        { "id": "e", "kind": "stopSong", "clockOffsetSeconds": 600 }
+      ],
+      "overrunMs": 130000
+    },
+    {
+      "name": "content that fits leaves no overrun",
+      "songs": { "1": 240000, "2": 180000 },
+      "items": [
+        { "id": "a", "kind": "playSong", "songId": 2, "clockOffsetSeconds": 0 },
+        { "id": "b", "kind": "playSong", "songId": 1, "clockOffsetSeconds": 300 }
+      ],
+      "overrunMs": 0
+    },
+    {
+      "name": "a stretch with an unknown length is not counted",
+      "songs": { "1": 240000, "3": null },
+      "items": [
+        { "id": "a", "kind": "playSong", "songId": 1, "clockOffsetSeconds": 0 },
+        { "id": "b", "kind": "playSong", "songId": 3 },
+        { "id": "c", "kind": "playSong", "songId": 1, "clockOffsetSeconds": 60 }
+      ],
+      "overrunMs": 0
+    },
+    {
+      "name": "a generated filler cut at a fixed start is not an overrun",
+      "songs": { "1": 240000, "2": 180000 },
+      "items": [
+        { "id": "a", "kind": "playSong", "songId": 1, "clockOffsetSeconds": 0, "isFiller": true },
+        { "id": "b", "kind": "playSong", "songId": 2, "clockOffsetSeconds": 60 },
+        { "id": "c", "kind": "playSong", "songId": 1 }
+      ],
+      "overrunMs": 0
+    }
+  ]
+}

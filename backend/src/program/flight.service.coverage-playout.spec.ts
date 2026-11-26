@@ -441,7 +441,7 @@ describe('FlightService timed clip timer', () => {
     runtime.items[2].clockOffsetSeconds = 5;
     internals.armTimedClip(runtime);
     jest.advanceTimersByTime(5000);
-    expect(execute).toHaveBeenCalledWith('radio-1', 2, 4);
+    expect(execute).toHaveBeenCalledWith('radio-1', 2, 4, 'fixed_start');
   });
 
   it('uses the clip end when it precedes the next fixed cue', () => {
@@ -449,7 +449,7 @@ describe('FlightService timed clip timer', () => {
     runtime.items[2].clockOffsetSeconds = 10;
     internals.armTimedClip(runtime);
     jest.advanceTimersByTime(10_000);
-    expect(execute).toHaveBeenCalledWith('radio-1', 2, 4);
+    expect(execute).toHaveBeenCalledWith('radio-1', 2, 4, 'fixed_start');
     execute.mockClear();
     runtime.items[2].clockOffsetSeconds = 11;
     internals.armTimedClip(runtime);
@@ -558,7 +558,7 @@ describe('FlightService hard cue timer', () => {
     jest.advanceTimersByTime(1);
     expect(runtime.waitingForSongEnd).toBe(false);
     expect(runtime.generation).toBe(5);
-    expect(execute).toHaveBeenCalledWith('radio-1', 2, 5);
+    expect(execute).toHaveBeenCalledWith('radio-1', 2, 5, 'fixed_start');
   });
 
   it('fires at once for an overdue fixed cue', () => {
@@ -567,7 +567,7 @@ describe('FlightService hard cue timer', () => {
     });
     internals.armNextHardCue(runtime);
     jest.advanceTimersByTime(0);
-    expect(execute).toHaveBeenCalledWith('radio-1', 2, 5);
+    expect(execute).toHaveBeenCalledWith('radio-1', 2, 5, 'fixed_start');
   });
 
   it.each([
@@ -606,7 +606,7 @@ describe('FlightService hard cue timer', () => {
     expect(execute).not.toHaveBeenCalled();
     expect(runtime.timer).not.toBeNull();
     jest.advanceTimersByTime(MAX_TIMER);
-    expect(execute).toHaveBeenCalledWith('radio-1', 2, 5);
+    expect(execute).toHaveBeenCalledWith('radio-1', 2, 5, 'fixed_start');
   });
 });
 

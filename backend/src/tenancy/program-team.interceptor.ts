@@ -27,6 +27,7 @@ const MAIN_PROGRAM_ROUTES = new Set([
 /** Routes whose program id may be left out, and then means `main`. */
 const DEFAULTS_TO_MAIN = new Set([
   '/auth/realtime-ticket',
+  '/instants',
   '/instants/:instantId/play',
   '/instants/stop-all',
 ]);

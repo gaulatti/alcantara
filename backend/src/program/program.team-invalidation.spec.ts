@@ -29,7 +29,10 @@ describe('program changes forget the remembered team', () => {
     const service = new ProgramService(
       prisma as never,
       {} as never,
-      {} as never,
+      {
+        getOnAirView: () => ({ playbackRequestId: null }),
+        renameProgram: jest.fn(),
+      } as never,
       undefined,
       undefined,
       noRecorder(),

@@ -467,6 +467,12 @@ export default function Control() {
     fetchSongCatalog();
   }, []);
 
+  // The route's static title is the TV console's; a radio show's tab names the radio desk.
+  const documentTitle = programState?.type === "radio" ? "Control Panel - Radio" : "Control Panel - TV Broadcast";
+  useEffect(() => {
+    document.title = documentTitle;
+  }, [documentTitle]);
+
   useEffect(() => {
     setProgramState(null);
     setSelectedScene(null);
@@ -3348,6 +3354,8 @@ export default function Control() {
         programId={activeProgramId}
         playoutError={radioPlayoutError ?? radioSongFailure}
         songSequence={programAudioBusSongSequence}
+        rotationLoadError={rotationLoadFailed}
+        onRetryRotation={() => void fetchProgramAudioBusSettings(activeProgramId)}
         songQueue={normalizeProgramSongQueue(programAudioBusSettings.songQueue)}
         songCatalog={songCatalog}
         programSongPlayback={programSongPlaybackState}

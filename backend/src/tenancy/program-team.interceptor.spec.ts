@@ -25,6 +25,14 @@ describe('programIdsOf', () => {
     expect(programIdsOf({})).toEqual([]);
   });
 
+  it('defaults the instant list to main only when it names no program', () => {
+    const routeOptions = { url: '/instants' };
+    expect(programIdsOf({ routeOptions, query: {} })).toEqual(['main']);
+    expect(programIdsOf({ routeOptions, query: { programId: 'a' } })).toEqual([
+      'a',
+    ]);
+  });
+
   it('defaults a realtime ticket to main only when it names none', () => {
     const routeOptions = { url: '/auth/realtime-ticket' };
     expect(programIdsOf({ routeOptions, body: {} })).toEqual(['main']);
