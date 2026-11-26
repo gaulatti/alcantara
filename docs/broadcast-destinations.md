@@ -80,8 +80,8 @@ name and entering the stream key; they never type a Secrets Manager name or vers
   capability (they carry a credential); MCP can rename, retire, restore, reorder and read.
 - Audit: a `BroadcastDestinationKeyChange` row (team, destination, subject, `created` or
   `replaced`, time) is written in the same transaction as the change; never the key.
-  Metrics: `alcantara_broadcast_destination_operations_total{action="create"|"replace_key"}`.
-- IAM: the backend role needs `secretsmanager:CreateSecret`, `PutSecretValue`, `GetSecretValue`
+  Metrics: `alcantara_broadcast_destination_operations_total{action="create"|"replace_key"|"retire_secret"|"restore_secret"}`.
+- IAM: the backend role needs `secretsmanager:CreateSecret`, `PutSecretValue`, `GetSecretValue`, `DescribeSecret`,
   `DeleteSecret` and `RestoreSecret` on `arn:aws:secretsmanager:*:*:secret:alcantara/destinations/*` only (declared in `infra/aws`, gaulatti/alcantara#384).
   Retiring a destination schedules the deletion of the secret Alcántara wrote for it, with a 30-day recovery window (never a forced delete), unless another active destination uses it; a secret under any other name is never touched. A refused schedule leaves the retire in place and is counted as `retire_secret`/`failed`. Restoring cancels the deletion first (`RestoreSecret`); after the window the restore is refused with 409 (add the destination again).
 
