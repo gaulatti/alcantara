@@ -21,6 +21,8 @@ export function RadioTransport({
   onListen,
   listening,
   keysEnabled = true,
+  engineUnavailable = null,
+  confirmedItemId = null,
 }: {
   next: NextUpSong | null;
   onTake: (song: NextUpSong) => Promise<void> | void;
@@ -30,10 +32,23 @@ export function RadioTransport({
   listening?: boolean;
   /** False while another layer (a dialog) owns the keyboard. */
   keysEnabled?: boolean;
+  /**
+   * Why the playout engine cannot play (the on-air strip's engine label), or null when it is
+   * connected. While set, Take is refused here and nothing is sent (gaulatti/alcantara#609).
+   */
+  engineUnavailable?: string | null;
+  /** The rotation item the engine has confirmed on air, or null. Ends the "waiting" state. */
+  confirmedItemId?: string | null;
 }) {
   const { armed, arm, take, disarm } = useArmed<NextUpSong>();
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The song taken last, until the engine confirms it on air.
+  const [waitingFor, setWaitingFor] = useState<NextUpSong | null>(null);
+
+  useEffect(() => {
+    if (waitingFor && confirmedItemId === waitingFor.itemId) setWaitingFor(null);
+  }, [confirmedItemId, waitingFor]);
 
   const cue = useCallback(() => {
     setError(null);
@@ -42,6 +57,7 @@ export function RadioTransport({
       return;
     }
     setNote(null);
+    setWaitingFor(null);
     arm(next);
   }, [arm, next]);
 
@@ -53,12 +69,18 @@ export function RadioTransport({
     }
     setNote(null);
     setError(null);
+    if (engineUnavailable) {
+      setWaitingFor(null);
+      setNote(`${engineUnavailable}. Nothing was taken.`);
+      return;
+    }
     try {
       await onTake(song);
+      setWaitingFor(song);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The take was refused");
     }
-  }, [onTake, take]);
+  }, [engineUnavailable, onTake, take]);
 
   const stopSong = useCallback(async () => {
     setError(null);
@@ -145,6 +167,11 @@ export function RadioTransport({
             {armed.title} — {armed.artist}. Take or press Space within 5 s; Esc
             clears it.
           </span>
+        ) : waitingFor ? (
+          <span className="inline-flex items-center gap-2 text-accent-yellow">
+            <StatePill tone="arm" label="Taken" />
+            {waitingFor.title}: waiting for the engine to confirm it on air.
+          </span>
         ) : (
           <span className="text-text-secondary">
             {next
@@ -152,6 +179,11 @@ export function RadioTransport({
               : "Nothing cued."}
           </span>
         )}
+        {engineUnavailable && !note ? (
+          <span className="ml-2 text-amber-200">
+            {engineUnavailable}. Take is unavailable until the engine is back.
+          </span>
+        ) : null}
         {note ? <span className="ml-2 text-amber-200">{note}</span> : null}
       </div>
       {error ? (

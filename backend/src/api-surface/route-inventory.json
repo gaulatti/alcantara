@@ -884,8 +884,8 @@
   {
     "method": "POST",
     "path": "/program/:programId/song-playback",
-    "public": true,
-    "permission": "alcantara:program:read"
+    "public": false,
+    "permission": "alcantara:program:operate"
   },
   {
     "method": "POST",

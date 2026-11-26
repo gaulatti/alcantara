@@ -832,3 +832,20 @@ it("tests a destination and reports accepted, refused, unreachable and a failed 
   expect((await screen.findAllByText(/An unexpected error occurred/))[0]).toBeInTheDocument();
 });
 
+
+it("closes the start confirmation with Escape and starts nothing", async () => {
+  api.post.mockResolvedValue({
+    data: { commandId: "c", action: "reload", status: "ok", selectionVersion: "sel-1" },
+  });
+  await page();
+  fireEvent.click(checkbox("Primary platform"));
+  fireEvent.click(screen.getByRole("button", { name: /Reload while stopped/ }));
+  expect(await screen.findByText("Validated sel-1")).toBeInTheDocument();
+  fireEvent.click(checkbox("Backup platform"));
+  fireEvent.click(checkbox("Backup platform"));
+  fireEvent.click(screen.getByRole("button", { name: /Confirm Start/ }));
+  const dialog = await screen.findByRole("dialog", { name: "Confirm television Start" });
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(api.post).toHaveBeenCalledTimes(1);
+});

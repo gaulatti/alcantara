@@ -4,9 +4,9 @@ import { Test } from '@nestjs/testing';
 import { z } from 'zod';
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
 import { ManagedMetricsService } from '../../observability/managed-metrics.service';
+import { PompeiiService } from '../../auth/pompeii.service';
 import { ProgramService } from '../../program/program.service';
 import { RadioService } from '../../radio/radio.service';
-import { PompeiiService } from '../../auth/pompeii.service';
 import { StingersService } from '../../stingers/stingers.service';
 import { MCP_ACTION_EXECUTOR } from '../contract';
 import { McpActionExecutor } from '../mcp-action.executor';
@@ -58,9 +58,9 @@ async function connect(principal: ReturnType<typeof principalWith>) {
       { provide: MCP_ACTION_EXECUTOR, useExisting: McpActionExecutor },
       ManagedMetricsService,
       { provide: ProgramService, useValue: fakes.programs },
+      { provide: PompeiiService, useValue: { teamId: 7 } },
       { provide: RadioService, useValue: fakes.radio },
       { provide: StingersService, useValue: fakes.stingers },
-      { provide: PompeiiService, useValue: { teamId: 7 } },
       InstantsMcpTools,
       StingersMcpTools,
     ],
@@ -183,7 +183,7 @@ describe('instant and stinger capabilities through the registry', () => {
     });
     expect(done.isError).toBe(false);
     expect(done.body).toEqual({ ok: true });
-    expect(fakes.programs.playInstant).toHaveBeenCalledWith(8, 'main');
+    expect(fakes.programs.playInstant).toHaveBeenCalledWith(8, 'main', 7);
     // A retry with the same key replays the stored outcome and plays nothing.
     await capability('instant_play_instant', {
       instant_id: 8,
