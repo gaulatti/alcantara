@@ -27,7 +27,12 @@ const WRITE_OUTCOMES = new Set<string>([
 
 /** What cue rule 2 did to one edge of an analysed song (gaulatti/alcantara#235). */
 const CUE_RULE_EDGES = new Set<string>(['head', 'tail']);
-const CUE_RULE_RESULTS = new Set<string>(['applied', 'unchanged', 'bounded']);
+const CUE_RULE_RESULTS = new Set<string>([
+  'applied',
+  'unchanged',
+  'bounded',
+  'clamped',
+]);
 
 @Injectable()
 export class MediaAnalysisMetrics {

@@ -10,6 +10,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import {
   AudioAnalysisError,
+  BOUND_KEEPS_RULE_VERSION,
   CUE_RULE_VERSION,
   FfmpegAudioAnalyzer,
   PREVIOUS_CUE_RULE_VERSION,
@@ -65,7 +66,7 @@ interface Candidate {
   analysisUpdatedAt: Date | null;
   attempts: number | null;
   sourceChanged: boolean;
-  /** The cue rule a re-analysis request asked for (1 = the previous rule); null means the current rule. */
+  /** The cue rule a re-analysis request asked for (1 = the rule before #235, 2 = rule C); null means the current rule. */
   requestedRuleVersion?: number | null;
   /** True when the asset is analysed and only lacks a stored length (#296). */
   backfill?: boolean;
@@ -370,8 +371,9 @@ export class MediaAnalysisService
       analysis = await this.analyzer.analyze(
         candidate.sourceUrl,
         ANALYSIS_TIMEOUT_MS,
-        candidate.requestedRuleVersion === PREVIOUS_CUE_RULE_VERSION
-          ? PREVIOUS_CUE_RULE_VERSION
+        candidate.requestedRuleVersion === PREVIOUS_CUE_RULE_VERSION ||
+          candidate.requestedRuleVersion === BOUND_KEEPS_RULE_VERSION
+          ? candidate.requestedRuleVersion
           : CUE_RULE_VERSION,
       );
     } catch (error) {
