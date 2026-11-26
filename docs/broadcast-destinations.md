@@ -77,7 +77,7 @@ name and entering the stream key; they never type a Secrets Manager name or vers
 - The catalog (`GET /broadcast/destinations/catalog`) adds `service`, `ingestUrl`, `keyLast4`
   (the last four characters of a key of 8 or more, never more) and `keySetAt`. The key is
   shown nowhere after it is saved except by the ingest route. None of these routes is an MCP
-  capability (they carry a credential); MCP can rename, retire, restore, reorder and read.
+  capability (they carry a credential); MCP can rename, retire, restore, reorder, read and test (see below).
 - Audit: a `BroadcastDestinationKeyChange` row (team, destination, subject, `created` or
   `replaced`, time) is written in the same transaction as the change; never the key.
   Metrics: `alcantara_broadcast_destination_operations_total{action="create"|"replace_key"}`.
@@ -103,8 +103,10 @@ handshake over TCP or TLS: connect, create a stream, publish. No audio or video 
 soon as the server answers. The answer is `accepted`, `refused` (with the server's words, key removed) or
 `unreachable`; it never carries the key, and nothing is logged. One test per destination per 15 seconds (429
 otherwise); retired destinations are refused (409). Counted as
-`alcantara_broadcast_destination_operations_total{action="test",result="succeeded"|"failed"}`. The route is not
-offered over MCP (it uses a stored credential). A server may accept a publish and still reject the stream once media
+`alcantara_broadcast_destination_operations_total{action="test",result="succeeded"|"failed"}`. Over MCP it is
+`destination_test_destination` (`broadcast.manage`, confirmed like the other tier A actions): the same service, so the
+same audit row, the same 15 seconds shared with the button (`rate_limited`), and an answer without the key. A server
+may accept a publish and still reject the stream once media
 arrives; the button proves the address and key are accepted, not that a broadcast will be good.
 
 ## Ingest credential for the desktop studio

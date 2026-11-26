@@ -49,6 +49,7 @@ import {
   collectHighRotationProgramSongLeaves,
   countProgramSongLeavesBySong,
   normalizeProgramSongSequence,
+  type ProgramSongSequence,
 } from '../radio/song-sequence.utils';
 import { MAX_HIGH_ROTATION_SONGS } from '../radio/song-rotation.utils';
 import {
@@ -136,6 +137,28 @@ export interface ProgramPlayingTrack {
   startedAt: string;
   /** The song record's stored public https cover (gaulatti/alcantara#179). */
   coverUrl?: string;
+}
+
+/**
+ * Whether writing `next` over `stored` would start a song (gaulatti/alcantara#609): a different
+ * song becomes active, or an idle manual rotation switches to Autoplay or Shuffle. Edits that keep
+ * the active song, and stopping (no active song), start nothing.
+ */
+export function startsSongPlayback(
+  stored: ProgramSongSequence | null,
+  next: ProgramSongSequence | null,
+): boolean {
+  if (!next) return false;
+  if (
+    next.activeItemId !== null &&
+    next.activeItemId !== (stored?.activeItemId ?? null)
+  )
+    return true;
+  const automatic = (mode: string | undefined) =>
+    mode === 'autoplay' || mode === 'shuffle';
+  return (
+    automatic(next.mode) && !automatic(stored?.mode) && next.items.length > 0
+  );
 }
 
 @Injectable()
@@ -1779,9 +1802,45 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /**
+   * gaulatti/alcantara#609: an operator's audio-bus write that would start a song on a radio-only
+   * program is refused (409, `reason: "engine_unavailable"`) while its engine is off. Scheduled
+   * rundown automation does not come through here.
+   */
+  async refuseOperatorStartWhileEngineUnavailable(
+    data: unknown,
+    programId: string,
+  ): Promise<void> {
+    if (
+      !data ||
+      typeof data !== 'object' ||
+      !Object.prototype.hasOwnProperty.call(data, 'songSequence')
+    )
+      return;
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const current = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
+      select: { type: true, songSequence: true },
+    });
+    if (current?.type !== 'radio') return;
+    if (
+      startsSongPlayback(
+        normalizeProgramSongSequence(current.songSequence),
+        normalizeProgramSongSequence(
+          (data as { songSequence?: unknown }).songSequence,
+        ),
+      )
+    )
+      await this.radioService.refuseStartWhileEngineUnavailable(
+        normalizedProgramId,
+      );
+  }
+
   async updateProgramAudioBus(
     data:
-      { songSequence?: unknown; mixerSettings?: unknown } | null | undefined,
+      | { songSequence?: unknown; mixerSettings?: unknown }
+      | null
+      | undefined,
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
   ) {
     const normalizedProgramId = this.normalizeProgramId(programId);
@@ -3532,9 +3591,33 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     return [...new Set(rows.map((row) => row.programState.programId))];
   }
 
-  async listInstants(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
+  /**
+   * The instants of one team (gaulatti/alcantara#122). `0` means no team is configured, which production refuses, and
+   * sees every row. Song-intro relations and the engine's own reads are not scoped here.
+   */
+  private instantClient(teamId: number): PrismaService {
+    return teamId > 0
+      ? (forTeam(this.prisma, teamId) as unknown as PrismaService)
+      : this.prisma;
+  }
+
+  /** The row just written; findUniqueOrThrow is refused on the team-scoped client. */
+  private async readBackInstant(
+    tx: Prisma.TransactionClient,
+    id: number,
+    teamId: number,
+  ) {
+    return teamId > 0
+      ? (await tx.instant.findUnique({ where: { id } }))!
+      : tx.instant.findUniqueOrThrow({ where: { id } });
+  }
+
+  async listInstants(
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+    teamId = 0,
+  ) {
     const normalizedProgramId = this.normalizeProgramId(programId);
-    const instants = await this.prisma.instant.findMany({
+    const instants = await this.instantClient(teamId).instant.findMany({
       orderBy: [{ position: 'asc' }, { id: 'asc' }],
       include: {
         songIntro: { select: { songId: true, programId: true } },
@@ -3548,12 +3631,15 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     }));
   }
 
-  async createInstant(data: {
-    name: string;
-    audioUrl: string;
-    volume?: number;
-    enabled?: boolean;
-  }) {
+  async createInstant(
+    data: {
+      name: string;
+      audioUrl: string;
+      volume?: number;
+      enabled?: boolean;
+    },
+    teamId = 0,
+  ) {
     const name = (data.name || '').trim();
     const audioUrl = (data.audioUrl || '').trim();
 
@@ -3569,7 +3655,8 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     });
     const nextPosition = (maxPosition._max.position ?? -1) + 1;
 
-    return this.prisma.$transaction(async (tx) => {
+    // The position is unique across teams, so the highest one is read unscoped (gaulatti/alcantara#122).
+    return this.instantClient(teamId).$transaction(async (tx) => {
       const instant = await tx.instant.create({
         data: {
           name,
@@ -3583,7 +3670,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         },
       });
       await syncAudioClipAsset(tx, instant);
-      return tx.instant.findUniqueOrThrow({ where: { id: instant.id } });
+      return this.readBackInstant(tx, instant.id, teamId);
     });
   }
 
@@ -3595,11 +3682,12 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       volume?: number;
       enabled?: boolean;
     },
+    teamId = 0,
   ) {
     const recorder = this.requireRecorder();
     const actor = recorder.actor();
     // The volume and enabled flag before the change, for its record (gaulatti/alcantara#236).
-    const instant = await this.prisma.instant.findUnique({
+    const instant = await this.instantClient(teamId).instant.findUnique({
       where: { id: instantId },
       select: { id: true, volume: true, enabled: true },
     });
@@ -3637,13 +3725,13 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       updateData.enabled = Boolean(data.enabled);
     }
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.instantClient(teamId).$transaction(async (tx) => {
       const updated = await tx.instant.update({
         where: { id: instant.id },
         data: updateData,
       });
       await syncAudioClipAsset(tx, updated);
-      return tx.instant.findUniqueOrThrow({ where: { id: instant.id } });
+      return this.readBackInstant(tx, instant.id, teamId);
     });
     // The change is final; recording who made it never blocks it (gaulatti/alcantara#236).
     await recorder.record({
@@ -3660,8 +3748,8 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     return result;
   }
 
-  async deleteInstant(instantId: number) {
-    const instant = await this.prisma.instant.findUnique({
+  async deleteInstant(instantId: number, teamId = 0) {
+    const instant = await this.instantClient(teamId).instant.findUnique({
       where: { id: instantId },
       select: {
         id: true,
@@ -3679,6 +3767,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
+    // Ownership is settled above. Positions are one sequence across teams, so closing the gap is not scoped.
     const positionShiftOffset = 1_000_000;
 
     await this.prisma.$transaction(async (tx) => {
@@ -3706,8 +3795,9 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
   async playInstant(
     instantId: number,
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+    teamId = 0,
   ) {
-    const instant = await this.prisma.instant.findUnique({
+    const instant = await this.instantClient(teamId).instant.findUnique({
       where: { id: instantId },
     });
 

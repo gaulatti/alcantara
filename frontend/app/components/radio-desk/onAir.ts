@@ -5,10 +5,19 @@ import type { StatePillTone } from "./primitives";
 // ProgramSongPlaybackState and the status the desk already polls; a state the desk cannot know is
 // shown as unverified or unavailable, never as a good one.
 
-export type OnAirState = "on-air" | "off-air" | "delayed";
+/**
+ * "unconfirmed": the desk has a song playing, but the engine is not connected to confirm it (#609).
+ * "unverified": the engine is connected, but no fresh output level arrived for a few seconds (#706).
+ */
+export type OnAirState =
+  | "on-air"
+  | "off-air"
+  | "delayed"
+  | "unconfirmed"
+  | "unverified";
 
 export interface OnAirChip {
-  id: "stream" | "engine" | "monitor";
+  id: "output" | "stream" | "engine" | "monitor";
   tone: StatePillTone;
   label: string;
   title?: string;
@@ -22,7 +31,10 @@ export interface NextUp {
 
 export interface OnAirView {
   state: OnAirState;
-  /** "On air", "Off air", or "Status delayed" when the telemetry is stale. */
+  /**
+   * "On air" only when the engine is connected and its report is fresh; "Not confirmed" while the
+   * engine is not connected, "Status delayed" when the report is stale, otherwise "Off air".
+   */
   label: string;
   title: string | null;
   artist: string | null;
@@ -37,6 +49,8 @@ export interface OnAirView {
 
 export interface OnAirInput {
   playback: ProgramSongPlaybackState | null;
+  /** No fresh output level sample for OUTPUT_SAMPLE_UNVERIFIED_MS (#706): display only. */
+  outputUnverified?: boolean;
   next: NextUp | null;
   mode: "manual" | "autoplay" | "shuffle";
   /** null when the stream status is unknown. */
@@ -49,6 +63,8 @@ export interface OnAirInput {
     detail?: string | null;
   };
   monitor: "stopped" | "buffering" | "playing" | "unavailable";
+  /** Output confidence reads silent: a song is expected to play, but the output is quiet (#694). */
+  outputSilent?: boolean;
 }
 
 const MODE_LABELS = {
@@ -84,19 +100,36 @@ function introOf(playback: ProgramSongPlaybackState) {
 export function deriveOnAir(input: OnAirInput): OnAirView {
   const { playback } = input;
   const live = playback?.isPlaying === true;
-  const stale = live && playback?.telemetryStale === true;
+  // Only the engine confirms that a song is on air (gaulatti/alcantara#609).
+  const unconfirmed = live && !input.engine.connected;
+  const stale = live && !unconfirmed && playback?.telemetryStale === true;
+  const unverified =
+    live && !unconfirmed && !stale && input.outputUnverified === true;
   const hasLength =
     live &&
     typeof playback?.durationMs === "number" &&
     playback.durationMs > 0;
   const elapsed =
-    live && !stale ? Math.max(0, playback!.currentTimeMs) : null;
+    live && !stale && !unconfirmed ? Math.max(0, playback!.currentTimeMs) : null;
   const clampedElapsed =
     elapsed !== null && hasLength
       ? Math.min(elapsed, playback!.durationMs as number)
       : elapsed;
 
   const chips: OnAirChip[] = [
+    // Dead air leads the chips, so the strip never reads as all good while the output is silent
+    // (gaulatti/alcantara#694).
+    ...(input.outputSilent
+      ? [
+          {
+            id: "output" as const,
+            tone: "bad" as const,
+            label: "Dead air",
+            title:
+              "Expected audio is silent: a song is playing but the output is quiet.",
+          },
+        ]
+      : []),
     input.streamRunning === null
       ? { id: "stream", tone: "warn", label: "Stream unverified" }
       : input.streamRunning
@@ -132,8 +165,24 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
   ];
 
   return {
-    state: !live ? "off-air" : stale ? "delayed" : "on-air",
-    label: !live ? "Off air" : stale ? "Status delayed" : "On air",
+    state: !live
+      ? "off-air"
+      : unconfirmed
+        ? "unconfirmed"
+        : stale
+          ? "delayed"
+          : unverified
+            ? "unverified"
+            : "on-air",
+    label: !live
+      ? "Off air"
+      : unconfirmed
+        ? "Not confirmed"
+        : stale
+          ? "Status delayed"
+          : unverified
+            ? "Unverified"
+            : "On air",
     title: live ? (playback!.title || "Title unavailable") : null,
     artist: live ? (playback!.artist || "Artist unavailable") : null,
     elapsedMs: clampedElapsed,

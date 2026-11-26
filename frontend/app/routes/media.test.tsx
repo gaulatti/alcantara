@@ -19,6 +19,22 @@ const { authFetch, uploadFileToMediaBucket } = vi.hoisted(() => ({
 }));
 
 vi.mock("../services/api", () => ({ authFetch }));
+// Bleecker's Select is Radix-based and jsdom cannot open it; a native select stands in for it.
+vi.mock("@gaulatti/bleecker", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@gaulatti/bleecker")>();
+  return {
+    ...actual,
+    Select: ({ options, onChange, value, ...props }: { options: { value: string; label: string }[]; onChange: (v: string) => void; value: string }) => (
+      <select {...props} value={value} onChange={(event) => onChange(event.target.value)}>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    ),
+  };
+});
 vi.mock("../services/uploads", () => ({
   uploadFileToMediaBucket,
 }));
@@ -408,6 +424,22 @@ describe("program-aware media library", () => {
       ),
     ).toBe(true);
   }, 20_000);
+
+  it("clears the search with its clear button", async () => {
+    renderMedia("tv", "/media?type=VIDEO");
+    const search = await screen.findByPlaceholderText("Search video media…");
+    fireEvent.change(search, { target: { value: "harbor" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Clear search" }));
+    expect(search).toHaveValue("");
+  });
+
+  it("closes the add-background dialog with Escape", async () => {
+    renderMedia("radio", "/media?type=AUDIO");
+    fireEvent.click(await screen.findByRole("button", { name: "Add background audio" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add background audio" });
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add background audio" })).toBeNull());
+  }, 15000);
 });
 
 describe("media library view rules", () => {
@@ -424,3 +456,4 @@ describe("media library view rules", () => {
     expect(view.canonicalHref).toBeNull();
   });
 });
+

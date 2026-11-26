@@ -93,6 +93,7 @@ export default function ScheduledRundown({
   const [preflight, setPreflight] = useState<{
     ready: boolean;
     issues: string[];
+    warnings: string[];
     forRevision?: string;
   } | null>(null);
   const [inspector, setInspector] = useState<"event" | "fillers" | "build">(
@@ -266,6 +267,7 @@ export default function ScheduledRundown({
       setPreflight({
         ready: true,
         issues: [],
+        warnings: [],
         forRevision: `${published.id}:${published.revision}`,
       });
       showAlert("Rundown published for automatic start.", "success");
@@ -433,7 +435,7 @@ export default function ScheduledRundown({
             No hourly schedules required.
           </p>
         </div>
-        <Link to="/control">Manage rotation & live controls</Link>
+        <Link to="/control" className="max-sm:inline-flex max-sm:min-h-11 max-sm:items-center max-sm:-my-[13px]">Manage rotation & live controls</Link>
       </section>
       <div className="rundown-desk">
         <section className="rundown-sequence" aria-label="Timed block rundown">
@@ -582,6 +584,18 @@ export default function ScheduledRundown({
                   <ul>
                     {preflight.issues.map((issue) => (
                       <li key={issue}>{issue}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {preflight.warnings.length > 0 && (
+                <div>
+                  <span className="console-status" data-tone="warning">
+                    <AlertTriangle size={13} /> Times are estimates
+                  </span>
+                  <ul aria-label="Preflight warnings">
+                    {preflight.warnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
                     ))}
                   </ul>
                 </div>

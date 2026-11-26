@@ -18,11 +18,11 @@ describe('capability provider decorator metadata under unresolved circular impor
         LayoutsMcpTools,
         MediaGroupsMcpTools,
       ])
-        expect(Reflect.getMetadata('design:paramtypes', provider)).toEqual(
-          provider === MediaGroupsMcpTools
-            ? [Object, Object]
-            : [Object, Object, Object],
-        );
+        expect(Reflect.getMetadata('design:paramtypes', provider)).toEqual([
+          Object,
+          Object,
+          Object,
+        ]);
     });
   });
 
@@ -30,6 +30,7 @@ describe('capability provider decorator metadata under unresolved circular impor
     jest.isolateModules(() => {
       for (const path of [
         '../../broadcast-destinations/broadcast-destinations.service',
+        '../../broadcast-destinations/destination-test.service',
         '../../filler/filler.service',
         '../../recording/alana-recording.client',
         '../../radio/radio.service',
@@ -47,7 +48,7 @@ describe('capability provider decorator metadata under unresolved circular impor
       ])
         jest.doMock(path, () => ({}));
       const providers = [
-        ['./destinations', 'BroadcastDestinationsMcpTools', 2],
+        ['./destinations', 'BroadcastDestinationsMcpTools', 3],
         ['./filler', 'FillerMcpTools', 1],
         ['./recording', 'RecordingMcpTools', 1],
         ['./radio', 'RadioMcpTools', 7],

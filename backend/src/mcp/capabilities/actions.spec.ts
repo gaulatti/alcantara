@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return -- the controllers and services are exercised through loosely typed fakes. */
 import { LayoutsController } from '../../layouts/layouts.controller';
 import { MediaGroupsController } from '../../media-groups/media-groups.controller';
@@ -591,11 +592,14 @@ const ROWS: Row[] = [
       { args: { name: 'G', description: null, media_ids: [11] } },
     ],
     rest: (c, a) =>
-      c.groups.create({
-        name: 'G',
-        description: a.description as null,
-        mediaIds: a.media_ids as number[],
-      }),
+      c.groups.create(
+        {
+          name: 'G',
+          description: a.description as null,
+          mediaIds: a.media_ids as number[],
+        },
+        GROUP_TEAM,
+      ),
     service: (f) => f.groups.create,
     expected: (rest) => ({
       id: rest.id,
@@ -612,11 +616,15 @@ const ROWS: Row[] = [
       { args: { media_group_id: 5, description: null, media_ids: [] } },
     ],
     rest: (c, a) =>
-      c.groups.update('5', {
-        ...(a.name ? { name: a.name as string } : {}),
-        ...(a.media_ids ? { mediaIds: a.media_ids as number[] } : {}),
-        ...('description' in a ? { description: a.description as null } : {}),
-      }),
+      c.groups.update(
+        '5',
+        {
+          ...(a.name ? { name: a.name as string } : {}),
+          ...(a.media_ids ? { mediaIds: a.media_ids as number[] } : {}),
+          ...('description' in a ? { description: a.description as null } : {}),
+        },
+        GROUP_TEAM,
+      ),
     service: (f) => f.groups.update,
     expected: (rest) => ({
       id: rest.id,
@@ -629,12 +637,13 @@ const ROWS: Row[] = [
   {
     name: 'media_group_remove',
     cases: [{ args: { media_group_id: 5 } }],
-    rest: (c) => c.groups.remove('5'),
+    rest: (c) => c.groups.remove('5', GROUP_TEAM),
     service: (f) => f.groups.remove,
     confirm: ['5', 'Headlines'],
   },
 ];
 
+const GROUP_TEAM = { user: { authorization: { teamId: 7 } } };
 const SCENE_TEAM = { user: { authorization: { teamId: 7 } } };
 const TEAM_REQUEST = { user: { authorization: { teamId: 7 } } };
 
@@ -666,7 +675,11 @@ function build() {
       f.programs as never,
       { teamId: 7 } as never,
     ).specs(),
-    ...new MediaGroupsMcpTools(f.groups as never, f.programs as never).specs(),
+    ...new MediaGroupsMcpTools(
+      f.groups as never,
+      f.programs as never,
+      { teamId: 7 } as never,
+    ).specs(),
   ];
   return { f, controllers, specs };
 }
@@ -751,6 +764,29 @@ describe('write, on-air and destructive capabilities', () => {
       ),
     ).rejects.toMatchObject({ code: 'not_found' });
     expect(f.scenes.updateChyron).not.toHaveBeenCalled();
+  });
+
+  it('refuses an audio-bus start while the radio engine is off, and changes nothing (gaulatti/alcantara#609)', async () => {
+    const { f, specs } = build();
+    f.programs.refuseOperatorStartWhileEngineUnavailable.mockRejectedValueOnce(
+      new ConflictException({
+        statusCode: 409,
+        error: 'Conflict',
+        reason: 'engine_unavailable',
+        message:
+          'The radio engine is off (disabled in settings), so nothing was taken.',
+      }),
+    );
+    await expect(
+      specNamed(specs, 'program_update_program_audio_bus_by_id').run(
+        { program_id: 'main', song_sequence: { mode: 'autoplay' } },
+        ctx,
+      ),
+    ).rejects.toMatchObject({ code: 'conflict' });
+    expect(
+      f.programs.refuseOperatorStartWhileEngineUnavailable,
+    ).toHaveBeenCalledWith({ songSequence: { mode: 'autoplay' } }, 'main');
+    expect(f.programs.updateProgramAudioBus).not.toHaveBeenCalled();
   });
 
   it.each(TABLE)(

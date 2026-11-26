@@ -284,7 +284,7 @@ export class McpRadioReadTools implements McpToolProviderShape {
     return tool({
       name: 'get_rundown',
       title: 'Rundown',
-      description: `Lists the program's rundown sequences (flight logs) with the active one and, for each clocked log that has not started, a preflight summary (ready and the number of issues). Cue contents are not listed, only their count. ${UNTRUSTED_NOTE}`,
+      description: `Lists the program's rundown sequences (flight logs) with the active one and, for each clocked log that has not started, a preflight summary (ready, the number of issues, and the number of warnings that never block a start). Cue contents are not listed, only their count. ${UNTRUSTED_NOTE}`,
       permission: ALCANTARA_PERMISSIONS.flight.read,
       tier: 'R',
       firstClass: true,
@@ -322,6 +322,7 @@ export class McpRadioReadTools implements McpToolProviderShape {
                     preflight: {
                       ready: preflight.ready,
                       issue_count: preflight.issues.length,
+                      warning_count: preflight.warnings.length,
                     },
                   }
                 : {}),

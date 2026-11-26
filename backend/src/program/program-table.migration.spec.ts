@@ -11,6 +11,17 @@ const migrationSql = readFileSync(migrationPath, 'utf8');
 const schemaPath = join(process.cwd(), 'prisma/schema.prisma');
 const schemaContent = readFileSync(schemaPath, 'utf8');
 
+const eightTables = [
+  'ProgramState',
+  'BroadcastDestinationSelection',
+  'BroadcastDestinationCommand',
+  'BroadcastDestinationRuntime',
+  'ExternalSourceProgram',
+  'SimilarityDecision',
+  'SongIntro',
+  'GuestInvitation',
+];
+
 describe('Program table migration', () => {
   it('defines model Program in schema.prisma with exact required fields and index', () => {
     expect(schemaContent).toContain('model Program {');
@@ -29,16 +40,6 @@ describe('Program table migration', () => {
     );
     expect(migrationSql).toContain('ON CONFLICT ("programId") DO NOTHING');
 
-    const eightTables = [
-      'ProgramState',
-      'BroadcastDestinationSelection',
-      'BroadcastDestinationCommand',
-      'BroadcastDestinationRuntime',
-      'ExternalSourceProgram',
-      'SimilarityDecision',
-      'SongIntro',
-      'GuestInvitation',
-    ];
     for (const table of eightTables) {
       expect(migrationSql).toContain(`FROM "${table}"`);
     }
@@ -58,9 +59,18 @@ describe('Program table migration', () => {
       return;
     }
 
+    // The other database specs share this database and run in parallel, so the migration runs on copies of the
+    // tables it reads, in a schema of its own, inside a transaction that is rolled back (gaulatti/alcantara#678).
+    const schema = `program_table_${process.pid}`;
     try {
-      // Reset Program table
-      await client.query('DROP TABLE IF EXISTS "Program" CASCADE');
+      await client.query('BEGIN');
+      await client.query(`CREATE SCHEMA ${schema}`);
+      for (const table of eightTables) {
+        await client.query(
+          `CREATE TABLE ${schema}."${table}" (LIKE public."${table}" INCLUDING ALL)`,
+        );
+      }
+      await client.query(`SET LOCAL search_path TO ${schema}`);
 
       // Seed sample programIds into several tables
       await client.query(`
@@ -122,6 +132,7 @@ describe('Program table migration', () => {
       );
       expect(parseInt(rerunCountResult.rows[0].count, 10)).toBe(programCount);
     } finally {
+      await client.query('ROLLBACK');
       await client.end();
     }
   });

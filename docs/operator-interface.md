@@ -65,7 +65,8 @@ Ordinary actions use Bleecker buttons and controls. Surface hierarchy uses the
 shared Bleecker page, card, panel, border, radius, typography, and theme tokens.
 The broadcast deck reserves a separate semantic action grammar:
 
-- **Stage** selects Preview only.
+- **Stage** selects Preview only. A Preview or fade-to-black answer that arrives after the
+  operator switched program, or its failure, changes nothing on the program now on screen (#669).
 - **CUT** and **TAKE** are the only controls that move Preview to Program.
 - **Fade to black** is a Bleecker `ArmTake`: the first press only
   arms it, a second press within five seconds or
@@ -230,7 +231,7 @@ and source-list width. Program recording is a secondary disclosure and contacts
 Alana only while open. Recording service availability is independent of scene
 staging and TAKE.
 
-The Radio desk (#298) has an **on-air strip** that never scrolls away: On air, Off air or Status delayed, the song with elapsed and remaining time, the intro state, what plays next and the playout mode, and the stream, engine and monitor chips (Stream verified, Engine ready, Monitor off; an unknown or failed state is never shown as a good one). When the telemetry is stale the strip says Status delayed and shows no clock instead of a frozen one. Manual/Autoplay/Shuffle/Loop sit above the rotation, and the song on air and the next one are marked in it. At the bottom, the transport is **Cue next (N)**, then **Take (Space)**: one press never takes, a cue clears itself after five seconds or on Esc, and a refused take is shown beside the transport. Holding **Stop** (or Alt and period) for 0.6 seconds takes the song off air, and holding **Stop all** on the cartwall for 0.6 seconds stops every sounder; a click only explains. **/** opens a search of the rotation and the library: Enter queues a rotation song next, and **Take now** arms it, then **Confirm** within five seconds puts it on air (a library song that is not in the rotation can only be taken, through `POST /radio/:programId/song`, without changing the rotation). **M** toggles the monitor. Sounders show their time left while they play, a cartwall search keeps each pad's number and Ctrl key, and the faders show the live level with its peak and held peak (from `ProgramAudioMeterLevels`) and move one decibel with the arrow keys. Continuous fillers retain the saved songs. A future published block does not hide the playing rotation. When a timed block is on air, the desk shows its events and routes transport to Stop/Advance through flight execution.
+The Radio desk (#298) has an **on-air strip** that never scrolls away: On air, Off air or Status delayed, the song with elapsed and remaining time, the intro state, what plays next and the playout mode, and the stream, engine and monitor chips (Stream verified, Engine ready, Monitor off; an unknown or failed state is never shown as a good one). When the telemetry is stale the strip says Status delayed and shows no clock instead of a frozen one. **On air** means the engine confirmed it (#609): while the playout engine is not connected, a playing song shows **Not confirmed** with no clock, and no rotation row is marked On air. Manual/Autoplay/Shuffle/Loop sit above the rotation, and the song on air and the next one are marked in it. At the bottom, the transport is **Cue next (N)**, then **Take (Space)**: one press never takes, a cue clears itself after five seconds or on Esc, and a refused take is shown beside the transport. After a take the transport shows **Taken** and waits for the engine to confirm the song on air. While the engine is off, the transport says so and **Take is refused** without sending anything (`Engine unavailable: … Nothing was taken.`); the backend refuses the same take with 409 `engine_unavailable` for a radio-only program. Holding **Stop** (or Alt and period) for 0.6 seconds takes the song off air, and holding **Stop all** on the cartwall for 0.6 seconds stops every sounder; holding **Stop session** under Recovery & session for 0.6 seconds stops the session and its program audio (#693); a click on any of them only explains. **/** opens a search of the rotation and the library: Enter queues a rotation song next, and **Take now** arms it, then **Confirm** within five seconds puts it on air (a library song that is not in the rotation can only be taken, through `POST /radio/:programId/song`, without changing the rotation). **M** toggles the monitor. Sounders show their time left while they play, a cartwall search keeps each pad's number and Ctrl key, and the faders show the live level with its peak and held peak (from `ProgramAudioMeterLevels`) and move one decibel with the arrow keys. Continuous fillers retain the saved songs. A future published block does not hide the playing rotation. When a timed block is on air, the desk shows its events and routes transport to Stop/Advance through flight execution. On a phone (below 768 px) the Radio desk scrolls as one page (#610): the on-air strip stays at the top with its status chips in a single row that scrolls sideways, the transport (or a timed block's playback bar) stays at the bottom, and the rotation, cartwall, mixer and Recovery & session are reached through that one scroll instead of panels that scroll inside each other. Wider screens keep their layout.
 
 The dominant panel follows the current playout owner. Continuous mode shows the saved filler rotation and existing Play Next overrides; timed mode shows the on-air block with protected played/on-air events and fixed boundaries. **Prepare rundown** opens the planner with the continuous-fillers summary and optional timed blocks. **Build from tags** resolves Library labels into a reviewable block draft. See `radio-station-workflow.md` for selection and completion behavior.
 
@@ -241,6 +242,9 @@ secondary disclosure. The development `radio-workflow` fixture now shows a log
 with both following events and fixed-time boundaries; `radio-empty`,
 `radio-offline`, and `radio-external` retain explicit empty/degraded feedback.
 Cart shortcuts follow the platform (gaulatti/alcantara#308). On macOS a pad plays on Ctrl+letter, and the pad shows that chord. On Windows and Linux a pad plays on Alt+letter, and the pad shows that chord, so Ctrl+C, V, X, Z, A, F and P stay with the browser and the operating system. The platform is read once per page from `navigator.userAgentData.platform`, falling back to `navigator.platform`. Scene hotkeys keep Ctrl+S and Ctrl+digit on every platform. The Windows and Linux letters skip the browser's menu letters: Chrome and Edge use Alt+F, Alt+E and Alt+D, and Firefox's Alt menu uses F, E, V, S, B, T and H. The Alt map is `qyuiopagjzxcm` (13 slots), a subset of the macOS map `qeyuiopadfghjzxcvbm` (19 slots).
+
+A fader move or a playlist, playout-mode or Loop change saves to the program it was made on. Its answer, or
+its failure, changes nothing on another program the operator has switched to since (#682).
 
 Failures on the Radio desk are shown, never only logged (#253). A refused
 instant or **Stop all** appears above the Cartwall pads and clears when the
@@ -255,6 +259,10 @@ nothing has loaded. Refusals read the server's own `message` when it answers wit
 plain text; any other body falls back to `HTTP <status>`. The helper is
 `frontend/app/utils/responseFailure.ts`. `/console-fixture?state=radio-refused`
 shows all three states.
+A rotation or transport command that fails shows as the desk's alert and is also added to the **Session log**
+below it (#707): this session's command failures with their time, newest first, the last 20, kept in the page
+only; the same failure again is one entry with a count (×2). When the engine reconnects (a known "not connected"
+turning into "connected", not the first status answer), the alert clears; the Session log keeps the entry.
 
 The local wall clock is labeled separately from authoritative playback timing.
 Remaining time uses reported duration and position; stale telemetry is labeled
@@ -376,6 +384,7 @@ full clocked log, output confidence, Cartwall, and Mixer without commanding
 Palazzo. Queue changes, cart triggers/search, mute/fader controls, and Stop are
 interactive in this fixture. `state=radio-empty`, `state=radio-offline`, and
 `state=radio-stale` cover the corresponding explicit states;
+`state=radio-dead-air` shows dead air with a prepared, unbound recovery playlist;
 `state=radio-not-configured` shows the engine badge with its reason.
 `state=radio-external` keeps the reported playing track visible when it is absent
 from the playlist. These fixtures are
@@ -455,7 +464,7 @@ The timeline draws the block as a span of time with the numbers `rundownTiming()
 
 A cue built from a recipe carries its `recipeUse` tag (`useId`, `recipeId`, `recipeRevision`, `step`, `params`): it is kept through save, load and start, so the console can group the cues of one use. A malformed tag is dropped and its cue kept. The resolver and the executor ignore the tag (gaulatti/alcantara#422). Emptying a field removes the parameter. It also shows the cue exactly as stored; `metadataPatch` and `mixerChange` are read only there. The saved flight JSON keeps the shape the forms wrote: the same `FlightCue` fields and nothing new.
 
-**Check & publish** (⌘↵, or Ctrl+Enter) saves unsaved edits, runs Check on that revision and publishes only if Check passes. A failed Check lists its issues and publishes nothing. Publishing a block that overruns a fixed start, with either Publish or Check & publish, first asks: the dialog names how much content is cut, and **Keep editing** publishes nothing.
+**Check & publish** (⌘↵, or Ctrl+Enter) saves unsaved edits, runs Check on that revision and publishes only if Check passes. A failed Check lists its issues and publishes nothing. Check also lists warnings under **Times are estimates** (a song whose duration is unknown); they never block Check or publishing. Publishing a block that overruns a fixed start, with either Publish or Check & publish, first asks: the dialog names how much content is cut, and **Keep editing** publishes nothing.
 
 The block selector and New block action sit above the builder and a compact event log. Start, type, event, length, and timing share aligned columns. Fixed starts have a clock marker; other starts are estimates calculated from catalog or declared clip duration, not promises that a track has aired. Unknown durations remain visible. Timing labels describe whether an event fits its boundary; **Check** and **Publish** independently validate audio availability.
 

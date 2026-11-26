@@ -55,10 +55,35 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
+  # A local, in-memory stand-in for Palazzo, the radio playout engine, so the radio desk, output confidence and
+  # radio recovery can be walked locally (docs/fake-palazzo.md). Opt-in: it runs only with
+  # `--profile fake-palazzo`, and answers at the address PALAZZO_ALLOWED_URLS already names. Nothing that ships
+  # enables it (backend/test/fake-palazzo.test.mjs).
+  palazzo:
+    profiles: ["fake-palazzo"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.dev
+    command: ["node", "test/fixtures/fake-palazzo-server.mjs"]
+    environment:
+      PORT: "3100"
+      HOST: 0.0.0.0
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3100/__fake/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
   alana-recording-fixture:
     build:
-      context: ./backend
-      dockerfile: Dockerfile.dev
+      context: .
+      dockerfile: backend/Dockerfile.dev
     command: ["node", "test/fixtures/alana-recording-server.mjs"]
     environment:
       PORT: "8080"
@@ -79,8 +104,8 @@ services:
       start_period: 5s
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile.dev
+      context: .
+      dockerfile: backend/Dockerfile.dev
       args:
         ALCANTARA_BUILD_VERSION: ${ALCANTARA_BUILD_VERSION:-dev}
     ports:
@@ -99,6 +124,11 @@ services:
       PORT: ${BACKEND_PORT:-3000}
       ALLOWED_ORIGINS: http://localhost:${VITE_PORT:-5173}
       CHOKIDAR_USEPOLLING: "true"
+      # nest start --watch uses TypeScript's watcher, which CHOKIDAR_USEPOLLING does not reach. On
+      # Colima a host edit arrives through the bind mount without a file event, so the watcher polls
+      # here (gaulatti/alcantara#600). Local Compose only: the production image never sets these.
+      TSC_WATCHFILE: DynamicPriorityPolling
+      TSC_WATCHDIRECTORY: RecursiveDirectoryUsingDynamicPriorityPolling
       LIVEKIT_WS_URL: ws://localhost:7880
       LIVEKIT_API_URL: http://livekit:7880
       LIVEKIT_API_KEY: devkey
@@ -139,22 +169,24 @@ services:
       # port, the same address the browser uses.
       - "localstack.localhost:host-gateway"
     volumes:
-      - ./backend/src:/app/src
-      - ./backend/prisma:/app/prisma
-      - ./backend/tsconfig.json:/app/tsconfig.json
-      - ./backend/nest-cli.json:/app/nest-cli.json
+      - ./backend/src:/app/backend/src
+      - ./backend/prisma:/app/backend/prisma
+      - ./backend/tsconfig.json:/app/backend/tsconfig.json
+      - ./backend/nest-cli.json:/app/backend/nest-cli.json
     develop:
       watch:
         - action: sync
           path: ./backend/src
-          target: /app/src
+          target: /app/backend/src
           ignore:
             - node_modules/
         - action: sync
           path: ./backend/prisma
-          target: /app/prisma
+          target: /app/backend/prisma
         - action: rebuild
           path: ./backend/package.json
+        - action: rebuild
+          path: ./pnpm-lock.yaml
     restart: unless-stopped
     depends_on:
       postgres:

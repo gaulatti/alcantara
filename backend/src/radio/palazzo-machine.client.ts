@@ -24,6 +24,30 @@ const FILLER_NOT_READY_STATUSES: ReadonlySet<string> = new Set([
   'failed',
 ]);
 
+/**
+ * How long one Palazzo command may go unanswered before it counts as unavailable (gaulatti/alcantara#717). Without
+ * it a frozen engine (connections accepted, no answers) held every command until it answered: an operator's stop
+ * hung about 31 s in the engine-outage walk. The event stream is long-lived and output-monitor has its own timeout,
+ * so neither uses this one.
+ */
+export const PALAZZO_COMMAND_TIMEOUT_MS = 10_000;
+const UNTIMED_OPERATIONS: ReadonlySet<string> = new Set([
+  'event-connect',
+  'output-monitor',
+]);
+
+/**
+ * Whether a command may be sent again after its attempt timed out. A timed-out attempt may still reach Palazzo late,
+ * so only a command that has the same effect twice is retried then: a read, a PUT of the whole state, or a command
+ * carrying an idempotency key. A song or instant stop and a next withdrawal carry no key and Palazzo cannot scope
+ * them to one playback, so a late first stop plus its retry could stop the song that followed; those fail after the
+ * first timeout instead.
+ */
+function replaySafeAfterTimeout(options: RequestOptions): boolean {
+  const method = options.method ?? 'GET';
+  return method === 'GET' || method === 'PUT' || !!options.idempotencyKey;
+}
+
 export class PalazzoMachineError extends Error {
   constructor(
     readonly reason: PalazzoMachineResult,
@@ -687,6 +711,14 @@ export class PalazzoMachineClient {
 
     const attempts = options.retryable ? MAX_ATTEMPTS : 1;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      // Each attempt is bounded; a caller's own signal still cancels it (and is rethrown below).
+      const timeout = UNTIMED_OPERATIONS.has(options.operation)
+        ? undefined
+        : AbortSignal.timeout(PALAZZO_COMMAND_TIMEOUT_MS);
+      const signal =
+        timeout && options.signal
+          ? AbortSignal.any([options.signal, timeout])
+          : (timeout ?? options.signal);
       try {
         const response = await this.fetchImpl(url, {
           method: options.method ?? 'GET',
@@ -695,7 +727,7 @@ export class PalazzoMachineClient {
             options.body === undefined
               ? undefined
               : JSON.stringify(options.body),
-          signal: options.signal,
+          signal,
         });
         if (response.ok) return response;
         const result: PalazzoMachineResult =
@@ -714,7 +746,11 @@ export class PalazzoMachineClient {
       } catch (error) {
         if (error instanceof PalazzoMachineError) throw error;
         if (options.signal?.aborted) throw error;
-        if (!options.retryable || attempt >= attempts) {
+        if (
+          !options.retryable ||
+          attempt >= attempts ||
+          (timeout?.aborted && !replaySafeAfterTimeout(options))
+        ) {
           this.metrics.recordMachineRequest(options.operation, 'unavailable');
           throw new PalazzoMachineError('unavailable');
         }

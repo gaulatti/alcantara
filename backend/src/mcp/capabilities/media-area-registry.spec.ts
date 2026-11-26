@@ -6,6 +6,7 @@ import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
 import { MediaAssetsService } from '../../media-assets/media-assets.service';
 import { MediaService } from '../../media/media.service';
 import { ManagedMetricsService } from '../../observability/managed-metrics.service';
+import { PompeiiService } from '../../auth/pompeii.service';
 import { ProgramService } from '../../program/program.service';
 import { SongSimilarityService } from '../../radio/song-similarity.service';
 import { SongsService } from '../../songs/songs.service';
@@ -78,6 +79,7 @@ async function connect(principal: ReturnType<typeof principalWith>) {
       { provide: MCP_ACTION_EXECUTOR, useExisting: McpActionExecutor },
       ManagedMetricsService,
       { provide: ProgramService, useValue: fakes.programs },
+      { provide: PompeiiService, useValue: { teamId: 7 } },
       { provide: SongsService, useValue: fakes.songs },
       { provide: MediaService, useValue: fakes.media },
       { provide: MediaAssetsService, useValue: fakes.assets },
@@ -188,6 +190,7 @@ describe('song, media, asset and similarity capabilities through the registry', 
     await capability('media_asset_find_all', {});
     expect(fakes.assets.findAll).toHaveBeenCalledWith(expect.anything(), {
       permissions: [permissions.access, permissions.song.read],
+      teamId: 7,
     });
     await module.close();
   });

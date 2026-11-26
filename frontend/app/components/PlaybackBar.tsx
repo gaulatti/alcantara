@@ -54,6 +54,11 @@ function normalizeProgramSongPlaylist(
 }
 
 interface PlaybackBarProps {
+  /**
+   * True while the radio engine is not connected to confirm playback (gaulatti/alcantara#609): the
+   * bar then holds its clock and says "Not confirmed", the same rule as the on-air strip.
+   */
+  engineUnconfirmed?: boolean;
   logTransport?: {
     isRunning: boolean;
     canStart: boolean;
@@ -80,6 +85,7 @@ export function PlaybackBar({
   onTakeSelection,
   onTakeOffAir,
   onStopAllInstants,
+  engineUnconfirmed = false,
 }: PlaybackBarProps) {
   const sequence = useMemo(() => {
     const n = normalizeProgramSongSequence(_sequence);
@@ -223,7 +229,9 @@ export function PlaybackBar({
   return (
     <div className="playback-dock shrink-0 bg-dark-sand/95 shadow-[0_-10px_28px_rgba(0,0,0,0.45)] backdrop-blur supports-[backdrop-filter]:bg-dark-sand/90">
       <div className="playback-bar flex flex-wrap items-center justify-between gap-2 border-t border-sand/30 bg-dark-sand/85 px-3 py-2 sm:px-4 sm:py-3 md:flex-nowrap">
-        <div className="order-2 flex items-center gap-2 md:order-none">
+        {/* On a phone these controls wrap, so the feedback pill takes its own line instead of
+            running off the dock's edge; from md up they stay on one line. */}
+        <div className="order-2 flex flex-wrap items-center gap-2 md:order-none md:flex-nowrap">
           {logTransport ? (
             <>
               <Button
@@ -332,8 +340,16 @@ export function PlaybackBar({
               </IconButton>
             </>
           )}
-          {programSongPlayback?.isPlaying &&
-          typeof programSongPlayback.telemetryStale === "boolean" ? (
+          {programSongPlayback?.isPlaying && engineUnconfirmed ? (
+            <div className="flex items-center gap-1 whitespace-nowrap text-[9px] font-semibold uppercase tracking-wider text-amber-300">
+              <span
+                className="h-1.5 w-1.5 rounded-full bg-amber-300"
+                aria-hidden="true"
+              />
+              Not confirmed
+            </div>
+          ) : programSongPlayback?.isPlaying &&
+            typeof programSongPlayback.telemetryStale === "boolean" ? (
             <div
               className={`flex items-center gap-1 whitespace-nowrap text-[9px] font-semibold uppercase tracking-wider ${programSongPlayback.telemetryStale ? "text-amber-300" : "text-emerald-300"}`}
             >
@@ -354,7 +370,9 @@ export function PlaybackBar({
             (() => {
               const elapsedMs = Math.max(0, programSongPlayback.currentTimeMs);
               const totalMs = programSongPlayback.durationMs;
-              const hasTimeline = typeof totalMs === "number" && totalMs > 0;
+              // Unconfirmed playback has no clock to show (#609).
+              const hasTimeline =
+                !engineUnconfirmed && typeof totalMs === "number" && totalMs > 0;
               const clamped = hasTimeline
                 ? Math.min(elapsedMs, totalMs)
                 : elapsedMs;
@@ -413,15 +431,19 @@ export function PlaybackBar({
                     </div>
                     <div className="playback-countdown shrink-0 text-right tabular-nums">
                       <span className="block text-[9px] text-text-secondary">
-                        {programSongPlayback.telemetryStale
-                          ? "Last reported remaining"
-                          : "Remaining"}
+                        {engineUnconfirmed
+                          ? "Not confirmed"
+                          : programSongPlayback.telemetryStale
+                            ? "Last reported remaining"
+                            : "Remaining"}
                       </span>
                       <strong className="block text-xl leading-tight">
                         {hasTimeline ? fmt(totalMs - clamped) : "—:—"}
                       </strong>
                       <small className="block text-[9px] text-text-secondary">
-                        {fmt(clamped)} elapsed
+                        {engineUnconfirmed
+                          ? "No engine confirmation"
+                          : `${fmt(clamped)} elapsed`}
                       </small>
                     </div>
                   </div>

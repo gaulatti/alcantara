@@ -837,20 +837,6 @@ export default function MediaRoute() {
               ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {mediaType === "AUDIO" ? (
-                <Select
-                  value={capability}
-                  onChange={(value) =>
-                    setCapability(value as MediaCapability | "")
-                  }
-                  options={[
-                    { value: "", label: "All audio" },
-                    { value: "INSTANT", label: "Instant" },
-                    { value: "BACKGROUND", label: "Background" },
-                    { value: "SONG", label: "Song" },
-                  ]}
-                />
-              ) : null}
               {selectedAssetIds.size > 0 ? (
                 <div className="flex min-w-[18rem] flex-col gap-2">
                   <div className="flex items-center gap-2">
@@ -903,26 +889,31 @@ export default function MediaRoute() {
                   className="rounded-[var(--radius-card)] border border-sand/25 bg-white/80 p-4 dark:border-white/10 dark:bg-dark-sand/60"
                 >
                   <div className="flex items-start gap-3">
-                    <Checkbox
-                      checked={selectedAssetIds.has(asset.id)}
-                      onChange={(event) =>
-                        setSelectedAssetIds((current) => {
-                          const next = new Set(current);
-                          if (event.target.checked) next.add(asset.id);
-                          else next.delete(asset.id);
-                          return next;
-                        })
-                      }
-                    />
+                    <label className="inline-flex items-center justify-center max-sm:-m-3 max-sm:min-h-11 max-sm:min-w-11">
+                      <Checkbox
+                        checked={selectedAssetIds.has(asset.id)}
+                        onChange={(event) =>
+                          setSelectedAssetIds((current) => {
+                            const next = new Set(current);
+                            if (event.target.checked) next.add(asset.id);
+                            else next.delete(asset.id);
+                            return next;
+                          })
+                        }
+                      />
+                    </label>
                     {asset.mediaType === "IMAGE" ? (
                       <img
                         src={asset.sourceUrl}
                         alt=""
-                        className="h-16 w-24 rounded-lg bg-sand/10 object-cover"
+                        className="h-16 w-16 rounded-lg bg-sand/10 object-cover sm:w-24"
                       />
                     ) : null}
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium text-text-primary">
+                      <p
+                        className="truncate font-medium text-text-primary"
+                        title={asset.name}
+                      >
                         {asset.name}
                       </p>
                       <p className="mt-1 text-xs uppercase tracking-wide text-text-secondary">

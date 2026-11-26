@@ -16,7 +16,10 @@ export type PalazzoEventIgnoreReason =
  * field, never the unknown value.
  */
 export type PalazzoUnknownField =
-  'availability' | 'status' | 'intro-status' | 'withdrawn-reason';
+  | 'availability'
+  | 'status'
+  | 'intro-status'
+  | 'withdrawn-reason';
 
 export type PalazzoMachineOperation =
   | 'song-play'
@@ -58,9 +61,15 @@ export type PalazzoMachineResult =
  * (Palazzo was playing; nothing to do), `unavailable` (no state could be read).
  */
 export type EngineResyncTrigger =
-  'foreign_ended' | 'watchdog' | 'command_failed';
+  | 'foreign_ended'
+  | 'watchdog'
+  | 'command_failed';
 export type EngineResyncResult =
-  'resumed' | 'resumed_no_command' | 'playing' | 'unavailable' | 'undecided';
+  | 'resumed'
+  | 'resumed_no_command'
+  | 'playing'
+  | 'unavailable'
+  | 'undecided';
 /**
  * Engine paths that degrade instead of failing (#237): Palazzo state unreadable
  * at resync, radio settings unreadable when advancing the bumper sequence, a
@@ -113,6 +122,18 @@ export type IntroTransitionResult =
   | 'failed'
   | 'ignored-mismatch';
 
+/**
+ * Why a song start was refused before anything was saved (gaulatti/alcantara#609): an operator's
+ * take or start (`engine_unavailable`), or a rundown's song (`automation_engine_unavailable`).
+ */
+export type StartRefusalReason =
+  | 'engine_unavailable'
+  | 'automation_engine_unavailable';
+const START_REFUSAL_REASONS: StartRefusalReason[] = [
+  'engine_unavailable',
+  'automation_engine_unavailable',
+];
+
 export type SongQueueActionResult =
   | 'enqueued'
   | 'claimed'
@@ -152,7 +173,11 @@ export type SimilarityActionResult =
 
 /** Outcome of announcing the next song to Palazzo (contract palazzo#40 §5). */
 export type NextAnnouncementResult =
-  'accepted' | 'not_ready' | 'rejected' | 'unsupported' | 'withdrawn';
+  | 'accepted'
+  | 'not_ready'
+  | 'rejected'
+  | 'unsupported'
+  | 'withdrawn';
 
 /** How the engine moved from one song to the next at an accepted end. */
 export type HandoffPath = 'preloaded' | 'command' | 'race_replaced';
@@ -213,7 +238,9 @@ const isBumperSeries = (path: BumperPath, result: BumperResult): boolean =>
   !(path === 'announced' && (result === 'failed' || result === 'retried'));
 
 export type SnapshotReconciliationResult =
-  'accepted' | 'instance-mismatch' | 'instance-conflict';
+  | 'accepted'
+  | 'instance-mismatch'
+  | 'instance-conflict';
 
 export interface RadioMetricsSnapshot {
   connectionsByState: Record<string, number>;
@@ -269,6 +296,8 @@ const RADIO_LOG_RESULTS = [
   'started',
   'start-failed',
   'cue-failed',
+  'cue-retried',
+  'cue-skipped',
   'preflight-failed',
   'poll-failed',
 ] as const;
@@ -472,6 +501,7 @@ export class RadioMetricsService {
   private readonly introTransitions = new Map<string, number>();
   private readonly songRequestFailures = new Map<string, number>();
   private readonly songQueueActions = new Map<string, number>();
+  private readonly startRefusals = new Map<string, number>();
   private songQueueDepth = 0;
   private readonly highRotationActions = new Map<string, number>();
   private readonly similarityActions = new Map<string, number>();
@@ -573,6 +603,12 @@ export class RadioMetricsService {
       result,
       (this.introTransitions.get(result) ?? 0) + 1,
     );
+  }
+
+  /** An operator's take or start refused before anything was saved, by bounded reason. */
+  recordStartRefused(reason: StartRefusalReason): void {
+    if (!START_REFUSAL_REASONS.includes(reason)) return;
+    this.startRefusals.set(reason, (this.startRefusals.get(reason) ?? 0) + 1);
   }
 
   recordSongQueueAction(result: SongQueueActionResult): void {
@@ -879,6 +915,15 @@ export class RadioMetricsService {
     for (const result of SONG_QUEUE_ACTION_RESULTS) {
       lines.push(
         `alcantara_radio_song_queue_actions_total{result="${result}"} ${this.songQueueActions.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_start_refused_total Song starts refused before anything was saved, by bounded reason (operator or rundown automation).',
+      '# TYPE alcantara_radio_start_refused_total counter',
+    );
+    for (const reason of START_REFUSAL_REASONS) {
+      lines.push(
+        `alcantara_radio_start_refused_total{reason="${reason}"} ${this.startRefusals.get(reason) ?? 0}`,
       );
     }
     lines.push(

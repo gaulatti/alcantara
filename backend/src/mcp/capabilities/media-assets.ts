@@ -5,6 +5,7 @@ import {
   MediaAssetsService,
   type MediaAssetAuthorization,
 } from '../../media-assets/media-assets.service';
+import { PompeiiService } from '../../auth/pompeii.service';
 import { ProgramService } from '../../program/program.service';
 import {
   McpToolProvider,
@@ -105,13 +106,19 @@ export class MediaAssetsMcpTools {
   constructor(
     private readonly assets: MediaAssetsService,
     private readonly programs: ProgramService,
+    private readonly pompeii: PompeiiService,
   ) {}
+
+  /** The caller's permissions and the team they act for. */
+  private authorization(ctx: McpContext): MediaAssetAuthorization {
+    return { ...authorizationOf(ctx), teamId: this.pompeii.teamId };
+  }
 
   /** The asset, its labels, and which programs have a scene on air or staged that names it. */
   private async assetInUse(assetId: string, ctx: McpContext) {
     const asset = (await this.assets.findOne(
       assetId,
-      authorizationOf(ctx),
+      this.authorization(ctx),
     )) as AssetAnswer;
     const scenes = scenesNaming(await loadUsage(this.programs), [
       asset.id,
@@ -124,7 +131,7 @@ export class MediaAssetsMcpTools {
   private async labelInUse(labelId: string, ctx: McpContext) {
     const label = (await this.assets.findLabel(
       labelId,
-      authorizationOf(ctx),
+      this.authorization(ctx),
     )) as LabelAnswer;
     const list = await loadUsage(this.programs);
     const scenes = scenesNaming(list, [label.id]);
@@ -174,7 +181,7 @@ export class MediaAssetsMcpTools {
               page: args.page ?? 1,
               limit: args.limit ?? 50,
             },
-            authorizationOf(ctx),
+            this.authorization(ctx),
           ),
       }),
       readSpec({
@@ -185,7 +192,7 @@ export class MediaAssetsMcpTools {
         untrusted: ASSET_UNTRUSTED,
         shape: { asset_id: idArg },
         run: (args, ctx) =>
-          this.assets.findOne(args.asset_id, authorizationOf(ctx)),
+          this.assets.findOne(args.asset_id, this.authorization(ctx)),
       }),
       readSpec({
         name: 'media_asset_find_labels',
@@ -206,7 +213,7 @@ export class MediaAssetsMcpTools {
               page: args.page ?? 1,
               limit: args.limit ?? 50,
             },
-            authorizationOf(ctx),
+            this.authorization(ctx),
           ),
       }),
       readSpec({
@@ -218,7 +225,7 @@ export class MediaAssetsMcpTools {
         untrusted: ASSET_UNTRUSTED,
         shape: { label_id: idArg },
         run: (args, ctx) =>
-          this.assets.findLabel(args.label_id, authorizationOf(ctx)),
+          this.assets.findLabel(args.label_id, this.authorization(ctx)),
       }),
       actionSpec({
         name: 'media_asset_create_background_audio',
@@ -247,7 +254,7 @@ export class MediaAssetsMcpTools {
               sourceUrl: args.source_url,
               defaultVolume: args.default_volume,
             }),
-            authorizationOf(ctx),
+            this.authorization(ctx),
           ),
       }),
       actionSpec({
@@ -272,7 +279,7 @@ export class MediaAssetsMcpTools {
           this.assets.replaceAssetLabels(
             args.asset_id,
             args.label_ids,
-            authorizationOf(ctx),
+            this.authorization(ctx),
           ),
       }),
       actionSpec({
@@ -293,7 +300,7 @@ export class MediaAssetsMcpTools {
         run: (args, _loaded, ctx) =>
           this.assets.createLabel(
             { name: args.name, description: args.description },
-            authorizationOf(ctx),
+            this.authorization(ctx),
           ),
         result: labelSummary,
       }),
@@ -324,7 +331,7 @@ export class MediaAssetsMcpTools {
           this.assets.updateLabel(
             args.label_id,
             present({ name: args.name, description: args.description }),
-            authorizationOf(ctx),
+            this.authorization(ctx),
           ),
         result: labelSummary,
       }),
@@ -352,7 +359,7 @@ export class MediaAssetsMcpTools {
           this.assets.replaceLabelAssets(
             args.label_id,
             args.asset_ids,
-            authorizationOf(ctx),
+            this.authorization(ctx),
           ),
         result: labelSummary,
       }),
@@ -386,7 +393,7 @@ export class MediaAssetsMcpTools {
         run: (args, _loaded, ctx) =>
           this.assets.removeStandaloneAsset(
             args.asset_id,
-            authorizationOf(ctx),
+            this.authorization(ctx),
           ),
       }),
       actionSpec({
@@ -417,7 +424,7 @@ export class MediaAssetsMcpTools {
             ],
           ]),
         run: (args, _loaded, ctx) =>
-          this.assets.removeLabel(args.label_id, authorizationOf(ctx)),
+          this.assets.removeLabel(args.label_id, this.authorization(ctx)),
       }),
     ];
   }
