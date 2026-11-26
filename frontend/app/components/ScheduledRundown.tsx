@@ -433,7 +433,7 @@ export default function ScheduledRundown({
             No hourly schedules required.
           </p>
         </div>
-        <Link to="/control">Manage rotation & live controls</Link>
+        <Link to="/control" className="max-sm:inline-flex max-sm:min-h-11 max-sm:items-center max-sm:-my-[13px]">Manage rotation & live controls</Link>
       </section>
       <div className="rundown-desk">
         <section className="rundown-sequence" aria-label="Timed block rundown">
