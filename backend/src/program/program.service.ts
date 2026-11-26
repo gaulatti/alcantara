@@ -12,6 +12,7 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
+import { SceneAssetScope } from './scene-asset-scope';
 import { MediaAssetKind, Prisma } from '@prisma/client';
 import { Subject, Observable, type Subscription } from 'rxjs';
 import {
@@ -242,6 +243,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     private readonly outputConfidence?: RadioOutputConfidenceService,
     @Optional() private readonly recorder?: OperatorChangeRecorder,
     @Optional() private readonly songScope?: PlayoutSongScope,
+    @Optional() private readonly sceneAssets?: SceneAssetScope,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -2609,14 +2611,18 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       volume: number;
     };
     if (mediaAssetId !== null) {
-      const asset = await this.prisma.mediaAsset.findFirst({
-        where: {
-          id: mediaAssetId,
-          enabled: true,
-          backgroundAudio: { isNot: null },
-        },
-        include: { backgroundAudio: true, audioClip: true },
-      });
+      const read = (db: PrismaService) =>
+        db.mediaAsset.findFirst({
+          where: {
+            id: mediaAssetId,
+            enabled: true,
+            backgroundAudio: { isNot: null },
+          },
+          include: { backgroundAudio: true, audioClip: true },
+        });
+      const asset = this.sceneAssets
+        ? await this.sceneAssets.read(normalizedProgramId, read)
+        : await read(this.prisma);
       if (!asset || !asset.backgroundAudio) {
         throw new NotFoundException(
           'Configured background audio asset not found',
