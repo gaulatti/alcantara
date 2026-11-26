@@ -224,9 +224,13 @@ it.each([
     fireEvent.click(joinButton());
     expect(await screen.findByText("The studio session ended.")).toBeVisible();
     expect(screen.getByRole("alert")).toHaveTextContent(message);
-    // The ended session offers a rejoin, and says what to do when the invitation is closed (gaulatti/alcantara#353).
-    expect(screen.getByRole("button", { name: "Rejoin the studio" })).toBeInTheDocument();
+    // The join itself was refused, so the invitation is closed: say what to do, once, and offer no
+    // rejoin that can only fail again (gaulatti/alcantara#353).
     expect(screen.getByRole("alert")).toHaveTextContent("Ask the studio for a new link.");
+    expect(screen.getAllByText(new RegExp(message.replace(".", "\\.")))).toHaveLength(1);
+    expect(
+      screen.queryByRole("button", { name: "Rejoin the studio" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /Join studio/ }),
     ).not.toBeInTheDocument();
