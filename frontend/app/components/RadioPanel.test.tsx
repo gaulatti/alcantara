@@ -1671,9 +1671,13 @@ describe("dead air", () => {
       "Hold Stop to take the silent song off air, then Start with fallback.",
     );
     const controls = screen.getByLabelText("Recovery controls") as HTMLDetailsElement;
+    // jsdom has no scrollIntoView; the button opens the controls and brings them into view.
+    const scrolled = vi.fn();
+    controls.scrollIntoView = scrolled;
     expect(controls.open).toBe(false);
     fireEvent.click(within(alarm).getByRole("button", { name: "Go to recovery" }));
     expect(controls.open).toBe(true);
+    expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
   });
 
   it("says the bound playlist plays once the silent song is off air", () => {

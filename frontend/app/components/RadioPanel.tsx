@@ -486,7 +486,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     const controls = recoveryControlsRef.current;
     if (!controls) return;
     controls.open = true;
-    controls.scrollIntoView?.({ block: "nearest" });
+    controls.scrollIntoView({ block: "nearest" });
   };
   const takeRotationSong = async (itemId: string) => {
     const selection = { ...rotation, activeItemId: itemId, startedAt: Date.now() };
