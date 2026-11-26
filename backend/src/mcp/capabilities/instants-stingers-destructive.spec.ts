@@ -32,7 +32,11 @@ function build() {
     remove: jest.fn().mockResolvedValue({ deletedStingerId: 7 }),
   };
   const specs = [
-    ...new InstantsMcpTools(programs as never, radio as never).specs(),
+    ...new InstantsMcpTools(
+      programs as never,
+      radio as never,
+      { teamId: 7 } as never,
+    ).specs(),
     ...new StingersMcpTools(stingers as never, programs as never).specs(),
   ];
   return {
@@ -177,7 +181,7 @@ describe('instant_delete_instant', () => {
       result: { deletedInstantId: 8 },
       audit: { target: '8' },
     });
-    expect(b.programs.deleteInstant).toHaveBeenCalledWith(8);
+    expect(b.programs.deleteInstant).toHaveBeenCalledWith(8, 7);
   });
 
   it("reads a scene's settings as a JSON string or an object, and ignores what does not name it", async () => {
