@@ -837,20 +837,6 @@ export default function MediaRoute() {
               ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {mediaType === "AUDIO" ? (
-                <Select
-                  value={capability}
-                  onChange={(value) =>
-                    setCapability(value as MediaCapability | "")
-                  }
-                  options={[
-                    { value: "", label: "All audio" },
-                    { value: "INSTANT", label: "Instant" },
-                    { value: "BACKGROUND", label: "Background" },
-                    { value: "SONG", label: "Song" },
-                  ]}
-                />
-              ) : null}
               {selectedAssetIds.size > 0 ? (
                 <div className="flex min-w-[18rem] flex-col gap-2">
                   <div className="flex items-center gap-2">
@@ -920,7 +906,7 @@ export default function MediaRoute() {
                       <img
                         src={asset.sourceUrl}
                         alt=""
-                        className="h-16 w-24 rounded-lg bg-sand/10 object-cover"
+                        className="h-16 w-16 rounded-lg bg-sand/10 object-cover sm:w-24"
                       />
                     ) : null}
                     <div className="min-w-0 flex-1">
