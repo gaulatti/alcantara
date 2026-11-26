@@ -184,7 +184,7 @@ export interface ProgramAudioBusSaved {
   songSequence: unknown;
   sequenceVersion: string;
   songQueue: ReturnType<typeof normalizeProgramSongQueue>;
-  mixerSettings: unknown;
+  mixerSettings: ProgramAudioMixerSettings;
   version: number;
 }
 
