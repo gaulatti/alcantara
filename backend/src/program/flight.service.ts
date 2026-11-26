@@ -17,9 +17,14 @@ import {
   summarizeChange,
 } from '../operator-change/operator-change-recorder';
 import { PrismaService } from '../prisma.service';
+import { PompeiiService } from '../auth/pompeii.service';
+import { forTeam } from '../tenancy/scoped-prisma';
 import type { Prisma } from '@prisma/client';
 import { ProgramService } from './program.service';
-import { RadioMetricsService } from '../radio/radio-metrics.service';
+import {
+  RadioMetricsService,
+  type LogSongScopePath,
+} from '../radio/radio-metrics.service';
 import { generateRadioLog, parseRadioLogRules } from './radio-log-generator';
 import { fillRadioRundown, parseFillerRules } from './radio-rundown-filler';
 import type {
@@ -283,7 +288,37 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     private readonly programService: ProgramService,
     private readonly metrics: RadioMetricsService,
     private readonly recorder: OperatorChangeRecorder,
+    private readonly pompeii: PompeiiService,
   ) {}
+
+  private readonly refusedSongScopes = new Set<string>();
+
+  /**
+   * The songs a program's logs, recipes and cues may read (gaulatti/alcantara#122): its team's, all of them when no
+   * station team is configured, and none (`null`, counted) when the program has no team.
+   */
+  async programSongDb(
+    path: LogSongScopePath,
+    programId: string,
+  ): Promise<PrismaService | null> {
+    if (this.pompeii.teamId === 0) return this.prisma;
+    const program = await this.prisma.program.findUnique({
+      where: { programId },
+      select: { teamId: true },
+    });
+    if (program?.teamId && program.teamId > 0) {
+      return forTeam(this.prisma, program.teamId) as unknown as PrismaService;
+    }
+    this.metrics.recordLogSongScopeRefusal(path);
+    const key = `${path}|${programId}`;
+    if (!this.refusedSongScopes.has(key)) {
+      this.refusedSongScopes.add(key);
+      this.logger.warn(
+        `Program ${programId} has no team; ${path} reads no songs`,
+      );
+    }
+    return null;
+  }
 
   async onModuleInit(): Promise<void> {
     if (isDeployCandidate()) {
@@ -352,31 +387,34 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         );
       const rules = parseRadioLogRules(data.rules);
       const labelIds = [...new Set(rules.slots.map((slot) => slot.labelId))];
+      const songDb = await this.programSongDb('generate', programId);
       const [labels, songs, previous] = await Promise.all([
         this.prisma.mediaLabel.findMany({
           where: { id: { in: labelIds } },
           select: { id: true, name: true },
         }),
-        this.prisma.song.findMany({
-          where: {
-            enabled: true,
-            audioUrl: { not: '' },
-            asset: { labels: { some: { labelId: { in: labelIds } } } },
-          },
-          select: {
-            id: true,
-            artist: true,
-            durationMs: true,
-            asset: {
+        songDb
+          ? songDb.song.findMany({
+              where: {
+                enabled: true,
+                audioUrl: { not: '' },
+                asset: { labels: { some: { labelId: { in: labelIds } } } },
+              },
               select: {
-                labels: {
-                  where: { labelId: { in: labelIds } },
-                  select: { labelId: true, position: true },
+                id: true,
+                artist: true,
+                durationMs: true,
+                asset: {
+                  select: {
+                    labels: {
+                      where: { labelId: { in: labelIds } },
+                      select: { labelId: true, position: true },
+                    },
+                  },
                 },
               },
-            },
-          },
-        }),
+            })
+          : [],
         this.prisma.flightSequence.findMany({
           where: {
             programStateId: state.id,
@@ -438,27 +476,32 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       const contentIds = items.flatMap((cue) =>
         cue.songId ? [cue.songId] : [],
       );
+      const songDb = await this.programSongDb('generate', programId);
       const [label, songs, previous] = await Promise.all([
         this.prisma.mediaLabel.findUnique({ where: { id: rules.labelId } }),
-        this.prisma.song.findMany({
-          where: {
-            enabled: true,
-            audioUrl: { not: '' },
-            OR: [
-              { id: { in: contentIds } },
-              { asset: { labels: { some: { labelId: rules.labelId } } } },
-            ],
-          },
-          select: {
-            id: true,
-            artist: true,
-            title: true,
-            durationMs: true,
-            asset: {
-              select: { labels: { select: { labelId: true, position: true } } },
-            },
-          },
-        }),
+        songDb
+          ? songDb.song.findMany({
+              where: {
+                enabled: true,
+                audioUrl: { not: '' },
+                OR: [
+                  { id: { in: contentIds } },
+                  { asset: { labels: { some: { labelId: rules.labelId } } } },
+                ],
+              },
+              select: {
+                id: true,
+                artist: true,
+                title: true,
+                durationMs: true,
+                asset: {
+                  select: {
+                    labels: { select: { labelId: true, position: true } },
+                  },
+                },
+              },
+            })
+          : [],
         this.prisma.flightSequence.findMany({
           where: {
             programStateId: state.id,
@@ -662,11 +705,23 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         ),
       ),
     ];
+    const songDb = songIds.length
+      ? await this.programSongDb('validate', programId)
+      : null;
+    const readSongs = async () =>
+      songDb
+        ? await songDb.song.findMany({
+            where: { id: { in: songIds } },
+            select: {
+              id: true,
+              enabled: true,
+              audioUrl: true,
+              durationMs: true,
+            },
+          })
+        : [];
     const [songs, instants] = await Promise.all([
-      this.prisma.song.findMany({
-        where: { id: { in: songIds } },
-        select: { id: true, enabled: true, audioUrl: true, durationMs: true },
-      }),
+      readSongs(),
       this.prisma.instant.findMany({
         where: { id: { in: instantIds } },
         select: { id: true, enabled: true, audioUrl: true },
@@ -1748,9 +1803,10 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     } | null = null;
 
     if (typeof cue.songId === 'number') {
-      const song = await this.prisma.song.findUnique({
-        where: { id: cue.songId },
-      });
+      const songDb = await this.programSongDb('cue', programId);
+      const song = songDb
+        ? await songDb.song.findUnique({ where: { id: cue.songId } })
+        : null;
       if (song?.enabled && song.audioUrl.trim()) {
         selectedSong = song;
         const itemId = createId('song');

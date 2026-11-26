@@ -60,6 +60,7 @@ function harness() {
     program as any,
     metrics,
     noRecorder(),
+    { teamId: 0 } as never,
   );
   return {
     prisma,

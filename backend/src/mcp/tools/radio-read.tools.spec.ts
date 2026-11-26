@@ -354,12 +354,14 @@ async function harness() {
     machine as never,
     {} as never,
     radioMetrics,
+    { teamId: 0 } as never,
   );
   const flight = new FlightService(
     prisma,
     programs,
     radioMetrics,
     noRecorder(),
+    { teamId: 0 } as never,
   );
   const asRun = new AsRunService(prisma);
   const songs = new SongsService(prisma, noRecorder());

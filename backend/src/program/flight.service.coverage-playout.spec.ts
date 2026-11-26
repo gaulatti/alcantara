@@ -45,6 +45,7 @@ function harness(stateExtra: Record<string, unknown> = {}) {
     program as any,
     metrics,
     noRecorder(),
+    { teamId: 0 } as never,
   );
   jest.spyOn(console, 'log').mockImplementation(() => undefined);
   const errors = jest
@@ -1200,6 +1201,9 @@ describe('FlightService module load without injectable classes', () => {
   it('records Object parameter metadata when a dependency class is not yet defined', () => {
     jest.isolateModules(() => {
       jest.doMock('../prisma.service', () => ({ PrismaService: undefined }));
+      jest.doMock('../auth/pompeii.service', () => ({
+        PompeiiService: undefined,
+      }));
       jest.doMock('./program.service', () => ({ ProgramService: undefined }));
       jest.doMock('../radio/radio-metrics.service', () => ({
         RadioMetricsService: undefined,
@@ -1220,11 +1224,13 @@ describe('FlightService module load without injectable classes', () => {
         'Object',
         'Object',
         'Object',
+        'Object',
       ]);
     });
     jest.dontMock('../prisma.service');
     jest.dontMock('./program.service');
     jest.dontMock('../radio/radio-metrics.service');
     jest.dontMock('../operator-change/operator-change-recorder');
+    jest.dontMock('../auth/pompeii.service');
   });
 });

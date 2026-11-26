@@ -145,7 +145,9 @@ function fixture() {
     }),
   };
   const metrics = new RadioMetricsService();
-  const service = new FlightService(prisma, programs, metrics, noRecorder());
+  const service = new FlightService(prisma, programs, metrics, noRecorder(), {
+    teamId: 0,
+  } as never);
   return {
     service,
     prisma,
@@ -1086,6 +1088,39 @@ describe('FlightService public lifecycle and clock boundary', () => {
       f.service.generateTaggedLog('news', 7, { revision: 1, rules }),
     ).rejects.toThrow('song unavailable');
     expect(f.prisma.flightSequence.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('reads no songs for generation or fill when the program has no team (#122)', async () => {
+    const f = setup();
+    clocked(f);
+    f.sequence().publishedAt = null;
+    Object.assign(f.service, { pompeii: { teamId: 1 } });
+    Object.assign(f.prisma, {
+      program: { findUnique: jest.fn().mockResolvedValue({ teamId: null }) },
+    });
+    Object.assign(f.metrics, { recordLogSongScopeRefusal: jest.fn() });
+    const slots = {
+      slots: [{ labelId: 'music', count: 1, clockOffsetSeconds: 0 }],
+      artistSeparation: 0,
+    };
+    await expect(
+      f.service.generateTaggedLog('news', 7, { revision: 1, rules: slots }),
+    ).rejects.toThrow();
+    const items = [
+      { id: 'content', kind: 'playSong', songId: 5, clockOffsetSeconds: 0 },
+      { id: 'end', kind: 'stopSong', clockOffsetSeconds: 1 },
+    ];
+    await expect(
+      f.service.fillRundown('news', 7, {
+        revision: 1,
+        rules: { labelId: 'music', artistSeparation: 0 },
+        items,
+      }),
+    ).rejects.toThrow();
+    expect(f.prisma.song.findMany).not.toHaveBeenCalled();
+    expect(f.metrics.recordLogSongScopeRefusal).toHaveBeenCalledWith(
+      'generate',
+    );
   });
 
   it('preflights filler previews against current audio and rejects missing item arrays', async () => {

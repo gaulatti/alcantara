@@ -1,3 +1,4 @@
+import { PompeiiService } from '../auth/pompeii.service';
 import { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
@@ -43,6 +44,7 @@ describe('PUT /radio/:programId/settings records its actor', () => {
       controllers: [RadioController],
       providers: [
         RadioService,
+        { provide: PompeiiService, useValue: { teamId: 0 } },
         ActorContextInterceptor,
         { provide: PrismaService, useValue: prisma },
         {

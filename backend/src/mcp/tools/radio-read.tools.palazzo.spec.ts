@@ -503,6 +503,7 @@ async function build() {
     machine,
     new ConfigService({ NODE_ENV: 'test' }),
     radioMetrics,
+    { teamId: 0 } as never,
   );
   const engine = new SongExecutionEngine(
     radio,
@@ -535,6 +536,7 @@ async function build() {
     programs,
     radioMetrics,
     noRecorder(),
+    { teamId: 0 } as never,
   );
   const asRun = new AsRunService(prisma);
   const songs = new SongsService(prisma, noRecorder());

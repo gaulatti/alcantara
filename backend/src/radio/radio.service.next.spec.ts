@@ -44,6 +44,7 @@ function build(settings: Record<string, unknown> | null) {
     palazzo,
     { get: jest.fn() } as any,
     metrics,
+    { teamId: 0 } as never,
   );
   jest.spyOn(service['logger'], 'error').mockImplementation();
   return { service, prisma, palazzo, metrics };

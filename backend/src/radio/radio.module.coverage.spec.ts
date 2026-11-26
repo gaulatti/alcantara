@@ -16,6 +16,7 @@ import { RadioOutputConfidenceService } from './radio-output-confidence.service'
 import { PalazzoMachineClient } from './palazzo-machine.client';
 import { SongSimilarityService } from './song-similarity.service';
 import { PrismaService } from '../prisma.service';
+import { PompeiiService } from '../auth/pompeii.service';
 
 const configStub = {
   get: jest.fn((key: string) =>
@@ -33,8 +34,9 @@ const programStub = {};
     { provide: ConfigService, useValue: configStub },
     { provide: FlightService, useValue: flightStub },
     { provide: ProgramService, useValue: programStub },
+    { provide: PompeiiService, useValue: { teamId: 0 } },
   ],
-  exports: [ConfigService, FlightService, ProgramService],
+  exports: [ConfigService, FlightService, ProgramService, PompeiiService],
 })
 class RadioModuleCoverageHostModule {}
 
