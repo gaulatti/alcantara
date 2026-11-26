@@ -848,3 +848,26 @@ it("gives the fillers and build tools the fixture's own tag without loading any"
   expect(fetchAllMediaLabels).not.toHaveBeenCalled();
   expect(fetchFlightSequences).not.toHaveBeenCalled();
 });
+
+it("closes the record and new-block dialogs with Escape", async () => {
+  stubLibrary();
+  vi.mocked(fetchFlightSequences).mockResolvedValue([
+    block({
+      items: [
+        { id: "open", kind: "playSong", songId: 2, clockOffsetSeconds: 0, voiceTrackInstantId: 12 },
+        { id: "after", kind: "stopSong" },
+      ],
+    }),
+  ]);
+  renderRundown();
+  const table = await openBlock();
+  fireEvent.click(eventRows(table)[0]);
+  fireEvent.click(screen.getByRole("button", { name: /Record voice/ }));
+  const recording = await screen.findByText("Recording over Harbor Light");
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+  await waitFor(() => expect(recording).not.toBeInTheDocument());
+  fireEvent.click(screen.getByRole("button", { name: /New block/ }));
+  const start = await screen.findByLabelText("New block");
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+  await waitFor(() => expect(start).not.toBeInTheDocument());
+});

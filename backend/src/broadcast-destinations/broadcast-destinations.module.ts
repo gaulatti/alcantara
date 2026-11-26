@@ -6,6 +6,7 @@ import { BroadcastDestinationsService } from './broadcast-destinations.service';
 import { BroadcastDestinationKeysService } from './broadcast-destination-keys.service';
 import { BroadcastIngestService } from './broadcast-ingest.service';
 import { DestinationSecretsService } from './destination-secrets.service';
+import { DestinationTestService } from './destination-test.service';
 import { FillerBindingService } from '../filler/filler-binding.service';
 import { BroadcastDestinationsMcpTools } from '../mcp/capabilities/destinations';
 
@@ -17,6 +18,7 @@ import { BroadcastDestinationsMcpTools } from '../mcp/capabilities/destinations'
     BroadcastIngestService,
     BroadcastDestinationKeysService,
     DestinationSecretsService,
+    DestinationTestService,
     AlanaClient,
     FillerBindingService,
     PrismaService,
