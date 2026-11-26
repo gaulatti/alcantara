@@ -162,6 +162,12 @@
     "permission": "broadcast.manage"
   },
   {
+    "method": "POST",
+    "path": "/broadcast/destinations/:destinationId/test",
+    "public": false,
+    "permission": "broadcast.manage"
+  },
+  {
     "method": "GET",
     "path": "/broadcast/destinations/catalog",
     "public": false,

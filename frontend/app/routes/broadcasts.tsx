@@ -17,6 +17,7 @@ import {
   ArrowUp,
   KeyRound,
   Pencil,
+  PlugZap,
   Plus,
   RadioTower,
   RotateCw,
@@ -117,6 +118,12 @@ interface CommandResult {
 }
 
 type ConfirmedAction = "start" | "stop" | null;
+
+/** The answer of the destination Test button. */
+type DestinationTestResult = {
+  result: "accepted" | "refused" | "unreachable";
+  message?: string;
+};
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -333,6 +340,29 @@ export default function Broadcasts() {
     }
   };
 
+  /** Asks the ingest whether it accepts the saved key; nothing is sent but the handshake. */
+  const testDestination = async (destination: CatalogDestination) => {
+    setBusyAction(`test-${destination.id}`);
+    try {
+      const response = await api.post<DestinationTestResult>(
+        `/broadcast/destinations/${encodeURIComponent(destination.id)}/test`,
+      );
+      const { result, message } = response.data;
+      if (result === "accepted") {
+        showAlert(`${destination.displayName} accepted the key.`, "success");
+      } else {
+        showAlert(
+          `${destination.displayName} ${result === "refused" ? "refused the key" : "could not be reached"}: ${message ?? "no details"}`,
+          "error",
+        );
+      }
+    } catch (error) {
+      showAlert(handleApiError(error), "error");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   const setRetired = async (
     destination: CatalogDestination,
     retired: boolean,
@@ -513,6 +543,16 @@ export default function Broadcasts() {
                 >
                   <KeyRound size={14} />{" "}
                   {destination.service === null ? "Set key" : "Replace key"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`Test ${destination.displayName}`}
+                  disabled={Boolean(destination.retiredAt) || busyAction !== null}
+                  onClick={() => void testDestination(destination)}
+                >
+                  <PlugZap size={14} />{" "}
+                  {busyAction === `test-${destination.id}` ? "Testing…" : "Test"}
                 </Button>
                 <Button
                   size="sm"

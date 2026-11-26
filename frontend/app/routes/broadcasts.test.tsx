@@ -808,3 +808,27 @@ it("sends the custom address with a hand-added destination's first key, and refu
   });
   expect(within(renameDialog).getByRole("button", { name: "Rename" })).toBeEnabled();
 });
+
+// gaulatti/alcantara#384: the Test button asks the ingest whether it takes the saved key and says what it answered.
+it("tests a destination and reports accepted, refused, unreachable and a failed request", async () => {
+  render(<Broadcasts />);
+  await screen.findAllByRole("button", { name: /^Test / });
+  const test = () => screen.getAllByRole("button", { name: /^Test / })[0];
+  for (const [answer, text] of [
+    [{ result: "accepted" }, /accepted the key/],
+    [{ result: "refused", message: "BadName" }, /refused the key: BadName/],
+    [{ result: "unreachable" }, /could not be reached: no details/],
+  ] as const) {
+    api.post.mockResolvedValueOnce({ data: answer });
+    fireEvent.click(test());
+    expect((await screen.findAllByText(text))[0]).toBeInTheDocument();
+    await waitFor(() => expect(test()).toBeEnabled());
+  }
+  expect(api.post).toHaveBeenLastCalledWith(
+    expect.stringMatching(/^\/broadcast\/destinations\/.+\/test$/),
+  );
+  api.post.mockRejectedValueOnce(new Error("Too soon"));
+  fireEvent.click(test());
+  expect((await screen.findAllByText(/An unexpected error occurred/))[0]).toBeInTheDocument();
+});
+
