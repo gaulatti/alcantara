@@ -57,7 +57,11 @@ const permissionOf = (key: string): string => {
 
 const specs = [
   ...new SongsMcpTools({} as never, {} as never).specs(),
-  ...new MediaMcpTools({} as never, {} as never).specs(),
+  ...new MediaMcpTools(
+    {} as never,
+    {} as never,
+    { teamId: 7 } as never,
+  ).specs(),
   ...new MediaAssetsMcpTools({} as never, {} as never).specs(),
   ...new SimilarityMcpTools({} as never).specs(),
 ];
