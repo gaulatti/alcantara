@@ -37,6 +37,8 @@ services:
       - '7881:7881/tcp'
       - '7882:7882/udp'
       - '3478:3478/udp'
+      # TURN over TLS: nginx ends TLS on 443 and passes the plain stream here, when the secret names a TURN TLS domain.
+      - '127.0.0.1:5349:5349/tcp'
     depends_on:
       redis:
         condition: service_healthy
