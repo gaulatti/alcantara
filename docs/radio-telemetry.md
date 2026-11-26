@@ -526,7 +526,11 @@ started, ended, failed, and mismatched intro lifecycle events,
 `alcantara_radio_song_request_failures_total{reason}` for songs Palazzo could
 not load (`timeout`, `other`; both exposed from 0),
 `alcantara_radio_song_queue_actions_total{result}` for enqueue, claim, release, remove,
-reorder, consume, cursor persistence, rejection, and persistence failure,
+reorder, consume, cursor persistence, rejection, and persistence failure, plus `preempted` (a Take now replaced a
+Play Next song on air and gave its claim back, so the entry airs again later under a new playback ID) and
+`stale-claim-dropped` (a claimed entry whose playback ID this process already sent, left by a cut song or a re-send
+that aired nothing, was removed instead of re-sent: Palazzo's playout journal never replays a playback ID and answers `duplicate: true`,
+so a re-send aired nothing; walk part 4, both exposed from 0),
 `alcantara_radio_start_refused_total{reason}` for a song start refused before anything was
 saved while a radio-only program's engine is disabled or has no settings (gaulatti/alcantara#609):
 `engine_unavailable` for an operator's take or start, `automation_engine_unavailable` for a

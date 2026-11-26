@@ -310,6 +310,29 @@ subscribers only.
   two filtered exports add up to the default one. The `inferred` parameter is
   rejected with `format=csv`.
 
+## Play Next claims and playback IDs
+
+The engine claims the Play Next head before commanding it: the entry is saved as active with a newly minted
+playback ID, and that ID is the one sent to Palazzo. Palazzo's playout journal never replays a playback ID; a
+command that repeats one is answered `duplicate: true` and airs nothing. So:
+
+- **An ID is sent once per process.** The engine remembers the playback IDs it sent (the last 128). A claimed head
+  under one of them (a Play Next song that aired and was cut, or a re-send that aired nothing) is dropped from the
+  queue and counted as `stale-claim-dropped`, and the next queued entry plays, else an automatic rotation continues,
+  else the desk stops. It is never sent again, so the watchdog cannot loop on it.
+- **A claim saved before a restart is sent once.** Its command may have been lost in the restart, so the restarted
+  engine sends it, as before: it airs exactly once. If it had already aired, Palazzo answers `duplicate: true` and
+  nothing plays; the watchdog then finds the ID already sent and drops the entry. A `duplicate: true` answer alone
+  is not a failure: the client retries a song command under the same key, so it can also mean the first attempt was
+  accepted and is airing.
+- **Take now and Stop give the claim back.** A Take now that replaces a Play Next song on air releases its claim
+  (`preempted`), as Stop and a failed command already did; the entry stays at the head and airs again after the
+  taken song, under a new playback ID.
+- **A song that ends normally is consumed** as before.
+
+Walk part 4 (2026-11-26) found the gap: after a Take now over a Play Next song, the engine re-sent the claim's ID at
+the next end, Palazzo aired nothing while the desk said On air with Dead air, and every watchdog resume re-sent it.
+
 ## Gapless handoff: announcing the next song
 
 Contract: gaulatti/palazzo#40. When Palazzo accepts the active song's start in
