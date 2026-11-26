@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { createPostgresAdapter } from '../prisma-adapter';
 import { forTeam, SCOPED_TENANT_MODELS } from './scoped-prisma';
+import { TENANCY_CLASSIFICATION } from './tenancy-classification';
 
 // gaulatti/alcantara#150: the team-scoped client against a real PostgreSQL
 // database with the migrations applied (CI's, or a disposable local one), never a
@@ -98,8 +99,52 @@ describe('forTeam against PostgreSQL', () => {
       })
     ).id;
 
-  it('scopes only the tenant models that have teamId', () => {
-    expect(SCOPED_TENANT_MODELS).toEqual(['ExternalSource']);
+  it('scopes every model the classification calls tenant, and no other', () => {
+    expect([...SCOPED_TENANT_MODELS].sort()).toEqual(
+      Object.entries(TENANCY_CLASSIFICATION)
+        .filter(([, tenancy]) => tenancy.kind === 'tenant')
+        .map(([model]) => model)
+        .sort(),
+    );
+    for (const model of ['Song', 'Scene', 'MediaLabel', 'Instant', 'Stinger']) {
+      expect(SCOPED_TENANT_MODELS).toContain(model);
+    }
+    for (const model of ['ProgramState', 'ProgramBranding']) {
+      expect(SCOPED_TENANT_MODELS).not.toContain(model);
+    }
+  });
+
+  // gaulatti/alcantara#122: a third tenant sees none of the others' rows through the scoped client.
+  it("gives a third team none of the other teams' library rows, nor the rows no team owns", async () => {
+    const third = forTeam(prisma, 2_000_000_003);
+    const labels = [
+      { name: `${RUN}:lib-a`, teamId: TEAM_A },
+      { name: `${RUN}:lib-b`, teamId: TEAM_B },
+      { name: `${RUN}:lib-none`, teamId: null },
+    ];
+    await prisma.mediaLabel.createMany({ data: labels });
+    const mine = { name: { startsWith: `${RUN}:lib-` } };
+    expect(await third.mediaLabel.findMany({ where: mine })).toEqual([]);
+    expect(await third.mediaLabel.count({ where: mine })).toBe(0);
+    expect(
+      await third.mediaLabel.updateMany({
+        where: mine,
+        data: { description: 'x' },
+      }),
+    ).toEqual({ count: 0 });
+    expect(await third.mediaLabel.deleteMany({ where: mine })).toEqual({
+      count: 0,
+    });
+    const made = await third.mediaLabel.create({
+      data: { name: `${RUN}:lib-third` },
+    });
+    expect(made.teamId).toBe(2_000_000_003);
+    expect(
+      (await third.mediaLabel.findMany({ where: mine })).map((row) => row.name),
+    ).toEqual([`${RUN}:lib-third`]);
+    expect(
+      (await teamA.mediaLabel.findMany({ where: mine })).map((row) => row.name),
+    ).toEqual([`${RUN}:lib-a`]);
   });
 
   it("never reads another team's rows, with or without the caller's where", async () => {
@@ -278,16 +323,19 @@ describe('forTeam against PostgreSQL', () => {
   });
 
   it('leaves non-tenant models exactly as the base client', async () => {
-    const label = await teamA.mediaLabel.create({
-      data: { name: `${RUN}:label` },
-    });
+    const row = {
+      subject: `${RUN}:person`,
+      deviceClass: 'desktop',
+      profile: {},
+    };
+    await teamA.operatorPreference.create({ data: row });
+    const where = { subject: row.subject };
 
-    expect(
-      await teamA.mediaLabel.findUnique({ where: { id: label.id } }),
-    ).toEqual(await prisma.mediaLabel.findUnique({ where: { id: label.id } }));
-    expect(
-      await teamA.mediaLabel.count({ where: { name: `${RUN}:label` } }),
-    ).toBe(1);
+    expect(await teamA.operatorPreference.findMany({ where })).toEqual(
+      await prisma.operatorPreference.findMany({ where }),
+    );
+    expect(await teamA.operatorPreference.count({ where })).toBe(1);
+    await prisma.operatorPreference.deleteMany({ where });
   });
 
   it.each([0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1])(

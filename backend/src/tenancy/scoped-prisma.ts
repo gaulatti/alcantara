@@ -1,13 +1,13 @@
 import type { PrismaClient } from '@prisma/client';
+import { TENANCY_CLASSIFICATION } from './tenancy-classification';
 
 /**
  * A database client confined to one tenant (a Pompeii team), for gaulatti/alcantara#150.
  * Nothing calls it yet: using it in a service or guard is a later step of #122.
  *
- * The tenant models are a local list, as the ticket says to keep while the
- * tenancy classification of #149 is not on main: the models classified
- * `tenant` that already have a `teamId` column. Today that is ExternalSource
- * alone; the eleven shared libraries join when #148 gives them `teamId`.
+ * The tenant models are every model the tenancy classification of #149 calls `tenant`, which the ratchet requires to
+ * have `teamId` (#148, #548), so a new tenant model is scoped without a second list. Rows written before #148 have no
+ * `teamId` and are therefore no team's: nothing reads through this client until they are assigned.
  *
  * On a tenant model:
  * - reads, counts, updates and deletes keep the caller's `where` and add
@@ -18,11 +18,16 @@ import type { PrismaClient } from '@prisma/client';
  *   finds nothing and creates a new row for this team, leaving the other team's
  *   row untouched. A caller that means "update or fail" should use update, which
  *   fails (P2025) on another team's row;
+ * - nested relation reads and writes inside a call are not scoped;
  * - any other operation (aggregate, groupBy, the *OrThrow and *AndReturn forms)
  *   is refused rather than run unscoped.
  * Every other model passes through untouched. Raw SQL is not scoped.
  */
-export const SCOPED_TENANT_MODELS: readonly string[] = ['ExternalSource'];
+export const SCOPED_TENANT_MODELS: readonly string[] = Object.entries(
+  TENANCY_CLASSIFICATION,
+)
+  .filter(([, tenancy]) => tenancy.kind === 'tenant')
+  .map(([model]) => model);
 
 type Args = Record<string, unknown>;
 
