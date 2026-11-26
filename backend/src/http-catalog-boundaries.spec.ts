@@ -48,6 +48,7 @@ describe('catalogue, preference and ticket contracts through Fastify HTTP', () =
     },
     {
       path: 'media',
+      scoped: true,
       controller: MediaController,
       token: MediaService,
       service: methods(['findAll', 'findOne', 'create', 'update', 'remove']),
@@ -147,6 +148,8 @@ describe('catalogue, preference and ticket contracts through Fastify HTTP', () =
 
   for (const item of catalogues) {
     describe(item.path, () => {
+      // A team-scoped catalogue also hands the caller's team to its service.
+      const team = 'scoped' in item ? [identity.authorization.teamId] : [];
       it('serializes collection reads over the actual route', async () => {
         item.service.findAll.mockResolvedValue([answer]);
         const response = await app.inject({
@@ -185,7 +188,7 @@ describe('catalogue, preference and ticket contracts through Fastify HTTP', () =
         });
         expect(created.statusCode).toBe(201);
         expect(created.json()).toEqual(answer);
-        expect(item.service.create).toHaveBeenCalledWith(item.body);
+        expect(item.service.create).toHaveBeenCalledWith(item.body, ...team);
         const edited = await app.inject({
           method: 'PUT',
           url: `/${item.path}/41`,
@@ -193,7 +196,11 @@ describe('catalogue, preference and ticket contracts through Fastify HTTP', () =
         });
         expect(edited.statusCode).toBe(200);
         expect(edited.json()).toEqual(answer);
-        expect(item.service.update).toHaveBeenCalledWith(41, item.body);
+        expect(item.service.update).toHaveBeenCalledWith(
+          41,
+          item.body,
+          ...team,
+        );
       });
       it('deletes exactly the requested identifier', async () => {
         const response = await app.inject({
@@ -202,7 +209,7 @@ describe('catalogue, preference and ticket contracts through Fastify HTTP', () =
         });
         expect(response.statusCode).toBe(200);
         expect(response.json()).toEqual(answer);
-        expect(item.service.remove).toHaveBeenCalledWith(41);
+        expect(item.service.remove).toHaveBeenCalledWith(41, ...team);
       });
       it('rejects malformed JSON before a catalogue mutation can run', async () => {
         const response = await app.inject({
@@ -315,7 +322,10 @@ describe('catalogue, preference and ticket contracts through Fastify HTTP', () =
         url: `/${name}${query}`,
       });
       expect(response.statusCode).toBe(200);
-      expect(item.service.findAll).toHaveBeenCalledWith(expected);
+      expect(item.service.findAll).toHaveBeenCalledWith(
+        expected,
+        ...('scoped' in item ? [identity.authorization.teamId] : []),
+      );
     },
   );
 
