@@ -76,7 +76,8 @@ export default function ScenesAdmin() {
   const openCreateModal = () => {
     setEditingScene(null);
     setNameInput('');
-    setLayoutIdInput(layouts[0]?.id ?? null);
+    // The Create button and the empty-list action only render once a layout exists.
+    setLayoutIdInput(layouts[0].id);
     setError('');
     setShowModal(true);
   };
