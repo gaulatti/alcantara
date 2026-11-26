@@ -66,8 +66,8 @@ export class SongReanalysisService {
   }
 
   /**
-   * Makes the finished analyses of the named songs due now; they keep their cue points until the new result replaces
-   * them. Refused with 409 `on_air` (listing each song and its programs) when any named song is on air, checked here
+   * Makes the finished analyses of the named songs due now; they keep their cue points and loudness until a new result
+   * replaces them, also while the run is claimed and when it fails. Refused with 409 `on_air` (listing each song and its programs) when any named song is on air, checked here
    * again at queue time so a stale plan cannot take a live song's cues away. Songs that are not found or have no
    * finished analysis are listed, not queued.
    */
@@ -106,6 +106,9 @@ export class SongReanalysisService {
       where: { assetId: { in: [...queued] }, status: 'success' },
       data: {
         nextAttemptAt: now,
+        // A request starts a fresh retry budget: runs from earlier analyses do not count against it.
+        attempts: 0,
+        error: null,
         // The request names the rule of the next run; the default rule clears an earlier request for the previous one.
         requestedRuleVersion: requested === CUE_RULE_VERSION ? null : requested,
       },
