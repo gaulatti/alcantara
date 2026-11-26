@@ -1,15 +1,18 @@
-import { Client } from 'pg';
 import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 import { PrismaService } from '../prisma.service';
 import { ProgramService } from './program.service';
+
+// CI's coverage step runs without DATABASE_URL and starts this database; a local run sets DATABASE_URL to its own
+// disposable one. Without a database the suite fails rather than passing unrun.
+const CI_DATABASE_URL =
+  'postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci?schema=public';
 
 // The gate for switching instants to the scoped client (gaulatti/alcantara#122):
 // a team's scoped read returns the rows the unscoped read holds for that team.
 describe('instants scoped to a team, against Postgres', () => {
   const team = 990_000 + (process.pid % 5_000);
   const other = team + 5_000;
-  const url = process.env.DATABASE_URL;
-  let prisma: PrismaService | null = null;
+  let prisma: PrismaService;
   const created: number[] = [];
 
   const service = () => {
@@ -29,14 +32,7 @@ describe('instants scoped to a team, against Postgres', () => {
   });
 
   beforeAll(async () => {
-    if (!url) return;
-    const probe = new Client({ connectionString: url });
-    try {
-      await probe.connect();
-      await probe.end();
-    } catch {
-      return;
-    }
+    process.env.DATABASE_URL ||= CI_DATABASE_URL;
     prisma = new PrismaService();
     await prisma.$connect();
   });
@@ -51,7 +47,6 @@ describe('instants scoped to a team, against Postgres', () => {
   });
 
   it("creates, reads, changes and deletes only the team's instants", async () => {
-    if (!prisma) return;
     const mine = (await service().createInstant(clip('mine'), team))!;
     const theirs = (await service().createInstant(clip('theirs'), other))!;
     created.push(mine.id, theirs.id);

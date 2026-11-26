@@ -12,8 +12,7 @@ import {
 import { ProgramService } from '../program/program.service';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { RequirePermission } from '../auth/require-permission.decorator';
-
-type TeamRequest = { user: { authorization: { teamId: number } } };
+import { callerTeam, type TeamRequest } from '../tenancy/caller-team';
 
 @Controller('instants')
 @RequirePermission(ALCANTARA_PERMISSIONS.instant.read)
@@ -25,10 +24,7 @@ export class InstantsController {
     @Req() request: TeamRequest,
     @Query('programId') programId?: string,
   ) {
-    return this.programService.listInstants(
-      programId,
-      request.user.authorization.teamId,
-    );
+    return this.programService.listInstants(programId, callerTeam(request));
   }
 
   @Post()
@@ -43,10 +39,7 @@ export class InstantsController {
     },
     @Req() request: TeamRequest,
   ) {
-    return this.programService.createInstant(
-      data,
-      request.user.authorization.teamId,
-    );
+    return this.programService.createInstant(data, callerTeam(request));
   }
 
   @Put(':instantId')
@@ -65,7 +58,7 @@ export class InstantsController {
     return this.programService.updateInstant(
       Number(instantId),
       data,
-      request.user.authorization.teamId,
+      callerTeam(request),
     );
   }
 
@@ -77,7 +70,7 @@ export class InstantsController {
   ) {
     return this.programService.deleteInstant(
       Number(instantId),
-      request.user.authorization.teamId,
+      callerTeam(request),
     );
   }
 
@@ -93,7 +86,7 @@ export class InstantsController {
     return this.programService.playInstant(
       Number(instantId),
       programId,
-      request.user.authorization.teamId,
+      callerTeam(request),
     );
   }
 
