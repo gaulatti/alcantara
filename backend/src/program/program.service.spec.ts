@@ -1,4 +1,4 @@
-import { MediaAssetKind, MediaAssetType } from '@prisma/client';
+import { MediaAssetKind, MediaAssetType, Prisma } from '@prisma/client';
 import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 import { ProgramService } from './program.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
@@ -342,7 +342,7 @@ describe('ProgramService switcher state', () => {
       data: expect.objectContaining({
         type: 'radio',
         templateUrl: null,
-        templateManifest: null,
+        templateManifest: Prisma.DbNull,
         templateVerifiedAt: null,
         activeSceneId: null,
         stagedSceneId: null,
