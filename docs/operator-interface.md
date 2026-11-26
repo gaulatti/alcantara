@@ -242,6 +242,9 @@ with both following events and fixed-time boundaries; `radio-empty`,
 `radio-offline`, and `radio-external` retain explicit empty/degraded feedback.
 Cart shortcuts follow the platform (gaulatti/alcantara#308). On macOS a pad plays on Ctrl+letter, and the pad shows that chord. On Windows and Linux a pad plays on Alt+letter, and the pad shows that chord, so Ctrl+C, V, X, Z, A, F and P stay with the browser and the operating system. The platform is read once per page from `navigator.userAgentData.platform`, falling back to `navigator.platform`. Scene hotkeys keep Ctrl+S and Ctrl+digit on every platform. The Windows and Linux letters skip the browser's menu letters: Chrome and Edge use Alt+F, Alt+E and Alt+D, and Firefox's Alt menu uses F, E, V, S, B, T and H. The Alt map is `qyuiopagjzxcm` (13 slots), a subset of the macOS map `qeyuiopadfghjzxcvbm` (19 slots).
 
+A fader move or a playlist, playout-mode or Loop change saves to the program it was made on. Its answer, or
+its failure, changes nothing on another program the operator has switched to since (#682).
+
 Failures on the Radio desk are shown, never only logged (#253). A refused
 instant or **Stop all** appears above the Cartwall pads and clears when the
 next instant or Stop all starts, or when the operator switches program; a
