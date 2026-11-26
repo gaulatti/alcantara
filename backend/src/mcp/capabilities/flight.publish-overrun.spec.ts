@@ -26,7 +26,11 @@ function overrunning() {
     { id: 8, durationMs: 200_000 },
   ]);
   f.flights.programSongDb.mockResolvedValue({ song: { findMany } });
-  return { f, findMany, spec: specNamed(f.specs, 'program_publish_flight_sequence_by_id') };
+  return {
+    f,
+    findMany,
+    spec: specNamed(f.specs, 'program_publish_flight_sequence_by_id'),
+  };
 }
 
 describe('program_publish_flight_sequence_by_id and an overrun', () => {
@@ -67,7 +71,10 @@ describe('program_publish_flight_sequence_by_id and an overrun', () => {
   it('publishes a block that fits without asking, and reads no songs for a block with none', async () => {
     const f = buildFlight();
     f.flights.listFlightSequences.mockResolvedValue([
-      { ...clocked, items: [{ id: 'x', kind: 'stopSong', clockOffsetSeconds: 0 }] },
+      {
+        ...clocked,
+        items: [{ id: 'x', kind: 'stopSong', clockOffsetSeconds: 0 }],
+      },
     ]);
     const spec = specNamed(f.specs, 'program_publish_flight_sequence_by_id');
     const plan = (await spec.dryRun!(
