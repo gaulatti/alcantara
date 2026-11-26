@@ -476,7 +476,7 @@ export default function ProgramsAdmin() {
                         : 'border-sand/20 bg-white/80 hover:border-sea/30 dark:border-sand/40 dark:bg-dark-sand/60 '
                     }`}
                   >
-                    <div className='flex items-start justify-between gap-4'>
+                    <div className='flex items-start justify-between gap-4 max-sm:flex-col'>
                       <div className='min-w-0 flex-1'>
                         <div className='flex flex-wrap items-center gap-2'>
                           <h3 className='text-lg font-semibold text-text-primary dark:text-text-primary'>{program.programId}</h3>
