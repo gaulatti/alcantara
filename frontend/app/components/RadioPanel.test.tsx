@@ -2181,3 +2181,15 @@ describe("dead air", () => {
     ).toBeNull();
   });
 });
+
+// Advance answers on the rundown's feedback line when it goes through, and names the failure when it does not.
+it("confirms an advanced rundown on screen, and shows the refusal when it fails", async () => {
+  const p = props();
+  mount(p);
+  fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
+  expect(await screen.findByText("Advanced to the next cue.")).toBeVisible();
+  vi.mocked(flight.goFlight).mockRejectedValueOnce(new Error("Cue refused"));
+  fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
+  expect(await screen.findByText("Cue refused")).toBeVisible();
+  expect(screen.queryByText("Advanced to the next cue.")).toBeNull();
+});

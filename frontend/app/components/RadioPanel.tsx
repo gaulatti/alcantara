@@ -243,6 +243,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   // A command failure shows as the desk's alert and is kept in this session's log; the alert clears when the
   // engine reconnects, the log entry stays (gaulatti/alcantara#707).
   const [queueError, setQueueErrorState] = useState<string | null>(null);
+  // The last rundown command's result, so Advance, Stop and Start answer on screen.
+  const [queueStatus, setQueueStatus] = useState<string | null>(null);
   const [sessionLog, setSessionLog] = useState<
     Array<{ at: number; message: string; count: number }>
   >([]);
@@ -427,6 +429,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   const commandLog = async (action: "start" | "stop" | "advance") => {
     setLogBusy(true);
     setQueueError(null);
+    setQueueStatus(null);
     try {
       if (action === "stop") await stopFlight(programId);
       else if (action === "advance") await goFlight(programId);
@@ -436,6 +439,13 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
         await startFlight(programId);
       }
       /* v8 ignore stop */
+      setQueueStatus(
+        action === "advance"
+          ? "Advanced to the next cue."
+          : action === "stop"
+            ? "Rundown stopped."
+            : "Rundown started.",
+      );
       await refreshLogs();
     } catch (cause) {
       setQueueError(
@@ -654,6 +664,11 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                 {playoutError || queueError || logLoadError}
               </p>
             )}
+            {queueStatus && !queueError && !playoutError && !logLoadError ? (
+              <p role="status" className="px-4 py-3 text-sm text-text-secondary">
+                {queueStatus}
+              </p>
+            ) : null}
             {sessionLog.length > 0 ? (
               <details
                 aria-label="Session log"
