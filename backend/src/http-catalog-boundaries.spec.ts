@@ -67,6 +67,7 @@ describe('catalogue, preference and ticket contracts through Fastify HTTP', () =
     },
     {
       path: 'layouts',
+      scoped: true,
       controller: LayoutsController,
       token: LayoutsService,
       service: methods(['findAll', 'findOne', 'create', 'update', 'remove']),
