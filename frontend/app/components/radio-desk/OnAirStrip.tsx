@@ -31,6 +31,7 @@ export function OnAirStrip({
         }
         label={view.label}
         pulse={view.state === "on-air"}
+        live
       />
       <div className="min-w-0 flex-1 basis-64">
         {on ? (
