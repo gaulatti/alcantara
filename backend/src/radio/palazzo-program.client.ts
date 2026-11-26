@@ -104,6 +104,8 @@ export class PalazzoProgramClient {
   private playout: 'up' | 'down' | null = null;
   /** When Palazzo last reported its playout, up or down (a snapshot or a telemetry event). */
   private playoutReportedAt: number | null = null;
+  /** Palazzo's live input, from its latest snapshot; null when that Palazzo does not report it (gaulatti/palazzo#48). */
+  private live: { onAir: boolean } | null = null;
   private detail: string | null = null;
   private sseLoopRunning = false;
   private pollInFlight = false;
@@ -135,6 +137,7 @@ export class PalazzoProgramClient {
       degraded: this.isDegraded(),
       detail: this.detail,
       playout: this.playout,
+      ...(this.live ? { live: { ...this.live } } : {}),
     };
   }
 
@@ -391,7 +394,10 @@ export class PalazzoProgramClient {
       const playoutChanged = this.playout !== playout;
       this.playout = playout;
       this.playoutReportedAt = Date.now();
-      if (!this.setConnection('connected', null) && playoutChanged)
+      const live = state.live ? { onAir: state.live.onAir } : null;
+      const liveChanged = this.live?.onAir !== live?.onAir;
+      this.live = live;
+      if (!this.setConnection('connected', null) && (playoutChanged || liveChanged))
         this.options.callbacks.onStatus(
           this.options.programId,
           this.getStatus(),
