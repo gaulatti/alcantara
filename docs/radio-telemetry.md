@@ -491,6 +491,15 @@ route list, so it marks a route the list does not name yet. `status_class` is `2
 | `alcantara_media_analysis_duration_seconds`    | `result`                            | Wall time of one audio asset analysis          |
 | `alcantara_media_analysis_backlog_assets`      | none                                | Audio assets still waiting for analysis        |
 | `alcantara_media_analysis_interrupted_runs_total` | `outcome`                        | Claims a stopped process left, found at start  |
+| `alcantara_radio_programs_without_team`           | none                             | Radio programs with no team (#122)             |
+| `alcantara_library_songs_without_team`            | none                             | Library songs with no team (#122)              |
+
+`alcantara_radio_programs_without_team` and `alcantara_library_songs_without_team`
+count what a team-scoped song read would miss: programs of type `radio` or `both`
+with no positive team, and songs with none. Both must read `0` before the radio's
+song reads are scoped to a team (gaulatti/alcantara#122). The backend reads them at
+startup and every five minutes. A series is absent, not zero, before the first read
+and while the last read failed. A deploy candidate does not read them.
 
 `alcantara_media_analyses_total{result}` counts audio asset analysis runs:
 `success` (measurements stored), `retry` (failed and scheduled again) and
