@@ -304,15 +304,7 @@ describe('SongExecutionEngine constructor metadata', () => {
             'design:paramtypes',
             isolated.SongExecutionEngine,
           ),
-        ).toEqual([
-          Object,
-          Object,
-          Object,
-          Object,
-          Object,
-          Object,
-          Object,
-        ]);
+        ).toEqual([Object, Object, Object, Object, Object, Object, Object]);
       } finally {
         jest.dontMock('./radio.service');
         jest.dontMock('../program/flight.service');
