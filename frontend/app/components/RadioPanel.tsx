@@ -227,6 +227,10 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   const [palazzo, setPalazzo] = useState<PalazzoStatus | null>(
     fixtureData?.palazzo ?? null,
   );
+  // Until the first engine status answers, the engine's state is unknown, not unavailable: a fresh desk (or a page
+  // reload) would otherwise read "Engine unavailable" for a round trip (#734 walk). Any answer, a failed one
+  // included, ends the wait.
+  const [palazzoAnswered, setPalazzoAnswered] = useState(!!fixtureData);
   const [addSongId, setAddSongId] = useState("");
   const [logBusy, setLogBusy] = useState(false);
   const [logLoadError, setLogLoadError] = useState<string | null>(null);
@@ -287,6 +291,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     } catch {
       setPalazzo(null);
     }
+    setPalazzoAnswered(true);
   }, [programId]);
 
   const fetchAirPlan = useCallback(async () => {
@@ -354,6 +359,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     if (fixtureData) return;
     setStream(null);
     setPalazzo(null);
+    setPalazzoAnswered(false);
     setOutput(null);
     setLogs([]);
     setRecovery(null);
@@ -533,6 +539,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     streamRunning: stream === null ? null : isLive,
     engine: {
       connected: engineReady,
+      unknown: !palazzoAnswered,
       degraded: palazzo?.degraded === true,
       unavailableLabel: engineUnavailableLabel(palazzo),
       detail: palazzo?.detail ?? null,

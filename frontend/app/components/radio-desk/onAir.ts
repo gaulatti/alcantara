@@ -57,6 +57,8 @@ export interface OnAirInput {
   streamRunning: boolean | null;
   engine: {
     connected: boolean;
+    /** No engine status has answered yet: its state is unknown, never shown as unavailable. */
+    unknown?: boolean;
     degraded: boolean;
     unavailableLabel: string;
     /** What the backend says about the engine; shown as the chip's tooltip. */
@@ -149,12 +151,19 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
             label: "Engine ready",
             title: input.engine.detail ?? undefined,
           }
-      : {
-          id: "engine",
-          tone: "warn",
-          label: input.engine.unavailableLabel,
-          title: input.engine.detail ?? undefined,
-        },
+      : input.engine.unknown
+        ? {
+            id: "engine",
+            tone: "idle",
+            label: "Checking engine",
+            title: "Waiting for the engine's first status.",
+          }
+        : {
+            id: "engine",
+            tone: "warn",
+            label: input.engine.unavailableLabel,
+            title: input.engine.detail ?? undefined,
+          },
     input.monitor === "playing"
       ? { id: "monitor", tone: "info", label: "Listening" }
       : input.monitor === "buffering"

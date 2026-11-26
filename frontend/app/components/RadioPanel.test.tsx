@@ -581,7 +581,7 @@ it("treats every unreachable or refused status endpoint as unverified", async ()
     "alert",
   );
   expect(screen.getByText("Stream unverified")).toBeVisible();
-  expect(screen.getByText("Engine unavailable")).toBeVisible();
+  expect(await screen.findByText("Engine unavailable")).toBeVisible();
   expect(screen.getByText("Output unverified")).toBeVisible();
   expect(screen.getByText("No level sample")).toBeVisible();
   expect(screen.getByText("No prepared recovery playlist")).toBeInTheDocument();
@@ -613,7 +613,34 @@ it("treats every unreachable or refused status endpoint as unverified", async ()
         .mock.calls.some(([url]) => String(url).includes("/palazzo-status")),
     ).toBe(true),
   );
-  expect(screen.getByText("Engine unavailable")).toBeVisible();
+  expect(await screen.findByText("Engine unavailable")).toBeVisible();
+});
+
+// The #734 walk: a page reload left the desk reading "Engine unavailable" for seconds while the engine was fine, only
+// because its first engine status had not answered yet. Unknown reads as unknown until an answer, a failure included.
+it("reads Checking engine, never Engine unavailable, until the first engine status answers", async () => {
+  let answer: (response: Response) => void = () => undefined;
+  radioApi({
+    "/palazzo-status": () => undefined,
+  });
+  vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+    if (String(input).includes("/palazzo-status"))
+      return new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    return new Response("null", { status: 404 });
+  });
+  vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+  mount(liveProps());
+  const strip = screen.getByRole("region", { name: "On air" });
+  const chip = await within(strip).findByText("Checking engine");
+  expect(chip.closest("[data-tone]")).toHaveAttribute("data-tone", "idle");
+  expect(within(strip).queryByText(/Engine unavailable/)).toBeNull();
+
+  // The answer decides: here the engine really is unavailable.
+  answer(json({ ...props().fixtureData!.palazzo, connection: "unavailable" }));
+  expect(await within(strip).findByText(/Engine unavailable/)).toBeVisible();
+  expect(within(strip).queryByText("Checking engine")).toBeNull();
 });
 
 // gaulatti/alcantara#706: six seconds without a fresh output sample turn audible output into Output unverified and
