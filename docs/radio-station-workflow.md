@@ -356,6 +356,13 @@ command that repeats one is answered `duplicate: true` and airs nothing. So:
 Walk part 4 (2026-11-26) found the gap: after a Take now over a Play Next song, the engine re-sent the claim's ID at
 the next end, Palazzo aired nothing while the desk said On air with Dead air, and every watchdog resume re-sent it.
 
+## A take while Play Next is being claimed
+
+Before it commands the Play Next head, the engine saves a claim on it. If a Take now lands while that save is in
+flight, the taken song keeps the air: when the save completes, the claim is given back (counted `released`), as a
+Stop gives it back, and the entry stays at the head of the queue. Before, the claim's continuation commanded the
+queued song over the taken one (#814 review).
+
 ## Gapless handoff: announcing the next song
 
 Contract: gaulatti/palazzo#40. When Palazzo accepts the active song's start in

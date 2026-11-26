@@ -3798,6 +3798,12 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           const nextState = this.states.get(programId);
           if (!nextState) return;
           nextState.transitioning = false;
+          if (claimed && nextState.activeSong) {
+            // A take landed while the claim was being written: the taken song keeps the air, and the claim is given
+            // back, as a Stop or a Take now over a Play Next song gives it back (#814 review).
+            this.releaseQueueClaimAfterPlaybackStops(programId, queueEntry.id);
+            return;
+          }
           if (claimed) {
             if (
               !this.playNext(

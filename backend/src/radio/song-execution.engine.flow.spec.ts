@@ -415,6 +415,32 @@ describe('SongExecutionEngine Play Next claims', () => {
     ]);
   });
 
+  // #814 review: a Take now that landed while the Play Next claim was being written was cut by the claim's
+  // continuation, which commanded the queued song over it.
+  it('gives the claim back instead of commanding over a song taken while the claim was being written', async () => {
+    const ctx = setup();
+    const queue = [{ id: 'q1', itemId: 'song-a', enqueuedAt: 1 }];
+    ctx.store.current!.songQueue = queue;
+    const write = deferred<unknown>();
+    const update = ctx.prisma.programState.update.getMockImplementation()!;
+    ctx.prisma.programState.update.mockImplementationOnce((args: { data: Record<string, unknown> }) =>
+      write.promise.then(() => update(args)),
+    );
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    ctx.engine.handleQueueUpdated('radio-1', queue);
+    ctx.engine.handlePalazzoSnapshot('radio-1', idle());
+    await flush(20);
+    ctx.engine.handleManualSong('radio-1', 'https://example.test/taken.mp3');
+    write.resolve(undefined);
+    await flush(120);
+    expect(playedUrls(ctx)).toEqual(['https://example.test/taken.mp3']);
+    expect(ctx.engine.getPlaybackState('radio-1')).toMatchObject({
+      audioUrl: 'https://example.test/taken.mp3',
+    });
+    expect(ctx.store.current?.songQueue).toEqual(queue);
+    expect(ctx.metrics.recordSongQueueAction).toHaveBeenCalledWith('released');
+  });
+
   it('reports the claim result from the persisted queue head', async () => {
     const ctx = setup({
       songQueue: [
