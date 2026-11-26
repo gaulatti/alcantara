@@ -1,0 +1,16 @@
+# The frontend development image (Compose) builds from the repository root (gaulatti/alcantara#741, following #590).
+# It needs the workspace manifests, the lockfile and the frontend source. Everything else stays out of the context.
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!backend/package.json
+!infra/aws/package.json
+!frontend/
+frontend/node_modules
+frontend/build
+frontend/.react-router
+frontend/coverage
+frontend/.env
+frontend/npm-debug.log*
+frontend/pnpm-debug.log*

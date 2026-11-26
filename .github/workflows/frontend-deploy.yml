@@ -31,15 +31,18 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Install dependencies
+      - name: Install dependencies from the workspace lockfile
+        working-directory: .
         run: |
-          npm ci
+          corepack enable
+          corepack prepare pnpm@9 --activate
+          pnpm install --frozen-lockfile --filter frontend
 
       - name: Typecheck frontend
-        run: npm run typecheck
+        run: pnpm run typecheck
 
       - name: Test frontend
-        run: npm test
+        run: pnpm test
 
       - name: Build frontend
         env:
@@ -49,7 +52,7 @@ jobs:
           VITE_COGNITO_CLIENT_ID: ${{ vars.COGNITO_CLIENT_ID }}
           VITE_COGNITO_DOMAIN: ${{ vars.COGNITO_DOMAIN }}
         run: |
-          npm run build
+          pnpm run build
 
       - name: Upload frontend artifact
         uses: actions/upload-artifact@v4
