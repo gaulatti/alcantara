@@ -1,13 +1,16 @@
-import { DEMO_AUDIO_KEY, DEMO_SONG_IDS, demoAudioClient, demoAudioUrl, seedDemoAudio } from './demo-audio';
+import { createHash } from 'node:crypto';
+import { DEMO_SONGS, DEMO_SONG_IDS, demoAudioClient, demoAudioUrl, seedDemoAudio } from './demo-audio';
 
-// gaulatti/alcantara#206: the demo songs' audio is uploaded to the local bucket and served from its public base,
+// gaulatti/alcantara#206: each demo song's audio is uploaded to the local bucket and served from its public base,
 // the one place a recovery playlist or a filler may read it from outside production.
+
+const BASE = 'http://localstack.localhost:4566/alcantara-local-only';
 
 const LOCAL = {
   NODE_ENV: 'development',
   MEDIA_S3_BUCKET: 'alcantara-local-only',
   MEDIA_S3_ENDPOINT: 'http://localstack:4566',
-  LOCAL_MEDIA_PUBLIC_BASE_URL: 'http://localstack.localhost:4566/alcantara-local-only',
+  LOCAL_MEDIA_PUBLIC_BASE_URL: BASE,
   AWS_REGION: 'us-east-1',
 };
 
@@ -24,6 +27,8 @@ function fakeClient() {
   };
 }
 
+const sha256 = (body: unknown) => createHash('sha256').update(body as Buffer).digest('hex');
+
 it('keeps the demo songs apart from the seeded songs, which keep their existing audio', () => {
   expect(new Set(DEMO_SONG_IDS).size).toBe(DEMO_SONG_IDS.length);
   for (const id of DEMO_SONG_IDS) {
@@ -31,23 +36,39 @@ it('keeps the demo songs apart from the seeded songs, which keep their existing 
   }
 });
 
-it('builds the demo audio URL under the public base, without a doubled slash', () => {
-  expect(demoAudioUrl('http://localstack.localhost:4566/alcantara-local-only/')).toBe(
-    `http://localstack.localhost:4566/alcantara-local-only/${DEMO_AUDIO_KEY}`,
-  );
+it('gives each demo song its own object key', () => {
+  const keys = DEMO_SONGS.map((song) => song.key);
+  expect(new Set(keys).size).toBe(DEMO_SONGS.length);
+  for (const song of DEMO_SONGS) {
+    expect(song.key).toContain(String(song.id));
+  }
 });
 
-it('uploads the tone to the local bucket and returns the URL the demo songs carry', async () => {
+it('builds a demo audio URL under the public base, without a doubled slash', () => {
+  expect(demoAudioUrl(`${BASE}/`, 'radio-demo/demo-tone-9101.ogg')).toBe(`${BASE}/radio-demo/demo-tone-9101.ogg`);
+});
+
+it('uploads one tone per demo song to the local bucket and returns each song its own URL', async () => {
   const { sent, client } = fakeClient();
-  const url = await seedDemoAudio(LOCAL, client);
-  expect(url).toBe(`http://localstack.localhost:4566/alcantara-local-only/${DEMO_AUDIO_KEY}`);
-  expect(sent).toHaveLength(1);
-  expect(sent[0].input).toMatchObject({
-    Bucket: 'alcantara-local-only',
-    Key: DEMO_AUDIO_KEY,
-    ContentType: 'audio/ogg',
-  });
-  expect((sent[0].input.Body as Buffer).byteLength).toBeGreaterThan(0);
+  const urls = await seedDemoAudio(LOCAL, client);
+  expect(sent).toHaveLength(DEMO_SONGS.length);
+  for (const [index, song] of DEMO_SONGS.entries()) {
+    expect(urls.get(song.id)).toBe(`${BASE}/${song.key}`);
+    expect(sent[index].input).toMatchObject({
+      Bucket: 'alcantara-local-only',
+      Key: song.key,
+      ContentType: 'audio/ogg',
+    });
+    expect((sent[index].input.Body as Buffer).byteLength).toBeGreaterThan(0);
+  }
+  expect(new Set(urls.values()).size).toBe(DEMO_SONGS.length);
+});
+
+it('uploads a distinct tone for each demo song, so no two songs share a checksum', async () => {
+  const { sent, client } = fakeClient();
+  await seedDemoAudio(LOCAL, client);
+  const checksums = sent.map((command) => sha256(command.input.Body));
+  expect(new Set(checksums).size).toBe(DEMO_SONGS.length);
 });
 
 it('refuses to seed in production, before anything is uploaded', async () => {
