@@ -187,15 +187,20 @@ async function main() {
       enabled: true,
     },
   });
-  // Local demo songs for a recovery playlist and a filler (gaulatti/alcantara#206): their audio is one fictional tone
-  // uploaded to the Compose localstack, so each download comes from the local media store. The seeded songs above keep
-  // their existing audio.
-  const demoAudioUrl = await seedDemoAudio(process.env, demoAudioClient(process.env));
+  // Local demo songs for a recovery playlist and a filler (gaulatti/alcantara#206): each has its own fictional tone
+  // uploaded to the Compose localstack, so each download comes from the local media store under its own URL. The seeded
+  // songs above keep their existing audio.
+  const demoAudioUrls = await seedDemoAudio(process.env, demoAudioClient(process.env));
+  const demoAudioUrlFor = (id: number): string => {
+    const url = demoAudioUrls.get(id);
+    if (!url) throw new Error(`no uploaded demo audio for song ${id}`);
+    return url;
+  };
   for (const [index, id] of DEMO_SONG_IDS.entries()) {
     const demoSong = {
       artist: 'Seed Artist',
       title: `Local demo tone ${index + 1}`,
-      audioUrl: demoAudioUrl,
+      audioUrl: demoAudioUrlFor(id),
       enabled: true,
     };
     const song = await prisma.song.upsert({
@@ -304,7 +309,7 @@ async function main() {
       artist: 'Seed Artist',
       title: `Local demo tone ${index + 1}`,
       coverUrl: '/cover.jpg',
-      audioUrl: demoAudioUrl,
+      audioUrl: demoAudioUrlFor(id),
     })),
     activeItemId: `seed-song-${DEMO_SONG_IDS[0]}`,
     intervalMs: 0,
