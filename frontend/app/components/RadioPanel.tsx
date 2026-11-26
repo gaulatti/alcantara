@@ -226,13 +226,22 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   // engine reconnects, the log entry stays (gaulatti/alcantara#707).
   const [queueError, setQueueErrorState] = useState<string | null>(null);
   const [sessionLog, setSessionLog] = useState<
-    Array<{ at: number; message: string }>
+    Array<{ at: number; message: string; count: number }>
   >([]);
   const setQueueError = (message: string | null) => {
     setQueueErrorState(message);
     if (message)
       setSessionLog((entries) =>
-        [{ at: Date.now(), message }, ...entries].slice(0, SESSION_LOG_LIMIT),
+        // The same failure again is one line with a count, not a second line.
+        entries[0]?.message === message
+          ? [
+              { at: Date.now(), message, count: entries[0].count + 1 },
+              ...entries.slice(1),
+            ]
+          : [{ at: Date.now(), message, count: 1 }, ...entries].slice(
+              0,
+              SESSION_LOG_LIMIT,
+            ),
       );
   };
   const [output, setOutput] = useState<OutputConfidence | null>(
@@ -467,11 +476,16 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   const monitor = useRadioMonitor();
   const [findingSong, setFindingSong] = useState(false);
   // The engine coming back (#707): a command failure from while it was away no longer describes the desk.
-  const engineWasReady = useRef(engineReady);
+  // Only a known "not connected" turning into "connected" counts: before the first status answer the engine's
+  // state is unknown, so the first answer clears nothing.
+  const engineKnownReady = palazzo ? engineReady : null;
+  const engineWasReady = useRef<boolean | null>(null);
   useEffect(() => {
-    if (engineReady && !engineWasReady.current) setQueueErrorState(null);
-    engineWasReady.current = engineReady;
-  }, [engineReady]);
+    if (engineKnownReady === null) return;
+    if (engineKnownReady && engineWasReady.current === false)
+      setQueueErrorState(null);
+    engineWasReady.current = engineKnownReady;
+  }, [engineKnownReady]);
   const leaves = rotationLeaves(rotation.items);
   const liveLeaf = onAirLeaf(
     leaves,
@@ -628,7 +642,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     // One line per entry, its time first: the alert above stays the only place the failure
                     // text stands alone.
                     <li key={`${entry.at}-${index}`}>
-                      {`${new Date(entry.at).toLocaleTimeString()} · ${entry.message}`}
+                      {`${new Date(entry.at).toLocaleTimeString()} · ${entry.message}${entry.count > 1 ? ` (×${entry.count})` : ""}`}
                     </li>
                   ))}
                 </ol>

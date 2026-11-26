@@ -798,6 +798,53 @@ it("clears a command failure when the engine reconnects, and keeps it in the ses
   }
 });
 
+// gaulatti/alcantara#713 review: the engine's first status answer is not a reconnect, so it clears nothing.
+it("keeps a command failure from before the engine's first status answer", async () => {
+  let answerStatus: (response: Response) => void = () => {};
+  radioApi({
+    "/status": () => json({ running: true, uptime: 60_000 }),
+    "/palazzo-status": (() =>
+      new Promise<Response>((resolve) => {
+        answerStatus = resolve;
+      })) as never,
+    "/output-confidence": () => json(props().fixtureData!.output),
+    "/recovery": () => json({ preparedVersion: null, automation: null, connection: "connected" }),
+  });
+  vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+  const p = liveProps();
+  p.onSaveSongSequence = vi.fn().mockRejectedValue(new Error("Fictional early failure"));
+  mount(p);
+  fireEvent.click(await screen.findByRole("button", { name: /^Loop playlist: / }));
+  expect(
+    await screen.findByText("Fictional early failure", { selector: '[role="alert"]' }),
+  ).toBeVisible();
+  await act(async () => {
+    answerStatus(json({ ...props().fixtureData!.palazzo, connection: "connected" }));
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  expect(
+    screen.getByText("Fictional early failure", { selector: '[role="alert"]' }),
+  ).toBeVisible();
+});
+
+// gaulatti/alcantara#713 review: the same failure again is one line with a count.
+it("collapses a repeated identical failure into one session-log line with a count", async () => {
+  vi.mocked(flight.stopFlight).mockRejectedValue(new Error("Fictional same failure"));
+  mount();
+  const stop = screen.getByRole("button", { name: "Stop rundown / Take Off Air" });
+  fireEvent.click(stop);
+  await screen.findByText("Fictional same failure", { selector: '[role="alert"]' });
+  fireEvent.click(stop);
+  await waitFor(() =>
+    expect(within(screen.getByLabelText("Session log")).getAllByRole("listitem")).toHaveLength(1),
+  );
+  const [entry] = within(screen.getByLabelText("Session log")).getAllByRole("listitem");
+  await waitFor(() => expect(entry).toHaveTextContent("Fictional same failure (×2)"));
+  expect(within(screen.getByLabelText("Session log")).getByText("Session log (1)")).toBeInTheDocument();
+});
+
 it("keeps only the latest twenty command failures in the session log, newest first", async () => {
   let attempt = 0;
   vi.mocked(flight.stopFlight).mockImplementation(async () => {

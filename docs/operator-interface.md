@@ -260,7 +260,8 @@ plain text; any other body falls back to `HTTP <status>`. The helper is
 shows all three states.
 A rotation or transport command that fails shows as the desk's alert and is also added to the **Session log**
 below it (#707): this session's command failures with their time, newest first, the last 20, kept in the page
-only. When the engine reconnects, the alert clears; the Session log keeps the entry.
+only; the same failure again is one entry with a count (×2). When the engine reconnects (a known "not connected"
+turning into "connected", not the first status answer), the alert clears; the Session log keeps the entry.
 
 The local wall clock is labeled separately from authoritative playback timing.
 Remaining time uses reported duration and position; stale telemetry is labeled
