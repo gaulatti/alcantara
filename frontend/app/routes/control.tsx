@@ -1702,8 +1702,8 @@ export default function Control() {
     nextSequence: ProgramSongSequence,
   ) => {
     // The sequence in state is the empty default while the rotation has not loaded: a save would replace the stored
-    // rotation. Refuse it, visibly, rather than let the operator think the edit was kept.
-    if (rotationLoadFailed) throw new Error(ROTATION_NOT_LOADED);
+    // rotation. The surfaces show ROTATION_NOT_LOADED on screen, so a save from them is dropped here.
+    if (rotationLoadFailed) return;
     // Like the mixer levels, the answer belongs to the program the sequence was saved for (gaulatti/alcantara#682).
     const targetProgramId = activeProgramId;
     const normalizedSongSequence = normalizeProgramSongPlaylist(
@@ -3336,6 +3336,8 @@ export default function Control() {
         songCatalog={songCatalog}
         programSongPlayback={programSongPlaybackState}
         onSaveSongSequence={async (seq) => {
+          // The desk shows a failed save in its own error line, so a refusal is thrown here, not dropped.
+          if (rotationLoadFailed) throw new Error(ROTATION_NOT_LOADED);
           await saveProgramAudioBusSongSequence(seq);
         }}
         onTakeSelection={takeProgramSongSelection}
