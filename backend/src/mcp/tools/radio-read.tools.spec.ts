@@ -916,7 +916,11 @@ describe('MCP radio read tools', () => {
         warning_count: 0,
       });
       expect(b.published_at).toBe('2026-11-17T08:00:00.000Z');
-      expect(c.preflight).toEqual({ ready: false, issue_count: 1, warning_count: 0 });
+      expect(c.preflight).toEqual({
+        ready: false,
+        issue_count: 1,
+        warning_count: 0,
+      });
       expect(d.preflight).toBeUndefined();
       expect(d.last_started_at).toBe('2026-11-17T09:00:00.000Z');
       expectNoCredentials(answer.body);
