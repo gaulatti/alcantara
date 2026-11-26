@@ -383,10 +383,14 @@ jobs:
                   --instance-id "$CUMULUS_INSTANCE_ID" \
                   --query '{Output:StandardOutputContent,Error:StandardErrorContent,ResponseCode:ResponseCode}' \
                   --output json)"
+                # SSM keeps the two streams apart, so they cannot be interleaved: each is labelled (#394).
+                echo '----- remote stdout, in the order the script printed it -----'
                 printf '%s\n' "$SSM_RESULT" | jq -r '.Output // empty'
-                printf '%s\n' "$SSM_RESULT" | jq -r '.Error // empty' >&2
+                echo '----- remote stderr: candidate start-up lines; they happened before the later stdout lines -----'
+                printf '%s\n' "$SSM_RESULT" | jq -r '.Error // empty'
+                echo '----- end of remote output -----'
                 RESPONSE_CODE="$(jq -r '.ResponseCode // "unknown"' <<<"$SSM_RESULT")"
-                printf '::error title=SSM deployment failed::Remote command ended with %s (exit code %s); see remote stderr above\n' \
+                printf '::error title=SSM deployment failed::Remote command ended with %s (exit code %s); see the labelled remote stderr above\n' \
                   "$COMMAND_STATUS" "$RESPONSE_CODE"
                 exit 1
                 ;;
