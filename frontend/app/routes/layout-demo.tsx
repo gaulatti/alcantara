@@ -19,8 +19,8 @@ export default function BroadcastLayoutExample() {
   // transform makes the frame the containing block of the stage's `position: fixed` widgets, so
   // the QR code stays inside the frame instead of covering the sidebar.
   useLayoutEffect(() => {
-    const frame = frameRef.current;
-    if (!frame) return;
+    // The frame is always mounted before this effect runs, so the ref is set.
+    const frame = frameRef.current as HTMLDivElement;
     const fit = () => setScale(Math.min(1, frame.clientWidth / STAGE_WIDTH));
     fit();
     const observer = new ResizeObserver(fit);
