@@ -78,9 +78,13 @@ export function SceneAttributesPanel({
   const panelId = useId();
   const [activeAttributeTab, setActiveAttributeTab] = useState<string>("");
 
-  const attributeTabs = useMemo(
-    () => [
-      ...editableSceneComponentEntries.map(([componentType]) => {
+  const sceneTab = useMemo(
+    () => ({ id: "__scene", label: "Background audio", panelId }),
+    [panelId],
+  );
+  const componentTabs = useMemo(
+    () =>
+      editableSceneComponentEntries.map(([componentType]) => {
         const compInfo = componentTypes.find((ct) => ct.type === componentType);
         return {
           id: componentType,
@@ -88,9 +92,11 @@ export function SceneAttributesPanel({
           panelId,
         };
       }),
-      { id: "__scene", label: "Background audio", panelId },
-    ],
     [componentTypes, editableSceneComponentEntries, panelId],
+  );
+  const attributeTabs = useMemo(
+    () => [...componentTabs, sceneTab],
+    [componentTabs, sceneTab],
   );
 
   useEffect(() => {
@@ -98,9 +104,9 @@ export function SceneAttributesPanel({
       (tab) => tab.id === activeAttributeTab,
     );
     if (!hasActive) {
-      setActiveAttributeTab(attributeTabs[0]?.id ?? "");
+      setActiveAttributeTab(componentTabs[0]?.id ?? sceneTab.id);
     }
-  }, [activeAttributeTab, attributeTabs]);
+  }, [activeAttributeTab, attributeTabs, componentTabs, sceneTab.id]);
 
   const componentTabKey = editableSceneComponentEntries
     .map(([type]) => type)

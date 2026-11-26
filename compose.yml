@@ -57,8 +57,8 @@ services:
       start_period: 10s
   alana-recording-fixture:
     build:
-      context: ./backend
-      dockerfile: Dockerfile.dev
+      context: .
+      dockerfile: backend/Dockerfile.dev
     command: ["node", "test/fixtures/alana-recording-server.mjs"]
     environment:
       PORT: "8080"
@@ -79,8 +79,8 @@ services:
       start_period: 5s
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile.dev
+      context: .
+      dockerfile: backend/Dockerfile.dev
       args:
         ALCANTARA_BUILD_VERSION: ${ALCANTARA_BUILD_VERSION:-dev}
     ports:
@@ -139,22 +139,24 @@ services:
       # port, the same address the browser uses.
       - "localstack.localhost:host-gateway"
     volumes:
-      - ./backend/src:/app/src
-      - ./backend/prisma:/app/prisma
-      - ./backend/tsconfig.json:/app/tsconfig.json
-      - ./backend/nest-cli.json:/app/nest-cli.json
+      - ./backend/src:/app/backend/src
+      - ./backend/prisma:/app/backend/prisma
+      - ./backend/tsconfig.json:/app/backend/tsconfig.json
+      - ./backend/nest-cli.json:/app/backend/nest-cli.json
     develop:
       watch:
         - action: sync
           path: ./backend/src
-          target: /app/src
+          target: /app/backend/src
           ignore:
             - node_modules/
         - action: sync
           path: ./backend/prisma
-          target: /app/prisma
+          target: /app/backend/prisma
         - action: rebuild
           path: ./backend/package.json
+        - action: rebuild
+          path: ./pnpm-lock.yaml
     restart: unless-stopped
     depends_on:
       postgres:
