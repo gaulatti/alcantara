@@ -24,6 +24,6 @@ FROM node:22.23.5-alpine
 WORKDIR /app/frontend
 COPY --from=production-dependencies-env /app/node_modules /app/node_modules
 COPY --from=production-dependencies-env /app/frontend/node_modules /app/frontend/node_modules
-COPY frontend/package.json ./
+COPY frontend/package.json frontend/serve.mjs ./
 COPY --from=build-env /app/frontend/build /app/frontend/build
 CMD ["npm", "run", "start"]
