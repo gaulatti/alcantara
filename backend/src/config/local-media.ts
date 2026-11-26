@@ -141,3 +141,16 @@ export function isLocalMediaUrl(url: URL, environment: Environment): boolean {
     url.pathname.startsWith(baseUrl.pathname)
   );
 }
+
+/**
+ * What a managed media source URL must be, for an operator-facing refusal. It names the variables
+ * that set the accepted hosts, never their values: the managed bucket over https, and, outside
+ * production with a local media store configured, a URL under that store.
+ */
+export function describeAcceptedMediaUrl(environment: Environment): string {
+  const bucket =
+    'an https URL on the managed media bucket (MEDIA_S3_BUCKET), with no port or credentials';
+  return readLocalMediaPublicBase(environment)
+    ? `${bucket}, or a URL under the local media store (${LOCAL_MEDIA_PUBLIC_BASE_URL})`
+    : bucket;
+}
