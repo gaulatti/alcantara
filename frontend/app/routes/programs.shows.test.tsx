@@ -539,9 +539,12 @@ it("keeps the dialog open with a message when a save or a sync is refused", asyn
   vi.spyOn(console, "error").mockImplementation(() => {});
   open();
   await loaded();
+  const syncFailed =
+    "The show was saved, but its scenes or stingers were not updated. Edit it to try again.";
   const attempt = async (
     setup: () => void,
     edit: (dialog: HTMLElement) => void,
+    message: string,
     button = "Update show",
   ) => {
     setup();
@@ -549,11 +552,7 @@ it("keeps the dialog open with a message when a save or a sync is refused", asyn
     const dialog = await screen.findByRole("dialog", { name: "Edit show" });
     edit(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: button }));
-    expect(
-      await within(dialog).findByText(
-        "Failed to save show. Ensure the ID is unique.",
-      ),
-    ).toBeInTheDocument();
+    expect(await within(dialog).findByText(message)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   };
@@ -563,11 +562,13 @@ it("keeps the dialog open with a message when a save or a sync is refused", asyn
       (routes["PUT /program/news"] = () =>
         new Response("Duplicate id", { status: 409 })),
     () => {},
+    "A show with this ID already exists. Choose another ID.",
   );
   await attempt(
     () =>
       (routes["PUT /program/news"] = () => new Response("", { status: 500 })),
     () => {},
+    "Failed to save show (HTTP 500). Nothing was saved.",
   );
   await attempt(
     () => {
@@ -575,27 +576,70 @@ it("keeps the dialog open with a message when a save or a sync is refused", asyn
       routes["DELETE /program/news/scenes/1"] = () => json({}, 500);
     },
     (dialog) => fireEvent.click(scene(dialog, "Wide")),
+    syncFailed,
   );
   await attempt(
     () => (routes["POST /program/news/scenes"] = () => json({}, 500)),
     (dialog) => fireEvent.click(scene(dialog, "Close")),
+    syncFailed,
   );
   await attempt(
     () => (routes["DELETE /program/news/stingers/7"] = () => json({}, 500)),
     (dialog) => fireEvent.click(scene(dialog, "Swoosh")),
+    syncFailed,
   );
   await attempt(
     () => (routes["POST /program/news/stingers"] = () => json({}, 500)),
     (dialog) => fireEvent.click(scene(dialog, "Flash")),
+    syncFailed,
   );
   await toast("Failed to save show.");
 
   // A refused create.
-  for (const response of [
-    new Response("Taken", { status: 409 }),
-    new Response("", { status: 500 }),
-  ]) {
-    routes["POST /program"] = () => response;
+  for (const [answer, message] of [
+    [
+      () => new Response("Taken", { status: 409 }),
+      "A show with this ID already exists. Choose another ID.",
+    ],
+    [
+      () => new Response("", { status: 500 }),
+      "Failed to save show (HTTP 500). Nothing was saved.",
+    ],
+    [
+      () =>
+        json(
+          {
+            statusCode: 400,
+            message: "Radio programs do not support visual templates",
+          },
+          400,
+        ),
+      "Failed to save show: Radio programs do not support visual templates",
+    ],
+    [
+      () => json({ statusCode: 400, message: ["id is too long", "id is blank"] }, 400),
+      "Failed to save show: id is too long; id is blank",
+    ],
+    [
+      () => new Response("Plain refusal", { status: 400 }),
+      "Failed to save show: Plain refusal",
+    ],
+    [
+      () => new Response("", { status: 400 }),
+      "Failed to save show (HTTP 400). Nothing was saved.",
+    ],
+    [
+      () => json({ statusCode: 400, error: "Bad Request" }, 400),
+      "Failed to save show (HTTP 400). Nothing was saved.",
+    ],
+    [
+      () => {
+        throw new TypeError("Failed to fetch");
+      },
+      "Failed to save show: the server could not be reached. Nothing was saved.",
+    ],
+  ] as const) {
+    routes["POST /program"] = answer;
     fireEvent.click(screen.getAllByRole("button", { name: /Create show/ })[0]);
     const dialog = await screen.findByRole("dialog", { name: "Create show" });
     fireEvent.change(within(dialog).getByPlaceholderText("main"), {
@@ -604,11 +648,7 @@ it("keeps the dialog open with a message when a save or a sync is refused", asyn
     fireEvent.click(
       within(dialog).getByRole("button", { name: "Create show" }),
     );
-    expect(
-      await within(dialog).findByText(
-        "Failed to save show. Ensure the ID is unique.",
-      ),
-    ).toBeInTheDocument();
+    expect(await within(dialog).findByText(message)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   }
