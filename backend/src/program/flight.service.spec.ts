@@ -99,6 +99,8 @@ describe('FlightService clocked logs', () => {
       },
       flightSequence: {
         create: jest.fn().mockResolvedValue(record),
+        // No later block: the fixed-start window (#788 item 4) reads it on create.
+        findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockImplementation(async () => record),
         updateMany: jest.fn().mockImplementation(async ({ data }) => {
           record.publishedAt = data.publishedAt;
