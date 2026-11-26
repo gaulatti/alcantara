@@ -1831,10 +1831,56 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
           this.armTimedClip(current);
           return;
         }
+        const skipped = this.cuesPassedOver(current, index);
         void this.executeCueAtIndex(runtime.programId, index, generation);
+        void this.logCuesSkippedByFixedStart(current, skipped);
       },
       Math.min(2_147_483_647, Math.max(0, Math.min(target, due) - Date.now())),
     );
+  }
+
+  /** The cues between the one on air and a fixed start the block jumps to: they never air. */
+  private cuesPassedOver(runtime: FlightRuntimeState, index: number): FlightCue[] {
+    return runtime.items.slice(runtime.activeIndex + 1, index);
+  }
+
+  /**
+   * The airing walk's W3: a cue a fixed start passed over never aired, but with no as-run row the rundown showed it
+   * as played. Each song cue gets a not-aired row naming its cue (`fixed_start`), as an outage skip does (#726). The
+   * fixed cue has already been started; a failed write is logged and never holds the block.
+   */
+  private async logCuesSkippedByFixedStart(
+    runtime: FlightRuntimeState,
+    cues: FlightCue[],
+  ): Promise<void> {
+    for (const cue of cues) {
+      this.metrics.recordRadioLogResult('cue-skipped');
+      if (cue.kind === 'playSong' && typeof cue.songId === 'number') {
+        try {
+          await this.prisma.asRunRecord.create({
+            data: {
+              programId: runtime.programId,
+              songId: cue.songId,
+              state: 'not-aired',
+              endReason: 'fixed_start',
+              at: new Date(),
+              flightSequenceId: runtime.sequenceId,
+              flightCueId: cue.id,
+            },
+          });
+        } catch (err) {
+          this.logger.error(
+            `Could not log a cue passed over by a fixed start as not aired for ${runtime.programId}`,
+            err,
+          );
+        }
+      }
+      this.programService.broadcastUpdate(runtime.programId, {
+        type: 'radio_log_cue_skipped',
+        sequenceId: runtime.sequenceId,
+        cueId: cue.id,
+      });
+    }
   }
 
   private armNextHardCue(runtime: FlightRuntimeState): void {
@@ -1861,11 +1907,13 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         }
         current.waitingForSongEnd = false;
         current.generation += 1;
+        const skipped = this.cuesPassedOver(current, index);
         void this.executeCueAtIndex(
           current.programId,
           index,
           current.generation,
         );
+        void this.logCuesSkippedByFixedStart(current, skipped);
       },
       Math.min(
         2_147_483_647,

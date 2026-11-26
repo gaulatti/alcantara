@@ -175,6 +175,8 @@ const SESSION_LOG_LIMIT = 20;
 function notAiredReason(reason: string | null): string {
   if (reason === "engine_unavailable")
     return "not aired, the engine was unavailable";
+  // The airing walk's W3: a fixed start passed over the cue.
+  if (reason === "fixed_start") return "not aired, cut by a fixed start";
   return reason ? `not aired (${reason})` : "not aired";
 }
 

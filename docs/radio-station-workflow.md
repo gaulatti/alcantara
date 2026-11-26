@@ -115,6 +115,7 @@ A timed-block cue that fails while the automation engine is unavailable (the son
 
 - When the engine is back within 60 seconds (`ENGINE_OUTAGE_GRACE_MS`) of the cue's due time, the cue is retried once. When it then plays, `cue-retried` is counted and the block goes on as usual. A fixed-time cue's due time is its clock time; a cue without one counts from when it first failed.
 - Past the grace, the cue is skipped and `cue-skipped` is counted. A skipped song writes a `not-aired` as-run row with end reason `engine_unavailable` (#715) that names its rundown and cue, so the on-air rundown shows it as **SKIPPED** (#726). The desk shows "A timed cue was skipped", and the block runs the next cue.
+- A fixed start that arrives while earlier cues have not played jumps over them: the fixed cue starts on time, each cue passed over counts `cue-skipped` and is broadcast as skipped, and each song among them writes a `not-aired` as-run row with end reason `fixed_start` naming its rundown and cue, so the rundown shows it as **SKIPPED** ("not aired, cut by a fixed start") instead of played. Not-aired rows are never counted as performances.
 - A retry that fails again stays held until the same deadline. A cue failure while the engine is up still stops the block (`cue-failed`), as before.
 
 
