@@ -89,10 +89,11 @@ vi.mock("@gaulatti/bleecker", async (original) => {
     const link = (item: any) =>
       p.renderLink({
         item,
+        // Like bleecker's SidebarLink, a collapsed rail shows the icon only.
         children: (
           <>
             {item.icon}
-            {item.label}
+            {p.collapsed ? null : item.label}
           </>
         ),
         className: "item",
@@ -1121,4 +1122,16 @@ it("shows no desktop controls on the website", async () => {
   open("/media/library");
   await waitFor(() => expect(programSelects()[0]).toHaveValue("news"));
   expect(screen.queryByRole("button", { name: /Go live/ })).toBeNull();
+});
+
+it("leaves Open Preview out of the command menu outside development builds", async () => {
+  vi.stubEnv("DEV", false);
+  try {
+    open();
+    await openCommands();
+    expect(within(commands()).queryByRole("button", { name: "Open Preview" })).toBeNull();
+    expect(within(commands()).getByRole("button", { name: "Go to Broadcasts" })).toBeInTheDocument();
+  } finally {
+    vi.unstubAllEnvs();
+  }
 });
