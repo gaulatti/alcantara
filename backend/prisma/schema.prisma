@@ -811,11 +811,18 @@ model MediaAssetAnalysis {
   musicbrainzRecordingId String?
   /// The cue rule that placed cueInSeconds and cueOutSeconds (gaulatti/alcantara#235); null for rule 1, analysed before it existed.
   ruleVersion            Int?
+  /// The cue rule the next analysis must use (1 = the previous rule), set by a re-analysis request; null means the current rule. Cleared when an analysis succeeds.
+  requestedRuleVersion   Int?
   error                  String?
   /// Analysis runs claimed for the current source, bounded by the analysis job.
   attempts               Int        @default(0)
   /// When a claimed run's lease ends or a failed run may be retried; null when settled.
   nextAttemptAt          DateTime?
+  /// When the running process claimed the row; null when no run holds it. A process that starts finds the claims a
+  /// stopped one left and hands them back (gaulatti/alcantara#587).
+  claimedAt              DateTime?
+  /// Claims of the current source handed back because their process stopped; reset by a success or a new request.
+  interruptions          Int        @default(0)
   /// The source URL the row describes; a different MediaAsset.sourceUrl means the row is stale.
   sourceUrl              String?
   createdAt              DateTime   @default(now())

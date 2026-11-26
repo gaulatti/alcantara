@@ -3,7 +3,9 @@ import {
   type AudioAnalysis,
   AudioAnalysisError,
   assertPlayable,
+  BOUND_KEEPS_RULE_VERSION,
   CUE_RULE_VERSION,
+  PREVIOUS_CUE_RULE_VERSION,
   cuePoints,
   FfmpegAudioAnalyzer,
   measureArguments,
@@ -281,7 +283,7 @@ describe('FfmpegAudioAnalyzer', () => {
       truePeakDbtp: -0.8,
       isrc: 'GBAAA2600001',
       musicbrainzRecordingId: 'f5093c06-23e3-404f-aeaa-40f72885ee3a',
-      ruleVersion: 2,
+      ruleVersion: 3,
       cueRule: { head: 'unchanged', tail: 'applied' },
     });
     expect(run.mock.calls.map(([command]) => command)).toEqual([
@@ -294,6 +296,23 @@ describe('FfmpegAudioAnalyzer', () => {
       expect(options.timeoutMs).toBeLessThanOrEqual(180_000);
       expect(options.maxOutputBytes).toBe(4 * 1024 * 1024);
     }
+  });
+
+  it('runs the previous rule when asked: rule 1 cue points from the base detector alone, recorded as ruleVersion 1', async () => {
+    const run = runner({
+      ffprobe: { stdout: PROBE, stderr: '' },
+      ffmpeg: { stdout: MEASURE_STDOUT, stderr: MEASURE_STDERR },
+    });
+    const analyzer = new FfmpegAudioAnalyzer(run);
+    await expect(
+      analyzer.analyze(LOCAL, 180_000, PREVIOUS_CUE_RULE_VERSION),
+    ).resolves.toMatchObject({
+      cueInSeconds: 1.5,
+      // Rule 1's own cue-out (the base detector), not rule 2's 237.2.
+      cueOutSeconds: 238,
+      ruleVersion: 1,
+      cueRule: { head: 'unchanged', tail: 'unchanged' },
+    });
   });
 
   it('maps each process failure to a stored code', async () => {
@@ -477,7 +496,7 @@ describe('the tail threshold of a song', () => {
   });
 });
 
-describe('cue rule 2', () => {
+describe('cue rule 2 (C)', () => {
   const D = 240;
 
   it('takes the short leading run for the head and the loudness-relative run for the tail', () => {
@@ -524,7 +543,9 @@ describe('cue rule 2', () => {
       '[silencedetect@base @ 0x2] silence_start: 238',
       '[silencedetect@tail43 @ 0x4] silence_start: 236.4',
     ]);
-    expect(ruleCuePoints(stderr, D, loud(-14.2, -0.8))).toEqual({
+    expect(
+      ruleCuePoints(stderr, D, loud(-14.2, -0.8), BOUND_KEEPS_RULE_VERSION),
+    ).toEqual({
       cueInSeconds: 0.6,
       cueOutSeconds: 238,
       cueRule: { head: 'bounded', tail: 'bounded' },
@@ -554,7 +575,9 @@ describe('cue rule 2', () => {
       '[silencedetect@tail43 @ 0x4] silence_start: 238.4',
     ]);
     // 1.6 s before the file end with no cue-out from rule 1: beyond the 1.5 s bound.
-    expect(ruleCuePoints(tooFar, D, loud(-14.2, -0.8))).toMatchObject({
+    expect(
+      ruleCuePoints(tooFar, D, loud(-14.2, -0.8), BOUND_KEEPS_RULE_VERSION),
+    ).toMatchObject({
       cueOutSeconds: null,
       cueRule: { tail: 'bounded' },
     });
@@ -609,7 +632,100 @@ describe('cue rule 2', () => {
     );
   });
 
-  it('is rule version 2', () => {
-    expect(CUE_RULE_VERSION).toBe(2);
+  it('is rule version 3 now, with rule 2 selectable as the rule that keeps rule 1 beyond the bound', () => {
+    expect(CUE_RULE_VERSION).toBe(3);
+    expect(BOUND_KEEPS_RULE_VERSION).toBe(2);
+    expect(PREVIOUS_CUE_RULE_VERSION).toBe(1);
+  });
+});
+
+// gaulatti/alcantara#235: cue rule 3 (C2). A tail that starts more than 1.5 s before rule 1's edge is cut exactly
+// 1.5 s before that edge: everything from the tail's start on is below the on-air floor, so the cut only removes quiet.
+describe('cue rule 3 (C2)', () => {
+  const D = 240;
+  const quiet = (start: number) =>
+    stderrOf([
+      '[silencedetect@base @ 0x2] silence_start: 238',
+      `[silencedetect@tail43 @ 0x4] silence_start: ${start}`,
+    ]);
+
+  it('leaves a tail inside the bound exactly as rule 2 has it', () => {
+    for (const start of [237.2, 236.5]) {
+      expect(ruleCuePoints(quiet(start), D, loud(-14.2, -0.8), 3)).toEqual(
+        ruleCuePoints(quiet(start), D, loud(-14.2, -0.8), 2),
+      );
+    }
+    expect(ruleCuePoints(quiet(236.5), D, loud(-14.2, -0.8), 3)).toMatchObject({
+      cueOutSeconds: 236.5,
+      cueRule: { tail: 'applied' },
+    });
+  });
+
+  it('cuts exactly 1.5 s before rule 1 when the tail starts further back, and counts it as clamped', () => {
+    expect(ruleCuePoints(quiet(236.4), D, loud(-14.2, -0.8), 3)).toMatchObject({
+      cueOutSeconds: 236.5,
+      cueRule: { tail: 'clamped' },
+    });
+    expect(ruleCuePoints(quiet(231), D, loud(-14.2, -0.8), 3)).toMatchObject({
+      cueOutSeconds: 236.5,
+      cueRule: { tail: 'clamped' },
+    });
+    // The cut stays inside the quiet stretch: never later than rule 1's edge, never earlier than the tail's start.
+    const cut = ruleCuePoints(
+      quiet(231),
+      D,
+      loud(-14.2, -0.8),
+      3,
+    ).cueOutSeconds!;
+    expect(cut).toBeLessThan(238);
+    expect(cut).toBeGreaterThan(231);
+  });
+
+  it('measures the bound from the file end when rule 1 found no cue-out, as rule 2 does', () => {
+    const noBase = stderrOf([
+      '[silencedetect@tail43 @ 0x4] silence_start: 235',
+    ]);
+    expect(ruleCuePoints(noBase, D, loud(-14.2, -0.8), 3)).toMatchObject({
+      cueOutSeconds: 238.5,
+      cueRule: { tail: 'clamped' },
+    });
+  });
+
+  it('keeps rule 1 where the clamp would reach the cue-in, and where the tail reaches it', () => {
+    const closeToHead = stderrOf([
+      '[silencedetect@base @ 0x2] silence_start: 0',
+      '[silencedetect@base @ 0x2] silence_end: 2',
+      '[silencedetect@head @ 0x3] silence_start: 0',
+      '[silencedetect@head @ 0x3] silence_end: 2',
+      '[silencedetect@base @ 0x2] silence_start: 3',
+      '[silencedetect@tail43 @ 0x4] silence_start: 1.2',
+    ]);
+    // Rule 1's edge is 3 s, the clamp would be 1.5 s, the cue-in is 2 s: the clamp would cross it.
+    expect(ruleCuePoints(closeToHead, 3.4, loud(-14.2, -0.8), 3)).toMatchObject(
+      {
+        cueInSeconds: 2,
+        cueOutSeconds: 3,
+        cueRule: { tail: 'bounded' },
+      },
+    );
+    const reachesHead = stderrOf([
+      '[silencedetect@base @ 0x2] silence_start: 0',
+      '[silencedetect@base @ 0x2] silence_end: 1',
+      '[silencedetect@head @ 0x3] silence_start: 0',
+      '[silencedetect@head @ 0x3] silence_end: 1',
+      '[silencedetect@tail43 @ 0x4] silence_start: 0.9',
+    ]);
+    expect(ruleCuePoints(reachesHead, 1.8, loud(-14.2, -0.8), 3)).toMatchObject(
+      {
+        cueRule: { tail: 'bounded' },
+      },
+    );
+  });
+
+  it('still keeps rule 1 beyond the bound when asked for rule 2', () => {
+    expect(ruleCuePoints(quiet(231), D, loud(-14.2, -0.8), 2)).toMatchObject({
+      cueOutSeconds: 238,
+      cueRule: { tail: 'bounded' },
+    });
   });
 });

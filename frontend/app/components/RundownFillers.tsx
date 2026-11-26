@@ -53,16 +53,15 @@ export function RundownFillers({
     !!rundown.publishedAt ||
     !!rundown.lastStartedAt ||
     rundown.isRunning;
-  async function fill() {
-    if (!rundown) return;
+  async function fill(target: FlightSequence) {
     setBusy(true);
     setError(null);
     setWarnings([]);
     try {
       const preview = await fillRundown(
         programId,
-        rundown.id,
-        rundown.revision,
+        target.id,
+        target.revision,
         items,
         { labelId, artistSeparation: separation },
       );
@@ -117,7 +116,7 @@ export function RundownFillers({
           type="button"
           className="w-full"
           disabled={!labelId || !items.length}
-          onClick={() => void fill()}
+          onClick={rundown ? () => void fill(rundown) : undefined}
         >
           {busy ? "Filling…" : "Preview fillers"}
         </Button>

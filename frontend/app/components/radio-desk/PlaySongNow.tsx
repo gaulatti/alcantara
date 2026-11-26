@@ -68,10 +68,8 @@ export function PlaySongNow({
     }
   };
 
-  const cueNext = (candidate: PlayCandidate) => {
-    /* v8 ignore next -- cueNext is reached only from the Cue next button, rendered only for a candidate with a leaf, and from Enter when that candidate has a leaf; a library-only candidate never gets here, so this guard is unreachable. */
-    if (!candidate.leaf) return;
-    const leaf = candidate.leaf;
+  // The caller holds the leaf it checked, so no guard is needed here.
+  const cueNext = (candidate: PlayCandidate, leaf: SongLeaf) => {
     void run(() => onCueNext(leaf), `${candidate.title} queued next`);
   };
 
@@ -101,7 +99,7 @@ export function PlaySongNow({
       const candidate = results[selected];
       if (!candidate) return;
       if (event.shiftKey || !candidate.leaf) takeNow(candidate);
-      else cueNext(candidate);
+      else cueNext(candidate, candidate.leaf);
     }
   };
 
@@ -122,6 +120,7 @@ export function PlaySongNow({
       <ul role="listbox" aria-label="Songs" className="mt-2 max-h-72 overflow-auto">
         {results.map((candidate, index) => {
           const isArmed = armed === candidate.key;
+          const leaf = candidate.leaf;
           return (
             <li
               key={candidate.key}
@@ -140,11 +139,11 @@ export function PlaySongNow({
                     : ""}
                 </span>
               </span>
-              {candidate.leaf ? (
+              {leaf ? (
                 <button
                   type="button"
                   aria-label={`Cue next ${candidate.title}`}
-                  onClick={() => cueNext(candidate)}
+                  onClick={() => cueNext(candidate, leaf)}
                   className="h-7 rounded-[6px] border border-sand/50 px-2 text-xs font-semibold"
                 >
                   Cue next

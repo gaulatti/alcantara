@@ -66,6 +66,8 @@ export function AudioMeter({
 
     return () => {
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      // A frame that fires after teardown must find no analyser and stop, rather than read a closed context.
+      analyser = null;
       if (sourceNode) sourceNode.disconnect();
       if (audioContext && audioContext.state !== 'closed') {
         audioContext.close().catch(() => {});

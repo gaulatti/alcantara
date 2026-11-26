@@ -106,6 +106,7 @@ function makeHarness(programType = 'both') {
     },
     broadcastDestination: {
       findMany: jest.fn().mockResolvedValue([destination]),
+      findUnique: jest.fn(),
       count: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
@@ -158,6 +159,7 @@ function makeHarness(programType = 'both') {
       metrics as unknown as ManagedMetricsService,
       // No program filler configured: Start is unchanged (gaulatti/alcantara#126).
       { televisionStartBinding: jest.fn().mockResolvedValue(null) } as never,
+      { cancelDeletion: jest.fn(), scheduleDeletion: jest.fn() } as never,
     ),
     prisma,
     alana,
@@ -326,6 +328,12 @@ describe('BroadcastDestinationsService catalog and immutable command lifecycle',
 
   it('maps a missing row when retiring to not found, preserving other database failures', async () => {
     const f = makeHarness();
+    f.prisma.broadcastDestination.findUnique = jest.fn().mockResolvedValue({
+      id: 'primary',
+      service: null,
+      secretId: 'broadcast/hand-typed',
+      retiredAt: null,
+    });
     const outage = new Error('catalog unavailable');
     f.prisma.broadcastDestination.update.mockRejectedValueOnce(
       databaseError('P2025'),
@@ -339,6 +347,22 @@ describe('BroadcastDestinationsService catalog and immutable command lifecycle',
 
   it('retires and restores the same catalog identity without deleting its immutable history', async () => {
     const f = makeHarness();
+    f.prisma.broadcastDestination.findUnique
+      .mockResolvedValueOnce({
+        id: 'primary',
+        service: null,
+        secretId: 'broadcast/hand-typed',
+        retiredAt: null,
+      })
+      .mockResolvedValueOnce({
+        ...{
+          id: 'primary',
+          service: null,
+          secretId: 'broadcast/hand-typed',
+          retiredAt: null,
+        },
+        retiredAt: new Date(),
+      });
     await f.service.setRetired('primary', true);
     await f.service.setRetired('primary', false);
     expect(f.prisma.broadcastDestination.update.mock.calls).toEqual([

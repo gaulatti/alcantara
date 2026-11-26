@@ -25,9 +25,25 @@ const WRITE_OUTCOMES = new Set<string>([
   'dropped',
 ]);
 
+/**
+ * A claim a stopped process left (#587): handed_back with its attempt, or due again with the attempt spent because
+ * the source had used its free interruptions.
+ */
+export type MediaAnalysisInterrupted = 'handed_back' | 'attempt_spent';
+
+const INTERRUPTED_OUTCOMES: readonly MediaAnalysisInterrupted[] = [
+  'handed_back',
+  'attempt_spent',
+];
+
 /** What cue rule 2 did to one edge of an analysed song (gaulatti/alcantara#235). */
 const CUE_RULE_EDGES = new Set<string>(['head', 'tail']);
-const CUE_RULE_RESULTS = new Set<string>(['applied', 'unchanged', 'bounded']);
+const CUE_RULE_RESULTS = new Set<string>([
+  'applied',
+  'unchanged',
+  'bounded',
+  'clamped',
+]);
 
 @Injectable()
 export class MediaAnalysisMetrics {
@@ -37,6 +53,7 @@ export class MediaAnalysisMetrics {
   private readonly writes: Counter<string>;
   private readonly durationBackfill: Gauge<string>;
   private readonly cueRule: Counter<string>;
+  private readonly interrupted: Counter<string>;
 
   constructor(managed: ManagedMetricsService) {
     this.analyses = new Counter({
@@ -65,6 +82,15 @@ export class MediaAnalysisMetrics {
     });
     for (const outcome of WRITE_OUTCOMES) {
       this.writes.inc({ outcome }, 0);
+    }
+    this.interrupted = new Counter({
+      name: 'alcantara_media_analysis_interrupted_runs_total',
+      help: 'Analysis claims a stopped process left, found at startup, by bounded outcome.',
+      labelNames: ['outcome'],
+      registers: [managed.registry],
+    });
+    for (const outcome of INTERRUPTED_OUTCOMES) {
+      this.interrupted.inc({ outcome }, 0);
     }
     this.durationBackfill = new Gauge({
       name: 'alcantara_media_analysis_duration_backfill_assets',
@@ -95,6 +121,10 @@ export class MediaAnalysisMetrics {
     this.writes.inc({
       outcome: WRITE_OUTCOMES.has(outcome) ? outcome : 'dropped',
     });
+  }
+
+  recordInterrupted(outcome: MediaAnalysisInterrupted, runs: number): void {
+    this.interrupted.inc({ outcome }, Math.max(0, runs));
   }
 
   recordCueRule(outcome: { head: string; tail: string }): void {

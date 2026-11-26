@@ -18,7 +18,6 @@ describe("FeaturesProvider", () => {
   it("is loading with no context and denies permissions outside a provider", () => {
     const { result } = renderHook(() => useFeatures());
     expect(result.current).toMatchObject({ context: null, loading: true });
-    expect(result.current.hasFeature("x")).toBe(false);
     expect(result.current.hasPermission("x")).toBe(false);
   });
   it("loads the user context and answers permission checks", async () => {
@@ -30,8 +29,6 @@ describe("FeaturesProvider", () => {
     expect(result.current.context?.authorization?.teamId).toBe(3);
     expect(result.current.hasPermission("scenes:edit")).toBe(true);
     expect(result.current.hasPermission("scenes:delete")).toBe(false);
-    expect(result.current.hasFeature("anything", "T3")).toBe(true);
-    expect(result.current.hasFeature("anything")).toBe(true);
   });
   it("treats a wildcard permission as everything, and an empty body as an empty context", async () => {
     mocks.get.mockResolvedValue({ data: { authorization: { permissions: ["*"] } } });
@@ -73,29 +70,16 @@ describe("FeaturesProvider", () => {
 });
 
 describe("Can", () => {
-  it("renders nothing while loading and its children afterwards", async () => {
+  it("renders nothing while loading and its children afterwards, with no feature gate", async () => {
     mocks.get.mockResolvedValue({ data: {} });
     render(
       <FeaturesProvider>
-        <Can feature="f" level="T2" fallback={<span>no</span>}>
+        <Can>
           <span>yes</span>
         </Can>
       </FeaturesProvider>,
     );
     expect(screen.queryByText("yes")).toBeNull();
-    expect(screen.queryByText("no")).toBeNull();
-    await flush();
-    expect(screen.getByText("yes")).toBeInTheDocument();
-  });
-  it("uses the default level and renders the fallback when the feature is off", async () => {
-    mocks.get.mockResolvedValue({ data: {} });
-    render(
-      <FeaturesProvider>
-        <Can feature="f">
-          <span>yes</span>
-        </Can>
-      </FeaturesProvider>,
-    );
     await flush();
     expect(screen.getByText("yes")).toBeInTheDocument();
   });

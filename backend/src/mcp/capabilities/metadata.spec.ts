@@ -18,11 +18,11 @@ describe('capability provider decorator metadata under unresolved circular impor
         LayoutsMcpTools,
         MediaGroupsMcpTools,
       ])
-        expect(Reflect.getMetadata('design:paramtypes', provider)).toEqual(
-          provider === ProgramMcpTools
-            ? [Object, Object, Object]
-            : [Object, Object],
-        );
+        expect(Reflect.getMetadata('design:paramtypes', provider)).toEqual([
+          Object,
+          Object,
+          Object,
+        ]);
     });
   });
 

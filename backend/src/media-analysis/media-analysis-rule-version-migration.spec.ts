@@ -31,3 +31,30 @@ describe('media analysis rule version migration', () => {
     );
   });
 });
+
+// gaulatti/alcantara#235: the rule a re-analysis request asked for, so a bad batch can be re-run on the previous rule.
+describe('media analysis requested rule migration', () => {
+  const requested = readFileSync(
+    join(
+      process.cwd(),
+      'prisma/migrations/20261124030000_media_analysis_requested_rule/migration.sql',
+    ),
+    'utf8',
+  );
+
+  it('is additive only: one nullable column and no backfill', () => {
+    const statements = requested
+      .split('\n')
+      .filter((line) => line.trim() && !line.trim().startsWith('--'));
+    expect(statements).toEqual([
+      'ALTER TABLE "MediaAssetAnalysis" ADD COLUMN "requestedRuleVersion" INTEGER;',
+    ]);
+    expect(requested).not.toMatch(/\b(DROP|UPDATE|DELETE|RENAME|DEFAULT)\b/i);
+  });
+
+  it('matches the Prisma schema', () => {
+    expect(schema).toMatch(
+      /model MediaAssetAnalysis \{[^}]*\n\s*requestedRuleVersion\s+Int\?\n/,
+    );
+  });
+});

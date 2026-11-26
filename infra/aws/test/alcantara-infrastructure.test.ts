@@ -29,7 +29,30 @@ test("owns only the Alcantara application permissions needed on Cumulus", () => 
         resource.Properties?.PolicyName === "alcantara-cumulus-host",
     ),
   );
-  expect(policies).not.toContain("secretsmanager:GetSecretValue");
+  // The only secrets the host may touch are the destination secrets the backend writes (#384).
+  const secretStatements = Object.values(
+    rendered.findResources("AWS::IAM::Policy"),
+  )
+    .filter(
+      (resource) =>
+        resource.Properties?.PolicyName === "alcantara-cumulus-host",
+    )
+    .flatMap((resource) => resource.Properties.PolicyDocument.Statement)
+    .filter((statement) =>
+      JSON.stringify(statement.Action).includes("secretsmanager:"),
+    );
+  expect(secretStatements).toHaveLength(1);
+  expect(secretStatements[0].Action).toEqual([
+    "secretsmanager:CreateSecret",
+    "secretsmanager:PutSecretValue",
+    "secretsmanager:GetSecretValue",
+    "secretsmanager:DeleteSecret",
+    "secretsmanager:DescribeSecret",
+    "secretsmanager:RestoreSecret",
+  ]);
+  expect(JSON.stringify(secretStatements[0].Resource)).toContain(
+    ":secret:alcantara/destinations/*",
+  );
   expect(policies).toContain("s3:PutObject");
   expect(policies).toContain("example-alcantara-assets");
   expect(policies).not.toContain("logs:");

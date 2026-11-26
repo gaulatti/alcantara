@@ -81,9 +81,31 @@ name and entering the stream key; they never type a Secrets Manager name or vers
 - Audit: a `BroadcastDestinationKeyChange` row (team, destination, subject, `created` or
   `replaced`, time) is written in the same transaction as the change; never the key.
   Metrics: `alcantara_broadcast_destination_operations_total{action="create"|"replace_key"}`.
-- IAM: the backend role needs `secretsmanager:CreateSecret`, `PutSecretValue`, `GetSecretValue`
-  and `DeleteSecret` on `arn:aws:secretsmanager:*:*:secret:alcantara/destinations/*` only.
-  Retiring a destination does not delete its secret (a retired destination can be restored).
+- Retire and restore (#384): retiring a destination whose secret this backend wrote (a `service`
+  and a secret under `alcantara/destinations/`) retires the row first, then schedules the secret
+  for deletion with a 30-day recovery window. If that call fails the retire stands, the secret
+  stays as before, and a warning is logged. Restoring cancels the scheduled deletion first; if
+  that fails the restore is refused (503) and the destination stays retired, so a selectable
+  destination never points at a secret about to be deleted. A destination retired for more than
+  30 days cannot be restored (its secret is gone): add it again. A hand-typed secret reference
+  is never scheduled for deletion. Metrics:
+  `alcantara_broadcast_destination_operations_total{action="retire_secret"|"restore_secret",result="succeeded"|"failed"}`.
+- IAM: the backend role needs `secretsmanager:CreateSecret`, `PutSecretValue`, `GetSecretValue`,
+  `DeleteSecret` and `RestoreSecret` on `arn:aws:secretsmanager:*:*:secret:alcantara/destinations/*`
+  only. Without `RestoreSecret` every restore of a destination added from the form is refused.
+
+## Testing a saved destination
+
+The **Test** button (`POST /broadcast/destinations/:id/test`, `broadcast.manage`, gaulatti/alcantara#384) asks the
+ingest whether it takes the saved address and key. The backend reads the pinned key as the desktop studio does (so an
+ingest-access audit row is written), checks that the host resolves only to public addresses, and makes an RTMP
+handshake over TCP or TLS: connect, create a stream, publish. No audio or video is sent; the connection is closed as
+soon as the server answers. The answer is `accepted`, `refused` (with the server's words, key removed) or
+`unreachable`; it never carries the key, and nothing is logged. One test per destination per 15 seconds (429
+otherwise); retired destinations are refused (409). Counted as
+`alcantara_broadcast_destination_operations_total{action="test",result="succeeded"|"failed"}`. The route is not
+offered over MCP (it uses a stored credential). A server may accept a publish and still reject the stream once media
+arrives; the button proves the address and key are accepted, not that a broadcast will be good.
 
 ## Ingest credential for the desktop studio
 
@@ -182,7 +204,8 @@ The private metrics endpoint exposes:
   `start`, `stop`, and (for program fillers) `profile` and `prepare`
   dependency operations.
 - `alcantara_broadcast_destination_operations_total{action,result}` for bounded
-  reload/Start/Stop outcomes.
+  reload/Start/Stop outcomes, key creation and replacement, and the secret's scheduled
+  deletion and its cancellation on retire and restore (`retire_secret`, `restore_secret`).
 
 Exact destination IDs, selection versions, hashes, references, program IDs, and
 error bodies are deliberately absent from metric labels.

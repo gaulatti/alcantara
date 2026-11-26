@@ -103,6 +103,30 @@ describe('MediaAnalysisMetrics', () => {
     });
   });
 
+  it('serves interrupted runs on /metrics, apart from failed ones (#587)', async () => {
+    const managed = new ManagedMetricsService();
+    const metrics = new MediaAnalysisMetrics(managed);
+    const controller = new MetricsController(
+      new RadioMetricsService(),
+      managed,
+      undefined as never,
+    );
+    const name = 'alcantara_media_analysis_interrupted_runs_total';
+    const values = async () =>
+      Object.fromEntries(
+        samples(await controller.getMetrics(), name).map((s) => [
+          s.labels.outcome,
+          s.value,
+        ]),
+      );
+
+    expect(await values()).toEqual({ handed_back: 0, attempt_spent: 0 });
+    metrics.recordInterrupted('handed_back', 2);
+    metrics.recordInterrupted('attempt_spent', 1);
+    metrics.recordInterrupted('attempt_spent', -1);
+    expect(await values()).toEqual({ handed_back: 2, attempt_spent: 1 });
+  });
+
   it('serves refused result writes on /metrics with a bounded outcome label only', async () => {
     const managed = new ManagedMetricsService();
     const metrics = new MediaAnalysisMetrics(managed);
@@ -168,11 +192,12 @@ describe('MediaAnalysisMetrics', () => {
       undefined as never,
     );
     const name = 'alcantara_media_analysis_cue_rule_total';
-    expect(samples(await controller.getMetrics(), name)).toHaveLength(6);
+    expect(samples(await controller.getMetrics(), name)).toHaveLength(8);
 
     metrics.recordCueRule({ head: 'applied', tail: 'bounded' });
     metrics.recordCueRule({ head: 'applied', tail: 'applied' });
     metrics.recordCueRule({ head: 'surprise', tail: 'unchanged' });
+    metrics.recordCueRule({ head: 'unchanged', tail: 'clamped' });
 
     const totals = Object.fromEntries(
       samples(await controller.getMetrics(), name).map((s) => [
@@ -182,11 +207,13 @@ describe('MediaAnalysisMetrics', () => {
     );
     expect(totals).toEqual({
       'head:applied': 2,
-      'head:unchanged': 1,
+      'head:unchanged': 2,
       'head:bounded': 0,
+      'head:clamped': 0,
       'tail:applied': 1,
       'tail:unchanged': 1,
       'tail:bounded': 1,
+      'tail:clamped': 1,
     });
   });
 });

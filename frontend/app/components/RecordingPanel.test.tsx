@@ -367,7 +367,8 @@ describe("RecordingPanel status failures", () => {
     vi.mocked(sendRecordingCommand).mockRejectedValue(
       new RecordingApiError(409, "Already finalizing."),
     );
-    vi.mocked(newRecordingCommandKey).mockReturnValue("recording-command-1");
+    // Earlier tests queue "Once" keys that this one must not inherit.
+    vi.mocked(newRecordingCommandKey).mockReset().mockReturnValue("recording-command-1");
     vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<RecordingPanel programId="modoitaliano" />);
     fireEvent.click(
@@ -384,5 +385,31 @@ describe("RecordingPanel status failures", () => {
     expect(screen.getByRole("status")).toHaveTextContent(
       "Recording status unavailable",
     );
+  });
+});
+
+describe("RecordingPanel refresh paths", () => {
+  it("asks for the recording status again every two and a half seconds", async () => {
+    vi.mocked(fetchRecordingStatus).mockReset();
+    vi.mocked(fetchRecordingStatus).mockResolvedValue(baseStatus("idle"));
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      render(<RecordingPanel programId="modoitaliano" />);
+      await waitFor(() => expect(fetchRecordingStatus).toHaveBeenCalledTimes(1));
+      vi.advanceTimersByTime(2_500);
+      await waitFor(() => expect(fetchRecordingStatus).toHaveBeenCalledTimes(2));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("asks for the status again from the Retry status button when it could not be read", async () => {
+    vi.mocked(fetchRecordingStatus).mockReset();
+    vi.mocked(fetchRecordingStatus)
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue(baseStatus("idle"));
+    render(<RecordingPanel programId="modoitaliano" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Retry status" }));
+    await waitFor(() => expect(fetchRecordingStatus).toHaveBeenCalledTimes(2));
   });
 });

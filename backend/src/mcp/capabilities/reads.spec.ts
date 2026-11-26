@@ -47,9 +47,21 @@ const specs = [
     {} as never,
     { teamId: 7 } as never,
   ).specs(),
-  ...new ScenesMcpTools(services.scenes as never, {} as never).specs(),
-  ...new LayoutsMcpTools(services.layouts as never, {} as never).specs(),
-  ...new MediaGroupsMcpTools(services.groups as never, {} as never).specs(),
+  ...new ScenesMcpTools(
+    services.scenes as never,
+    {} as never,
+    { teamId: 7 } as never,
+  ).specs(),
+  ...new LayoutsMcpTools(
+    services.layouts as never,
+    {} as never,
+    { teamId: 7 } as never,
+  ).specs(),
+  ...new MediaGroupsMcpTools(
+    services.groups as never,
+    {} as never,
+    { teamId: 7 } as never,
+  ).specs(),
 ];
 const ctx = { principal: {} as never };
 const run = async (name: string, args: Record<string, unknown>) =>
@@ -65,6 +77,10 @@ beforeEach(() => {
   services.layouts.findOne.mockResolvedValue({ ...layout, scenes: [scene] });
   services.groups.findAll.mockResolvedValue(mediaGroupsPage);
 });
+const GROUP_TEAM = { user: { authorization: { teamId: 7 } } };
+
+const SCENE_TEAM = { user: { authorization: { teamId: 7 } } };
+const TEAM_REQUEST = { user: { authorization: { teamId: 7 } } };
 
 describe('read capabilities return what the controller returns', () => {
   it('program_list_programs', async () => {
@@ -87,10 +103,12 @@ describe('read capabilities return what the controller returns', () => {
 
   it('scene_find_all and scene_find_one', async () => {
     expect(rebuilt(await run('scene_find_all', {}))).toEqual(
-      asRest(await controllers.scenes.findAll()),
+      asRest(await controllers.scenes.findAll(SCENE_TEAM)),
     );
     const one = await run('scene_find_one', { scene_id: 3 });
-    expect(rebuilt(one)).toEqual(asRest(await controllers.scenes.findOne('3')));
+    expect(rebuilt(one)).toEqual(
+      asRest(await controllers.scenes.findOne('3', SCENE_TEAM)),
+    );
     expect(one).toMatchObject({
       id: 3,
       untrusted: {
@@ -103,31 +121,39 @@ describe('read capabilities return what the controller returns', () => {
 
   it('layout_find_all and layout_find_one', async () => {
     expect(rebuilt(await run('layout_find_all', {}))).toEqual(
-      asRest(await controllers.layouts.findAll()),
+      asRest(await controllers.layouts.findAll(TEAM_REQUEST)),
     );
     expect(rebuilt(await run('layout_find_one', { layout_id: 2 }))).toEqual(
-      asRest(await controllers.layouts.findOne('2')),
+      asRest(await controllers.layouts.findOne('2', TEAM_REQUEST)),
     );
   });
 
   it('media_group_find_all passes the console paging, defaults included', async () => {
     expect(rebuilt(await run('media_group_find_all', {}))).toEqual(
-      asRest(await controllers.groups.findAll()),
+      asRest(await controllers.groups.findAll(GROUP_TEAM)),
     );
-    expect(services.groups.findAll).toHaveBeenNthCalledWith(1, {
-      search: undefined,
-      sortBy: undefined,
-      sortOrder: undefined,
-      page: 1,
-      limit: 20,
-    });
-    expect(services.groups.findAll).toHaveBeenNthCalledWith(2, {
-      search: undefined,
-      sortBy: undefined,
-      sortOrder: undefined,
-      page: 1,
-      limit: 20,
-    });
+    expect(services.groups.findAll).toHaveBeenNthCalledWith(
+      1,
+      {
+        search: undefined,
+        sortBy: undefined,
+        sortOrder: undefined,
+        page: 1,
+        limit: 20,
+      },
+      7,
+    );
+    expect(services.groups.findAll).toHaveBeenNthCalledWith(
+      2,
+      {
+        search: undefined,
+        sortBy: undefined,
+        sortOrder: undefined,
+        page: 1,
+        limit: 20,
+      },
+      7,
+    );
     await run('media_group_find_all', {
       search: 'head',
       sort_by: 'name',
@@ -135,13 +161,16 @@ describe('read capabilities return what the controller returns', () => {
       page: 2,
       limit: 5,
     });
-    expect(services.groups.findAll).toHaveBeenLastCalledWith({
-      search: 'head',
-      sortBy: 'name',
-      sortOrder: 'asc',
-      page: 2,
-      limit: 5,
-    });
+    expect(services.groups.findAll).toHaveBeenLastCalledWith(
+      {
+        search: 'head',
+        sortBy: 'name',
+        sortOrder: 'asc',
+        page: 2,
+        limit: 5,
+      },
+      7,
+    );
   });
 });
 

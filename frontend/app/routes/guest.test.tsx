@@ -735,6 +735,12 @@ it("ends the call when the studio revokes the session", async () => {
     "The studio ended or revoked this guest session.",
   );
   expect(room().disconnected).toBe(true);
+  // A session the studio ended can be rejoined while the invitation is open (gaulatti/alcantara#353),
+  // and the message is shown once, in the ended panel.
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
+  expect(
+    screen.getByRole("button", { name: "Rejoin the studio" }),
+  ).toBeInTheDocument();
 });
 
 it("ends the call when the studio no longer recognizes the session", async () => {

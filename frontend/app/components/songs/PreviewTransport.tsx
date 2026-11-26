@@ -44,11 +44,10 @@ export function Transport({
     length === null
       ? Math.max(0, position)
       : Math.min(Math.max(0, position), length);
-  const percent = (seconds: number) =>
-    length === null ? 0 : Math.max(0, Math.min(100, (seconds / length) * 100));
-  const seekTo = (seconds: number) => {
-    if (onSeek && length !== null)
-      onSeek(Math.max(0, Math.min(length, seconds)));
+  const percent = (seconds: number, total: number) => Math.max(0, Math.min(100, (seconds / total) * 100));
+  // Only the timeline seeks, and it renders only when the length is known, so the total comes in with the call.
+  const seekTo = (total: number, seconds: number) => {
+    if (onSeek) onSeek(Math.max(0, Math.min(total, seconds)));
   };
   const button =
     "inline-flex h-8 w-8 items-center justify-center rounded-full text-text-secondary hover:bg-sand/20 hover:text-text-primary disabled:pointer-events-none disabled:opacity-40";
@@ -94,23 +93,23 @@ export function Transport({
               onToggle();
             } else if (event.key === "ArrowRight") {
               event.preventDefault();
-              seekTo(clamped + SEEK_STEP_SECONDS);
+              seekTo(length, clamped + SEEK_STEP_SECONDS);
             } else if (event.key === "ArrowLeft") {
               event.preventDefault();
-              seekTo(clamped - SEEK_STEP_SECONDS);
+              seekTo(length, clamped - SEEK_STEP_SECONDS);
             }
           }}
           onClick={(event) => {
             const box = event.currentTarget.getBoundingClientRect();
             if (!disabled && box.width > 0)
-              seekTo(((event.clientX - box.left) / box.width) * length);
+              seekTo(length, ((event.clientX - box.left) / box.width) * length);
           }}
           className="relative h-4 min-w-24 flex-1 cursor-pointer"
         >
           <span className="absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-sand/40" />
-          <span data-testid="transport-done" className="absolute left-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-sea" style={{ width: `${percent(clamped)}%` }} />
+          <span data-testid="transport-done" className="absolute left-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-sea" style={{ width: `${percent(clamped, length)}%` }} />
           {cues.map((cue) => (
-            <span key={`${cue.label}-${cue.at}`} title={cue.label} className="absolute top-0 h-full w-0.5 bg-accent-yellow" style={{ left: `${percent(cue.at)}%` }} />
+            <span key={`${cue.label}-${cue.at}`} title={cue.label} className="absolute top-0 h-full w-0.5 bg-accent-yellow" style={{ left: `${percent(cue.at, length)}%` }} />
           ))}
         </div>
       ) : (

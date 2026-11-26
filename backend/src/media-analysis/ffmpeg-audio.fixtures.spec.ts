@@ -78,6 +78,7 @@ describeWithTools('FfmpegAudioAnalyzer on fixtures', () => {
   const continuous = join(directory, 'continuous.flac');
   const silent = join(directory, 'silent.wav');
   const fading = join(directory, 'fading.wav');
+  const slowFade = join(directory, 'slow-fade.wav');
   const softLead = join(directory, 'soft-lead.wav');
 
   beforeAll(() => {
@@ -127,6 +128,17 @@ describeWithTools('FfmpegAudioAnalyzer on fixtures', () => {
       '-c:a',
       'pcm_s16le',
       fading,
+    ]);
+    // The same tone fading 3 dB per second after 4 s over 26 s: its quiet tail starts well over 1.5 s before rule 1's
+    // edge, the case rule 3 clamps instead of keeping rule 1's edge.
+    ffmpeg([
+      '-f',
+      'lavfi',
+      '-i',
+      "sine=f=440:r=44100:d=26,aformat=channel_layouts=stereo,volume=volume='3.2*pow(10,-max(t-4,0)*3/20)':eval=frame",
+      '-c:a',
+      'pcm_s16le',
+      slowFade,
     ]);
     // 0.3 s of a tone 60 dB down, then a full-level tone: a quiet lead shorter than rule 1's 0.5 s.
     ffmpeg([
@@ -197,6 +209,34 @@ describeWithTools('FfmpegAudioAnalyzer on fixtures', () => {
     ]);
     const peaks = [...kept.matchAll(/Peak level dB:\s*(-?[\d.]+)/g)];
     expect(Number(peaks[peaks.length - 1][1])).toBeGreaterThan(threshold - 1);
+  });
+
+  it('cuts a quiet tail longer than the bound exactly 1.5 s before rule 1, where everything it removes is below the threshold (rule 3)', async () => {
+    const analysis = await analyzer.analyze(slowFade, 120_000);
+    const threshold = tailThresholdDb(analysis);
+    const ruleOne = lastSilenceStart(slowFade, -50, 0.5);
+    const tailStart = lastSilenceStart(slowFade, threshold, 0.3);
+    // The quiet tail begins more than the bound before rule 1's edge, so rule 2 would have kept rule 1's edge.
+    expect(ruleOne - tailStart).toBeGreaterThan(1.5);
+    expect(analysis.cueRule.tail).toBe('clamped');
+    expect(analysis.cueOutSeconds!).toBeCloseTo(ruleOne - 1.5, 1);
+    expect(analysis.cueOutSeconds!).toBeGreaterThan(tailStart);
+    const rule2 = await analyzer.analyze(slowFade, 120_000, 2);
+    expect(rule2.ruleVersion).toBe(2);
+    expect(rule2.cueRule.tail).toBe('bounded');
+    expect(rule2.cueOutSeconds!).toBeCloseTo(ruleOne, 1);
+    // The level at the clamped cut is below the threshold: nothing audible is cut.
+    const atCut = ffmpeg([
+      '-i',
+      slowFade,
+      '-af',
+      `atrim=start=${analysis.cueOutSeconds! - 0.1}:end=${analysis.cueOutSeconds!},astats=measure_perchannel=none:measure_overall=Peak_level`,
+      '-f',
+      'null',
+      '-',
+    ]);
+    const peaks = [...atCut.matchAll(/Peak level dB:\s*(-?[\d.]+)/g)];
+    expect(Number(peaks[peaks.length - 1][1])).toBeLessThan(threshold);
   });
 
   it('trims a quiet lead shorter than 0.5 s that rule 1 left, and says so', async () => {

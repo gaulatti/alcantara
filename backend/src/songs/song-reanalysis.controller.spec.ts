@@ -10,9 +10,11 @@ describe('SongReanalysisController (gaulatti/alcantara#235)', () => {
     await expect(
       controller.requestReanalysis({ songIds: [1, 2] }),
     ).resolves.toBe('queued');
-    expect(service.request).toHaveBeenLastCalledWith([1, 2]);
+    expect(service.request).toHaveBeenLastCalledWith([1, 2], undefined);
     await controller.requestReanalysis(undefined as never);
-    expect(service.request).toHaveBeenLastCalledWith(undefined);
+    expect(service.request).toHaveBeenLastCalledWith(undefined, undefined);
+    await controller.requestReanalysis({ songIds: [3], rule: 'previous' });
+    expect(service.request).toHaveBeenLastCalledWith([3], 'previous');
   });
 
   it('needs song.manage', () => {

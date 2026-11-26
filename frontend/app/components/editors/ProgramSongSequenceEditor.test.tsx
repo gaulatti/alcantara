@@ -955,3 +955,19 @@ describe("ProgramSongSequenceEditor remove edge cases (gaulatti/alcantara#186)",
     );
   });
 });
+
+// gaulatti/alcantara#527 (untriaged gaps): an automatic playlist whose active id names no row still keeps the
+// clock when another row is removed.
+it("keeps an automatic playlist's clock when its active id names no row and another row is removed", () => {
+  const { onChange } = editor({
+    sequence: { mode: "autoplay", activeItemId: "ghost", items: [preset("a"), preset("b")] },
+    programSongPlayback: { isPlaying: true, token: "b:1", audioUrl: "" },
+    view: "queue",
+  });
+  fireEvent.click(within(rows()[0]).getByLabelText("Remove"));
+  expect(onChange.mock.lastCall![0]).toMatchObject({
+    mode: "autoplay",
+    items: [expect.objectContaining({ id: "b" })],
+  });
+  expect(typeof onChange.mock.lastCall![0].startedAt).toBe("number");
+});

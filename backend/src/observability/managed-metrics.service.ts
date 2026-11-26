@@ -239,10 +239,16 @@ const SOURCE_RESULTS = new Set(['success', 'rejected', 'not-found', 'failure']);
 const PROGRAM_SSE_SNAPSHOT_RESULTS = new Set(['success', 'failure']);
 /** How a confirmed playing track's cover lookup ended (gaulatti/alcantara#179). */
 export type PlayingTrackCoverLookupResult =
-  'included' | 'absent' | 'rejected' | 'error';
+  | 'included'
+  | 'absent'
+  | 'rejected'
+  | 'error';
 /** How a filler version's preparation ended (gaulatti/alcantara#126). */
 export type FillerPreparationResult =
-  'ready' | 'failed' | 'unavailable' | 'profile-unavailable';
+  | 'ready'
+  | 'failed'
+  | 'unavailable'
+  | 'profile-unavailable';
 const FILLER_LEGS = ['television', 'radio'] as const;
 const FILLER_PREPARATION_RESULTS: readonly FillerPreparationResult[] = [
   'ready',
@@ -252,7 +258,10 @@ const FILLER_PREPARATION_RESULTS: readonly FillerPreparationResult[] = [
 ];
 /** What a television Start did with the program filler (gaulatti/alcantara#126). */
 export type FillerStartBindingResult =
-  'bound' | 'mismatch' | 'not-configured' | 'legacy-executor';
+  | 'bound'
+  | 'mismatch'
+  | 'not-configured'
+  | 'legacy-executor';
 /**
  * A template manifest member Alcantara does not know and leaves out instead of
  * refusing the template (gaulatti/ariston#217). The label is the member kind,
@@ -736,6 +745,9 @@ export class ManagedMetricsService {
       'ingest',
       'create',
       'replace_key',
+      'retire_secret',
+      'restore_secret',
+      'test',
     ]);
     const results = new Set(['succeeded', 'failed', 'conflict']);
     this.broadcastDestinationOperations.inc({

@@ -647,8 +647,8 @@ Every W capability, and whether it changes what is on air or queued:
 |---|---|---|---|---|
 | `destination_reorder_destinations` | `backend/src/mcp/capabilities/destinations.ts:134` | No | - | Catalog order only; a running stream keeps its destinations. |
 | `destination_rename_destination` | `backend/src/mcp/capabilities/destinations.ts:155` | No | - | Display name only; a running stream keeps the selection it started with. |
-| `destination_retire_destination` | `backend/src/mcp/capabilities/destinations.ts:` | No | - | Blocks future selection; a stream already out is not touched. |
-| `destination_restore_destination` | `backend/src/mcp/capabilities/destinations.ts:` | No | - | Re-enables selection for a later start. |
+| `destination_retire_destination` | `backend/src/mcp/capabilities/destinations.ts:` | No | - | Blocks future selection; a stream already out is not touched. A key this backend wrote is scheduled for deletion after 30 days (#384). |
+| `destination_restore_destination` | `backend/src/mcp/capabilities/destinations.ts:` | No | - | Re-enables selection for a later start. Cancels the key's scheduled deletion first, and is refused (503) if that fails (#384). |
 | `filler_prepare_television` | `backend/src/mcp/capabilities/filler.ts:36` | No | - | Its description: it does not change what is on air; the version is pending for the next session. |
 | `filler_prepare_radio` | `backend/src/mcp/capabilities/filler.ts:60` | No | - | Same: pending for the next recovery start, a running session keeps its version. |
 | `instant_create_instant` | `backend/src/mcp/capabilities/instants.ts:138` | No | - | A new library row; nothing names it yet. |
@@ -715,7 +715,7 @@ no URL, key or token reaches the table.
 The record is written after the settings write and never blocks it: if the record cannot be stored, the change
 stands, a warning is logged and `alcantara_radio_operator_change_records_total{result="failed"}` is counted
 (`recorded` counts the stored ones). Read it with `SELECT * FROM "OperatorChangeRecord" WHERE "programId" = ... ORDER BY "createdAt" DESC`.
-Scenes, layouts, rundowns and programs record the same way (next section); the library capabilities (instants, stingers, songs, media) are slice 3 of #236 and still write no record.
+Scenes, layouts, rundowns and programs record the same way (next section), and so do the library capabilities (instants, stingers, songs, media; the section after it).
 
 ## Operator change records for scenes, layouts, rundowns and programs (#236)
 
@@ -732,8 +732,8 @@ free text reaches the table. An automatic change (no actor) writes nothing.
 
 The record never blocks the change: if it cannot be stored, the change stands, a warning is logged and
 `alcantara_operator_change_records_total{target="scene|layout|flight_sequence|program",result="recorded|failed"}` is
-counted. The `programId` column must be nullable for scene and layout records (a separate migration); until it is, those
-two records fail to store and are counted as `failed`.
+counted. A scene or layout record is stored with `programId` NULL (`20261124010000_operator_change_library` made the
+column nullable; `docs/operator-change-records.md` says how to read those rows).
 
 ## Operator change records for library changes (#236 slice 3)
 
@@ -856,7 +856,7 @@ records, the change is never blocked: a record that cannot be stored is logged a
 | `scene_update_chyron` | `alcantara:scene:operate` | A | Sets the chyron (lower-third) text of a scene; where the scene is on air, viewers see it at once. |
 | `scene_vote_modo_italiano_bracket` | `alcantara:scene:operate` | A | Records one registered voter's vote (a song of the match, or null to withdraw it) in the scene bracket; a majority decides the match. |
 | `song_create` | `alcantara:song:manage` | W | Adds a song to the catalog (artist or title, and an audio address) and creates its media asset; an intro Instant may be set for a program (default main). |
-| `song_request_reanalysis` | `alcantara:song:manage` | W | Queues up to 25 songs for a new audio analysis (cue points and loudness), taken one at a time by the media-analysis job at low priority (#235). A song keeps its current cue points until its new result replaces them; a song that is playing on a program or announced there as the next song is refused `on_air` (per song in the dry run), checked again when queued. Console route `POST /songs/reanalysis`. |
+| `song_request_reanalysis` | `alcantara:song:manage` | W | Queues up to 25 songs for a new audio analysis (cue points and loudness), taken one at a time by the media-analysis job at low priority (#235). A song keeps its current cue points until its new result replaces them; a song that is playing on a program or announced there as the next song is refused `on_air` (per song in the dry run), checked again when queued. Console route `POST /songs/reanalysis`. `rule` is `C2` (the default, the current cue rule: a quiet tail beyond the 1.5 s bound is cut 1.5 s before the old cue-out), `C` (the rule before the clamp, which keeps the old cue-out there) or `previous` (the rule before #235): `C` and `previous` are a way back for a bad batch that needs no deploy; the rule that ran is the song's `ruleVersion`. |
 | `song_update` | `alcantara:song:manage` | W | Changes the given fields of a song; a field left out stays, null clears cover_url, duration, the chart values and the intro. |
 | `stinger_list_stingers` | `alcantara:stinger:read` | R | Lists every stinger (a transition video played between scenes) with its cut point, enabled flag and times, newest change first. |
 | `webrtc_control_participant` | `alcantara:webrtc:operate` | A | Sends one command to a connected guest of a program room: type "media" (device camera or microphone, enabled; disabling mutes the published track), "cue" (standby, live or wrap), "message" (text of up to 500 characters shown to the guest) or "talkback" (enabled). |

@@ -211,3 +211,14 @@ describe("SourcesSubscriptionProvider", () => {
     });
   });
 });
+
+it("releases a plain-object participant's publications when its last viewer leaves", () => {
+  const video = pub({ kind: "video" });
+  const room = fakeRoom({ remoteParticipants: undefined, participants: new Map([["c", { trackPublications: { x: video } }]]) });
+  const { result } = ctx(room);
+  let off!: () => void;
+  act(() => void (off = result.current.subscribeSource("c")));
+  expect(video.setSubscribed).toHaveBeenLastCalledWith(true);
+  act(() => off());
+  expect(video.setSubscribed).toHaveBeenLastCalledWith(false);
+});

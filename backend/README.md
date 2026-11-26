@@ -89,7 +89,43 @@ URL when `DATABASE_URL` is unset. Locally, start a disposable PostgreSQL, run
 missing database. It refuses any host other than localhost and any database other
 than `alcantara_ci`.
 
+The PostgreSQL integration and migration specs skip unless they can reach a database
+(gaulatti/alcantara#82). `DATABASE_URL` enables `library-change.integration`,
+`operator-change-recorder.integration`, `radio-settings.operator-change.integration`,
+`program-team-backfill.migration` and `radio-settings-new-row-defaults`.
+`ALCANTARA_MIGRATION_TEST_DATABASE_URL` names a server where the two migration specs
+(`operator-change-migration`, `operator-change-library-migration`) may create scratch
+databases; the CI user can, so CI points it at the same `alcantara_ci` server.
+`media-analysis/ffmpeg-audio.fixtures.spec.ts` runs the real `ffmpeg` and `ffprobe`
+and skips where they are not installed. Its cue points depend on the ffmpeg version:
+they pass on production's 8.1.3 and fail on the Ubuntu runner's apt 8.0.1. CI therefore
+runs `ffmpeg` and `ffprobe` from the image `backend/Dockerfile` builds from (the
+`.nvmrc` Node Alpine image with `apk add ffmpeg`), through shims on the runner's PATH.
+CI sets both URLs on the coverage step, so none of these skip there. Locally, use the `pgvector/pgvector:pg17`
+image CI uses (a migration needs the `vector` extension), migrate it, and export both URLs.
+
 ## Deployment
+
+The production image installs exactly the versions in the workspace `pnpm-lock.yaml`,
+the same ones CI tests (gaulatti/alcantara#581). It builds from the repository root
+(`docker build -f backend/Dockerfile .`), so the lockfile is in the build context.
+`backend/Dockerfile.dockerignore` limits that context to the workspace manifests, the
+lockfile and the backend source. `pnpm install --frozen-lockfile` fails the build when
+the lockfile is out of step with a `package.json`; run `pnpm install` at the root and
+commit the lockfile. In the image the backend lives at `/app/backend`, which is the
+working directory, and the RDS bundle stays at `/app/certs`.
+`backend/test/backend-image-lockfile.test.js` (`test:deployment`) fails if the image or
+the deploy workflow goes back to a floating install.
+
+The development image (`backend/Dockerfile.dev`, used by Compose for `backend`,
+`alana-recording-fixture` and the access fake) installs the same lockfile the same way
+(gaulatti/alcantara#590). Compose builds it from the repository root
+(`context: .`, `dockerfile: backend/Dockerfile.dev`), with
+`backend/Dockerfile.dev.dockerignore` limiting the context. In that image too the
+backend lives at `/app/backend`, so Compose mounts `backend/src`, `backend/prisma`,
+`tsconfig.json` and `nest-cli.json` there. A change to `backend/package.json` or
+`pnpm-lock.yaml` rebuilds it under `docker compose watch`; a lockfile out of step fails
+`docker compose build backend`.
 
 Production uses committed Prisma migrations. The deployment workflow runs
 `pnpm run db:migrate:deploy` in a one-shot container before replacing the live

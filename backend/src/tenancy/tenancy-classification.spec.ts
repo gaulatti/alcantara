@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
-  PENDING_TEAM_ID,
   readSchemaModels,
   TENANCY_CLASSIFICATION,
   tenancyClassificationProblems,
@@ -28,33 +27,27 @@ describe('tenancy classification of the real schema', () => {
 
   it('classifies every model, and only real models, truthfully', () => {
     expect(
-      tenancyClassificationProblems(
-        models,
-        TENANCY_CLASSIFICATION,
-        PENDING_TEAM_ID,
-      ),
+      tenancyClassificationProblems(models, TENANCY_CLASSIFICATION),
     ).toEqual([]);
     expect(Object.keys(TENANCY_CLASSIFICATION).sort()).toEqual(
       models.map((model) => model.name).sort(),
     );
   });
 
-  it('allows a teamId gap for exactly the eleven shared libraries', () => {
-    expect([...PENDING_TEAM_ID].sort()).toEqual(
-      [
-        'BroadcastDestination',
-        'BroadcastSettings',
-        'Instant',
-        'Layout',
-        'Media',
-        'MediaAsset',
-        'MediaGroup',
-        'MediaLabel',
-        'Scene',
-        'Song',
-        'Stinger',
-      ].sort(),
+  it('reports a tenant table that loses its teamId (#548: no allowance remains)', () => {
+    const withoutSceneTeam = models.map((model) =>
+      model.name === 'Scene'
+        ? {
+            ...model,
+            fields: new Map(
+              [...model.fields].filter(([field]) => field !== 'teamId'),
+            ),
+          }
+        : model,
     );
+    expect(
+      tenancyClassificationProblems(withoutSceneTeam, TENANCY_CLASSIFICATION),
+    ).toEqual(['Model Scene is classified tenant but has no teamId field.']);
   });
 });
 
@@ -110,7 +103,8 @@ model Team {
 }
 
 model Library {
-  id Int @id
+  id     Int  @id
+  teamId Int?
 }
 
 model Episode {
@@ -137,9 +131,7 @@ model Preference {
   };
 
   it('accepts a complete and true classification', () => {
-    expect(
-      tenancyClassificationProblems(schema, classification, ['Library']),
-    ).toEqual([]);
+    expect(tenancyClassificationProblems(schema, classification)).toEqual([]);
   });
 
   it('names a model that has no classification', () => {
@@ -147,7 +139,7 @@ model Preference {
       Object.entries(classification).filter(([name]) => name !== 'Preference'),
     );
 
-    expect(tenancyClassificationProblems(schema, rest, ['Library'])).toEqual([
+    expect(tenancyClassificationProblems(schema, rest)).toEqual([
       'Model Preference has no tenancy classification.',
     ]);
   });
@@ -155,45 +147,39 @@ model Preference {
   it('does not take an inherited property for a classification', () => {
     const models = readSchemaModels('model constructor {\n  id Int @id\n}\n');
 
-    expect(tenancyClassificationProblems(models, {}, [])).toEqual([
+    expect(tenancyClassificationProblems(models, {})).toEqual([
       'Model constructor has no tenancy classification.',
     ]);
   });
 
   it('names a classified model that is not in the schema', () => {
     expect(
-      tenancyClassificationProblems(
-        schema,
-        { ...classification, Ghost: { kind: 'principal' } },
-        ['Library'],
-      ),
+      tenancyClassificationProblems(schema, {
+        ...classification,
+        Ghost: { kind: 'principal' },
+      }),
     ).toEqual([
       'Classification names Ghost, which is not a model in the schema.',
     ]);
   });
 
-  it('rejects a tenant without teamId unless it is pending', () => {
-    expect(tenancyClassificationProblems(schema, classification, [])).toEqual([
-      'Model Library is classified tenant but has no teamId field.',
-    ]);
-  });
-
-  it('lets a pending model already have its teamId', () => {
+  it('rejects a tenant without teamId', () => {
     expect(
-      tenancyClassificationProblems(schema, classification, [
-        'Library',
-        'Team',
-      ]),
-    ).toEqual([]);
+      tenancyClassificationProblems(schema, {
+        ...classification,
+        Preference: { kind: 'tenant' },
+      }),
+    ).toEqual([
+      'Model Preference is classified tenant but has no teamId field.',
+    ]);
   });
 
   it('rejects a program model without programId', () => {
     expect(
-      tenancyClassificationProblems(
-        schema,
-        { ...classification, Preference: { kind: 'program' } },
-        ['Library'],
-      ),
+      tenancyClassificationProblems(schema, {
+        ...classification,
+        Preference: { kind: 'program' },
+      }),
     ).toEqual([
       'Model Preference is classified program but has no programId field.',
     ]);
@@ -201,56 +187,19 @@ model Preference {
 
   it('rejects a child whose parent is not classified', () => {
     expect(
-      tenancyClassificationProblems(
-        schema,
-        { ...classification, Clip: { kind: 'child', parent: 'Season' } },
-        ['Library'],
-      ),
+      tenancyClassificationProblems(schema, {
+        ...classification,
+        Clip: { kind: 'child', parent: 'Season' },
+      }),
     ).toEqual(['Model Clip names parent Season, which is not classified.']);
   });
 
   it('rejects a child with no relation to its parent', () => {
     expect(
-      tenancyClassificationProblems(
-        schema,
-        { ...classification, Clip: { kind: 'child', parent: 'Team' } },
-        ['Library'],
-      ),
+      tenancyClassificationProblems(schema, {
+        ...classification,
+        Clip: { kind: 'child', parent: 'Team' },
+      }),
     ).toEqual(['Model Clip names parent Team but has no relation to it.']);
-  });
-
-  it('rejects a pending name that is not a model or not a tenant', () => {
-    expect(
-      tenancyClassificationProblems(schema, classification, [
-        'Library',
-        'Ghost',
-        'Episode',
-      ]),
-    ).toEqual([
-      'PENDING_TEAM_ID names Ghost, which is not a model in the schema.',
-      'PENDING_TEAM_ID names Episode, which is not classified tenant.',
-    ]);
-  });
-
-  it('rejects a pending list longer than eleven', () => {
-    const names = Array.from(
-      { length: 12 },
-      (_, index) => `Library${index + 1}`,
-    );
-    const models = readSchemaModels(
-      names.map((name) => `model ${name} {\n  id Int @id\n}\n`).join('\n'),
-    );
-    const tenants = Object.fromEntries(
-      names.map((name): [string, TenancyClass] => [name, { kind: 'tenant' }]),
-    );
-
-    expect(
-      tenancyClassificationProblems(models, tenants, names.slice(0, 11)),
-    ).toEqual([
-      'Model Library12 is classified tenant but has no teamId field.',
-    ]);
-    expect(tenancyClassificationProblems(models, tenants, names)).toEqual([
-      'PENDING_TEAM_ID lists 12 models; it may list at most 11.',
-    ]);
   });
 });

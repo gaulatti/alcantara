@@ -32,7 +32,11 @@ export const SILENCE_MIN_SECONDS = 0.5;
  * [TAIL_THRESHOLD_MIN_DB, TAIL_THRESHOLD_MAX_DB], and a cue is moved by at most MAX_EXTRA_TRIM_SECONDS beyond the
  * cue rule 1 would give (otherwise rule 1's cue is kept).
  */
-export const CUE_RULE_VERSION = 2;
+export const CUE_RULE_VERSION = 3;
+/** Rule 2 (C): a tail beyond the bound keeps rule 1's edge. Rule 3 (C2) cuts exactly MAX_EXTRA_TRIM_SECONDS past it instead. */
+export const BOUND_KEEPS_RULE_VERSION = 2;
+/** The rule before #235 (the `base` detector alone), kept selectable per request so a batch can be re-run on it. */
+export const PREVIOUS_CUE_RULE_VERSION = 1;
 export const HEAD_SILENCE_MIN_SECONDS = 0.2;
 export const TAIL_SILENCE_MIN_SECONDS = 0.3;
 export const TAIL_AIR_FLOOR_DB = -45;
@@ -105,8 +109,8 @@ export interface AudioAnalysis {
   cueRule: CueRuleOutcome;
 }
 
-/** applied: the edge moved from rule 1's; unchanged: the same; bounded: it would move too far, rule 1's edge is kept. */
-export type EdgeOutcome = 'applied' | 'unchanged' | 'bounded';
+/** applied: the edge moved from rule 1's; unchanged: the same; bounded: it would move too far, rule 1's edge is kept; clamped: it would move too far, so it moved exactly the bound (rule 3). */
+export type EdgeOutcome = 'applied' | 'unchanged' | 'bounded' | 'clamped';
 export interface CueRuleOutcome {
   head: EdgeOutcome;
   tail: EdgeOutcome;
@@ -370,6 +374,7 @@ export function ruleCuePoints(
   stderr: string,
   durationSeconds: number,
   loudness: { integratedLufs: number; truePeakDbtp: number },
+  rule: number = CUE_RULE_VERSION,
 ): {
   cueInSeconds: number | null;
   cueOutSeconds: number | null;
@@ -407,12 +412,19 @@ export function ruleCuePoints(
   let cueOutSeconds = base.cueOutSeconds;
   let tail: EdgeOutcome = 'unchanged';
   if (tailStart !== null && tailStart !== base.cueOutSeconds) {
-    if (
-      (base.cueOutSeconds ?? durationSeconds) - tailStart >
-        MAX_EXTRA_TRIM_SECONDS ||
-      tailStart <= (cueInSeconds ?? 0)
-    ) {
+    const edge = base.cueOutSeconds ?? durationSeconds;
+    if (tailStart <= (cueInSeconds ?? 0)) {
       tail = 'bounded';
+    } else if (edge - tailStart > MAX_EXTRA_TRIM_SECONDS) {
+      // Everything from tailStart on is below the on-air floor, so cutting the bound past rule 1's edge (still inside
+      // that stretch) removes only quiet. Rule 2 kept rule 1's edge here; rule 3 clamps.
+      const clamped = seconds(edge - MAX_EXTRA_TRIM_SECONDS);
+      if (rule > BOUND_KEEPS_RULE_VERSION && clamped > (cueInSeconds ?? 0)) {
+        cueOutSeconds = clamped;
+        tail = 'clamped';
+      } else {
+        tail = 'bounded';
+      }
     } else {
       cueOutSeconds = tailStart;
       tail = 'applied';
@@ -505,22 +517,26 @@ export class FfmpegAudioAnalyzer {
    * that was checked is the address that was read. The file is removed on
    * every path.
    */
-  async analyze(input: string, timeoutMs: number): Promise<AudioAnalysis> {
+  async analyze(
+    input: string,
+    timeoutMs: number,
+    rule: number = CUE_RULE_VERSION,
+  ): Promise<AudioAnalysis> {
     const deadline = Date.now() + timeoutMs;
-    if (!isRemote(input)) return this.measure(input, deadline);
+    if (!isRemote(input)) return this.measure(input, deadline, rule);
     const directory = await mkdtemp(
       join(this.policy.tempRoot ?? tmpdir(), INPUT_DIRECTORY_PREFIX),
     );
     try {
       const file = join(directory, 'input');
       await this.download(input, file, deadline);
-      return await this.measure(file, deadline);
+      return await this.measure(file, deadline, rule);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
   }
 
-  private async measure(input: string, deadline: number) {
+  private async measure(input: string, deadline: number, rule: number) {
     const probe = await this.runTool(
       'ffprobe',
       probeArguments(input),
@@ -536,12 +552,20 @@ export class FfmpegAudioAnalyzer {
     );
     const durationSeconds = parseDecodedDuration(measure.stdout);
     const loudness = parseLoudness(measure.stderr);
+    // Rule 1 is the `base` detector alone (PREVIOUS_CUE_RULE_VERSION): a way back that needs no deploy.
+    const cues =
+      rule === PREVIOUS_CUE_RULE_VERSION
+        ? {
+            ...cuePoints(parseSilence(measure.stderr, 'base'), durationSeconds),
+            cueRule: { head: 'unchanged', tail: 'unchanged' } as CueRuleOutcome,
+          }
+        : ruleCuePoints(measure.stderr, durationSeconds, loudness, rule);
     const analysis: AudioAnalysis = {
       durationSeconds,
-      ...ruleCuePoints(measure.stderr, durationSeconds, loudness),
+      ...cues,
       ...loudness,
       ...identifiers,
-      ruleVersion: CUE_RULE_VERSION,
+      ruleVersion: rule,
     };
     assertPlayable(analysis);
     return analysis;

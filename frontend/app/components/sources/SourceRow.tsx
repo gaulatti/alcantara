@@ -46,6 +46,11 @@ export function getHealthBadge(health: ExternalSource['health']) {
   }
 }
 
+type PreviewAvailability =
+  | { kind: 'ready' }
+  | { kind: 'lifecycle' }
+  | { kind: 'blocked'; reason: string };
+
 export function SourceRow({
   source,
   isSelected,
@@ -55,7 +60,13 @@ export function SourceRow({
 }: SourceRowProps) {
   const sourcePreviewable = isPreviewable(source);
   // A selected row stays operable so the operator can always deselect.
-  const canPreview = sourcePreviewable && (previewUnavailableReason === null || isSelected);
+  // The three states of the preview control. A blocked row always carries its reason, so no branch needs a fallback.
+  const availability: PreviewAvailability = !sourcePreviewable
+    ? { kind: 'lifecycle' }
+    : previewUnavailableReason === null || isSelected
+      ? { kind: 'ready' }
+      : { kind: 'blocked', reason: previewUnavailableReason };
+  const canPreview = availability.kind === 'ready';
   const reasonId = `preview-reason-${source.id}`;
   const lifecycleInfo = getLifecycleBadge(source.lifecycle);
   const healthInfo = getHealthBadge(source.health);
@@ -77,30 +88,26 @@ export function SourceRow({
           disabled={!canPreview}
           aria-disabled={!canPreview ? 'true' : undefined}
           aria-pressed={isSelected}
-          aria-describedby={sourcePreviewable && !canPreview ? reasonId : undefined}
+          aria-describedby={availability.kind === 'blocked' ? reasonId : undefined}
           aria-label={
-            canPreview
+            availability.kind === 'ready'
               ? isSelected
                 ? `Stop previewing ${source.name}`
                 : `Preview ${source.name}`
-              : sourcePreviewable
+              : availability.kind === 'blocked'
               ? `Preview ${source.name}`
               : `${source.name} cannot be previewed in ${source.lifecycle} state`
           }
           title={
-            canPreview
+            availability.kind === 'ready'
               ? isSelected
                 ? 'Deselect preview'
                 : 'Preview source'
-              : sourcePreviewable
-              ? (previewUnavailableReason ?? undefined)
+              : availability.kind === 'blocked'
+              ? availability.reason
               : 'Cannot preview in current lifecycle'
           }
-          onClick={() => {
-            if (canPreview) {
-              onToggleSelect(source);
-            }
-          }}
+          onClick={canPreview ? () => onToggleSelect(source) : undefined}
           className={`h-7 w-7 p-0 ${
             !canPreview ? 'opacity-30 cursor-not-allowed' : ''
           }`}
@@ -111,7 +118,7 @@ export function SourceRow({
             <EyeOff className="h-3.5 w-3.5 text-zinc-400" />
           )}
         </Button>
-        {sourcePreviewable && !canPreview && (
+        {availability.kind === 'blocked' && (
           <span id={reasonId} className="sr-only">
             {previewUnavailableReason}
           </span>

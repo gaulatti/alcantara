@@ -172,12 +172,12 @@ fraction of one core:
 | `truePeakDbtp` | ebur128 true peak |
 | `cueInSeconds` | end of a silence that starts the file (cue rule 2, below), else null |
 | `cueOutSeconds` | start of a silence that ends the file (cue rule 2, below), else null |
-| `ruleVersion` | the cue rule that placed the cues: 2 for the rule below, null for analyses made before it (rule 1: -50 dBFS held 0.5 s at both edges) |
+| `ruleVersion` | the cue rule that placed the cues: 3 for the rule below (2 before the clamp described there), null or 1 for analyses made before it (rule 1: -50 dBFS held 0.5 s at both edges) |
 | `isrc` | `ISRC` or `TSRC` tag, normalized (`USRC17607839`), else null |
 | `musicbrainzRecordingId` | `MUSICBRAINZ_TRACKID` / `MusicBrainz Track Id` tag, else null |
 | `fadeInSeconds`, `fadeOutSeconds`, `overlapSeconds` | not measured, always null |
 
-**Cue rule 2 (gaulatti/alcantara#235).** A silence within 0.05 s of an edge
+**Cue rule 2 and 3 (gaulatti/alcantara#235).** A silence within 0.05 s of an edge
 touches it. The head is a leading run below −50 dBFS held for at least 0.2 s. The
 tail is a trailing run below a threshold that follows how loud the song is on air,
 held for at least 0.3 s: Palazzo plays a song with gain
@@ -187,25 +187,39 @@ LUFS, ceiling −1 dBTP; gaulatti/palazzo `src/stream/stream.service.ts:372-385`
 whole dB within [−50, −35], which is where the song is quieter than −45 dBFS on
 air. One `ffmpeg` pass reads every needed threshold (a detector for rule 1, one for
 the head, one per whole dB from −50 to −35) and the tail detector the loudness
-selects is the one used. An edge moves at most 1.5 s beyond where rule 1 would put
-it; beyond that rule 1's edge is kept, and a tail that would reach the cue-in keeps
-rule 1's. The constants live in `ffmpeg-audio.analyzer.ts`; `PLAYOUT_TARGET_LUFS`
+selects is the one used. The head moves at most 1.5 s beyond where rule 1 would put
+it; beyond that rule 1's edge is kept. Rule 2 kept rule 1's tail edge too when the
+quiet tail began more than 1.5 s before it; rule 3 (the current one, `ruleVersion` 3)
+cuts exactly 1.5 s before it instead (`clamped`). Everything from the tail's start on is
+below the on-air floor, so the clamp removes only quiet and cannot clip an audible fade.
+A tail that would reach the cue-in, or a clamp that would cross it, keeps rule 1's. The constants live in `ffmpeg-audio.analyzer.ts`; `PLAYOUT_TARGET_LUFS`
 and `PLAYOUT_TRUE_PEAK_CEILING_DBTP` there repeat Palazzo's defaults and must follow
 its configuration. `alcantara_media_analysis_cue_rule_total{edge,result}` counts,
-per analysed song and edge, `applied` (the edge moved from rule 1's), `unchanged`
-or `bounded`. Continuous audio gets no cue points.
+per analysed song and edge, `applied` (the edge moved from rule 1's), `unchanged`,
+`bounded` or `clamped`. Continuous audio gets no cue points.
 
 **Re-analysing songs.** `POST /songs/reanalysis` (`song.manage`; MCP
 `song_request_reanalysis`) takes 1 to 25 song ids and makes their finished
-analyses due now. The job takes them one at a time under the duty cycle above; a
-song keeps its current cue points until its new result replaces them, and while
-its analysis runs it is `pending` (it plays without cue points for those seconds),
-so a song that is on air is refused: `409 on_air` (MCP `on_air`, listed per song in
-the dry run) for a song a program is playing or has announced to Palazzo as the next
-song, checked again when the songs are queued. None of the batch is queued then.
+(`success` or `failed`) analyses due now, with a fresh retry budget (`attempts` 0). The job takes
+them one at a time under the duty cycle above. A re-run never takes a good result
+away: the row stays `success` with its cues and loudness while the run is claimed,
+playout keeps using them, and a run that fails records only `error` (and retries
+under the usual backoff); only a successful run replaces the result. (Until
+2026-11-26 a claimed re-run was `pending` and a failed one stored nulls, and the
+attempts of earlier runs counted, so a third re-analysis was `interrupted` without
+running and erased the result.) A song that is on air is still refused: `409
+on_air` (MCP `on_air`, listed per song in the dry run) for a song a program is
+playing or has announced to Palazzo as the next song, checked again when the songs
+are queued. None of the batch is queued then.
 Nothing re-analyses the catalogue by itself: a new rule is rolled out in staged,
-paced batches, and `ruleVersion` says which rule each song has. Reverting is
-re-running with the old constants. A stored success always
+paced batches, and `ruleVersion` says which rule each song has. Reverting needs no
+deploy: the request takes an optional `rule`: `C2` (the default and current rule, version 3),
+`C` (version 2: a tail beyond the bound keeps rule 1's edge) or `previous` (the rule
+before #235: version 1, the `base` detector alone). An older rule is stored on the row as
+`requestedRuleVersion` (1 or 2), the next analysis of that song runs it, records that
+`ruleVersion` and clears the request; a later request with the default rule clears an
+unrun one. An unknown rule is refused `400` before
+anything is queued. A stored success always
 passes the bounds the Palazzo client enforces on a song command
 (`validateSongSegue` and `validateSongLoudness`), with a missing cue checked as
 the file's own edge; anything else is recorded as a failure.
@@ -227,6 +241,17 @@ current source, and a new `sourceUrl` starts the count again. Runs are claimed
 with an optimistic check on the row, so two backend instances never analyse the
 same file. Re-running the job is idempotent: the same file produces the same
 row.
+
+**A restart in the middle of a run (#587).** A claim also stores `claimedAt`.
+When a backend starts (not a deploy candidate), every row still claimed belongs
+to a stopped process, because a deploy stops the old container before the new one
+starts. It is handed back: due at once, with the attempt returned, and the first
+run comes after `RESUME_DELAY_MS` (1 minute) instead of 5. This needs no
+shutdown hook, so it covers a stop, a crash and a `kill -9` alike. A source is
+handed back free at most `MAX_HAND_BACKS` (3) times (`interruptions`), after
+which an interruption spends the attempt, so a file that takes the process down
+cannot be retried for ever. A success or a new re-analysis request resets the
+count. If the hand-back itself fails, the ten minute lease applies as before.
 
 **Limits.** Each file has 180 seconds for the fetch, the probe and the
 measurement together, and a tool that writes more than 4 MiB of output is
@@ -257,6 +282,8 @@ falls to zero when the backfill is done.
 `alcantara_media_analysis_result_writes_total{outcome}` counts finished
 analyses whose result write the database refused (see below): `retried` (held
 for another run), `stored_after_retry`, `released` or `dropped`.
+`alcantara_media_analysis_interrupted_runs_total{outcome}` counts the claims a
+stopped process left, found at startup: `handed_back` or `attempt_spent`.
 
 **A refused result write (#278).** The asset is claimed (attempt n, a ten
 minute lease), analysed, and then the result is written. If that write fails on
@@ -270,7 +297,7 @@ minutes), so a database that keeps refusing the write does not starve the other
 assets; if even the release fails, the lease runs out as it always did. A
 warning with the cause class is logged at each step, never the message. A write
 that fails for any other reason is logged as an error and not retried. The held
-result is lost on a restart; the lease path then applies, as before.
+result is lost on a restart; the next start hands its claim back (#587).
 
 **Stored length (#296).** The pass that measures the cue points also decodes the
 file, so its length is stored as `MediaAssetAnalysis.durationSeconds` (null until
