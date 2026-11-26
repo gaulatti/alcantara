@@ -5,6 +5,7 @@ import {
   ROTATION_CHANGED_MESSAGE,
 } from '../radio/song-sequence-version';
 import { ProgramService } from './program.service';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
 
 // A save of the rotation replaces all of it, so an operator's save must be made from the rotation now stored.
 const leaf = (id: string) => ({
@@ -84,7 +85,9 @@ describe('saving the rotation', () => {
       undefined,
       noRecorder(),
     );
-    jest.spyOn(service, 'broadcastUpdate' as never).mockReturnValue({} as never);
+    jest
+      .spyOn(service, 'broadcastUpdate' as never)
+      .mockReturnValue({} as never);
     const save = (
       sequenceVersion: unknown,
       client: 'console' | 'mcp' = 'console',
@@ -179,5 +182,23 @@ describe('saving the rotation', () => {
       'console',
     );
     expect(metrics.recordSongSequenceSave).not.toHaveBeenCalled();
+  });
+});
+
+describe('the rotation save counter', () => {
+  it('is exposed from 0 for each result and counts one', async () => {
+    const metrics = new ManagedMetricsService();
+    metrics.recordSongSequenceSave('refused_stale');
+    const output = await metrics.render('');
+    for (const [result, count] of [
+      ['versioned', 0],
+      ['unversioned', 0],
+      ['refused_missing', 0],
+      ['refused_stale', 1],
+      ['refused_emptying', 0],
+    ])
+      expect(output).toContain(
+        `alcantara_song_sequence_saves_total{result="${result}"} ${count}`,
+      );
   });
 });
