@@ -656,6 +656,19 @@ const confirmDelete = async () =>
     within(await screen.findByRole("dialog", { name: "Confirm delete" })).getByRole("button", { name: "Delete show" }),
   );
 
+it("dismisses the delete confirmation with Escape and deletes nothing", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  open();
+  await loaded();
+  fireEvent.click(within(card("news")).getByRole("button", { name: "Actions for news" }));
+  fireEvent.click(within(card("news")).getByText("Delete show"));
+  const dialog = await screen.findByRole("dialog", { name: "Confirm delete" });
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Confirm delete" })).toBeNull());
+  expect(calls("DELETE")).toEqual([]);
+  expect(card("news")).toBeInTheDocument();
+});
+
 it("deletes a show after confirmation and moves the selection off it", async () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   open();
