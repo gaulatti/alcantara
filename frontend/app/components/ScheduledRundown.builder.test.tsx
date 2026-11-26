@@ -526,7 +526,10 @@ it("warns before publishing a block whose content overruns a fixed start", async
     await screen.findByText("Rundown published for automatic start."),
   ).toBeVisible();
   expect(publishFlightSequence).toHaveBeenCalledWith("radio-demo", 7, 3);
-  expect(preflightFlightSequence).not.toHaveBeenCalled();
+  // Plain Publish does not gate on Check; it reads the published revision's check once, afterwards, so the desk
+  // never assumes it ready (D1).
+  expect(preflightFlightSequence).toHaveBeenCalledTimes(1);
+  expect(preflightFlightSequence).toHaveBeenCalledWith("radio-demo", 7);
 });
 
 it("checks and publishes with ⌘↵ only when the check passes on the saved revision", async () => {
@@ -706,4 +709,27 @@ it("pins an event with no estimated start at 00:00", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Pin its start here" }));
   expect(fixedStartInput()).toHaveValue(0);
   expect(screen.getByText(/Unsaved changes/)).toBeVisible();
+});
+
+it("runs the Check shortcut on Ctrl+Enter, and dismisses the overrun warning with Escape", async () => {
+  stubLibrary();
+  vi.mocked(fetchFlightSequences).mockResolvedValue([overrunning()]);
+  vi.mocked(publishFlightSequence).mockClear();
+  renderRundown();
+  await openBlock();
+
+  // Escape closes the overrun warning without publishing.
+  fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+  const dialog = await screen.findByRole("dialog");
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(publishFlightSequence).not.toHaveBeenCalled();
+
+  // Ctrl+Enter asks the same warning first, for a check rather than a publish.
+  fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
+  const checkDialog = await screen.findByRole("dialog");
+  expect(within(checkDialog).getByRole("alert")).toHaveTextContent(
+    "00:30 of content is cut at the next fixed start",
+  );
+  expect(publishFlightSequence).not.toHaveBeenCalled();
 });

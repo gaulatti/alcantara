@@ -31,7 +31,13 @@ function harness() {
     programState: {
       findUnique: jest
         .fn()
-        .mockResolvedValue({ id: 1, programId: 'radio-1', type: 'radio' }),
+        .mockResolvedValue({
+          id: 1,
+          programId: 'radio-1',
+          type: 'radio',
+          // A set-up station: the preflight reads its radio as ready.
+          radioSettings: { enabled: true, palazzoUrl: 'http://palazzo:3100' },
+        }),
       update: jest.fn().mockResolvedValue({}),
     },
     flightSequence: {
@@ -606,6 +612,7 @@ describe('FlightService clocked preflight', () => {
       ready: true,
       issues: [],
       warnings: [],
+      engine: 'ready',
     });
     expect(prisma.song.findMany).toHaveBeenCalledWith({
       where: { id: { in: [1] } },
@@ -665,6 +672,7 @@ describe('FlightService clocked preflight', () => {
       ready: false,
       issues: ['Item 2: audio clip unavailable'],
       warnings: [],
+      engine: 'ready',
     });
   });
 
@@ -680,6 +688,7 @@ describe('FlightService clocked preflight', () => {
       ready: true,
       issues: [],
       warnings: ['Item 1: song duration unknown'],
+      engine: 'ready',
     });
   });
 
@@ -718,6 +727,7 @@ describe('FlightService clocked preflight', () => {
       ready: true,
       issues: [],
       warnings: [],
+      engine: 'ready',
     });
   });
 });

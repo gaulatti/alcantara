@@ -8,7 +8,7 @@ import {
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import ManualRundown from "./ManualRundown";
 import type { FlightCue, FlightSequence } from "../models/broadcast";
-import { fetchFlightSequences, updateFlightSequence } from "../services/flight";
+import { deleteFlightSequence, fetchFlightSequences, updateFlightSequence } from "../services/flight";
 
 // Quick successive cue edits must all survive, even when the server answers
 // the saves out of order: each edit builds on the newest items, and an older
@@ -265,4 +265,21 @@ it("keeps an edit when the cue is moved and another deleted before it is saved",
     ["b", undefined],
     ["a", "Open"],
   ]);
+});
+
+it("deletes the open sequence after confirming, and clears the cue list only for it", async () => {
+  const server = await openRundown([]);
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+  expect(confirm).toHaveBeenCalledWith("Delete this flight sequence?");
+  expect(deleteFlightSequence).not.toHaveBeenCalled();
+
+  confirm.mockReturnValue(true);
+  vi.mocked(deleteFlightSequence).mockResolvedValue(undefined as never);
+  fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+  expect(await screen.findByText("Sequence deleted.")).toBeInTheDocument();
+  expect(deleteFlightSequence).toHaveBeenCalledWith(expect.anything(), 1);
+  expect(screen.queryByText(`Cue 0 of 0`)).toBeNull();
+  expect(server.stored()).toBeTruthy();
+  confirm.mockRestore();
 });

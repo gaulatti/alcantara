@@ -22,3 +22,16 @@ it("falls back to every song and clip when the recipes go away while the Recipes
   expect(screen.getByText("Harbor Song")).toBeInTheDocument();
   expect(screen.getByText("Fictional clip")).toBeInTheDocument();
 });
+
+it("adds the highlighted entry with Enter from the search, and leaves Ctrl+Enter to the page", () => {
+  const onAdd = vi.fn();
+  render(<RundownLibrary songs={songs} clips={clips} disabled={false} onAdd={onAdd} recipes={[]} onAddRecipe={vi.fn()} />);
+  const search = screen.getByRole("searchbox", { name: "Search the library" });
+  fireEvent.keyDown(search, { key: "ArrowDown" });
+  fireEvent.keyDown(search, { key: "ArrowDown" });
+  fireEvent.keyDown(search, { key: "ArrowUp" });
+  fireEvent.keyDown(search, { key: "Enter", ctrlKey: true });
+  expect(onAdd).not.toHaveBeenCalled();
+  fireEvent.keyDown(search, { key: "Enter" });
+  expect(onAdd).toHaveBeenCalledTimes(1);
+});

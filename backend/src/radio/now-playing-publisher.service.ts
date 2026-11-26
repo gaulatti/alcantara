@@ -2,6 +2,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { isProductionEnvironment } from '../config/local-media';
 import { PrismaService } from '../prisma.service';
+import { PlayoutSongScope } from './playout-song-scope';
 import type { SongPlaybackData } from './song-execution.engine';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import {
@@ -52,6 +53,7 @@ export class NowPlayingPublisherService {
     private readonly prisma: PrismaService,
     @Optional() private readonly metrics?: ManagedMetricsService,
     @Optional() private readonly config?: ConfigService,
+    @Optional() private readonly songScope?: PlayoutSongScope,
   ) {}
 
   /**
@@ -144,7 +146,7 @@ export class NowPlayingPublisherService {
     }
 
     const payload: NowPlayingPublisherPayload = {};
-    const artworkUrl = await this.resolveArtworkUrl(playback);
+    const artworkUrl = await this.resolveArtworkUrl(programId, playback);
     if (playback.title) payload.title = playback.title;
     if (playback.artist) payload.artist = playback.artist;
     if (artworkUrl) payload.artworkUrl = artworkUrl;
@@ -157,6 +159,7 @@ export class NowPlayingPublisherService {
   }
 
   private async resolveArtworkUrl(
+    programId: string,
     playback: SongPlaybackData,
   ): Promise<string | undefined> {
     const supplied = this.normalizeString(playback.coverUrl);
@@ -164,10 +167,14 @@ export class NowPlayingPublisherService {
     const audioUrl = this.normalizeString(playback.audioUrl);
     if (!audioUrl) return undefined;
     try {
-      const song = await this.prisma.song.findFirst({
-        where: { audioUrl },
-        select: { coverUrl: true },
-      });
+      const byUrl = (db: PrismaService) =>
+        db.song.findFirst({
+          where: { audioUrl },
+          select: { coverUrl: true },
+        });
+      const song = this.songScope
+        ? await this.songScope.read('artwork', programId, byUrl, (row) => !!row)
+        : await byUrl(this.prisma);
       return this.normalizeString(song?.coverUrl) ?? undefined;
     } catch (err) {
       this.logger.warn(
