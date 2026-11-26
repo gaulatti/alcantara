@@ -105,7 +105,6 @@ describe('library team backfill migration', () => {
   });
 
   it.each([
-    ['no team anywhere', []],
     ['two teams', [1, 2]],
     ['a team that is not positive', [0]],
   ])('fails and changes nothing with %s', async (_name, found) => {
@@ -117,6 +116,22 @@ describe('library team backfill migration', () => {
       'cannot tell which team owns the unassigned rows',
     );
     await client.query('ROLLBACK TO SAVEPOINT before_migration');
+    for (const table of TARGETS) {
+      expect((await teams(table))[0].teamId).toBeNull();
+    }
+  });
+
+  it('skips with a notice when no tenant table names a team', async () => {
+    await seedUnassigned();
+    const notices: string[] = [];
+    const listen = (notice: { message?: string }) =>
+      notices.push(notice.message ?? '');
+    client.on('notice', listen);
+    await expect(client.query(sql)).resolves.toBeTruthy();
+    client.off('notice', listen);
+    expect(notices).toEqual([
+      expect.stringContaining('this installation has no tenancy'),
+    ]);
     for (const table of TARGETS) {
       expect((await teams(table))[0].teamId).toBeNull();
     }

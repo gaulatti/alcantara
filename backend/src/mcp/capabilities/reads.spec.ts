@@ -47,8 +47,16 @@ const specs = [
     {} as never,
     { teamId: 7 } as never,
   ).specs(),
-  ...new ScenesMcpTools(services.scenes as never, {} as never).specs(),
-  ...new LayoutsMcpTools(services.layouts as never, {} as never).specs(),
+  ...new ScenesMcpTools(
+    services.scenes as never,
+    {} as never,
+    { teamId: 7 } as never,
+  ).specs(),
+  ...new LayoutsMcpTools(
+    services.layouts as never,
+    {} as never,
+    { teamId: 7 } as never,
+  ).specs(),
   ...new MediaGroupsMcpTools(
     services.groups as never,
     {} as never,
@@ -71,6 +79,9 @@ beforeEach(() => {
 });
 const GROUP_TEAM = { user: { authorization: { teamId: 7 } } };
 
+const SCENE_TEAM = { user: { authorization: { teamId: 7 } } };
+const TEAM_REQUEST = { user: { authorization: { teamId: 7 } } };
+
 describe('read capabilities return what the controller returns', () => {
   it('program_list_programs', async () => {
     const result = await run('program_list_programs', {});
@@ -92,10 +103,12 @@ describe('read capabilities return what the controller returns', () => {
 
   it('scene_find_all and scene_find_one', async () => {
     expect(rebuilt(await run('scene_find_all', {}))).toEqual(
-      asRest(await controllers.scenes.findAll()),
+      asRest(await controllers.scenes.findAll(SCENE_TEAM)),
     );
     const one = await run('scene_find_one', { scene_id: 3 });
-    expect(rebuilt(one)).toEqual(asRest(await controllers.scenes.findOne('3')));
+    expect(rebuilt(one)).toEqual(
+      asRest(await controllers.scenes.findOne('3', SCENE_TEAM)),
+    );
     expect(one).toMatchObject({
       id: 3,
       untrusted: {
@@ -108,10 +121,10 @@ describe('read capabilities return what the controller returns', () => {
 
   it('layout_find_all and layout_find_one', async () => {
     expect(rebuilt(await run('layout_find_all', {}))).toEqual(
-      asRest(await controllers.layouts.findAll()),
+      asRest(await controllers.layouts.findAll(TEAM_REQUEST)),
     );
     expect(rebuilt(await run('layout_find_one', { layout_id: 2 }))).toEqual(
-      asRest(await controllers.layouts.findOne('2')),
+      asRest(await controllers.layouts.findOne('2', TEAM_REQUEST)),
     );
   });
 
