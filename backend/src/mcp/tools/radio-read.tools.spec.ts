@@ -361,7 +361,7 @@ async function harness() {
     radioMetrics,
     noRecorder(),
   );
-  const asRun = new AsRunService(prisma);
+  const asRun = new AsRunService(prisma, { teamId: 0 } as never);
   const songs = new SongsService(prisma, noRecorder());
   const statuses = new Map<string, unknown>([
     [

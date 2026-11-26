@@ -167,6 +167,7 @@ describe('AsRunService inferred ends', () => {
     radioMetrics = { recordRadioLogResult: jest.fn() };
     service = new AsRunService(
       store.prisma as unknown as PrismaService,
+      { teamId: 0 } as never,
       undefined,
       radioMetrics as unknown as RadioMetricsService,
     );
@@ -521,6 +522,7 @@ describe('as-run log for a scripted engine session', () => {
     const { engine, radioService } = sessionEngine();
     const asRun = new AsRunService(
       store.prisma as unknown as PrismaService,
+      { teamId: 0 } as never,
       engine,
     );
     asRun.onModuleInit();
