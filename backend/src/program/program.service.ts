@@ -4227,8 +4227,13 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
           type: 'song_queue_update',
           programId: normalizedProgramId,
           songQueue: event.songQueue,
+          // The engine writes the stored mode as well as the cursor (a Stop leaves it manual), so the sequence it
+          // sends carries its version, or the console's next save would be refused as stale.
           ...(event.songSequence !== undefined
-            ? { songSequence: event.songSequence }
+            ? {
+                songSequence: event.songSequence,
+                sequenceVersion: programSongSequenceVersion(event.songSequence),
+              }
             : {}),
         });
         break;

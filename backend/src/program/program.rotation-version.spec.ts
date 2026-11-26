@@ -185,6 +185,39 @@ describe('saving the rotation', () => {
   });
 });
 
+describe('a rotation the engine stores', () => {
+  it('is sent with its version, which a Stop changes by leaving the mode manual', () => {
+    const service = new ProgramService({} as never, {} as never, {} as never);
+    const sent = jest
+      .spyOn(service, 'broadcastUpdate' as never)
+      .mockReturnValue({} as never);
+    const playing = { ...rotation('a', 'b'), mode: 'autoplay' };
+    const stopped = { ...playing, mode: 'manual', activeItemId: 'b' };
+    const emit = (songSequence?: unknown) =>
+      (
+        service as unknown as { handleEngineEvent(event: unknown): void }
+      ).handleEngineEvent({
+        type: 'song_queue_update',
+        programId: 'show',
+        songQueue: [],
+        ...(songSequence ? { songSequence } : {}),
+      });
+
+    emit(stopped);
+    expect(sent).toHaveBeenLastCalledWith(
+      'show',
+      expect.objectContaining({
+        sequenceVersion: programSongSequenceVersion(stopped),
+      }),
+    );
+    expect(programSongSequenceVersion(stopped)).not.toBe(
+      programSongSequenceVersion(playing),
+    );
+    emit();
+    expect(sent.mock.calls.at(-1)![1]).not.toHaveProperty('sequenceVersion');
+  });
+});
+
 describe('the rotation save counter', () => {
   it('is exposed from 0 for each result and counts one', async () => {
     const metrics = new ManagedMetricsService();

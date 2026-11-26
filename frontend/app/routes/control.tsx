@@ -873,6 +873,7 @@ export default function Control() {
           const eventProgramId =
             typeof payload.programId === "string" ? payload.programId : "";
           if (eventProgramId !== activeProgramId) return;
+          rotationVersion.read(payload);
           setProgramAudioBusSettings((previous) => ({
             ...previous,
             songQueue: normalizeProgramSongQueue(payload.songQueue),
@@ -3082,6 +3083,7 @@ export default function Control() {
       }
 
       if (data.type === "song_queue_update") {
+        rotationVersion.read(data);
         setProgramAudioBusSettings((previous) => ({
           ...previous,
           songQueue: normalizeProgramSongQueue(data.songQueue),

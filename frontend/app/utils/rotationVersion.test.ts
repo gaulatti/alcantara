@@ -19,6 +19,7 @@ describe("the console's rotation version", () => {
     expect(await send(version)).toBeNull();
     version.read(undefined);
     version.read({});
+    version.read({ songQueue: [] });
     expect(await send(version)).toBeNull();
     version.read({ songSequence: null, sequenceVersion: "v1" });
     expect(await send(version)).toBe("v1");

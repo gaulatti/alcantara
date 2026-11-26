@@ -140,7 +140,8 @@ On backend restart, scheduled blocks whose in-memory timers were lost are marked
 `PUT /program/:programId/audio-bus` with a `songSequence` replaces the whole stored rotation, so a save names the
 rotation it was made from. `GET /program/:programId/audio-bus`, the save's answer and the `audio_bus_update` and
 snapshot messages carry `sequenceVersion`: a hash of the playlist and mode. The cursor is left out, so a song ending
-does not change it. The save sends it back as `sequenceVersion`.
+does not change it. The engine also stores the mode: a Stop in autoplay or shuffle leaves it manual, which is a new
+version, sent with the queue update that carries the stopped sequence. The save sends it back as `sequenceVersion`.
 
 | The save sends | Console HTTP | MCP |
 | --- | --- | --- |
