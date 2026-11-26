@@ -85,6 +85,19 @@ name and entering the stream key; they never type a Secrets Manager name or vers
   and `DeleteSecret` on `arn:aws:secretsmanager:*:*:secret:alcantara/destinations/*` only.
   Retiring a destination does not delete its secret (a retired destination can be restored).
 
+## Testing a saved destination
+
+The **Test** button (`POST /broadcast/destinations/:id/test`, `broadcast.manage`, gaulatti/alcantara#384) asks the
+ingest whether it takes the saved address and key. The backend reads the pinned key as the desktop studio does (so an
+ingest-access audit row is written), checks that the host resolves only to public addresses, and makes an RTMP
+handshake over TCP or TLS: connect, create a stream, publish. No audio or video is sent; the connection is closed as
+soon as the server answers. The answer is `accepted`, `refused` (with the server's words, key removed) or
+`unreachable`; it never carries the key, and nothing is logged. One test per destination per 15 seconds (429
+otherwise); retired destinations are refused (409). Counted as
+`alcantara_broadcast_destination_operations_total{action="test",result="succeeded"|"failed"}`. The route is not
+offered over MCP (it uses a stored credential). A server may accept a publish and still reject the stream once media
+arrives; the button proves the address and key are accepted, not that a broadcast will be good.
+
 ## Ingest credential for the desktop studio
 
 The desktop studio publishes straight from the operator's Mac and needs one

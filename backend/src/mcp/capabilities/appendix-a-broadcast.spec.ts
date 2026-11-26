@@ -203,6 +203,7 @@ describe('appendix A rows of ticket #219', () => {
       'replaceInvitation',
       'replaceKey',
       'rotate',
+      'testDestination',
     ]);
     for (const row of excludedRows) expect(row[5]).toBe('—');
     for (const spec of specs) {
