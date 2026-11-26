@@ -106,6 +106,8 @@ export class PalazzoProgramClient {
   private playoutReportedAt: number | null = null;
   /** Palazzo's live input, from its latest snapshot; null when that Palazzo does not report it (gaulatti/palazzo#48). */
   private live: { onAir: boolean } | null = null;
+  /** When that snapshot arrived. Palazzo sends no event when live input changes, so `live` is only as fresh as this. */
+  private liveReportedAt: number | null = null;
   private detail: string | null = null;
   private sseLoopRunning = false;
   private pollInFlight = false;
@@ -137,8 +139,21 @@ export class PalazzoProgramClient {
       degraded: this.isDegraded(),
       detail: this.detail,
       playout: this.playout,
-      ...(this.live ? { live: { ...this.live } } : {}),
+      ...(this.live && this.liveFresh(Date.now()) ? { live: { onAir: this.live.onAir } } : {}),
     };
+  }
+
+  /**
+   * Whether the live input reading is fresh enough to show (gaulatti/palazzo#48). Palazzo reports it only in a
+   * snapshot, and sends no event when it changes, so a reading is trusted only while the stream is heard and the
+   * snapshot is within the idle window plus the staleness window, as the playout report (D4). Otherwise the field is
+   * absent and a consumer must read the live input as unknown: a stale "off" must never read as silence.
+   */
+  liveFresh(now = Date.now()): boolean {
+    if (this.live === null || this.liveReportedAt === null) return false;
+    const hearing =
+      this.connection === 'connected' || this.connection === 'polling';
+    return hearing && now - this.liveReportedAt <= PALAZZO_EVENT_IDLE_MS + this.stalenessMs;
   }
 
   /**
@@ -397,6 +412,7 @@ export class PalazzoProgramClient {
       const live = state.live ? { onAir: state.live.onAir } : null;
       const liveChanged = this.live?.onAir !== live?.onAir;
       this.live = live;
+      this.liveReportedAt = Date.now();
       if (!this.setConnection('connected', null) && (playoutChanged || liveChanged))
         this.options.callbacks.onStatus(
           this.options.programId,

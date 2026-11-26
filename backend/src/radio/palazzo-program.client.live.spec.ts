@@ -2,6 +2,7 @@ import {
   PalazzoProgramClient,
   type PalazzoProgramClientCallbacks,
 } from './palazzo-program.client';
+import { PALAZZO_EVENT_IDLE_MS } from './palazzo-program.client';
 import { RadioMetricsService } from './radio-metrics.service';
 import { PalazzoMachineClient } from './palazzo-machine.client';
 import type {
@@ -153,6 +154,38 @@ describe('PalazzoProgramClient live input', () => {
     await settle();
     expect(h.statuses).toHaveLength(2);
     expect(h.statuses[1]).toMatchObject({ live: { onAir: true } });
+    h.client.stop();
+  });
+
+  it('shows the reading only while it is fresh: a stale "off" is absent, not silence', async () => {
+    const h = harness(true);
+    h.client.start();
+    await settle();
+    h.push(event(1, 'snapshot', { state: state(1, true, { onAir: false }) }));
+    await settle();
+    expect(h.client.getStatus()).toMatchObject({ live: { onAir: false } });
+    const now = Date.now();
+    const window = PALAZZO_EVENT_IDLE_MS + 15_000;
+    const later = jest.spyOn(Date, 'now').mockReturnValue(now + window + 1);
+    try {
+      expect(h.client.getStatus()).not.toHaveProperty('live');
+      expect(h.client.liveFresh()).toBe(false);
+    } finally {
+      later.mockRestore();
+    }
+    h.client.stop();
+  });
+
+  it('treats a reading as not fresh when the stream is no longer heard', async () => {
+    const h = harness(true);
+    h.client.start();
+    await settle();
+    h.push(event(1, 'snapshot', { state: state(1, true, { onAir: true }) }));
+    await settle();
+    // A client that no longer hears Palazzo (the connection is no longer connected or polling) cannot vouch for a
+    // reading it took earlier; set the state directly, as the client does on a lost stream.
+    (h.client as unknown as { connection: string }).connection = 'unavailable';
+    expect(h.client.getStatus()).not.toHaveProperty('live');
     h.client.stop();
   });
 });
