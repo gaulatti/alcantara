@@ -520,7 +520,7 @@ wait for analysis and reaches zero when the backfill is done. See
 The existing radio families remain unchanged:
 `alcantara_palazzo_sse_connections{state}`, reconnect attempts/failures,
 snapshot reconciliation results, ignored-event reasons, stale-telemetry and
-degraded program gauges, track transition results,
+degraded program gauges, track transition results (including `rotation-ended`: a rotation that does not loop ran out and the engine left it manual, walk part 4),
 `alcantara_radio_intro_transitions_total{result}` for submitted, accepted,
 started, ended, failed, and mismatched intro lifecycle events,
 `alcantara_radio_song_request_failures_total{reason}` for songs Palazzo could

@@ -1441,6 +1441,19 @@ it("shows the filler rotation with its Play Next queue, shuffle note and next ti
   expect(screen.getByRole("button", { name: "Done adding" })).toBeVisible();
 });
 
+// Walk part 4: the engine left a rotation that ran out manual, with endedAt; the desk says so, never a silent Off air.
+it("says the rotation ended when it ran out and nothing is on air", () => {
+  const p = props();
+  p.fixtureData!.logs = [];
+  p.programSongPlayback = null;
+  p.fixtureData!.output = { ...p.fixtureData!.output, state: "idle", outputRms: 0 };
+  p.songSequence = { ...p.songSequence, mode: "manual", loop: false, endedAt: 4_102_444_800_000 };
+  mount(p);
+  const strip = screen.getByRole("region", { name: "On air" });
+  expect(strip).toHaveAttribute("data-state", "rotation-ended");
+  expect(within(strip).getByText("Nothing is scheduled")).toBeVisible();
+});
+
 it("falls back to an empty rotation when the saved one is malformed", () => {
   const p = props();
   p.fixtureData!.logs = [];

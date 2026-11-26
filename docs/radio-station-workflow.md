@@ -333,6 +333,21 @@ subscribers only.
   two filtered exports add up to the default one. The `inferred` parameter is
   rejected with `format=csv`.
 
+## When a rotation that does not loop runs out
+
+At the end of the last song of an automatic rotation with Loop off, and nothing queued, the engine turns the rotation
+**manual**, rewinds it to the first song, and records `endedAt`, as an operator Stop leaves it manual. The rotation
+is saved and broadcast with its new version, since the mode is part of the version (#811), so the desk's next save
+is not refused. `endedAt` is where the rotation stands, not an edit: it is left out of the version and is optional,
+so a rotation stored without it reads as before. The end is logged once ("Rotation ended on …") and counted as
+`alcantara_radio_track_transitions_total{result="rotation-ended"}`; the watchdog stands down in manual, so it no
+longer logs `no_successor` every minute.
+
+Nothing starts it again on its own: not the watchdog, not a restart, and not turning Loop on, which only decides what
+happens at the end of the list. Any start clears `endedAt`: a take, or Autoplay or Shuffle, which play the rotation
+from the top. The desk shows **Rotation ended** (warning) with "Nothing is scheduled" while nothing is on air;
+audible output with no song commanded keeps its own label (#804). Walk part 4 found the gap.
+
 ## Gapless handoff: announcing the next song
 
 Contract: gaulatti/palazzo#40. When Palazzo accepts the active song's start in

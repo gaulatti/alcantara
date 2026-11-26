@@ -40,7 +40,13 @@ export type ProgramSongSequenceItem =
   | ProgramSongSequenceLeafItem
   | ProgramSongSequenceNestedItem;
 
-export type ProgramSongSequence = BaseSequence<ProgramSongSequenceItem>;
+export type ProgramSongSequence = BaseSequence<ProgramSongSequenceItem> & {
+  /**
+   * When a rotation that does not loop ran out (walk part 4): the engine turned it manual then, and any start clears
+   * it. Absent on a rotation that did not end, and on one stored before the field existed.
+   */
+  endedAt?: number;
+};
 
 export interface ProgramResolvedSongLeaf {
   id: string;
@@ -313,7 +319,17 @@ export function normalizeProgramSongSequence(
     .map((item) => normalizeSongSequenceItem(item, depth))
     .filter((item): item is ProgramSongSequenceItem => item !== null);
 
-  return withNormalizedSequenceShape(record, items);
+  const sequence: ProgramSongSequence = withNormalizedSequenceShape(
+    record,
+    items,
+  );
+  if (
+    typeof record.endedAt === 'number' &&
+    Number.isFinite(record.endedAt) &&
+    record.endedAt > 0
+  )
+    sequence.endedAt = record.endedAt;
+  return sequence;
 }
 
 function getBaseIndex<TItem extends BaseSequenceItem>(
@@ -684,7 +700,13 @@ export function programSongSequenceStructure(
     if (value && typeof value === 'object')
       return Object.fromEntries(
         Object.entries(value as Record<string, unknown>)
-          .filter(([key]) => key !== 'activeItemId' && key !== 'startedAt')
+          .filter(
+            ([key]) =>
+              key !== 'activeItemId' &&
+              key !== 'startedAt' &&
+              // Where the rotation stands, not an edit: the engine sets it when the rotation runs out.
+              key !== 'endedAt',
+          )
           .map(([key, inner]) => [key, strip(inner)]),
       );
     return value;

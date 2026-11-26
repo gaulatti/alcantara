@@ -1310,6 +1310,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       actor,
     };
     this.rememberSong(state, playbackRequestId, state.activeSong.songId);
+    this.clearRotationEnded(programId, state);
     this.emitPlaybackActive(programId, state.activeSong);
     void this.publishNowPlaying(programId, state.activeSong);
     this.startProgress(programId);
@@ -3371,9 +3372,56 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       this.logger.error(
         `Successor could not be resolved on ${programId}: cursor=${state.sequence.activeItemId ?? 'none'}`,
       );
+    } else if (
+      state.sequence &&
+      !hasSequenceSuccessor &&
+      (state.sequence.mode === 'autoplay' || state.sequence.mode === 'shuffle')
+    ) {
+      this.endRotation(programId, state);
     }
 
     this.publishStopped(programId);
+  }
+
+  /** Any start ends a rotation's ended state (walk part 4); saved and broadcast only when it was set. */
+  private clearRotationEnded(programId: string, state: SongEngineState): void {
+    if (!state.sequence?.endedAt) return;
+    const resumed = normalizeProgramSongSequence(state.sequence)!;
+    delete resumed.endedAt;
+    state.sequence = resumed;
+    void this.persistPlaylistCursorForQueue(programId, resumed).catch((error) =>
+      this.logger.error(
+        `Could not clear the ended rotation on ${programId}: ${String(error)}`,
+      ),
+    );
+  }
+
+  /**
+   * A rotation that does not loop ran out (walk part 4). It turns manual, as an operator Stop leaves it, and records
+   * when it ended, so nothing starts it again on its own: not the watchdog, not a Loop toggle, not a restart. The
+   * desk shows "Rotation ended" until an operator starts it (Autoplay, Shuffle or a take clears endedAt).
+   */
+  private endRotation(programId: string, state: SongEngineState): void {
+    const normalized = normalizeProgramSongSequence(state.sequence)!;
+    const ended: ProgramSongSequence = {
+      ...normalized,
+      mode: 'manual',
+      // Rewound to the top, so a start (Autoplay, "Starts the rotation now") plays the rotation from the beginning.
+      activeItemId: normalized.items[0]?.id ?? null,
+      endedAt: Date.now(),
+    };
+    this.metrics.recordTrackTransition('rotation-ended');
+    this.logger.log(
+      `Rotation ended on ${programId}: it does not loop and nothing is scheduled; it stays manual until an operator starts it`,
+    );
+    // Held in memory at once, so the watchdog stands down even before the save; a restart reads the stored rotation.
+    state.sequence = ended;
+    // The mode is part of the rotation's version, so the stored rotation is broadcast with its new version.
+    void this.persistPlaylistCursorForQueue(programId, ended).catch((error) =>
+      this.logger.error(
+        `Could not save the ended rotation on ${programId}: ${String(error)}`,
+      ),
+    );
   }
 
   /**
@@ -3805,6 +3853,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       ? announced.playbackId
       : (queueEntry?.playbackRequestId ?? randomUUID());
     this.rememberSong(state, playbackRequestId, resolved.songId);
+    this.clearRotationEnded(programId, state);
     if (handoff) {
       state.announcement = null;
       if (promote) {

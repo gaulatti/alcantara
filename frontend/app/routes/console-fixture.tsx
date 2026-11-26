@@ -179,7 +179,10 @@ export default function ConsoleFixture() {
     fixture.startsWith("radio-") || fixture.startsWith("audio")
       ? fixture === "radio-empty" || fixture === "audio-empty"
         ? { ...consoleSongs, items: [], activeItemId: null }
-        : consoleSongs
+        : fixture === "radio-rotation-ended"
+          ? // Walk part 4: a rotation that does not loop ran out; the engine left it manual with endedAt.
+            { ...consoleSongs, mode: "manual" as const, loop: false, endedAt: Date.now() - 60_000 }
+          : consoleSongs
       : playbackSequence,
   );
   const [cartSearch, setCartSearch] = useState("");
@@ -420,14 +423,16 @@ export default function ConsoleFixture() {
                 state:
                   fixture === "radio-offline"
                     ? "unavailable"
-                    : fixture === "radio-empty"
+                    : fixture === "radio-empty" || fixture === "radio-rotation-ended"
                       ? "idle"
                       : fixture === "radio-dead-air"
                         ? "silent"
                         : "audible",
-                expectedAudio: fixture !== "radio-empty",
+                expectedAudio: fixture !== "radio-empty" && fixture !== "radio-rotation-ended",
                 outputRms:
-                  fixture === "radio-empty" || fixture === "radio-dead-air"
+                  fixture === "radio-empty" ||
+                  fixture === "radio-dead-air" ||
+                  fixture === "radio-rotation-ended"
                     ? 0
                     : 0.08,
                 lastSampleAt: new Date().toISOString(),
@@ -452,6 +457,7 @@ export default function ConsoleFixture() {
               logs:
                 fixture === "radio-empty" ||
                 fixture === "radio-continuous" ||
+                fixture === "radio-rotation-ended" ||
                 fixture === "radio-audio-off-rundown"
                   ? []
                   : [
@@ -514,6 +520,7 @@ export default function ConsoleFixture() {
               // radio-audio-off-rundown (D7): no song commanded while the station is audible.
               playbackOnAir &&
               fixture !== "radio-empty" &&
+              fixture !== "radio-rotation-ended" &&
               fixture !== "radio-audio-off-rundown"
                 ? {
                     token:

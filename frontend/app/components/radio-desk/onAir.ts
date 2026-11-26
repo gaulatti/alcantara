@@ -15,6 +15,7 @@ import type { StatePillTone } from "./primitives";
  * "fallback": the engine is connected, its playout is up, and the desk knows no other source is on the air.
  * "off-rundown": the engine is connected and its playout is up, but another source is on the air, or the desk cannot
  *   tell: "Audio on air · not from the rundown".
+ * "rotation-ended": nothing on air and a rotation that does not loop ran out; the engine left it manual (walk part 4).
  * "audio-unconfirmed": the same generic label while the engine is not connected or its playout is down, never in
  *   the live tone.
  */
@@ -23,6 +24,7 @@ export type OnAirState =
   | "fallback"
   | "off-rundown"
   | "audio-unconfirmed"
+  | "rotation-ended"
   | "off-air"
   | "delayed"
   | "unconfirmed"
@@ -88,6 +90,8 @@ export interface OnAirInput {
    * input or a log event. "none" only when it knows there is none; absent reads as "unknown".
    */
   otherAudio?: "none" | "active" | "unknown";
+  /** The rotation ran out and was left manual (its endedAt): nothing is scheduled (walk part 4). */
+  rotationEnded?: boolean;
 }
 
 const MODE_LABELS = {
@@ -236,6 +240,8 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
       ? "off-rundown"
       : audioUnconfirmed
       ? "audio-unconfirmed"
+      : !live && input.rotationEnded
+      ? "rotation-ended"
       : !live
       ? "off-air"
       : unconfirmed
@@ -249,6 +255,8 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
       ? "Fallback playlist on air"
       : offRundown || audioUnconfirmed
       ? "Audio on air · not from the rundown"
+      : !live && input.rotationEnded
+      ? "Rotation ended"
       : !live
       ? "Off air"
       : unconfirmed
