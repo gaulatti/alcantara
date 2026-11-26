@@ -7,7 +7,7 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProgramSongSequenceEditor } from "./ProgramSongSequenceEditor";
 
 // Radix positioning runs continuously in jsdom; keep Bleecker's string
@@ -1002,4 +1002,82 @@ it("keeps an automatic playlist's clock when its active id names no row and anot
     items: [expect.objectContaining({ id: "b" })],
   });
   expect(typeof onChange.mock.lastCall![0].startedAt).toBe("number");
+});
+
+describe("ProgramSongSequenceEditor remove undo", () => {
+  const seq = () => ({
+    mode: "manual",
+    activeItemId: "a",
+    items: [preset("a"), preset("b"), preset("c")],
+  });
+  const ids = (sequence: any) => sequence.items.map((item: any) => item.id);
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    window.sessionStorage.clear();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    window.sessionStorage.clear();
+  });
+
+  const removeRow = (index: number) =>
+    fireEvent.click(within(rows()[index]).getByRole("button", { name: "Remove" }));
+
+  it("removes at once, then Undo puts the song back in its place", () => {
+    const view = editor({ sequence: seq(), view: "queue" });
+    removeRow(1);
+    expect(ids(view.onChange.mock.lastCall![0])).toEqual(["a", "c"]);
+    view.rerender(
+      <ProgramSongSequenceEditor
+        onChange={view.onChange}
+        sequence={view.onChange.mock.lastCall![0]}
+        view="queue"
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Removed Title b from playlist.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(ids(view.onChange.mock.lastCall![0])).toEqual(["a", "b", "c"]);
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("stops offering Undo after 8 seconds", () => {
+    editor({ sequence: seq(), view: "queue" });
+    removeRow(1);
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(7_999);
+    });
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("still offers Undo after a reload inside the window, and restores the same place", () => {
+    const first = editor({ sequence: seq(), view: "queue" });
+    removeRow(1);
+    const saved = first.onChange.mock.lastCall![0];
+    first.unmount();
+    // The page reloads: a new editor reads the pending undo from sessionStorage.
+    const second = editor({ sequence: saved, view: "queue" });
+    expect(screen.getByRole("status")).toHaveTextContent("Removed Title b");
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(ids(second.onChange.mock.lastCall![0])).toEqual(["a", "b", "c"]);
+  });
+
+  it("offers nothing after a reload once the window has passed", () => {
+    const first = editor({ sequence: seq(), view: "queue" });
+    removeRow(1);
+    const saved = first.onChange.mock.lastCall![0];
+    first.unmount();
+    act(() => {
+      vi.advanceTimersByTime(8_000);
+    });
+    editor({ sequence: saved, view: "queue" });
+    expect(screen.queryByRole("status")).toBeNull();
+  });
 });
