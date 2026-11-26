@@ -20,6 +20,7 @@ import {
 } from '../operator-change/operator-change-recorder';
 import { INSTANT_CHANGE_FIELDS } from '../operator-change/library-change-fields';
 import { PrismaService } from '../prisma.service';
+import { PlayoutSongScope } from '../radio/playout-song-scope';
 import { forTeam } from '../tenancy/scoped-prisma';
 import {
   OUTBOUND_REFUSAL_MESSAGES,
@@ -235,6 +236,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     @Optional()
     private readonly outputConfidence?: RadioOutputConfidenceService,
     @Optional() private readonly recorder?: OperatorChangeRecorder,
+    @Optional() private readonly songScope?: PlayoutSongScope,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -279,7 +281,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     event: SongEngineTrackEvent,
   ): Promise<void> {
     if (event.type === 'track.started') {
-      const coverUrl = await this.storedCoverUrl(event.url);
+      const coverUrl = await this.storedCoverUrl(programId, event.url);
       this.playingTrackByProgramId.set(programId, {
         playbackId: event.playbackRequestId,
         title: event.title,
@@ -311,15 +313,20 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
    * alcantara_program_playing_track_cover_lookups_total.
    */
   private async storedCoverUrl(
+    programId: string,
     audioUrl: string | null,
   ): Promise<string | undefined> {
     if (!audioUrl) return undefined;
     let stored: unknown;
     try {
-      const song = await this.prisma.song.findFirst({
-        where: { audioUrl },
-        select: { coverUrl: true },
-      });
+      const byUrl = (db: PrismaService) =>
+        db.song.findFirst({
+          where: { audioUrl },
+          select: { coverUrl: true },
+        });
+      const song = this.songScope
+        ? await this.songScope.read('cover', programId, byUrl, (row) => !!row)
+        : await byUrl(this.prisma);
       stored = song?.coverUrl;
     } catch (error) {
       this.metrics?.recordPlayingTrackCoverLookup('error');
@@ -817,24 +824,27 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     return value;
   }
 
-  async updateBroadcastSettings(data: {
-    enabled?: boolean;
-    startTime?: string | null;
-    mixerChannels?: unknown;
-    mainMasterVolume?: number;
-    songMasterVolume?: number;
-    instantMasterVolume?: number;
-    streamMasterVolume?: number;
-    sceneInstantMasterVolume?: number;
-    songMuted?: boolean;
-    instantMuted?: boolean;
-    streamMuted?: boolean;
-    sceneInstantMuted?: boolean;
-    songSolo?: boolean;
-    instantSolo?: boolean;
-    streamSolo?: boolean;
-    sceneInstantSolo?: boolean;
-  }, teamId = 0) {
+  async updateBroadcastSettings(
+    data: {
+      enabled?: boolean;
+      startTime?: string | null;
+      mixerChannels?: unknown;
+      mainMasterVolume?: number;
+      songMasterVolume?: number;
+      instantMasterVolume?: number;
+      streamMasterVolume?: number;
+      sceneInstantMasterVolume?: number;
+      songMuted?: boolean;
+      instantMuted?: boolean;
+      streamMuted?: boolean;
+      sceneInstantMuted?: boolean;
+      songSolo?: boolean;
+      instantSolo?: boolean;
+      streamSolo?: boolean;
+      sceneInstantSolo?: boolean;
+    },
+    teamId = 0,
+  ) {
     const currentRaw = await this.ensureBroadcastSettings();
     // One row for the whole installation (gaulatti/alcantara#122): only its own team may change it. `0` means no team
     // is configured, which production refuses.

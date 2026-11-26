@@ -173,6 +173,9 @@ export type SimilarityScopePath =
   | 'export'
   | 'upload';
 
+export type RadioSongScopePath = 'analysis' | 'recognise' | 'artwork' | 'cover';
+export type RadioSongScopeReason = 'no-team' | 'other-team' | 'lookup-failed';
+
 export type SimilarityActionResult =
   | 'selected'
   | 'fallback-no-candidate'
@@ -460,6 +463,18 @@ const SIMILARITY_SCOPE_PATHS: SimilarityScopePath[] = [
   'upload',
 ];
 
+const RADIO_SONG_SCOPE_PATHS: RadioSongScopePath[] = [
+  'analysis',
+  'recognise',
+  'artwork',
+  'cover',
+];
+const RADIO_SONG_SCOPE_REASONS: RadioSongScopeReason[] = [
+  'no-team',
+  'other-team',
+  'lookup-failed',
+];
+
 const SIMILARITY_ACTION_RESULTS: SimilarityActionResult[] = [
   'selected',
   'fallback-no-candidate',
@@ -531,6 +546,7 @@ export class RadioMetricsService {
   private songQueueDepth = 0;
   private readonly highRotationActions = new Map<string, number>();
   private readonly similarityActions = new Map<string, number>();
+  private readonly radioSongScopeRefusals = new Map<string, number>();
   private readonly asRunScopeRefusals = new Map<string, number>();
   private readonly similarityScopeRefusals = new Map<string, number>();
   private readonly analysisDrops = new Map<string, number>();
@@ -676,6 +692,22 @@ export class RadioMetricsService {
     this.similarityScopeRefusals.set(
       path,
       (this.similarityScopeRefusals.get(path) ?? 0) + 1,
+    );
+  }
+
+  recordRadioSongScopeRefusal(
+    path: RadioSongScopePath,
+    reason: RadioSongScopeReason,
+  ): void {
+    if (
+      !RADIO_SONG_SCOPE_PATHS.includes(path) ||
+      !RADIO_SONG_SCOPE_REASONS.includes(reason)
+    )
+      return;
+    const key = `${path}|${reason}`;
+    this.radioSongScopeRefusals.set(
+      key,
+      (this.radioSongScopeRefusals.get(key) ?? 0) + 1,
     );
   }
 
@@ -999,6 +1031,17 @@ export class RadioMetricsService {
       lines.push(
         `alcantara_as_run_scope_refusals_total{path="${path}"} ${this.asRunScopeRefusals.get(path) ?? 0}`,
       );
+    }
+    lines.push(
+      '# HELP alcantara_radio_song_scope_refusals_total Playout song reads the program team could not serve, read unscoped instead, by bounded path and reason.',
+      '# TYPE alcantara_radio_song_scope_refusals_total counter',
+    );
+    for (const path of RADIO_SONG_SCOPE_PATHS) {
+      for (const reason of RADIO_SONG_SCOPE_REASONS) {
+        lines.push(
+          `alcantara_radio_song_scope_refusals_total{path="${path}",reason="${reason}"} ${this.radioSongScopeRefusals.get(`${path}|${reason}`) ?? 0}`,
+        );
+      }
     }
     lines.push(
       '# HELP alcantara_radio_similarity_total Similarity picker outcomes by bounded result.',

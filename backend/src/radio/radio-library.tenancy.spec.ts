@@ -74,13 +74,17 @@ describe("the radio's song reads through the team-scoped client, against Postgre
   it('resolves what Palazzo plays to the same song', async () => {
     type Resolve = {
       findSongForAnalysis(
+        programId: string,
         audioUrl: string,
         songId: number | undefined,
         drops: string[],
       ): Promise<unknown>;
     };
     type Cover = {
-      storedCoverUrl(audioUrl: string): Promise<string | undefined>;
+      storedCoverUrl(
+        programId: string,
+        audioUrl: string,
+      ): Promise<string | undefined>;
     };
     const radio = (db: PrismaService) =>
       Object.assign(Object.create(RadioService.prototype) as object, {
@@ -94,16 +98,16 @@ describe("the radio's song reads through the team-scoped client, against Postgre
     for (const [index, name] of ['one', 'two'].entries()) {
       await expect(
         both((db) =>
-          radio(db).findSongForAnalysis(address(name), undefined, []),
+          radio(db).findSongForAnalysis('gate', address(name), undefined, []),
         ),
       ).resolves.not.toBeNull();
       await expect(
         both((db) =>
-          radio(db).findSongForAnalysis(address(name), ids[index], []),
+          radio(db).findSongForAnalysis('gate', address(name), ids[index], []),
         ),
       ).resolves.not.toBeNull();
       await expect(
-        both((db) => programs(db).storedCoverUrl(address(name))),
+        both((db) => programs(db).storedCoverUrl('gate', address(name))),
       ).resolves.toBe(`https://media.test/${team}/${name}.jpg`);
       // The engine's match of an unannounced track by its address.
       await expect(
