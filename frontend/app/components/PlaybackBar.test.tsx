@@ -795,3 +795,19 @@ it("holds its clock and says Not confirmed while the engine cannot confirm playb
   expect(screen.getByRole("progressbar", { name: "Track progress" })).toBeInTheDocument();
   expect(screen.getByText("Feedback live")).toBeInTheDocument();
 });
+
+it("selects the first song when the playlist has no active song, and plays it", () => {
+  const onTakeSelection = vi.fn();
+  render(
+    <PlaybackBar
+      sequence={{ ...sequence, activeItemId: null }}
+      programSongPlayback={null}
+      onChange={vi.fn()}
+      onTakeSelection={onTakeSelection}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Play selection" }));
+  expect(onTakeSelection).toHaveBeenCalledWith(
+    expect.objectContaining({ activeItemId: "song-1" }),
+  );
+});
