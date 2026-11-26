@@ -22,7 +22,7 @@ import { SongsMcpTools } from './songs';
 // writes answer a documented projection: ids instead of every asset).
 
 const grants = ['alcantara:access', 'alcantara:scene:manage'];
-const authorization = { permissions: grants };
+const authorization = { permissions: grants, teamId: 7 };
 const request = { user: { authorization } };
 const ctx = { principal: principalWith(...(grants as never[])) };
 
@@ -78,6 +78,7 @@ function build() {
     ...new MediaAssetsMcpTools(
       services.assets as never,
       programs as never,
+      { teamId: 7 } as never,
     ).specs(),
     ...new SimilarityMcpTools(services.similarity as never).specs(),
   ];
@@ -326,12 +327,17 @@ describe('media asset and label writes', () => {
 describe('radio_similarity_upload', () => {
   it('stores what the controller stores and answers the same', async () => {
     const { services, controllers, run, plan } = build();
-    const expected = asRest(await controllers.radio.similarityUpload(upload));
+    const expected = asRest(
+      await controllers.radio.similarityUpload('main', upload),
+    );
     const result = await run('radio_similarity_upload', {
       program_id: 'main',
       upload,
     });
-    expect(services.similarity.storeEmbeddings.mock.calls[1]).toEqual([upload]);
+    expect(services.similarity.storeEmbeddings.mock.calls[1]).toEqual([
+      upload,
+      'main',
+    ]);
     expect(rebuilt(result)).toEqual(expected);
     expect(
       await plan('radio_similarity_upload', { program_id: 'main', upload }),

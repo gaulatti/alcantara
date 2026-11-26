@@ -118,6 +118,8 @@ it("shows radio playout failures, and clears them when a song plays", async () =
   expect(await screen.findByText(/The timed block could not play\./)).toBeVisible();
   await send({ type: "song_playback_update", playback: { token: "t", audioUrl: "u", isPlaying: true } });
   await waitFor(() => expect(screen.queryByText(/The timed block could not play\./)).toBeNull());
+  await send({ type: "radio_log_cue_skipped" });
+  expect(await screen.findByText(/A timed cue was skipped: the engine was unavailable/)).toBeVisible();
   await send({ type: "radio_log_start_failed" });
   expect(await screen.findByText(/The timed block could not play\./)).toBeVisible();
   // A song that plays clears the playout error.

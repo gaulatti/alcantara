@@ -54,9 +54,10 @@ it('uses the device time when the time zone data is unavailable', () => {
 });
 
 it('reads a missing time part as zero', () => {
-  vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(
-    () => ({ formatToParts: () => [] }) as unknown as Intl.DateTimeFormat,
-  );
+  // A function, not an arrow: vitest 4 spies on constructors, and the code under test calls `new`.
+  vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(function () {
+    return { formatToParts: () => [] } as unknown as Intl.DateTimeFormat;
+  });
   const view = render(<RelojLoopClock />);
   // Every hand at twelve: the far end of each hand is straight up (x = 0).
   for (const index of [12, 13, 14]) {

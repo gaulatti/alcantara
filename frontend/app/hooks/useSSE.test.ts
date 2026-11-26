@@ -136,3 +136,21 @@ describe("useSSE", () => {
     expect(FakeEventSource.instances).toHaveLength(1);
   });
 });
+
+describe("useSSE after unmount", () => {
+  it("opens no new connection and schedules no reconnect when a closed source fires error or open", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const onConnectionChange = vi.fn();
+    const { unmount } = renderHook(() => useSSE({ url: "/e", onConnectionChange }));
+    const source = last();
+    unmount();
+    const timers = vi.getTimerCount();
+    const calls = onConnectionChange.mock.calls.length;
+    act(() => source.onerror!());
+    act(() => source.onopen!());
+    expect(vi.getTimerCount()).toBe(timers);
+    vi.advanceTimersByTime(60_000);
+    expect(FakeEventSource.instances).toHaveLength(1);
+    expect(onConnectionChange.mock.calls.length).toBe(calls);
+  });
+});

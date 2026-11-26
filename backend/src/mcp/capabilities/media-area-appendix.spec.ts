@@ -66,7 +66,11 @@ const specs = [
     {} as never,
     { teamId: 7 } as never,
   ).specs(),
-  ...new MediaAssetsMcpTools({} as never, {} as never).specs(),
+  ...new MediaAssetsMcpTools(
+    {} as never,
+    {} as never,
+    { teamId: 7 } as never,
+  ).specs(),
   ...new SimilarityMcpTools({} as never).specs(),
 ];
 

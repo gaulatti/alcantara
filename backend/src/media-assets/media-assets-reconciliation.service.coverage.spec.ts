@@ -40,6 +40,7 @@ function buildService(scenes: Array<{ metadata: string | null }>) {
     },
   };
   const prisma = {
+    $executeRaw: jest.fn().mockResolvedValue(0),
     $transaction: jest.fn((operation: (client: typeof tx) => unknown) =>
       operation(tx),
     ),

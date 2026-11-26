@@ -259,7 +259,7 @@ titles) are user text and sit under `untrusted`.
 | Capability | Permission | Answers like |
 |---|---|---|
 | `program_list_flight_sequences_by_id` | `flight.read` | `GET /program/:programId/flight` (every sequence with its cues, schedule, publication state, revision and `isRunning`) |
-| `program_preflight_flight_sequence_by_id` | `flight.read` | `GET /program/:programId/flight/:sequenceId/preflight` (`ready` and the `issues` found; a sequence with no scheduled start is `invalid`) |
+| `program_preflight_flight_sequence_by_id` | `flight.read` | `GET /program/:programId/flight/:sequenceId/preflight` (`ready`, the `issues` found, and `warnings` that never block a start, such as a song of unknown duration, under `untrusted` like every `warnings` field; a sequence with no scheduled start is `invalid`) |
 | `program_list_recipes_by_id` | `flight.read` | `GET /program/:programId/recipes` (each rundown recipe with its scenes, transition, hold, enabled steps and revision; gaulatti/alcantara#424) |
 | `program_expand_recipe_by_id` | `flight.read` | `POST /program/:programId/recipes/:recipeId/expand` (the cues one use would add for a song, and its issues; writes nothing) |
 
@@ -486,6 +486,10 @@ guest). A guest link is created and replaced in the console only. The four
   `radio_stop_all_instants`) confirm against the program's live stamp, like
   the program actions. `radio_play_instant` accepts `instant_id` as the
   console sends it; the route does not use it.
+- `radio_play_song` and `program_update_program_audio_bus_by_id` go through
+  the same engine check as their routes (#609): while a radio-only program's
+  engine is off, a manual song, or an audio-bus write that would start a song,
+  is refused with `conflict` before anything plays or is saved.
 - `webrtc_update_return` sets every field of the return feed: a field not
   given goes to its default (program, master, 1, not muted, 0 ms), exactly as
   the console's route does. The dry run shows the resulting values.
@@ -649,6 +653,7 @@ Every W capability, and whether it changes what is on air or queued:
 | `destination_rename_destination` | `backend/src/mcp/capabilities/destinations.ts:155` | No | - | Display name only; a running stream keeps the selection it started with. |
 | `destination_retire_destination` | `backend/src/mcp/capabilities/destinations.ts:` | No | - | Blocks future selection; a stream already out is not touched. A key this backend wrote is scheduled for deletion after 30 days (#384). |
 | `destination_restore_destination` | `backend/src/mcp/capabilities/destinations.ts:` | No | - | Re-enables selection for a later start. Cancels the key's scheduled deletion first, and is refused (503) if that fails (#384). |
+| `destination_test_destination` | `backend/src/mcp/capabilities/destinations.ts:` | No | - | Opens a connection to the destination's ingest with the stored key; no media is sent (#384). |
 | `filler_prepare_television` | `backend/src/mcp/capabilities/filler.ts:36` | No | - | Its description: it does not change what is on air; the version is pending for the next session. |
 | `filler_prepare_radio` | `backend/src/mcp/capabilities/filler.ts:60` | No | - | Same: pending for the next recovery start, a running session keeps its version. |
 | `instant_create_instant` | `backend/src/mcp/capabilities/instants.ts:138` | No | - | A new library row; nothing names it yet. |
@@ -769,6 +774,7 @@ records, the change is never blocked: a record that cannot be stored is logged a
 | `destination_rename_destination` | `broadcast.manage` | W | Changes the display name of a destination. Its stream key and Secrets Manager reference are not touched; adding a destination and replacing a key are console-only because they carry a credential. |
 | `destination_reorder_destinations` | `broadcast.manage` | W | Sets the catalog order. |
 | `destination_restore_destination` | `broadcast.manage` | W | Restores a retired destination so it can be selected again. |
+| `destination_test_destination` | `broadcast.manage` | A | Asks a saved destination's ingest whether it takes its address and key (RTMP publish handshake, no media): accepted, refused or unreachable, never the key. One test per destination per 15 seconds, shared with the console button. |
 | `destination_retire_destination` | `broadcast.manage` | W | Retires a destination: it can no longer be selected for a start (a replay of an older selection that includes it is refused too). |
 | `destination_start` | `broadcast.operate` | A | Starts the television broadcast of a program to the selected destinations: the stream goes out live to every one of them. |
 | `destination_stop` | `broadcast.operate` | A | Stops the television broadcast of a program: the stream ends for every destination. |

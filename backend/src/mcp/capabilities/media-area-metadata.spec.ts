@@ -14,15 +14,16 @@ describe('song, media, asset and similarity provider decorator metadata under un
       const { SimilarityMcpTools } = require('./similarity');
       jest.doMock('../../uploads/uploads.service', () => ({}));
       const { MediaImportMcpTools } = require('./media-import');
-      for (const provider of [SongsMcpTools, MediaMcpTools])
+      for (const provider of [
+        SongsMcpTools,
+        MediaMcpTools,
+        MediaAssetsMcpTools,
+      ])
         expect(Reflect.getMetadata('design:paramtypes', provider)).toEqual([
           Object,
           Object,
           Object,
         ]);
-      expect(
-        Reflect.getMetadata('design:paramtypes', MediaAssetsMcpTools),
-      ).toEqual([Object, Object]);
       expect(
         Reflect.getMetadata('design:paramtypes', SimilarityMcpTools),
       ).toEqual([Object]);

@@ -16,6 +16,7 @@ import {
   MediaAssetsService,
   type MediaAssetAuthorization,
 } from './media-assets.service';
+import { callerTeam } from '../tenancy/caller-team';
 
 type AuthorizedRequest = {
   user: { authorization: MediaAssetAuthorization };
@@ -25,6 +26,12 @@ type AuthorizedRequest = {
 @RequirePermission(ALCANTARA_PERMISSIONS.access)
 export class MediaAssetsController {
   constructor(private readonly mediaAssets: MediaAssetsService) {}
+
+  /** The caller's authorization, refused with 403 when it names no team (gaulatti/alcantara#122). */
+  private authorizationOf(request: AuthorizedRequest): MediaAssetAuthorization {
+    callerTeam(request);
+    return request.user.authorization;
+  }
 
   @Get('media-assets')
   findAll(
@@ -45,13 +52,13 @@ export class MediaAssetsController {
         page: page ? Math.max(1, Number(page)) : 1,
         limit: limit ? Math.min(200, Math.max(1, Number(limit))) : 50,
       },
-      request.user.authorization,
+      this.authorizationOf(request),
     );
   }
 
   @Get('media-assets/:id')
   findOne(@Param('id') id: string, @Req() request: AuthorizedRequest) {
-    return this.mediaAssets.findOne(id, request.user.authorization);
+    return this.mediaAssets.findOne(id, this.authorizationOf(request));
   }
 
   @Post('media-assets/background-audio')
@@ -62,7 +69,7 @@ export class MediaAssetsController {
   ) {
     return this.mediaAssets.createBackgroundAudio(
       body,
-      request.user.authorization,
+      this.authorizationOf(request),
     );
   }
 
@@ -73,7 +80,7 @@ export class MediaAssetsController {
   ) {
     return this.mediaAssets.removeStandaloneAsset(
       id,
-      request.user.authorization,
+      this.authorizationOf(request),
     );
   }
 
@@ -86,7 +93,7 @@ export class MediaAssetsController {
     return this.mediaAssets.replaceAssetLabels(
       id,
       body.labelIds,
-      request.user.authorization,
+      this.authorizationOf(request),
     );
   }
 
@@ -103,7 +110,7 @@ export class MediaAssetsController {
         page: page ? Math.max(1, Number(page)) : 1,
         limit: limit ? Math.min(200, Math.max(1, Number(limit))) : 50,
       },
-      request.user.authorization,
+      this.authorizationOf(request),
     );
   }
 
@@ -115,7 +122,7 @@ export class MediaAssetsController {
 
   @Get('media-labels/:id')
   findLabel(@Param('id') id: string, @Req() request: AuthorizedRequest) {
-    return this.mediaAssets.findLabel(id, request.user.authorization);
+    return this.mediaAssets.findLabel(id, this.authorizationOf(request));
   }
 
   @Post('media-labels')
@@ -123,7 +130,7 @@ export class MediaAssetsController {
     @Body() body: { name?: unknown; description?: unknown },
     @Req() request: AuthorizedRequest,
   ) {
-    return this.mediaAssets.createLabel(body, request.user.authorization);
+    return this.mediaAssets.createLabel(body, this.authorizationOf(request));
   }
 
   @Put('media-labels/:id')
@@ -132,7 +139,11 @@ export class MediaAssetsController {
     @Body() body: { name?: unknown; description?: unknown },
     @Req() request: AuthorizedRequest,
   ) {
-    return this.mediaAssets.updateLabel(id, body, request.user.authorization);
+    return this.mediaAssets.updateLabel(
+      id,
+      body,
+      this.authorizationOf(request),
+    );
   }
 
   @Put('media-labels/:id/assets')
@@ -144,12 +155,12 @@ export class MediaAssetsController {
     return this.mediaAssets.replaceLabelAssets(
       id,
       body.assetIds,
-      request.user.authorization,
+      this.authorizationOf(request),
     );
   }
 
   @Delete('media-labels/:id')
   removeLabel(@Param('id') id: string, @Req() request: AuthorizedRequest) {
-    return this.mediaAssets.removeLabel(id, request.user.authorization);
+    return this.mediaAssets.removeLabel(id, this.authorizationOf(request));
   }
 }

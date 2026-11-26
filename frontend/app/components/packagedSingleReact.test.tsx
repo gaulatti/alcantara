@@ -37,7 +37,7 @@ afterEach(() => {
 });
 
 const hookErrors = () =>
-  errors.mock.calls.map((call) => String(call[0])).filter((message) => /Invalid hook call|Cannot read properties of null/.test(message));
+  errors.mock.calls.map((call: unknown[]) => String(call[0])).filter((message: string) => /Invalid hook call|Cannot read properties of null/.test(message));
 
 it('renders every packaged Giorgia scene without a second React', async () => {
   const view = render(

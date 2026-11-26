@@ -4,10 +4,10 @@ import { RadioMetricsService } from './radio-metrics.service';
 
 // gaulatti/alcantara#214: the read-only account of a program the MCP tools use.
 
-function engine() {
+function engine(flight: object = { handleEngineAvailability: jest.fn() }) {
   return new SongExecutionEngine(
     {} as never,
-    {} as never,
+    flight as never,
     {} as never,
     {} as never,
     new RadioMetricsService(),
@@ -44,6 +44,21 @@ describe('SongExecutionEngine.getOnAirView', () => {
       mode: 'shuffle',
       frozen: true,
     });
+  });
+
+  it('tells the flight service once when the engine goes down and once when it is back (#719)', () => {
+    const flight = { handleEngineAvailability: jest.fn() };
+    const e = engine(flight);
+    e.registerRadioProgram('p1');
+    e.handlePalazzoStatus('p1', { connection: 'unavailable' } as never);
+    e.handlePalazzoStatus('p1', { connection: 'instance-mismatch' } as never);
+    expect(flight.handleEngineAvailability.mock.calls).toEqual([['p1', false]]);
+    e.handlePalazzoStatus('p1', { connection: 'connected' } as never);
+    e.handlePalazzoStatus('p1', { connection: 'connected' } as never);
+    expect(flight.handleEngineAvailability.mock.calls).toEqual([
+      ['p1', false],
+      ['p1', true],
+    ]);
   });
 
   it('reads the song on air and the announced next song, never its token or address', () => {

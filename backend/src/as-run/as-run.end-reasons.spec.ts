@@ -105,6 +105,10 @@ function memoryStore(songs: CatalogSong[]) {
       ),
     },
     song: {
+      findUnique: jest.fn(({ where }: { where: { id: number } }) => {
+        const song = songs.find((s) => s.id === where.id);
+        return Promise.resolve(song ? { id: song.id, assetId: null } : null);
+      }),
       findFirst: jest.fn(
         ({
           where,
@@ -265,6 +269,7 @@ function session(options: { durationMs?: (index: number) => number } = {}) {
   const store = memoryStore(SONGS);
   const asRun = new AsRunService(
     store.prisma as unknown as PrismaService,
+    { teamId: 0 } as never,
     engine,
   );
   asRun.onModuleInit();
@@ -618,7 +623,10 @@ describe('as-run export of each end reason', () => {
 
   beforeEach(async () => {
     store = memoryStore(SONGS);
-    service = new AsRunService(store.prisma as unknown as PrismaService);
+    service = new AsRunService(
+      store.prisma as unknown as PrismaService,
+      { teamId: 0 } as never,
+    );
     await play(
       'req-natural',
       SONGS[0],
