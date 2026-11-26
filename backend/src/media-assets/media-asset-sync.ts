@@ -19,6 +19,7 @@ export interface MediaAssetSource {
   name: string;
   sourceUrl: string;
   enabled: boolean;
+  teamId?: number | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -36,6 +37,13 @@ export function songCoverAssetId(songId: number): string {
   return `song-cover:${songId}`;
 }
 
+/**
+ * An asset belongs to the team of the row it mirrors (gaulatti/alcantara#122), whichever client writes it: the
+ * start-up reconciliation and a station with no team write unscoped. A row with no team leaves the asset's as it is.
+ */
+const teamOf = (teamId: number | null | undefined) =>
+  teamId && teamId > 0 ? { teamId } : {};
+
 async function upsertMediaAsset(
   tx: MediaAssetSyncClient,
   kind: MediaAssetKind,
@@ -48,6 +56,7 @@ async function upsertMediaAsset(
     name: source.name,
     sourceUrl: source.sourceUrl,
     enabled: source.enabled,
+    ...teamOf(source.teamId),
   };
   const createTimestamps = {
     ...(source.createdAt ? { createdAt: source.createdAt } : {}),
@@ -73,6 +82,7 @@ export async function syncImageAsset(
     assetId?: string | null;
     name: string;
     imageUrl: string;
+    teamId?: number | null;
     createdAt?: Date;
     updatedAt?: Date;
   },
@@ -82,6 +92,7 @@ export async function syncImageAsset(
     name: media.name,
     sourceUrl: media.imageUrl,
     enabled: true,
+    teamId: media.teamId,
     createdAt: media.createdAt,
     updatedAt: media.updatedAt,
   });
@@ -105,6 +116,7 @@ export async function syncAudioClipAsset(
     name: string;
     audioUrl: string;
     enabled: boolean;
+    teamId?: number | null;
     createdAt?: Date;
     updatedAt?: Date;
   },
@@ -114,6 +126,7 @@ export async function syncAudioClipAsset(
     name: instant.name,
     sourceUrl: instant.audioUrl,
     enabled: instant.enabled,
+    teamId: instant.teamId,
     createdAt: instant.createdAt,
     updatedAt: instant.updatedAt,
   });
@@ -140,6 +153,7 @@ export async function syncSongAsset(
     audioUrl: string;
     coverUrl?: string | null;
     enabled: boolean;
+    teamId?: number | null;
     createdAt?: Date;
     updatedAt?: Date;
   },
@@ -149,6 +163,7 @@ export async function syncSongAsset(
     name: song.title.trim() || song.artist.trim(),
     sourceUrl: song.audioUrl,
     enabled: song.enabled,
+    teamId: song.teamId,
     createdAt: song.createdAt,
     updatedAt: song.updatedAt,
   });
@@ -164,6 +179,7 @@ export async function syncSongAsset(
         name: `${song.artist.trim()} ${song.title.trim()}`.trim() + ' cover',
         sourceUrl: normalizedCoverUrl,
         enabled: song.enabled,
+        ...teamOf(song.teamId),
         ...(song.createdAt ? { createdAt: song.createdAt } : {}),
         ...(song.updatedAt ? { updatedAt: song.updatedAt } : {}),
       },
@@ -172,6 +188,7 @@ export async function syncSongAsset(
         name: `${song.artist.trim()} ${song.title.trim()}`.trim() + ' cover',
         sourceUrl: normalizedCoverUrl,
         enabled: song.enabled,
+        ...teamOf(song.teamId),
         ...(song.updatedAt ? { updatedAt: song.updatedAt } : {}),
       },
     });
@@ -202,6 +219,7 @@ export async function syncTransitionAsset(
     name: string;
     videoUrl: string;
     enabled: boolean;
+    teamId?: number | null;
     createdAt?: Date;
     updatedAt?: Date;
   },
@@ -211,6 +229,7 @@ export async function syncTransitionAsset(
     name: stinger.name,
     sourceUrl: stinger.videoUrl,
     enabled: stinger.enabled,
+    teamId: stinger.teamId,
     createdAt: stinger.createdAt,
     updatedAt: stinger.updatedAt,
   });
