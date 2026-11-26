@@ -39,6 +39,8 @@ export interface NextUp {
   title: string;
   artist: string;
   durationMs: number | null;
+  /** A looping rotation of one song: next is the song on air again. */
+  sameSong?: boolean;
 }
 
 export interface OnAirView {
@@ -269,12 +271,14 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
     next: input.next
       ? {
           title: input.next.title,
-          detail: [
-            input.next.artist,
-            input.next.durationMs ? formatClock(input.next.durationMs) : null,
-          ]
-            .filter(Boolean)
-            .join(" · "),
+          detail: input.next.sameSong
+            ? "same song (loop of one)"
+            : [
+                input.next.artist,
+                input.next.durationMs ? formatClock(input.next.durationMs) : null,
+              ]
+                .filter(Boolean)
+                .join(" · "),
         }
       : null,
     modeLabel: MODE_LABELS[input.mode],

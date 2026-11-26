@@ -36,10 +36,17 @@ describe("nextUp and the queue entry on air", () => {
     expect(nextUp({ sequence, queue, playback: null })).toMatchObject({ itemId: "c", via: "queue" });
   });
 
-  // A one-song rotation, asked on the desk's own terms: the only song is the one on air.
-  it("names the only rotation song as next when it is on air and nothing is queued (the loop repeats it)", () => {
+  // A one-song rotation, asked on the desk's own terms: the only song is the one on air. GM's call on #816: a loop of
+  // one is the same song, so Next names it and says so.
+  it("names the only rotation song as next when it is on air and nothing is queued, marked as the same song", () => {
     const one = { items: [leaf("a")], activeItemId: "a", loop: true } as unknown as ProgramSongSequence;
-    expect(nextUp({ sequence: one, queue: [], playback: airing(null, "a:playback") })).toMatchObject({ itemId: "a", via: "rotation" });
+    expect(nextUp({ sequence: one, queue: [], playback: airing(null, "a:playback") })).toMatchObject({
+      itemId: "a",
+      via: "rotation",
+      sameSong: true,
+    });
+    // Off air, the first song of a one-song rotation is simply next.
+    expect(nextUp({ sequence: one, queue: [], playback: null })).not.toHaveProperty("sameSong");
   });
 
   it("returns no next song for a one-song rotation that does not loop, when that song is on air", () => {
@@ -47,9 +54,17 @@ describe("nextUp and the queue entry on air", () => {
     expect(nextUp({ sequence: one, queue: [], playback: airing(null, "a:playback") })).toBeNull();
   });
 
-  // A playback that carries no queue entry id cannot tell which queued entry is on air, so the entry is not skipped.
-  it("does not skip a queued song when the playback carries no queue entry id", () => {
+  // GM's call on #816: Next never names the song on air. A playback that reports no queue entry at all (an older
+  // backend) is matched by position: the head whose song is on air is the one airing.
+  it("skips the queue head whose song is on air when the playback reports no queue entry", () => {
     const queue = [{ id: "q1", itemId: "a", enqueuedAt: 1 }];
-    expect(nextUp({ sequence, queue, playback: airing(undefined as unknown as null, "a:playback") })).toMatchObject({ itemId: "a", via: "queue" });
+    expect(nextUp({ sequence, queue, playback: airing(undefined as unknown as null, "a:playback") })).toMatchObject({ itemId: "b", via: "rotation" });
+    const two = [...queue, { id: "q2", itemId: "c", enqueuedAt: 2 }];
+    expect(nextUp({ sequence, queue: two, playback: airing(undefined as unknown as null, "a:playback") })).toMatchObject({ itemId: "c", via: "queue" });
+  });
+
+  it("keeps a queued replay of the song on air when the playback says it did not come from the queue", () => {
+    const queue = [{ id: "q1", itemId: "a", enqueuedAt: 1 }];
+    expect(nextUp({ sequence, queue, playback: airing(null, "a:playback") })).toMatchObject({ itemId: "a", via: "queue" });
   });
 });

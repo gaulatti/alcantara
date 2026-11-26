@@ -201,7 +201,7 @@ export function RadioTransport({
         ) : (
           <span className="text-text-secondary">
             {next
-              ? `Next: ${next.title}. Cue next (N), then Take (Space).`
+              ? `Next: ${next.title}${next.sameSong ? ", same song (loop of one)" : ""}. Cue next (N), then Take (Space).`
               : "Nothing cued."}
           </span>
         )}

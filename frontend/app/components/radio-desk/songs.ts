@@ -68,22 +68,35 @@ export function nextUp({
 }): NextUpSong | null {
   const leaves = rotationLeaves(sequence.items);
   const byId = new Map(leaves.map((leaf) => [leaf.id, leaf]));
+  const current = onAirLeaf(leaves, playback, sequence.activeItemId ?? null);
   // The entry on air stays in the queue until it ends (PlayNextQueue marks it Playing): it is not next (walk part 4).
+  // A playback that reports no queue entry at all (an older backend) is matched by position: the head is on air when
+  // its song is. An explicit null says the song did not come from the queue, so a queued replay of it still shows.
+  const onAirEntryId =
+    playback?.queueEntryId !== undefined
+      ? playback.queueEntryId
+      : current && queue[0]?.itemId === current.id
+        ? queue[0].id
+        : null;
   const queued = queue
-    .filter((entry) => entry.id !== playback?.queueEntryId)
+    .filter((entry) => entry.id !== onAirEntryId)
     .map((entry) => byId.get(entry.itemId))
     .find(Boolean);
-  const describe = (leaf: SongLeaf, via: "queue" | "rotation"): NextUpSong => ({
+  const describe = (
+    leaf: SongLeaf,
+    via: "queue" | "rotation",
+    sameSong = false,
+  ): NextUpSong => ({
     itemId: leaf.id,
     via,
     title: leaf.title,
     artist: leaf.artist,
     durationMs: typeof leaf.durationMs === "number" ? leaf.durationMs : null,
+    ...(sameSong ? { sameSong: true } : {}),
   });
   if (queued) return describe(queued, "queue");
   if (leaves.length === 0) return null;
 
-  const current = onAirLeaf(leaves, playback, sequence.activeItemId ?? null);
   const anchor =
     current ??
     (sequence.activeItemId ? byId.get(sequence.activeItemId) : undefined) ??
@@ -92,7 +105,10 @@ export function nextUp({
   const index = leaves.indexOf(anchor);
   const following = leaves[index + 1];
   if (following) return describe(following, "rotation");
-  return sequence.loop === false ? null : describe(leaves[0], "rotation");
+  // A looping rotation of one song repeats the song on air: Next says so rather than looking like a mistake.
+  return sequence.loop === false
+    ? null
+    : describe(leaves[0], "rotation", leaves[0] === current);
 }
 
 export interface PlayCandidate {

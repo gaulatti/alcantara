@@ -1464,6 +1464,19 @@ it("never names the queued song on air as next, in the strip or the transport", 
   expect(screen.queryByText(/Next: City lights/)).toBeNull();
 });
 
+// GM's call on #816: in a looping rotation of one song, Next is the song on air again and says so.
+it("says the next song is the same song in a looping rotation of one", () => {
+  const p = props();
+  p.fixtureData!.logs = [];
+  p.songSequence = { ...p.songSequence, mode: "autoplay", loop: true };
+  mount(p);
+  const strip = screen.getByRole("region", { name: "On air" });
+  expect(within(strip).getByText(/same song \(loop of one\)/)).toBeVisible();
+  expect(
+    screen.getByText("Next: City lights, same song (loop of one). Cue next (N), then Take (Space)."),
+  ).toBeVisible();
+});
+
 it("falls back to an empty rotation when the saved one is malformed", () => {
   const p = props();
   p.fixtureData!.logs = [];
