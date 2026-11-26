@@ -182,6 +182,9 @@ export default function ConsoleFixture() {
         ? { ...consoleSongs, items: [], activeItemId: null }
         : fixture === "radio-manual-off-air"
           ? { ...consoleSongs, mode: "manual" as const }
+        : fixture === "radio-rotation-ended"
+          ? // Walk part 4: a rotation that does not loop ran out; the engine left it manual with endedAt.
+            { ...consoleSongs, mode: "manual" as const, loop: false, endedAt: Date.now() - 60_000 }
           : consoleSongs
       : playbackSequence,
   );
@@ -430,14 +433,16 @@ export default function ConsoleFixture() {
                 state:
                   fixture === "radio-offline"
                     ? "unavailable"
-                    : fixture === "radio-empty"
+                    : fixture === "radio-empty" || fixture === "radio-rotation-ended"
                       ? "idle"
                       : fixture === "radio-dead-air"
                         ? "silent"
                         : "audible",
-                expectedAudio: fixture !== "radio-empty",
+                expectedAudio: fixture !== "radio-empty" && fixture !== "radio-rotation-ended",
                 outputRms:
-                  fixture === "radio-empty" || fixture === "radio-dead-air"
+                  fixture === "radio-empty" ||
+                  fixture === "radio-dead-air" ||
+                  fixture === "radio-rotation-ended"
                     ? 0
                     : 0.08,
                 lastSampleAt: new Date().toISOString(),
@@ -463,6 +468,7 @@ export default function ConsoleFixture() {
                 fixture === "radio-empty" ||
                 fixture === "radio-continuous" ||
                 fixture === "radio-manual-off-air" ||
+                fixture === "radio-rotation-ended" ||
                 fixture === "radio-audio-off-rundown"
                   ? []
                   : [
@@ -527,7 +533,8 @@ export default function ConsoleFixture() {
               playbackOnAir &&
               fixture !== "radio-empty" &&
               fixture !== "radio-audio-off-rundown" &&
-              fixture !== "radio-manual-off-air"
+              fixture !== "radio-manual-off-air" &&
+              fixture !== "radio-rotation-ended"
                 ? {
                     token:
                       fixture === "radio-external"

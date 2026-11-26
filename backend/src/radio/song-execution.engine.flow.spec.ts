@@ -2267,3 +2267,114 @@ describe('SongExecutionEngine Play Next after Take now', () => {
     expect(new Set(sentIds(ctx)).size).toBe(2);
   });
 });
+
+// Walk part 4: a rotation that does not loop ran out and sat in Autoplay with nothing to play. Turning Loop on then
+// started it at once (the sequence update) or within a minute (the watchdog), and the watchdog logged no_successor
+// every minute. The end is now a boundary like a Stop: the rotation turns manual and records endedAt until a start.
+describe('SongExecutionEngine when a rotation that does not loop runs out', () => {
+  const ONCE = sequenceOf([SONG_A, SONG_B], 'autoplay', false);
+  const stored = (ctx: ReturnType<typeof setup>) =>
+    ctx.store.current!.songSequence as { mode: string; endedAt?: number; loop: boolean };
+  const tick = async (ctx: ReturnType<typeof setup>) => {
+    await ctx.engine.checkPlayback();
+    await flush(80);
+  };
+  const runOut = async () => {
+    const ctx = setup({ songSequence: ONCE });
+    end(ctx, await startAutomatic(ctx, ONCE));
+    await flush(80);
+    end(ctx, activeRequestId(ctx.engine));
+    await flush(120);
+    return ctx;
+  };
+
+  it('turns the rotation manual, records when it ended, broadcasts it and logs it once', async () => {
+    jest.setSystemTime(new Date('2099-01-01T10:00:00.000Z'));
+    const ctx = await runOut();
+    expect(playedUrls(ctx)).toEqual([
+      'https://example.test/a.mp3',
+      'https://example.test/b.mp3',
+    ]);
+    expect(stored(ctx)).toMatchObject({ mode: 'manual', loop: false, activeItemId: 'song-a' });
+    expect(stored(ctx).endedAt).toBe(Date.parse('2099-01-01T10:00:00.000Z'));
+    expect(ctx.metrics.recordTrackTransition).toHaveBeenCalledWith('rotation-ended');
+    expect(ctx.events).toContainEqual(
+      expect.objectContaining({
+        type: 'song_queue_update',
+        songSequence: expect.objectContaining({ mode: 'manual', endedAt: expect.any(Number) }),
+      }),
+    );
+    expect(ctx.publisher.publishStopped).toHaveBeenCalledWith('radio-1');
+    // The watchdog stands down in manual: the end was logged once, and nothing repeats.
+    ctx.palazzo.state = idle(9);
+    for (let round = 0; round < 3; round += 1) {
+      await tick(ctx);
+      jest.advanceTimersByTime(NO_PLAYBACK_BOUND_MS);
+      await tick(ctx);
+    }
+    const ended = logSpy.mock.calls.filter((call) => String(call[0]).startsWith('Rotation ended on radio-1'));
+    expect(ended).toHaveLength(1);
+    expect(warnSpy.mock.calls.some((call) => String(call[0]).includes('Watchdog resume'))).toBe(false);
+    expect(playedUrls(ctx)).toHaveLength(2);
+  });
+
+  it('starts nothing when Loop is turned on afterwards, from the update or the watchdog', async () => {
+    const ctx = await runOut();
+    ctx.engine.handleSequenceUpdated('radio-1', { ...stored(ctx), loop: true });
+    await flush(80);
+    ctx.palazzo.state = idle(9);
+    await tick(ctx);
+    jest.advanceTimersByTime(NO_PLAYBACK_BOUND_MS);
+    await tick(ctx);
+    expect(playedUrls(ctx)).toHaveLength(2);
+    expect(stateOf(ctx.engine).sequence).toMatchObject({ mode: 'manual', loop: true });
+  });
+
+  it('clears the ended mark at a start: a take, or Autoplay pressed again', async () => {
+    const taken = await runOut();
+    taken.engine.handleManualSong('radio-1', 'https://example.test/live.mp3');
+    await flush(80);
+    expect(stored(taken)).not.toHaveProperty('endedAt');
+    expect(stateOf(taken.engine).sequence).not.toHaveProperty('endedAt');
+
+    const resumed = await runOut();
+    resumed.engine.handleSequenceUpdated('radio-1', { ...stored(resumed), mode: 'autoplay' });
+    await flush(120);
+    // The end rewound the rotation, so Autoplay plays it from the top.
+    expect(playedUrls(resumed)[2]).toBe('https://example.test/a.mp3');
+    expect(stored(resumed)).not.toHaveProperty('endedAt');
+    expect(stored(resumed).mode).toBe('autoplay');
+  });
+
+  it('holds the ended rotation in memory when it cannot be saved, and logs a clear that cannot be saved', async () => {
+    const ctx = setup({ songSequence: ONCE });
+    end(ctx, await startAutomatic(ctx, ONCE));
+    await flush(80);
+    ctx.prisma.programState.update.mockRejectedValueOnce(new Error('disk full'));
+    end(ctx, activeRequestId(ctx.engine));
+    await flush(120);
+    expect(stateOf(ctx.engine).sequence).toMatchObject({ mode: 'manual', endedAt: expect.any(Number) });
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Could not save the ended rotation on radio-1'));
+    ctx.prisma.programState.update.mockRejectedValueOnce(new Error('disk full'));
+    ctx.engine.handleManualSong('radio-1', 'https://example.test/live.mp3');
+    await flush(80);
+    expect(stateOf(ctx.engine).sequence).not.toHaveProperty('endedAt');
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Could not clear the ended rotation on radio-1'));
+  });
+
+  it('never ends a rotation that loops, nor a manual one', async () => {
+    const looping = setup();
+    end(looping, await startAutomatic(looping));
+    await flush(120);
+    expect(looping.metrics.recordTrackTransition).not.toHaveBeenCalledWith('rotation-ended');
+    const manual = setup({ songSequence: sequenceOf([SONG_A], 'manual', false) });
+    manual.engine.handleSequenceUpdated('radio-1', sequenceOf([SONG_A], 'manual', false));
+    manual.engine.handlePalazzoSnapshot('radio-1', idle());
+    manual.engine.handleManualSong('radio-1', SONG_A.audioUrl);
+    await flush(40);
+    end(manual, activeRequestId(manual.engine));
+    await flush(120);
+    expect(manual.metrics.recordTrackTransition).not.toHaveBeenCalledWith('rotation-ended');
+    expect((manual.store.current!.songSequence as { endedAt?: number }).endedAt).toBeUndefined();
+  });
+});

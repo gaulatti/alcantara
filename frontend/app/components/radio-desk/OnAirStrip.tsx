@@ -36,7 +36,8 @@ export function OnAirStrip({
   const fallback = view.state === "fallback";
   const offRundown =
     view.state === "off-rundown" || view.state === "audio-unconfirmed";
-  const on = view.state !== "off-air" && !fallback && !offRundown;
+  const ended = view.state === "rotation-ended";
+  const on = view.state !== "off-air" && !fallback && !offRundown && !ended;
   return (
     <section
       aria-label="On air"
@@ -50,7 +51,8 @@ export function OnAirStrip({
             : view.state === "delayed" ||
                 view.state === "unconfirmed" ||
                 view.state === "unverified" ||
-                view.state === "audio-unconfirmed"
+                view.state === "audio-unconfirmed" ||
+                ended
               ? "warn"
               : "idle"
         }
@@ -86,6 +88,14 @@ export function OnAirStrip({
             </p>
             <p className="truncate text-xs text-text-secondary">
               No song commanded · {programId}
+            </p>
+          </>
+        ) : ended ? (
+          // Walk part 4: a rotation that does not loop ran out. A warning, never a silent Off air.
+          <>
+            <p className="truncate text-sm font-semibold">Nothing is scheduled</p>
+            <p className="truncate text-xs text-text-secondary">
+              The rotation does not loop and is manual now · {programId}
             </p>
           </>
         ) : (

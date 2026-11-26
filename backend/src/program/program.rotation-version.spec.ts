@@ -4,6 +4,7 @@ import {
   programSongSequenceVersion,
   ROTATION_CHANGED_MESSAGE,
 } from '../radio/song-sequence-version';
+import { normalizeProgramSongSequence } from '../radio/song-sequence.utils';
 import { ProgramService } from './program.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 
@@ -215,6 +216,65 @@ describe('a rotation the engine stores', () => {
     );
     emit();
     expect(sent.mock.calls.at(-1)![1]).not.toHaveProperty('sequenceVersion');
+  });
+});
+
+// Walk part 4: a rotation that does not loop runs out and the engine stores it manual, with endedAt. The mode is part
+// of the version, so the stored rotation is broadcast with its new version; endedAt, where the rotation stands, is not.
+describe('a rotation that ran out', () => {
+  const playing = { ...rotation('a', 'b'), mode: 'autoplay', loop: false };
+  const ended = { ...playing, mode: 'manual', endedAt: 4_102_444_800_000 };
+
+  it('keeps endedAt through normalising, leaves it out of the version, and reads a rotation without it as before', () => {
+    expect(normalizeProgramSongSequence(ended)?.endedAt).toBe(4_102_444_800_000);
+    for (const bad of [undefined, null, 'soon', Number.NaN, 0, -5])
+      expect(normalizeProgramSongSequence({ ...ended, endedAt: bad })).not.toHaveProperty('endedAt');
+    expect(programSongSequenceVersion(ended)).toBe(
+      programSongSequenceVersion({ ...ended, endedAt: undefined }),
+    );
+    expect(programSongSequenceVersion(ended)).not.toBe(programSongSequenceVersion(playing));
+  });
+
+  it('is broadcast with its new version, and a save made from it right after the end is written', async () => {
+    const service = new ProgramService({} as never, {} as never, {} as never);
+    const sent = jest.spyOn(service, 'broadcastUpdate' as never).mockReturnValue({} as never);
+    (service as unknown as { handleEngineEvent(event: unknown): void }).handleEngineEvent({
+      type: 'song_queue_update',
+      programId: 'show',
+      songQueue: [],
+      songSequence: ended,
+    });
+    const broadcast = (sent.mock.calls.at(-1) as unknown as unknown[])[1] as { sequenceVersion: string };
+    expect(broadcast.sequenceVersion).toBe(programSongSequenceVersion(ended));
+
+    // The desk turns Loop on from what it was sent: the save is written, not refused as stale.
+    const row = { songSequence: ended, songQueue: [], audioMixer: null, type: 'radio', updatedAt: new Date(0) };
+    const prisma = {
+      programState: {
+        findUnique: jest.fn(() => Promise.resolve({ ...row })),
+        update: jest.fn(({ data }: { data: object }) => Promise.resolve({ ...row, ...data })),
+      },
+    };
+    const saving = new ProgramService(
+      prisma as never,
+      {} as never,
+      { handleSequenceUpdated: jest.fn(), handleQueueUpdated: jest.fn() } as never,
+      { recordSongSequenceSave: jest.fn() } as never,
+      undefined,
+      noRecorder(),
+    );
+    jest.spyOn(saving, 'broadcastUpdate' as never).mockReturnValue({} as never);
+    const saved = await saving.updateProgramAudioBus(
+      { songSequence: { ...ended, loop: true }, sequenceVersion: broadcast.sequenceVersion } as never,
+      'show',
+      'console',
+    );
+    expect(prisma.programState.update).toHaveBeenCalledTimes(1);
+    expect(saved.sequenceVersion).toBe(programSongSequenceVersion({ ...ended, loop: true }));
+    expect(
+      (prisma.programState.update.mock.calls[0][0] as { data: { songSequence: { endedAt?: number } } }).data
+        .songSequence.endedAt,
+    ).toBe(4_102_444_800_000);
   });
 });
 

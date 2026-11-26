@@ -595,6 +595,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
         ? "active"
         : "unknown",
     playoutDown,
+    rotationEnded: rotation.mode === "manual" && typeof rotation.endedAt === "number",
   };
   const recoveryControlsRef = useRef<HTMLDetailsElement>(null);
   const openRecoveryControls = () => {
