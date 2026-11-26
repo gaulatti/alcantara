@@ -1177,13 +1177,59 @@ it("starts and stops the recovery session through Palazzo", async () => {
     expect.stringContaining("/radio/radio-demo/recovery/start"),
     { method: "POST" },
   );
-  fireEvent.click(stop);
+  // Stopping clears program audio: a click only explains, a 0.6 s hold stops (gaulatti/alcantara#693).
+  fireEvent.pointerDown(stop);
+  fireEvent.pointerUp(stop);
+  expect(
+    screen.getByText("Hold to stop the session (0.6 s). Program audio stops."),
+  ).toBeInTheDocument();
+  expect(transport).not.toHaveBeenCalledWith(
+    expect.stringContaining("/radio/radio-demo/recovery/stop"),
+    expect.anything(),
+  );
+  await hold(stop);
   expect(await screen.findByText("Prepared for next session")).toBeInTheDocument();
+  expect(
+    transport.mock.calls.filter(([url]) =>
+      String(url).includes("/radio/radio-demo/recovery/stop"),
+    ),
+  ).toHaveLength(1);
   const configure = screen.getByRole("link", { name: "Configure" });
   expect(configure).toHaveAttribute("href", "/radio-settings");
   // Keyboard focus shows a ring: the link has no border or background, so without these classes it has no focus indicator.
   expect(configure.className).toContain("focus-visible:ring-2");
   expect(configure.className).toContain("focus-visible:ring-sea");
+});
+
+// gaulatti/alcantara#693 review: one stop while one is on its way. A second hold sends nothing.
+it("sends one recovery stop while one is on its way, however often Stop session is held", async () => {
+  const p = props();
+  p.fixtureData!.recovery = {
+    preparedVersion: "v4",
+    automation: { actualState: "running", filler: { activeVersion: "v4", ready: true } },
+    connection: "connected",
+  } as never;
+  let answerStop: (response: Response) => void = () => {};
+  const transport = radioApi({
+    "/recovery/stop": (() =>
+      new Promise<Response>((resolve) => {
+        answerStop = resolve;
+      })) as never,
+  });
+  mount(p);
+  const stop = screen.getByRole("button", { name: "Stop session" });
+  await hold(stop);
+  await hold(stop);
+  const stops = () =>
+    transport.mock.calls.filter(([url]) =>
+      String(url).includes("/radio/radio-demo/recovery/stop"),
+    );
+  expect(stops()).toHaveLength(1);
+  await act(async () => {
+    answerStop(json({ preparedVersion: "v4", automation: null, connection: "connected" }));
+  });
+  expect(await screen.findByText("Prepared for next session")).toBeInTheDocument();
+  expect(stops()).toHaveLength(1);
 });
 
 it("reports recovery commands Palazzo refused or could not receive", async () => {

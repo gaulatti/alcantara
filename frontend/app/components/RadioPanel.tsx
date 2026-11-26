@@ -315,7 +315,12 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     }
   }, [programId]);
 
+  // One recovery command at a time: a second start or stop while one is on its way sends nothing
+  // (gaulatti/alcantara#693 review). A ref, so two calls from one render cannot both pass.
+  const recoveryInFlight = useRef(false);
   const commandRecovery = async (action: "start" | "stop") => {
+    if (recoveryInFlight.current) return;
+    recoveryInFlight.current = true;
     setRecoveryBusy(true);
     setRecoveryError(null);
     try {
@@ -333,6 +338,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
         cause instanceof Error ? cause.message : "Recovery command failed.",
       );
     } finally {
+      recoveryInFlight.current = false;
       setRecoveryBusy(false);
     }
   };
@@ -1081,17 +1087,24 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   >
                     Start with fallback
                   </Button>
-                  <Button
-                    type="button"
-                    size="xs"
-                    variant="destructive"
-                    onClick={() => void commandRecovery("stop")}
+                  {/* Stopping the session clears program audio, so it is held like Stop and Stop all
+                      (gaulatti/alcantara#693): a click only explains. */}
+                  <HoldButton
+                    label="Stop session"
+                    hint="Hold to stop the session (0.6 s). Program audio stops."
+                    tone="danger"
+                    // Re-checked when the hold completes: the session may have stopped, or a command
+                    // started, while the control was held.
+                    onConfirm={() => {
+                      if (!recoveryBusy && recovery?.automation?.filler.ready)
+                        void commandRecovery("stop");
+                    }}
                     disabled={
                       recoveryBusy || !recovery?.automation?.filler.ready
                     }
                   >
-                    Stop session
-                  </Button>
+                    Hold · stop session
+                  </HoldButton>
                   <Link to="/radio-settings" className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sea">Configure</Link>
                 </div>
                 {recoveryError && <p role="alert">{recoveryError}</p>}
