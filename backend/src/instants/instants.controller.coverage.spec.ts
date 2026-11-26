@@ -13,6 +13,8 @@ import { InstantsController } from './instants.controller';
 import { InstantsModule } from './instants.module';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 
+const request = { user: { authorization: { teamId: 7 } } };
+
 function build() {
   const program = {
     listInstants: jest.fn().mockResolvedValue(['list']),
@@ -28,43 +30,52 @@ function build() {
 describe('InstantsController (coverage)', () => {
   it('lists instants for an optional program', async () => {
     const { controller, program } = build();
-    await expect(controller.listInstants('p1')).resolves.toEqual(['list']);
-    await controller.listInstants();
-    expect(program.listInstants.mock.calls).toEqual([['p1'], [undefined]]);
+    await expect(controller.listInstants(request, 'p1')).resolves.toEqual([
+      'list',
+    ]);
+    await controller.listInstants(request);
+    expect(program.listInstants.mock.calls).toEqual([
+      ['p1', 7],
+      [undefined, 7],
+    ]);
   });
 
   it('creates an instant', async () => {
     const { controller, program } = build();
     const data = { name: 'n', audioUrl: 'u', volume: 0.5, enabled: true };
-    await expect(controller.createInstant(data)).resolves.toBe('created');
-    expect(program.createInstant).toHaveBeenCalledWith(data);
+    await expect(controller.createInstant(data, request)).resolves.toBe(
+      'created',
+    );
+    expect(program.createInstant).toHaveBeenCalledWith(data, 7);
   });
 
   it('updates an instant converting the id to a number', async () => {
     const { controller, program } = build();
-    await expect(controller.updateInstant('7', { name: 'x' })).resolves.toBe(
-      'updated',
-    );
-    expect(program.updateInstant).toHaveBeenCalledWith(7, { name: 'x' });
+    await expect(
+      controller.updateInstant('7', { name: 'x' }, request),
+    ).resolves.toBe('updated');
+    expect(program.updateInstant).toHaveBeenCalledWith(7, { name: 'x' }, 7);
   });
 
   it('deletes an instant converting the id to a number', async () => {
     const { controller, program } = build();
-    await expect(controller.deleteInstant('7')).resolves.toBe('deleted');
-    expect(program.deleteInstant).toHaveBeenCalledWith(7);
+    await expect(controller.deleteInstant('7', request)).resolves.toBe(
+      'deleted',
+    );
+    expect(program.deleteInstant).toHaveBeenCalledWith(7, 7);
   });
 
   it('plays an instant preferring the query program id over the body', async () => {
     const { controller, program } = build();
-    await controller.playInstant('3', 'q', { programId: 'b' });
-    await controller.playInstant('3', undefined, { programId: 'b' });
-    await controller.playInstant('3');
-    await controller.playInstant('3', undefined, {});
+    await controller.playInstant('3', request, 'q', { programId: 'b' });
+    await controller.playInstant('3', request, undefined, { programId: 'b' });
+    await controller.playInstant('3', request);
+    await controller.playInstant('3', request, undefined, {});
     expect(program.playInstant.mock.calls).toEqual([
-      [3, 'q'],
-      [3, 'b'],
-      [3, undefined],
-      [3, undefined],
+      [3, 'q', 7],
+      [3, 'b', 7],
+      [3, undefined, 7],
+      [3, undefined, 7],
     ]);
   });
 
@@ -156,8 +167,8 @@ describe('InstantsModule (coverage)', () => {
       .compile();
 
     const controller = moduleRef.get(InstantsController);
-    await expect(controller.listInstants('p')).resolves.toEqual(['x']);
-    expect(program.listInstants).toHaveBeenCalledWith('p');
+    await expect(controller.listInstants(request, 'p')).resolves.toEqual(['x']);
+    expect(program.listInstants).toHaveBeenCalledWith('p', 7);
     await moduleRef.close();
   });
 });
