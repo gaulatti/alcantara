@@ -2279,8 +2279,6 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       | null
       | undefined,
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
-    // A renderer's telemetry over the realtime socket reports playback; it never commands radio.
-    options: { forwardToRadio?: boolean } = {},
   ) {
     const normalizedProgramId = this.normalizeProgramId(programId);
     await this.getProgramStateRecord(normalizedProgramId);
@@ -2339,7 +2337,6 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     this.programSongPlaybackByProgramId.set(normalizedProgramId, playback);
 
     if (
-      options.forwardToRadio !== false &&
       isPlaying &&
       audioUrl &&
       (!previousPlayback ||

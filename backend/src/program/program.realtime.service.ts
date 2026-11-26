@@ -477,23 +477,10 @@ export class ProgramRealtimeService implements OnModuleDestroy {
       return;
     }
 
+    // Song playback is reported by the playout engine, not by clients: a socket's
+    // song_playback_update is ignored (no client sends one). The engine's own updates
+    // still reach subscribers as before.
     if (payload.type === 'song_playback_update') {
-      if (client.role !== 'program') {
-        return;
-      }
-      try {
-        const songPlayback =
-          payload.playback && typeof payload.playback === 'object'
-            ? payload.playback
-            : payload;
-        await this.programService.updateProgramSongPlayback(
-          songPlayback,
-          client.programId,
-          { forwardToRadio: false },
-        );
-      } catch {
-        // ignore malformed payloads from client
-      }
       return;
     }
 
