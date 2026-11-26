@@ -548,6 +548,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     },
     monitor: monitor ? monitor.state : "unavailable",
     outputSilent: output?.state === "silent",
+    outputAudible: output?.state === "audible",
     playoutDown,
   };
   const recoveryControlsRef = useRef<HTMLDetailsElement>(null);

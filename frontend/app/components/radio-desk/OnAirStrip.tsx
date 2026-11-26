@@ -32,7 +32,9 @@ export function OnAirStrip({
   view: OnAirView;
   programId: string;
 }) {
-  const on = view.state !== "off-air";
+  // A song's title and clock; the fallback playlist has neither (D7), so it gets its own line.
+  const fallback = view.state === "fallback";
+  const on = view.state !== "off-air" && !fallback;
   return (
     <section
       aria-label="On air"
@@ -41,7 +43,7 @@ export function OnAirStrip({
     >
       <StatePill
         tone={
-          view.state === "on-air"
+          view.state === "on-air" || fallback
             ? "live"
             : view.state === "delayed" ||
                 view.state === "unconfirmed" ||
@@ -67,12 +69,22 @@ export function OnAirStrip({
               ) : null}
             </p>
           </>
+        ) : fallback ? (
+          <>
+            <p className="truncate text-sm font-semibold">Fallback playlist</p>
+            <p className="truncate text-xs text-text-secondary">
+              Palazzo's local playlist, no song commanded · {programId}
+            </p>
+          </>
         ) : (
           <p className="text-sm text-text-secondary">
             Nothing on air · {programId}
           </p>
         )}
       </div>
+      {fallback ? (
+        <span className="text-xs text-text-secondary">No song clock</span>
+      ) : null}
       {on ? (
         <div
           className="font-mono tabular-nums"

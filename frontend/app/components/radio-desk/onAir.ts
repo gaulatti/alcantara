@@ -9,9 +9,13 @@ import type { StatePillTone } from "./primitives";
  * "unconfirmed": the desk has a song playing, but the engine is not connected to confirm it (#609), or
  *   Palazzo answers but its playout (Liquidsoap) is down, so nothing can air (the airing walk's W5).
  * "unverified": the engine is connected, but no fresh output level arrived for a few seconds (#706).
+ * "fallback": nothing is commanded, yet the output is freshly audible. Palazzo airs its local filler playlist by itself
+ *   after FILLER_HOLDOFF_SECONDS (15 s) with no song, intro, instant or live input (gaulatti/palazzo
+ *   src/stream/liquidsoap-script.ts, `filler_on_air`), and its snapshot names no track for it (D7).
  */
 export type OnAirState =
   | "on-air"
+  | "fallback"
   | "off-air"
   | "delayed"
   | "unconfirmed"
@@ -70,6 +74,8 @@ export interface OnAirInput {
   outputSilent?: boolean;
   /** Palazzo answers but its playout (Liquidsoap) is down: nothing can air. */
   playoutDown?: boolean;
+  /** Output confidence reads audible: the station is airing something (D7). */
+  outputAudible?: boolean;
 }
 
 const MODE_LABELS = {
@@ -202,8 +208,14 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
       )
     : engineChips;
 
+  // D7: with no song commanded, fresh audible output is Palazzo's fallback playlist on air, never "Off air".
+  const fallback =
+    !live && input.outputAudible === true && input.outputUnverified !== true;
+
   return {
-    state: !live
+    state: fallback
+      ? "fallback"
+      : !live
       ? "off-air"
       : unconfirmed
         ? "unconfirmed"
@@ -212,7 +224,9 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
           : unverified
             ? "unverified"
             : "on-air",
-    label: !live
+    label: fallback
+      ? "Fallback playlist on air"
+      : !live
       ? "Off air"
       : unconfirmed
         ? "Not confirmed"

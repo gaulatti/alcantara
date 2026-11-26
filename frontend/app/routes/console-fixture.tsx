@@ -450,7 +450,9 @@ export default function ConsoleFixture() {
                       },
                     },
               logs:
-                fixture === "radio-empty" || fixture === "radio-continuous"
+                fixture === "radio-empty" ||
+                fixture === "radio-continuous" ||
+                fixture === "radio-fallback"
                   ? []
                   : [
                       {
@@ -509,7 +511,10 @@ export default function ConsoleFixture() {
                 enabled: true,
               }))}
             programSongPlayback={
-              playbackOnAir && fixture !== "radio-empty"
+              // radio-fallback (D7): no song commanded while Palazzo's fallback playlist airs.
+              playbackOnAir &&
+              fixture !== "radio-empty" &&
+              fixture !== "radio-fallback"
                 ? {
                     token:
                       fixture === "radio-external"

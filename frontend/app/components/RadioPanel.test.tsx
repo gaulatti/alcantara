@@ -370,6 +370,8 @@ it("shows explicit empty states without hiding transport or inventing a countdow
   p.instants = [];
   p.programSongPlayback = null;
   p.fixtureData!.logs = [];
+  // Nothing airs: with audible output the strip would name the fallback playlist (D7).
+  p.fixtureData!.output = { ...p.fixtureData!.output, state: "idle", outputRms: 0 };
   mount(p);
   expect(screen.getByText(/Nothing on air/)).toBeVisible();
   expect(screen.getByText("Off air")).toBeVisible();
@@ -378,6 +380,18 @@ it("shows explicit empty states without hiding transport or inventing a countdow
     screen.queryByRole("button", { name: "Start rundown" }),
   ).not.toBeInTheDocument();
   expect(screen.getByText("Filler rotation is empty")).toBeVisible();
+});
+
+// D7, from the recovery walk: Palazzo's fallback playlist on air with no song commanded read "Off air".
+it("names the fallback playlist on air when no song is commanded and the output is audible", () => {
+  const p = props();
+  p.programSongPlayback = null;
+  p.fixtureData!.logs = [];
+  mount(p);
+  const strip = screen.getByRole("region", { name: "On air" });
+  expect(within(strip).getByText("Fallback playlist on air")).toBeVisible();
+  expect(within(strip).queryByText("Off air")).toBeNull();
+  expect(within(strip).queryByText(/Nothing on air/)).toBeNull();
 });
 
 it("renders reported metadata when the playing track is absent from the playlist", () => {
