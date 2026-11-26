@@ -124,7 +124,7 @@ function Segmented<T extends string>({
     <div
       role="group"
       aria-label={label}
-      className="inline-flex overflow-hidden rounded-[var(--radius-ui)] border border-sand/30"
+      className="inline-flex overflow-hidden max-sm:max-w-full max-sm:overflow-x-auto rounded-[var(--radius-ui)] border border-sand/30"
     >
       {options.map((option) => {
         const pressed = option.value === value;
