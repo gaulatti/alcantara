@@ -392,6 +392,8 @@ interface SongEngineState {
   announcementChain: Promise<void>;
   /** Palazzo boot from the latest snapshot. */
   palazzoBootId: string | null;
+  /** The library song of each playback this engine commanded, announced or adopted, newest last. */
+  commandedSongs?: Map<string, number>;
   /** Boot of a Palazzo without the next route (404); undefined when supported. */
   nextUnsupportedBootId?: string | null;
   /** Announced songs replaced at the handoff before their start arrived. */
@@ -1239,6 +1241,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       highRotation: playlistSong?.highRotation === true,
       actor,
     };
+    this.rememberSong(state, playbackRequestId, state.activeSong.songId);
     this.emitPlaybackActive(programId, state.activeSong);
     void this.publishNowPlaying(programId, state.activeSong);
     this.startProgress(programId);
@@ -1327,6 +1330,32 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     void this.nowPlayingPublisherService.publishStopped(programId);
     if (stoppedQueueEntryId) {
       this.releaseQueueClaimAfterPlaybackStops(programId, stoppedQueueEntryId);
+    }
+  }
+
+  /**
+   * The library song of a playback this engine commanded, announced or adopted, or null when it has no record of
+   * it. The as-run log attributes by this before the audio address, which two songs can share.
+   */
+  songIdForPlayback(
+    programId: string,
+    playbackRequestId: string,
+  ): number | null {
+    return (
+      this.states.get(programId)?.commandedSongs?.get(playbackRequestId) ?? null
+    );
+  }
+
+  private rememberSong(
+    state: SongEngineState,
+    playbackRequestId: string,
+    songId: number | null | undefined,
+  ): void {
+    if (!songId) return;
+    const songs = (state.commandedSongs ??= new Map<string, number>());
+    songs.set(playbackRequestId, songId);
+    if (songs.size > MAX_ENDED_REQUEST_IDS) {
+      songs.delete(songs.keys().next().value as string);
     }
   }
 
@@ -1956,6 +1985,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       effects,
     };
     state.announcement = announcement;
+    this.rememberSong(state, announcement.playbackId, leaf.songId);
     let result: Awaited<ReturnType<RadioService['announceNext']>>;
     try {
       result = await this.radioService.announceNext(
@@ -2365,6 +2395,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     state.noPlaybackSince = null;
     song.playbackRequestId = playbackRequestId;
     song.promoted = false;
+    this.rememberSong(state, playbackRequestId, song.songId);
     this.logger.log(
       `Announced song was not ready on ${programId}; commanding it (${playbackRequestId})`,
     );
@@ -2937,6 +2968,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     const authoritativeStartedAt = Number.isFinite(parsedStartedAt)
       ? parsedStartedAt
       : Date.now() - positionMs;
+    this.rememberSong(state, requestId, source.songId);
     state.activeSong = {
       token: source.token,
       playbackRequestId: requestId,
@@ -3683,6 +3715,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     const playbackRequestId = promote
       ? announced.playbackId
       : (queueEntry?.playbackRequestId ?? randomUUID());
+    this.rememberSong(state, playbackRequestId, resolved.songId);
     if (handoff) {
       state.announcement = null;
       if (promote) {
@@ -3912,6 +3945,11 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         if (state.activeSong?.playbackRequestId === playbackRequestId) {
           state.activeSong.playbackRequestId = result.playbackRequestId;
         }
+        this.rememberSong(
+          state,
+          result.playbackRequestId,
+          state.commandedSongs?.get(playbackRequestId),
+        );
       }
       return;
     }

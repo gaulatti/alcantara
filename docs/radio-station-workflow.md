@@ -129,6 +129,12 @@ advanced. The record stores `inferred = true`. If it closes a play shorter than
 a royalty rule: a play that brief behind a dropped connection is more likely a
 stale reconnect or an immediate skip, so an operator should look at it.
 
+**Which song a row names.** The as-run log asks the engine which library song it
+commanded, announced or adopted for the event's playback ID, and looks the audio
+address (then title and artist) up only when the engine has no record: two songs
+can share an address. The engine keeps the last 128 playbacks per program, in
+memory, so after a backend restart the lookup applies.
+
 **Starts adopted from a snapshot.** When the engine adopts a song from a
 playing snapshot without having seen its start (for example after a backend
 restart mid-song), it emits one `track.started` with `inferred: true`, at

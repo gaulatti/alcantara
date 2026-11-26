@@ -399,6 +399,21 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
     songId: number | null;
     assetId: string | null;
   }> {
+    // The engine knows which song it commanded for this playback; two songs can share an audio address.
+    const commanded = event.playbackRequestId
+      ? this.engine?.songIdForPlayback?.(
+          event.programId,
+          event.playbackRequestId,
+        )
+      : null;
+    if (commanded) {
+      const song = await this.prisma.song.findUnique({
+        where: { id: commanded },
+        select: { id: true, assetId: true },
+      });
+      if (song) return { songId: song.id, assetId: song.assetId };
+    }
+
     if (event.url) {
       const songByUrl = await this.prisma.song.findFirst({
         where: { audioUrl: event.url },

@@ -1163,3 +1163,99 @@ describe('a start missed across a reconnect', () => {
     expect((rows[0].at as Date).getTime()).toBeGreaterThanOrEqual(before);
   });
 });
+
+describe('the song of each playback', () => {
+  const urlA = 'https://example.test/a.mp3';
+  const manual = (
+    engine: ReturnType<typeof setup>['engine'],
+    songId?: number,
+  ) => {
+    engine.handleManualSong(
+      'radio-1',
+      urlA,
+      'T',
+      'A',
+      1000,
+      undefined,
+      songId,
+    );
+    return activeRequestId(engine);
+  };
+
+  it('knows the song it commanded, also after another one replaced it', () => {
+    const { engine } = setup();
+    const first = manual(engine, 9102);
+    const second = manual(engine, 9103);
+    expect(engine.songIdForPlayback('radio-1', first)).toBe(9102);
+    expect(engine.songIdForPlayback('radio-1', second)).toBe(9103);
+  });
+
+  it('has no record of an unknown playback, program or a take without a song', () => {
+    const { engine } = setup();
+    const request = manual(engine);
+    expect(engine.songIdForPlayback('radio-1', request)).toBeNull();
+    expect(engine.songIdForPlayback('radio-1', 'unknown')).toBeNull();
+    expect(engine.songIdForPlayback('elsewhere', request)).toBeNull();
+  });
+
+  it('keeps the song under the playback ID Palazzo answers with', async () => {
+    const { engine, radioService } = setup();
+    radioService.playSong.mockResolvedValue({
+      ok: true,
+      playbackRequestId: 'palazzo-1',
+    });
+    manual(engine);
+    await flush();
+    expect(engine.songIdForPlayback('radio-1', 'palazzo-1')).toBeNull();
+    radioService.playSong.mockResolvedValue({
+      ok: true,
+      playbackRequestId: 'palazzo-2',
+    });
+    manual(engine, 9102);
+    await flush();
+    expect(engine.songIdForPlayback('radio-1', 'palazzo-2')).toBe(9102);
+  });
+
+  it('keeps a bounded record, dropping the oldest', () => {
+    const { engine } = setup();
+    const requests = Array.from({ length: 129 }, () => manual(engine, 7));
+    expect(engine.songIdForPlayback('radio-1', requests[0])).toBeNull();
+    expect(engine.songIdForPlayback('radio-1', requests[1])).toBe(7);
+  });
+
+  it('attributes both rows of a retried play to the commanded song when two songs share its address', async () => {
+    const { engine } = setup();
+    const rows: Array<Record<string, unknown>> = [];
+    const asRun = new AsRunService(
+      {
+        song: {
+          findFirst: jest.fn(async () => ({ id: 9101, assetId: null })),
+          findUnique: jest.fn(async ({ where }) => ({
+            id: where.id,
+            assetId: null,
+          })),
+        },
+        mediaAsset: { findFirst: jest.fn().mockResolvedValue(null) },
+        asRunRecord: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          findMany: jest.fn().mockResolvedValue([]),
+          create: jest.fn(async ({ data }) => (rows.push(data), data)),
+        },
+      } as never,
+      engine as never,
+    );
+    const tracked: SongEngineTrackEvent[] = [];
+    engine.trackEvents$.subscribe((event) => tracked.push(event));
+    const request = manual(engine, 9102);
+    engine.handlePalazzoSnapshot('radio-1', playing(request));
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: request },
+    });
+    for (const event of tracked) await asRun.handleTrackEvent(event);
+    expect(rows.map((row) => [row.state, row.songId])).toEqual([
+      ['started', 9102],
+      ['ended', 9102],
+    ]);
+  });
+});

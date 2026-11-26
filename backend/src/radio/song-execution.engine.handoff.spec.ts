@@ -2239,6 +2239,13 @@ function asRunStore() {
         const song = catalog.find((s) => s.audioUrl === where.audioUrl);
         return Promise.resolve(song ? { id: song.id, assetId: null } : null);
       }),
+      findUnique: jest.fn(({ where }: { where: { id: number } }) =>
+        Promise.resolve(
+          catalog.some((s) => s.id === where.id)
+            ? { id: where.id, assetId: null }
+            : null,
+        ),
+      ),
       findMany: jest.fn(({ where }: { where: { id: { in: number[] } } }) =>
         Promise.resolve(
           catalog
