@@ -1054,6 +1054,26 @@ it("manages labels: search, create, edit, delete, and the ordered media in each"
   );
 });
 
+it("asks in the singular for a label used by one asset, and closes the label dialog with Escape", async () => {
+  labels = [{ ...label("l7", "Solo"), assetCount: 1 }];
+  open("/media?view=labels");
+  await screen.findByText("Solo");
+  fireEvent.click(labelRow("Solo"));
+  await screen.findByRole("heading", { name: "Solo" });
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  fireEvent.click(screen.getByRole("button", { name: "Delete Solo" }));
+  expect(confirm).toHaveBeenCalledWith(
+    "Delete label “Solo”, used by 1 asset? Files will remain in the library.",
+  );
+  expect(requests("DELETE")).toEqual([]);
+
+  fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+  const dialog = await screen.findByRole("dialog", { name: "Edit label" });
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit label" })).toBeNull());
+  expect(requests("PUT")).toEqual([]);
+});
+
 it("creates, edits and deletes labels, and drops a label deleted elsewhere", async () => {
   labels = [label("l1", "Headlines", [], "Old description")];
   routes["POST /media-labels"] = (init) => {
