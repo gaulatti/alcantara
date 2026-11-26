@@ -75,3 +75,50 @@ it("shows the logos named in the URL", () => {
   const { container } = render(<Overlay />);
   expect(container.innerHTML).toContain("a.png");
 });
+
+it("draws the program's chyron once its state arrives", async () => {
+  window.history.replaceState({}, "", "/overlay?program=main");
+  vi.stubGlobal("fetch", vi.fn(async () => Response.json({ activeScene: { chyronText: "Program on air", metadata: {} } })));
+  const { findByText } = render(<Overlay />);
+  expect(await findByText("Program on air")).toBeTruthy();
+});
+
+it("reloads the program's state every 15 seconds while the overlay is open", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
+  try {
+    window.history.replaceState({}, "", "/overlay?program=main");
+    const fetchMock = vi.fn(async () => Response.json({ activeScene: null }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<Overlay />);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("does not set marks from a state that arrives after the overlay is closed", async () => {
+  window.history.replaceState({}, "", "/overlay?program=main");
+  let respond: (response: Response) => void = () => undefined;
+  vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => { respond = resolve; })));
+  const { unmount, container } = render(<Overlay />);
+  const before = container.innerHTML;
+  unmount();
+  respond(Response.json({ activeScene: { chyronText: "Too late", metadata: {} } }));
+  await new Promise((done) => setTimeout(done, 0));
+  expect(before).not.toContain("Too late");
+});
+
+it("ignores a failed state read that arrives after the overlay is closed", async () => {
+  window.history.replaceState({}, "", "/overlay?program=main");
+  let respond: (response: Response) => void = () => undefined;
+  vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => { respond = resolve; })));
+  const errors = vi.spyOn(console, "error");
+  const { unmount } = render(<Overlay />);
+  unmount();
+  respond(new Response("down", { status: 500 }));
+  await new Promise((done) => setTimeout(done, 0));
+  expect(errors).not.toHaveBeenCalled();
+});

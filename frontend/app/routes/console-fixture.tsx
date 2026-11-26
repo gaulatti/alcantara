@@ -392,6 +392,8 @@ export default function ConsoleFixture() {
                 lastEventAt: new Date().toISOString(),
                 lastSnapshotAt: new Date().toISOString(),
                 degraded: false,
+                // Palazzo answers, but its playout (Liquidsoap) is down.
+                playout: fixture === "radio-playout-down" ? "down" : "up",
                 // #257: a program with no Palazzo URL says why there is no engine.
                 ...(fixture === "radio-not-configured"
                   ? {

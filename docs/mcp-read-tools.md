@@ -50,6 +50,9 @@ most 92 days (one quarter), and lists at most 500 songs, most played first
 takes `query` (1 to 100 characters) and `limit` (1 to 50, default 20). All
 bounds are constants in `MCP_READ_LIMITS` (`mcp.constants.ts`).
 
+`search_songs` and `get_song` read the station team's songs only (gaulatti/alcantara#122); another team's song is not
+found. Without a station team (local and test) every song is read.
+
 `get_as_run` says who acted on each row (ticket #213): `actor_principal_id`,
 `actor_via` (`console` or `mcp`) and the MCP client name as
 `untrusted.actor_client` (client-supplied, at most 64 characters). All three

@@ -27,7 +27,11 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
   const build = () => {
     const states = new Map<string, Row>();
     const prisma = {
-      program: { upsert: jest.fn().mockResolvedValue({}) },
+      program: {
+        upsert: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
       $transaction: jest.fn(async (operations: Promise<unknown>[]) =>
         Promise.all(operations),
       ),

@@ -7,8 +7,8 @@ import {
   type AlcantaraPermission,
 } from '../auth/permissions';
 import { PompeiiAuthorizationGuard } from '../auth/pompeii-authorization.guard';
-import type { PompeiiService } from '../auth/pompeii.service';
 import { ObservabilityModule } from '../observability/observability.module';
+import { PompeiiService } from '../auth/pompeii.service';
 import { PrismaService } from '../prisma.service';
 import { PalazzoMachineClient } from '../radio/palazzo-machine.client';
 import { FillerController } from './filler.controller';
@@ -127,7 +127,11 @@ describe('FillerController', () => {
     })
       .overrideProvider(PrismaService)
       .useValue({})
-      .useMocker((token) => (token === PalazzoMachineClient ? {} : undefined))
+      .useMocker((token) =>
+        token === PalazzoMachineClient || token === PompeiiService
+          ? {}
+          : undefined,
+      )
       .compile();
     expect(moduleRef.get(FillerController)).toBeInstanceOf(FillerController);
     expect(moduleRef.get(FillerService)).toBeInstanceOf(FillerService);

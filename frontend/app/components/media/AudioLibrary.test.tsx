@@ -325,6 +325,14 @@ it("plays every asset through one shared transport, not one player per row", () 
   expect(within(transport()).getByText("Asset station")).toBeInTheDocument();
 });
 
+it("shows a clip as stopped once it has ended", () => {
+  setup();
+  fireEvent.click(screen.getByRole("button", { name: "Play Asset pending" }));
+  expect(screen.getByRole("button", { name: "Pause Asset pending" })).toBeInTheDocument();
+  fireEvent.ended(element());
+  expect(screen.getByRole("button", { name: "Play Asset pending" })).toBeInTheDocument();
+});
+
 it("selects with the arrow keys and plays with Space", () => {
   setup();
   rowOf("Asset harbor").focus();

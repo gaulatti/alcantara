@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Optional,
   Logger,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -16,6 +17,7 @@ import {
 import { PrismaService } from '../prisma.service';
 import { PompeiiService } from '../auth/pompeii.service';
 import { forTeam } from '../tenancy/scoped-prisma';
+import { PlayoutSongScope } from './playout-song-scope';
 import { isRadioOnlyEngineOff } from './engine-availability';
 import { ActorContext } from '../auth/actor-context';
 import { radioSettingsChangeSummary } from '../operator-change/operator-change-summary';
@@ -112,6 +114,7 @@ export class RadioService {
     private readonly config: ConfigService,
     private readonly metrics: RadioMetricsService,
     private readonly pompeii: PompeiiService,
+    @Optional() private readonly songScope?: PlayoutSongScope,
   ) {}
 
   /**
@@ -824,7 +827,12 @@ export class RadioService {
     let shape: CueGroupShape | null = null;
     if (!segue && !loudness) {
       try {
-        const song = await this.findSongForAnalysis(audioUrl, songId, drops);
+        const song = await this.findSongForAnalysis(
+          programId,
+          audioUrl,
+          songId,
+          drops,
+        );
         // A song sent without its analysis is counted too (gaulatti/alcantara#255):
         // no library song with a media asset, or an asset not (yet) analysed.
         if (!song?.assetId && !drops.includes('ambiguous-match')) {
@@ -919,21 +927,35 @@ export class RadioService {
 
   // The song whose analysis applies: by id when given, else by audio URL only when exactly one song has it.
   private async findSongForAnalysis(
+    programId: string,
     audioUrl: string,
     songId: number | undefined,
     drops: AnalysisDropResult[],
   ): Promise<{ assetId: string | null; durationMs: number | null } | null> {
     if (songId) {
-      return this.prisma.song.findUnique({
-        where: { id: songId },
-        select: { assetId: true, durationMs: true },
-      });
+      const byId = (db: PrismaService) =>
+        db.song.findUnique({
+          where: { id: songId },
+          select: { assetId: true, durationMs: true },
+        });
+      return this.songScope
+        ? this.songScope.read('analysis', programId, byId, (song) => !!song)
+        : byId(this.prisma);
     }
-    const songs = await this.prisma.song.findMany({
-      where: { audioUrl },
-      select: { assetId: true, durationMs: true },
-      take: 2,
-    });
+    const byUrl = (db: PrismaService) =>
+      db.song.findMany({
+        where: { audioUrl },
+        select: { assetId: true, durationMs: true },
+        take: 2,
+      });
+    const songs = this.songScope
+      ? await this.songScope.read(
+          'analysis',
+          programId,
+          byUrl,
+          (rows) => rows.length > 0,
+        )
+      : await byUrl(this.prisma);
     if (songs.length > 1) {
       drops.push('ambiguous-match');
       return null;

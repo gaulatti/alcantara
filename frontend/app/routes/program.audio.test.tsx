@@ -400,6 +400,21 @@ describe("instants", () => {
     expect(FakeAudio.instances[3].paused).toBe(false);
   });
 
+  it("closes the meter's context when the page is left, even when the browser refuses the close", async () => {
+    const view = open();
+    await flush();
+    FakeAudio.stream = {};
+    playInstant();
+    const context = FakeAudioContext.instances[0];
+    expect(context.nodes).toHaveLength(2);
+    // A refused close is logged by nothing and must not escape the unmount.
+    const close = vi.fn(() => Promise.reject(new Error("refused")));
+    context.close = close;
+    expect(() => view.unmount()).not.toThrow();
+    await flush();
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
   it("stops the instants when the page is closed", async () => {
     const view = open();
     await flush();

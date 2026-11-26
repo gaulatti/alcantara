@@ -24,6 +24,7 @@ import type { Prisma } from '@prisma/client';
 import { PalazzoInstantRefusedException, RadioService } from './radio.service';
 import { FlightService } from '../program/flight.service';
 import { PrismaService } from '../prisma.service';
+import { PlayoutSongScope } from './playout-song-scope';
 import { NowPlayingPublisherService } from './now-playing-publisher.service';
 import {
   RadioMetricsService,
@@ -504,6 +505,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     @Inject(forwardRef(() => RadioMetricsService))
     private readonly metrics: RadioMetricsService,
     @Optional() private readonly similarity?: SongSimilarityService,
+    @Optional() private readonly songScope?: PlayoutSongScope,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -2739,18 +2741,27 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     }[] = [];
     if (url) {
       try {
-        matches = await this.prisma.song.findMany({
-          where: { audioUrl: url },
-          select: {
-            id: true,
-            title: true,
-            artist: true,
-            audioUrl: true,
-            coverUrl: true,
-            durationMs: true,
-          },
-          take: 2,
-        });
+        const byUrl = (db: PrismaService) =>
+          db.song.findMany({
+            where: { audioUrl: url },
+            select: {
+              id: true,
+              title: true,
+              artist: true,
+              audioUrl: true,
+              coverUrl: true,
+              durationMs: true,
+            },
+            take: 2,
+          });
+        matches = this.songScope
+          ? await this.songScope.read(
+              'recognise',
+              programId,
+              byUrl,
+              (rows) => rows.length > 0,
+            )
+          : await byUrl(this.prisma);
       } catch {
         lookupFailed = true;
       }

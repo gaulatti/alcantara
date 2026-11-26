@@ -539,9 +539,12 @@ it("keeps the dialog open with a message when a save or a sync is refused", asyn
   vi.spyOn(console, "error").mockImplementation(() => {});
   open();
   await loaded();
+  const syncFailed =
+    "The show was saved, but its scenes or stingers were not updated. Edit it to try again.";
   const attempt = async (
     setup: () => void,
     edit: (dialog: HTMLElement) => void,
+    message: string,
     button = "Update show",
   ) => {
     setup();
@@ -549,11 +552,7 @@ it("keeps the dialog open with a message when a save or a sync is refused", asyn
     const dialog = await screen.findByRole("dialog", { name: "Edit show" });
     edit(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: button }));
-    expect(
-      await within(dialog).findByText(
-        "Failed to save show. Ensure the ID is unique.",
-      ),
-    ).toBeInTheDocument();
+    expect(await within(dialog).findByText(message)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   };
@@ -563,11 +562,23 @@ it("keeps the dialog open with a message when a save or a sync is refused", asyn
       (routes["PUT /program/news"] = () =>
         new Response("Duplicate id", { status: 409 })),
     () => {},
+    "A show with this ID already exists. Choose another ID.",
+  );
+  await attempt(
+    () =>
+      (routes["PUT /program/news"] = () =>
+        json(
+          { statusCode: 409, message: "That ID belongs to a deleted show's settings. Choose another ID." },
+          409,
+        )),
+    () => {},
+    "That ID belongs to a deleted show's settings. Choose another ID.",
   );
   await attempt(
     () =>
       (routes["PUT /program/news"] = () => new Response("", { status: 500 })),
     () => {},
+    "Failed to save show (HTTP 500). Nothing was saved.",
   );
   await attempt(
     () => {
@@ -575,43 +586,69 @@ it("keeps the dialog open with a message when a save or a sync is refused", asyn
       routes["DELETE /program/news/scenes/1"] = () => json({}, 500);
     },
     (dialog) => fireEvent.click(scene(dialog, "Wide")),
+    syncFailed,
   );
   await attempt(
     () => (routes["POST /program/news/scenes"] = () => json({}, 500)),
     (dialog) => fireEvent.click(scene(dialog, "Close")),
+    syncFailed,
   );
   await attempt(
     () => (routes["DELETE /program/news/stingers/7"] = () => json({}, 500)),
     (dialog) => fireEvent.click(scene(dialog, "Swoosh")),
+    syncFailed,
   );
   await attempt(
     () => (routes["POST /program/news/stingers"] = () => json({}, 500)),
     (dialog) => fireEvent.click(scene(dialog, "Flash")),
+    syncFailed,
   );
   await toast("Failed to save show.");
+});
 
-  // A refused create.
-  for (const response of [
-    new Response("Taken", { status: 409 }),
-    new Response("", { status: 500 }),
-  ]) {
-    routes["POST /program"] = () => response;
-    fireEvent.click(screen.getAllByRole("button", { name: /Create show/ })[0]);
-    const dialog = await screen.findByRole("dialog", { name: "Create show" });
-    fireEvent.change(within(dialog).getByPlaceholderText("main"), {
-      target: { value: "dup" },
-    });
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Create show" }),
-    );
-    expect(
-      await within(dialog).findByText(
-        "Failed to save show. Ensure the ID is unique.",
-      ),
-    ).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  }
+// Each refused create in its own test: the long refusal test above passed alone in 1.5 s but crossed vitest's 5 s
+// limit under a loaded full run.
+const refusedCreates: [string, () => Response, string][] = [
+  ["a duplicate ID", () => new Response("Taken", { status: 409 }), "A show with this ID already exists. Choose another ID."],
+  ["a server error", () => new Response("", { status: 500 }), "Failed to save show (HTTP 500). Nothing was saved."],
+  [
+    "a refusal with a reason",
+    () => json({ statusCode: 400, message: "Radio programs do not support visual templates" }, 400),
+    "Failed to save show: Radio programs do not support visual templates",
+  ],
+  [
+    "a refusal with several reasons",
+    () => json({ statusCode: 400, message: ["id is too long", "id is blank"] }, 400),
+    "Failed to save show: id is too long; id is blank",
+  ],
+  ["a plain-text refusal", () => new Response("Plain refusal", { status: 400 }), "Failed to save show: Plain refusal"],
+  ["an empty refusal", () => new Response("", { status: 400 }), "Failed to save show (HTTP 400). Nothing was saved."],
+  [
+    "a refusal with no message",
+    () => json({ statusCode: 400, error: "Bad Request" }, 400),
+    "Failed to save show (HTTP 400). Nothing was saved.",
+  ],
+  [
+    "an unreachable server",
+    () => {
+      throw new TypeError("Failed to fetch");
+    },
+    "Failed to save show: the server could not be reached. Nothing was saved.",
+  ],
+];
+
+it.each(refusedCreates)("says why creating a show was refused: %s", async (_case, answer, message) => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  open();
+  await loaded();
+  routes["POST /program"] = answer;
+  fireEvent.click(screen.getAllByRole("button", { name: /Create show/ })[0]);
+  const dialog = await screen.findByRole("dialog", { name: "Create show" });
+  fireEvent.change(within(dialog).getByPlaceholderText("main"), {
+    target: { value: "dup" },
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Create show" }));
+  expect(await within(dialog).findByText(message)).toBeInTheDocument();
 });
 
 it("opens the scene and stinger managers, and says when there are none", async () => {
@@ -655,6 +692,19 @@ const confirmDelete = async () =>
   fireEvent.click(
     within(await screen.findByRole("dialog", { name: "Confirm delete" })).getByRole("button", { name: "Delete show" }),
   );
+
+it("dismisses the delete confirmation with Escape and deletes nothing", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  open();
+  await loaded();
+  fireEvent.click(within(card("news")).getByRole("button", { name: "Actions for news" }));
+  fireEvent.click(within(card("news")).getByText("Delete show"));
+  const dialog = await screen.findByRole("dialog", { name: "Confirm delete" });
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Confirm delete" })).toBeNull());
+  expect(calls("DELETE")).toEqual([]);
+  expect(card("news")).toBeInTheDocument();
+});
 
 it("deletes a show after confirmation and moves the selection off it", async () => {
   vi.spyOn(console, "error").mockImplementation(() => {});

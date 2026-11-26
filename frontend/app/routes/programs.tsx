@@ -65,6 +65,52 @@ export function meta({}: Route.MetaArgs) {
   return [{ title: 'Shows - Alcantara' }, { name: 'description', content: 'Manage television, radio, and simulcast shows' }];
 }
 
+/** A refused show save, with the HTTP status and the server's own reason when it gave one. */
+class ShowSaveRefused extends Error {
+  constructor(
+    readonly status: number,
+    readonly reason: string | null,
+  ) {
+    super(reason ?? `HTTP ${status}`);
+  }
+}
+
+async function showSaveRefusal(response: Response): Promise<ShowSaveRefused> {
+  const text = await response.text();
+  let reason: string | null = text.trim() || null;
+  try {
+    // A JSON body (Nest's error shape) gives its message, or no reason at all: never the raw JSON.
+    const message = (JSON.parse(text) as { message?: unknown } | null)?.message;
+    reason = typeof message === 'string' ? message : Array.isArray(message) ? message.join('; ') : null;
+  } catch {
+    // A plain-text body is the reason itself.
+  }
+  return new ShowSaveRefused(response.status, reason);
+}
+
+/** The server's refusal of a rename onto an ID a deleted show's settings still hold (gaulatti/alcantara#122). */
+const HELD_SHOW_ID_MESSAGE = "That ID belongs to a deleted show's settings. Choose another ID.";
+
+/**
+ * What the create or edit dialog says when saving fails. It used to say "Ensure the ID is unique" for every failure,
+ * which sent operators after the wrong cause (the #744 walk).
+ */
+function showSaveErrorMessage(error: unknown, showSaved: boolean): string {
+  if (showSaved)
+    return 'The show was saved, but its scenes or stingers were not updated. Edit it to try again.';
+  if (error instanceof ShowSaveRefused) {
+    // An ID a deleted show's settings still hold is not a show the operator can see: say what the server said.
+    if (error.status === 409)
+      return error.reason === HELD_SHOW_ID_MESSAGE
+        ? error.reason
+        : 'A show with this ID already exists. Choose another ID.';
+    if (error.status === 400 && error.reason)
+      return `Failed to save show: ${error.reason}`;
+    return `Failed to save show (HTTP ${error.status}). Nothing was saved.`;
+  }
+  return 'Failed to save show: the server could not be reached. Nothing was saved.';
+}
+
 export default function ProgramsAdmin() {
   const navigate = useNavigate();
   const [selectedProgramId, setSelectedProgramId] = useGlobalProgramId();
@@ -330,6 +376,8 @@ export default function ProgramsAdmin() {
     }
 
     setIsSaving(true);
+    // Set once the show itself is saved: a failure after that is in syncing its scenes or stingers.
+    let showSaved = false;
     try {
       const isEditing = !!editingProgramId;
       /* v8 ignore next -- editingProgramId is set only from a listed program, and the list is replaced only by a reload; the fallback covers a reload that drops the program mid-edit, and no UI path opens the edit without a listed program. */
@@ -348,11 +396,9 @@ export default function ProgramsAdmin() {
             templateUrl,
           }),
         });
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(text || `HTTP ${res.status}`);
-        }
+        if (!res.ok) throw await showSaveRefusal(res);
         savedProgram = (await res.json()) as ProgramState;
+        showSaved = true;
 
         /* v8 ignore next -- editingProgramId is set only from a listed program, and the list is replaced only by a reload; the fallback covers a reload that drops the program mid-edit, and no UI path opens the edit without a listed program. */
         const currentSceneIds = editingProgram?.scenes.map((entry) => entry.sceneId) || [];
@@ -376,11 +422,9 @@ export default function ProgramsAdmin() {
             templateUrl,
           }),
         });
-        if (!createRes.ok) {
-          const text = await createRes.text();
-          throw new Error(text || `HTTP ${createRes.status}`);
-        }
+        if (!createRes.ok) throw await showSaveRefusal(createRes);
         savedProgram = (await createRes.json()) as ProgramState;
+        showSaved = true;
 
         if (isVisualProgram && (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'scene.configuration'))) {
           await syncProgramScenes(nextProgramId, [], selectedSceneIds);
@@ -401,7 +445,7 @@ export default function ProgramsAdmin() {
       showAlert(isEditing ? 'Show updated.' : 'Show created.', 'success');
     } catch (err) {
       console.error('Failed to save program:', err);
-      setError('Failed to save show. Ensure the ID is unique.');
+      setError(showSaveErrorMessage(err, showSaved));
       showAlert('Failed to save show.', 'error');
     } finally {
       setIsSaving(false);
@@ -567,7 +611,8 @@ export default function ProgramsAdmin() {
           </div>
         </Modal>
 
-        <Modal isOpen={showModal} onClose={closeModal} title={editingProgramId ? 'Edit show' : 'Create show'}>
+        {/* Anchored to the top, not centered: picking Radio hides the TV fields, and a centered dialog moved the toggle just clicked about 100 px (the walk's polish). */}
+        <Modal isOpen={showModal} onClose={closeModal} title={editingProgramId ? 'Edit show' : 'Create show'} className='mt-[8vh] mb-auto'>
           <div className='space-y-5'>
             <div>
               <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Program ID</label>

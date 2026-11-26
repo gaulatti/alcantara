@@ -73,3 +73,42 @@ it("shows a legacy CTA when the stored CTA sequence has no items", () => {
   });
   expect(screen.getByDisplayValue("Legacy call to action")).toBeTruthy();
 });
+
+it("seeds the legacy text into a stored preset item, keeping its other fields", () => {
+  renderFields({
+    text: "Legacy headline",
+    textSequence: {
+      mode: "manual",
+      items: [
+        {
+          id: "preset-1",
+          kind: "preset",
+          text: "",
+          useMarquee: false,
+          durationMs: 4000,
+        },
+      ],
+      activeItemId: "preset-1",
+    },
+  });
+  expect(screen.getByDisplayValue("Legacy headline")).toBeTruthy();
+});
+
+it("seeds the legacy CTA into a stored preset item of the CTA sequence", () => {
+  renderFields({
+    cta: "Legacy call to action",
+    ctaSequence: {
+      mode: "manual",
+      items: [
+        {
+          id: "preset-cta",
+          kind: "preset",
+          text: "",
+          durationMs: 4000,
+        },
+      ],
+      activeItemId: "preset-cta",
+    },
+  });
+  expect(screen.getByDisplayValue("Legacy call to action")).toBeTruthy();
+});

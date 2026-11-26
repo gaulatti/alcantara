@@ -201,6 +201,8 @@ const OPERATOR_CHANGE_TARGETS = new Set([
 const OPERATOR_CHANGE_RESULTS = new Set(['recorded', 'failed']);
 /** gaulatti/alcantara#424: a recipe use previewed or built (`issues`: built, with something to fix). */
 const RECIPE_EXPANSION_RESULTS = new Set(['ok', 'issues', 'rejected']);
+/** gaulatti/alcantara#612: calls to the song-playback write route, to see whether anything still makes them. */
+const SONG_PLAYBACK_WRITE_RESULTS = new Set(['accepted', 'refused']);
 /** gaulatti/alcantara#424: a use rebuilt after its recipe changed, left on air, or lost to a concurrent edit. */
 const RECIPE_REBUILD_RESULTS = new Set(['rebuilt', 'skipped', 'conflict']);
 /** gaulatti/alcantara#465: a recipe delete, or why it was refused. */
@@ -211,6 +213,13 @@ const RECIPE_DELETE_RESULTS = new Set([
   'conflict',
 ]);
 const SCENE_HANDOFF_RESULTS = new Set(['success', 'failure']);
+/** gaulatti/alcantara#122: why a scene background asset read was not served by the program's team. */
+export type SceneAssetScopeReason = 'no-team' | 'other-team' | 'lookup-failed';
+const SCENE_ASSET_SCOPE_REASONS = new Set<string>([
+  'no-team',
+  'other-team',
+  'lookup-failed',
+]);
 const PREFERENCE_ACTIONS = new Set([
   'read',
   'write',
@@ -248,13 +257,16 @@ export type FillerPreparationResult =
   | 'ready'
   | 'failed'
   | 'unavailable'
-  | 'profile-unavailable';
+  | 'profile-unavailable'
+  // The program has no team, so no media asset may be used (gaulatti/alcantara#122).
+  | 'no-team';
 const FILLER_LEGS = ['television', 'radio'] as const;
 const FILLER_PREPARATION_RESULTS: readonly FillerPreparationResult[] = [
   'ready',
   'failed',
   'unavailable',
   'profile-unavailable',
+  'no-team',
 ];
 /** What a television Start did with the program filler (gaulatti/alcantara#126). */
 export type FillerStartBindingResult =
@@ -338,9 +350,11 @@ export class ManagedMetricsService {
   private readonly artistLabelWrites: Counter<string>;
   private readonly operatorChangeRecords: Counter<string>;
   private readonly recipeExpansions: Counter<string>;
+  private readonly songPlaybackWrites: Counter<string>;
   private readonly recipeRebuilds: Counter<string>;
   private readonly recipeDeletes: Counter<string>;
   private readonly sceneHandoffs: Counter<string>;
+  private readonly sceneAssetScopeRefusals: Counter<string>;
   private readonly jobLastSuccess: Gauge<string>;
   private readonly preferenceOperations: Counter<string>;
   private readonly broadcastDestinationOperations: Counter<string>;
@@ -442,6 +456,14 @@ export class ManagedMetricsService {
       labelNames: ['target', 'result'],
       registers: [this.registry],
     });
+    this.songPlaybackWrites = new Counter({
+      name: 'alcantara_program_song_playback_writes_total',
+      help: 'Calls to POST /program/:programId/song-playback, by result. Exposed from 0.',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    for (const result of SONG_PLAYBACK_WRITE_RESULTS)
+      this.songPlaybackWrites.inc({ result }, 0);
     this.recipeExpansions = new Counter({
       name: 'alcantara_recipe_expansions_total',
       help: 'Rundown recipe uses previewed or built, by result.',
@@ -460,6 +482,14 @@ export class ManagedMetricsService {
       labelNames: ['result'],
       registers: [this.registry],
     });
+    this.sceneAssetScopeRefusals = new Counter({
+      name: 'alcantara_scene_asset_scope_refusals_total',
+      help: 'Scene background asset reads the program team could not serve, read unscoped instead, by reason. Exposed from 0.',
+      labelNames: ['reason'],
+      registers: [this.registry],
+    });
+    for (const reason of SCENE_ASSET_SCOPE_REASONS)
+      this.sceneAssetScopeRefusals.inc({ reason }, 0);
     this.sceneHandoffs = new Counter({
       name: 'alcantara_scene_handoffs_total',
       help: 'Atomic Program and Preview scene handoff persistence outcomes.',
@@ -710,6 +740,12 @@ export class ManagedMetricsService {
     }
   }
 
+  recordSongPlaybackWrite(result: string): void {
+    this.songPlaybackWrites.inc({
+      result: bounded(result, SONG_PLAYBACK_WRITE_RESULTS),
+    });
+  }
+
   recordRecipeExpansion(result: string): void {
     this.recipeExpansions.inc({
       result: bounded(result, RECIPE_EXPANSION_RESULTS),
@@ -742,6 +778,12 @@ export class ManagedMetricsService {
     this.operatorChangeRecords.inc({
       target: bounded(target, OPERATOR_CHANGE_TARGETS),
       result: bounded(result, OPERATOR_CHANGE_RESULTS),
+    });
+  }
+
+  recordSceneAssetScopeRefusal(reason: SceneAssetScopeReason): void {
+    this.sceneAssetScopeRefusals.inc({
+      reason: bounded(reason, SCENE_ASSET_SCOPE_REASONS),
     });
   }
 

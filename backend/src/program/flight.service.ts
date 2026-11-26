@@ -1,6 +1,7 @@
 import {
   AutomationEngineUnavailableError,
   isRadioOnlyEngineOff,
+  radioEngineReadiness,
 } from '../radio/engine-availability';
 import { isDeployCandidate } from '../config/deploy-candidate';
 import {
@@ -774,12 +775,13 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
             },
           })
         : [];
-    const [songs, instants] = await Promise.all([
+    const [songs, instants, engine] = await Promise.all([
       readSongs(),
       this.prisma.instant.findMany({
         where: { id: { in: instantIds } },
         select: { id: true, enabled: true, audioUrl: true },
       }),
+      radioEngineReadiness(this.prisma, programId),
     ]);
     const playableSongs = new Map(songs.map((song) => [song.id, song]));
     const playableInstants = new Map(
@@ -804,7 +806,17 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
           issues.push(`Item ${index + 1}: audio clip unavailable`);
       }
     }
-    return { programId, ready: issues.length === 0, issues, warnings };
+    // A block whose show's radio is not set up, or is off, would air nothing: say so, without blocking, since the
+    // engine may be set up before the block starts (the rundown-building walk; GM's decision D1).
+    if (engine === 'not-configured')
+      warnings.push(
+        "Radio isn't set up for this show: set it up in Radio distribution before the block starts",
+      );
+    else if (engine === 'disabled')
+      warnings.push(
+        'Radio is off for this show: turn it on in Radio distribution before the block starts',
+      );
+    return { programId, ready: issues.length === 0, issues, warnings, engine };
   }
 
   async preflightFlightSequence(programId: string, sequenceId: number) {

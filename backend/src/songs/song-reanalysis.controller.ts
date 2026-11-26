@@ -1,6 +1,7 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, Req } from '@nestjs/common';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { RequirePermission } from '../auth/require-permission.decorator';
+import { callerTeam, type TeamRequest } from '../tenancy/caller-team';
 import { SongReanalysisService } from './song-reanalysis.service';
 
 /** gaulatti/alcantara#235: queues songs for a new analysis (at most 25), keeping their cues until it finishes. */
@@ -10,7 +11,14 @@ export class SongReanalysisController {
 
   @Post('reanalysis')
   @RequirePermission(ALCANTARA_PERMISSIONS.song.manage)
-  async requestReanalysis(@Body() body: { songIds?: unknown; rule?: unknown }) {
-    return this.reanalysis.request(body?.songIds, body?.rule);
+  async requestReanalysis(
+    @Body() body: { songIds?: unknown; rule?: unknown },
+    @Req() request: TeamRequest,
+  ) {
+    return this.reanalysis.request(
+      body?.songIds,
+      callerTeam(request),
+      body?.rule,
+    );
   }
 }

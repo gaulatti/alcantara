@@ -194,6 +194,7 @@ export class PalazzoRadioTelemetryService
       lastEventAt: null,
       lastSnapshotAt: null,
       degraded: false,
+      playout: null,
       detail: reason
         ? UNAVAILABLE_DETAIL[reason]
         : 'Palazzo telemetry has not started for this program',
