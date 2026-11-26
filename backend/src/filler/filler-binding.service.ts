@@ -1,3 +1,4 @@
+import { releaseActiveFiller } from './release-active-filler';
 import {
   BadGatewayException,
   ConflictException,
@@ -81,6 +82,16 @@ export class FillerBindingService {
       });
     }
     this.metrics.recordFillerStartBinding('bound');
+  }
+
+  /** A stopped television session releases its filler. */
+  async releaseTelevision(programId: string): Promise<void> {
+    await releaseActiveFiller(
+      this.prisma,
+      programId,
+      'television',
+      this.metrics,
+    );
   }
 
   private async bindableTelevisionVersion(

@@ -166,6 +166,9 @@ export function startsSongPlayback(
 }
 
 /** The refusal of a rename onto the id a deleted program's settings still hold (gaulatti/alcantara#122). */
+export const FILLER_ON_AIR_MESSAGE =
+  'Its filler is on air. Stop it before renaming.';
+
 export const LEFTOVER_PROGRAM_ID_MESSAGE =
   "That ID belongs to a deleted show's settings. Choose another ID.";
 
@@ -1557,6 +1560,32 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     return this.getProgramStateWithScenes(normalized);
   }
 
+  /** Whether a rename would leave the program's filler needing preparation again (gaulatti/alcantara#122). */
+  async hasPreparedFiller(programId: string): Promise<boolean> {
+    const legs = await this.prisma.fillerLeg.count({
+      where: {
+        programId: this.normalizeProgramId(programId),
+        OR: [
+          { pendingVersionId: { not: null } },
+          { activeVersionId: { not: null } },
+        ],
+      },
+    });
+    return legs > 0;
+  }
+
+  /**
+   * A rename takes the program's filler with it, so it is refused while that filler is on air: a session holds a
+   * version (until its Stop), or Palazzo reports recovery automation running.
+   */
+  private async refuseRenameWhileFillerAirs(programId: string): Promise<void> {
+    const held = await this.prisma.fillerLeg.count({
+      where: { programId, activeVersionId: { not: null } },
+    });
+    if (held || (await this.radioService.isRecoveryRunning(programId)))
+      throw new ConflictException(FILLER_ON_AIR_MESSAGE);
+  }
+
   /**
    * What a program has on air. A rename would move its engines and outputs to another id and a delete would end them,
    * so neither is done while this is not empty: the show would go silent, or lose its output.
@@ -1654,6 +1683,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Program not found');
     }
     if (current !== next) {
+      await this.refuseRenameWhileFillerAirs(current);
       const existingTarget = await this.prisma.programState.findUnique({
         where: { programId: next },
         select: { id: true },
@@ -1667,7 +1697,16 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         where: { programId: next },
         select: { programId: true },
       });
-      if (leftover) {
+      const leftoverFiller = await this.prisma.fillerLeg.findFirst({
+        where: { programId: next },
+        select: { programId: true },
+      });
+      // A version can be left with no leg, and would otherwise be listed as the renamed program's own.
+      const leftoverVersion = await this.prisma.fillerVersion.findFirst({
+        where: { programId: next },
+        select: { id: true },
+      });
+      if (leftover || leftoverFiller || leftoverVersion) {
         throw new ConflictException(LEFTOVER_PROGRAM_ID_MESSAGE);
       }
     }
@@ -1709,11 +1748,26 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     } else {
       // gaulatti/alcantara#122: the Program row carries the program's team and branding, so it is renamed with the
       // program, or the renamed program would belong to no team.
+      // Its filler moves with it, marked as not prepared: Alana and Palazzo hold a prepared version under the old
+      // id, so a Start binding it under the new one would be refused. With no pointer, Start behaves as it does
+      // with no filler, and the desk says it needs preparing again.
       try {
         await this.prisma.$transaction([
           this.prisma.program.updateMany({
             where: { programId: current },
             data: { programId: next },
+          }),
+          this.prisma.fillerVersion.updateMany({
+            where: { programId: current },
+            data: { programId: next },
+          }),
+          this.prisma.fillerLeg.updateMany({
+            where: { programId: current },
+            data: {
+              programId: next,
+              pendingVersionId: null,
+              activeVersionId: null,
+            },
           }),
           updateState(),
         ]);

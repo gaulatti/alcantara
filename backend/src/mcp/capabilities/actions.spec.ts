@@ -723,6 +723,19 @@ describe('write, on-air and destructive capabilities', () => {
     expect(f.programs.renameProgram).not.toHaveBeenCalled();
   });
 
+  it('says up front that a rename leaves a prepared filler to be prepared again (#122)', async () => {
+    const { f, specs } = build();
+    const plan = async () =>
+      (await specNamed(specs, 'program_rename_program').dryRun!(
+        { program_id: 'main', next_program_id: 'x' },
+        ctx,
+      )) as { summary: string };
+    const sentence = 'Its filler will need preparing again.';
+    expect((await plan()).summary).not.toContain(sentence);
+    f.programs.hasPreparedFiller.mockResolvedValue(true);
+    expect((await plan()).summary).toContain(sentence);
+  });
+
   it("reports the console's own refusals as MCP codes", async () => {
     const { f, specs } = build();
     f.programs.addSceneToProgram.mockRejectedValue(

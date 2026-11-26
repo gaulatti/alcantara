@@ -407,6 +407,7 @@ export class BroadcastDestinationsService {
           error: 'Alana did not acknowledge Stopped',
         });
       }
+      await this.fillers.releaseTelevision(programId);
       return await this.finishCommand(command, downstream, 'succeeded', {
         requestedState: 'stopped',
         actualState: 'stopped',

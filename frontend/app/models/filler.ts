@@ -23,6 +23,8 @@ export interface FillerVersionSummary {
 export interface FillerLegState {
   pending: FillerVersionSummary | null;
   active: FillerVersionSummary | null;
+  /** Set when a configured leg was left with nothing prepared, by a rename. */
+  needsPreparing?: boolean;
 }
 
 export interface ProgramFillerState {

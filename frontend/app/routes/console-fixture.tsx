@@ -450,7 +450,9 @@ export default function ConsoleFixture() {
                       },
                     },
               logs:
-                fixture === "radio-empty" || fixture === "radio-continuous"
+                fixture === "radio-empty" ||
+                fixture === "radio-continuous" ||
+                fixture === "radio-audio-off-rundown"
                   ? []
                   : [
                       {
@@ -509,7 +511,10 @@ export default function ConsoleFixture() {
                 enabled: true,
               }))}
             programSongPlayback={
-              playbackOnAir && fixture !== "radio-empty"
+              // radio-audio-off-rundown (D7): no song commanded while the station is audible.
+              playbackOnAir &&
+              fixture !== "radio-empty" &&
+              fixture !== "radio-audio-off-rundown"
                 ? {
                     token:
                       fixture === "radio-external"

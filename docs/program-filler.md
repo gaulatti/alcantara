@@ -45,6 +45,22 @@ A filler uses only the media assets of the program's team (gaulatti/alcantara#12
 if it did not qualify, and a program with no team is refused (counted as `no-team`). Without a station team (local and
 test) every asset is usable.
 
+## Renaming a program
+
+A rename moves the program's versions and legs to the new id and clears each leg's pending and active pointers, because
+Alana and Palazzo hold a prepared version under the old id (gaulatti/alcantara#122). Start then behaves as with no
+filler, and the panel says **Filler needs preparing again** (`needsPreparing` in the state). The rename dialog and the
+MCP dry run say so beforehand. Renaming onto an id that still holds a deleted program's filler, a leg or a version, is refused with 409.
+
+A rename is refused with 409 "Its filler is on air. Stop it before renaming." while either leg has an active version,
+or while Palazzo has a recovery session running for the program (automation requested running with a filler bound) (Palazzo that cannot be asked reports nothing
+running). A Stop, radio recovery or television, returns the leg's active version to pending, unless a newer one is
+already pending, so the next Start binds to the same filler. A version made active before this behavior is released by
+the program's next Stop.
+
+The release is best effort: a failed write is logged, counted and never fails the Stop, which has already taken effect;
+the version stays active until the next Stop.
+
 ## Start binding
 
 **Television.** `POST /broadcast/programs/:id/start` (`broadcast.operate`) applies binding only when two things hold: the program has a ready television version (pending, else active), and Alana's lifecycle reports `pendingFiller` or `activeFiller` with a `profileChecksum`.
@@ -62,6 +78,7 @@ test) every asset is usable.
 | Metric | Labels |
 | --- | --- |
 | `alcantara_filler_preparations_total{leg,result}` | `leg` is `television` or `radio`; `result` is `ready`, `failed`, `unavailable`, `profile-unavailable` or `no-team` |
+| `alcantara_filler_releases_total{leg,result}` | `leg` is `television` or `radio`; `result` is `released` or `failed` |
 | `alcantara_filler_start_bindings_total{result}` | `bound`, `mismatch`, `not-configured` or `legacy-executor` |
 | `alcantara_alana_live_profile_unknown_keys_total` | no labels; one per live-profile key Alcantara does not know (never the key name) |
 | `alcantara_dependency_operations_total{dependency="alana",...}` | gains the `profile` and `prepare` operations |
