@@ -47,12 +47,13 @@ describe('MCP design metadata under unresolved circular imports', () => {
       jest.doMock('../radio/song-execution.engine', () => ({}));
       jest.doMock('../songs/songs.service', () => ({}));
       jest.doMock('./tools/mcp-change.feed', () => ({}));
+      jest.doMock('../auth/pompeii.service', () => ({}));
       const { McpRadioReadTools } = require('./tools/radio-read.tools');
       jest.dontMock('./tools/mcp-change.feed');
       const { McpChangeFeed } = require('./tools/mcp-change.feed');
       expect(
         Reflect.getMetadata('design:paramtypes', McpRadioReadTools),
-      ).toEqual(Array(9).fill(Object));
+      ).toEqual(Array(10).fill(Object));
       expect(Reflect.getMetadata('design:paramtypes', McpChangeFeed)).toEqual([
         Object,
       ]);

@@ -41,6 +41,7 @@ import { McpAuthService } from '../mcp-auth.service';
 import { McpController } from '../mcp.controller';
 import { McpRegistry } from '../mcp-registry.service';
 import { McpChangeFeed } from './mcp-change.feed';
+import { PompeiiService } from '../../auth/pompeii.service';
 import { McpRadioReadTools } from './radio-read.tools';
 import { noRecorder } from '../../operator-change/operator-change-recorder.testing';
 
@@ -541,6 +542,7 @@ async function build() {
   );
   const asRun = new AsRunService(prisma, { teamId: 0 } as never);
   const songs = new SongsService(prisma, noRecorder());
+  const pompeii = { teamId: 0 };
   const status = {
     programId: PROGRAM,
     programType: 'radio',
@@ -588,6 +590,7 @@ async function build() {
       { provide: SongSimilarityService, useValue: {} },
       { provide: AsRunService, useValue: asRun },
       { provide: SongsService, useValue: songs },
+      { provide: PompeiiService, useValue: pompeii },
       {
         provide: McpAuthService,
         useValue: {
