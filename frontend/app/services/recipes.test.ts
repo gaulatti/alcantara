@@ -124,6 +124,10 @@ it("previews the cues and issues of a use, tolerating an answer that lacks eithe
   expect(url).toContain("/program/tv/recipes/5/expand");
   expect(JSON.parse(init.body)).toEqual({ params: { songId: 7 } });
   answer(new Response("{}"));
+  await expandRecipe("tv", 5, { songId: 7 }, "use-9");
+  const [, rebuildInit] = (fetch as ReturnType<typeof vi.fn>).mock.calls.at(-1)!;
+  expect(JSON.parse(rebuildInit.body)).toEqual({ params: { songId: 7 }, useId: "use-9" });
+  answer(new Response("{}"));
   await expect(expandRecipe("tv", 5, { songId: 7 })).resolves.toEqual({
     items: [],
     issues: [],
