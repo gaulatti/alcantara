@@ -329,3 +329,18 @@ it("clears a director message on Acknowledge when there is no session to send a 
   expect(heartbeats).toEqual([]);
   expect(receipts).toEqual([]);
 });
+
+// gaulatti/alcantara#624 (guest.tsx:332): the shown program video leaves the room. The guest falls back to no feed and
+// keeps the rest of the call; when a program video returns, it is shown again.
+it("drops the shown program video when it leaves the room, and shows the next one that arrives", async () => {
+  await join();
+  const video = { kind: "video", attach() {}, detach() {} };
+  const publication = { kind: "video", trackName: "program" };
+  emit("trackSubscribed", video, publication, { identity: "program-feed-main" });
+  await live();
+  emit("trackUnsubscribed", video, publication, { identity: "program-feed-main" });
+  expect(await live()).toBeVisible();
+  const next = { kind: "video", attach() {}, detach() {} };
+  emit("trackSubscribed", next, publication, { identity: "program-feed-main" });
+  expect(await live()).toBeVisible();
+});

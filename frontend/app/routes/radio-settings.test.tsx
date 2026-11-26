@@ -410,3 +410,29 @@ it("shows no local-stack notice where publishing is enabled", async () => {
     screen.queryByText(/Publishing is off on this local stack/),
   ).not.toBeInTheDocument();
 });
+
+it("shows the set-up form with a notice when the show has no radio settings yet", async () => {
+  serve({ "GET /radio/night radio/settings": () => Response.json(null) });
+  render(<RadioSettingsRoute />);
+  expect(await screen.findByText("Radio isn't set up yet")).toBeVisible();
+  expect(screen.queryByText("The selected show does not expose a radio configuration.")).toBeNull();
+  expect(screen.getByRole("button", { name: /Save radio settings/ })).toBeVisible();
+});
+
+it("creates the radio settings on the first save, and drops the notice once they exist", async () => {
+  const calls = serve({ "GET /radio/night radio/settings": () => Response.json(null) });
+  render(<RadioSettingsRoute />);
+  await screen.findByText("Radio isn't set up yet");
+  fireEvent.change(screen.getByLabelText("Palazzo control URL"), { target: { value: "http://palazzo:3100" } });
+  fireEvent.click(screen.getByRole("button", { name: /Save radio settings/ }));
+  await toast("Radio distribution settings saved.");
+  expect(bodyOf(calls, "PUT", "/settings")).toEqual({
+    palazzoUrl: "http://palazzo:3100",
+    bumperEnabled: false,
+    bumperInterval: null,
+    bumperInstantIds: [],
+    bumperMode: null,
+    enabled: false,
+  });
+  expect(screen.queryByText("Radio isn't set up yet")).toBeNull();
+});
