@@ -681,6 +681,26 @@ export class ManagedMetricsService {
     this.dependencyDuration.observe(labels, Math.max(0, seconds));
   }
 
+  /**
+   * gaulatti/alcantara#122. The gauge exists only while there is a value, because an unlabelled gauge would
+   * otherwise be scraped as 0 before anything was read.
+   */
+  setMediaAssetsWithoutTeam(count: number | null): void {
+    const name = 'alcantara_media_assets_without_team';
+    if (count === null) {
+      this.registry.removeSingleMetric(name);
+      return;
+    }
+    const gauge =
+      (this.registry.getSingleMetric(name) as Gauge | undefined) ??
+      new Gauge({
+        name,
+        help: 'Media assets with no team, at the last successful read.',
+        registers: [this.registry],
+      });
+    gauge.set(count);
+  }
+
   recordJob(job: string, result: string): void {
     const normalizedJob = bounded(job, JOBS);
     const normalizedResult = bounded(result, JOB_RESULTS);

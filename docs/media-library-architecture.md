@@ -321,6 +321,12 @@ when the library is done.
 **Rollback.** A forward fix. The job only writes `MediaAssetAnalysis`, which
 playback reads only for programs with `segueMode` `on`.
 
+`alcantara_media_assets_without_team` counts assets with no positive team, which a
+team-scoped read would miss (gaulatti/alcantara#122). It must read `0` before the
+radio's asset reads are scoped. The backend reads it at startup and every five
+minutes; the series is absent, not zero, before the first read and while the last
+read failed. A deploy candidate does not read it.
+
 ## Authorization and public rendering
 
 The unified catalog filters each result through the existing per-capability
