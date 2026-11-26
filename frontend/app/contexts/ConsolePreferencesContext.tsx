@@ -90,7 +90,7 @@ export function defaultConsoleProfile(
   };
 }
 
-function readOverride(): DeviceClass | null {
+export function readOverride(): DeviceClass | null {
   if (typeof window === "undefined") return null;
   const value = window.localStorage.getItem(OVERRIDE_KEY);
   return value === "desktop" || value === "tablet" || value === "phone"
