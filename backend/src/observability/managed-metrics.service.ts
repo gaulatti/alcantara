@@ -736,6 +736,7 @@ export class ManagedMetricsService {
       'ingest',
       'create',
       'replace_key',
+      'test',
     ]);
     const results = new Set(['succeeded', 'failed', 'conflict']);
     this.broadcastDestinationOperations.inc({
