@@ -246,6 +246,7 @@ async function nextHeartbeat() {
 it("reports the camera, microphone, quality and return feed as they are now in every interval heartbeat", async () => {
   await join();
   expect(heartbeats[0]).toEqual({
+    joined: true,
     connectionState: "connected",
     quality: "unknown",
     returnFeedHealth: "missing",
@@ -344,3 +345,47 @@ it("drops the shown program video when it leaves the room, and shows the next on
   emit("trackSubscribed", next, publication, { identity: "program-feed-main" });
   expect(await live()).toBeVisible();
 });
+
+// Call telemetry: the first heartbeat of a join says so, and every heartbeat names the ICE path when stats do.
+it("says it joined once, with the ICE path from the published track's stats", async () => {
+  const stats = new Map<string, Record<string, unknown>>([
+    ["P", { type: "candidate-pair", localCandidateId: "L", nominated: true, state: "succeeded" }],
+    ["L", { type: "local-candidate", candidateType: "relay", protocol: "udp" }],
+  ]);
+  const connect = lk.Room.prototype.connect;
+  vi.spyOn(lk.Room.prototype, "connect").mockImplementation(async function (this: InstanceType<typeof lk.Room>) {
+    Object.assign(this.localParticipant, {
+      trackPublications: new Map([["camera", { track: { getRTCStatsReport: async () => stats } }]]),
+    });
+    await connect.call(this);
+  });
+  await join();
+  expect(heartbeats[0]).toMatchObject({ joined: true, iceTransport: "relay" });
+  const next = await nextHeartbeat();
+  expect(next).toMatchObject({ iceTransport: "relay" });
+  expect(next).not.toHaveProperty("joined");
+});
+
+it("tells the studio why the guest could not connect", async () => {
+  vi.spyOn(lk.Room.prototype, "connect").mockRejectedValue(
+    Object.assign(new Error("could not establish pc connection"), { name: "ConnectionError", reasonName: "InternalError" }),
+  );
+  openPage();
+  expect(await screen.findByText("Browser network check ready")).toBeVisible();
+  fireEvent.click(screen.getByText("Speaker test").closest("button")!);
+  fireEvent.click(screen.getByLabelText(/I am wearing headphones/));
+  fireEvent.click(screen.getByRole("button", { name: /Join studio/ }));
+  await waitFor(() => expect(reportedFailures()).toEqual([{ invitation: "inv-1.secret", reason: "ice_failed" }]));
+});
+
+it("tells the studio when the browser refuses the camera and microphone", async () => {
+  vi.mocked(navigator.mediaDevices.getUserMedia).mockRejectedValue(Object.assign(new Error("denied"), { name: "NotAllowedError" }));
+  openPage();
+  await waitFor(() => expect(reportedFailures()).toEqual([{ invitation: "inv-1.secret", reason: "permission_denied" }]));
+});
+
+const reportedFailures = () =>
+  vi
+    .mocked(fetch)
+    .mock.calls.filter(([url]) => String(url).endsWith("/webrtc/join/failure"))
+    .map(([, init]) => JSON.parse(String(init!.body)));

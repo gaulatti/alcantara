@@ -50,6 +50,23 @@ export const PALAZZO_METRICS_SCRAPE_RESULTS = [
   'too_large',
   'error',
 ] as const;
+/** Who reported on a guest call: a guest's browser (or the API refusing it), or an operator's talkback. */
+export const WEBRTC_CLIENTS = ['guest', 'operator'] as const;
+/** How joining a call ended (alcantara_webrtc_joins_total). */
+export const WEBRTC_JOIN_RESULTS = [
+  'success',
+  'permission_denied',
+  'no_device',
+  'ice_failed',
+  'token_rejected',
+  'invite_expired',
+  'other',
+] as const;
+/** The selected ICE path: direct over UDP or TCP, or relayed by TURN. */
+export const WEBRTC_ICE_PATHS = ['udp', 'tcp', 'relay'] as const;
+export type WebrtcClient = (typeof WEBRTC_CLIENTS)[number];
+export type WebrtcJoinResult = (typeof WEBRTC_JOIN_RESULTS)[number];
+export type WebrtcIcePath = (typeof WEBRTC_ICE_PATHS)[number];
 /** Results of alcantara_mcp_auth_total (gaulatti/alcantara#211). */
 export const MCP_AUTH_METRIC_RESULTS = [
   'ok',
@@ -383,6 +400,8 @@ export class ManagedMetricsService {
   private readonly accessDuration: Histogram<string>;
   private readonly palazzoMetricsScrapes: Counter<string>;
   private readonly palazzoMetricsScrapeDuration: Histogram<string>;
+  private readonly webrtcJoins: Counter<'client' | 'result'>;
+  private readonly webrtcIcePaths: Counter<'client' | 'path'>;
   private readonly mcpAuth: Counter<string>;
   private readonly mcpOAuth: Counter<string>;
   private readonly mcpRequests: Counter<string>;
@@ -603,6 +622,24 @@ export class ManagedMetricsService {
     });
     for (const result of PALAZZO_METRICS_SCRAPE_RESULTS)
       this.palazzoMetricsScrapes.labels(result).inc(0);
+    this.webrtcJoins = new Counter({
+      name: 'alcantara_webrtc_joins_total',
+      help: 'Guest call join outcomes by bounded client and result.',
+      labelNames: ['client', 'result'],
+      registers: [this.registry],
+    });
+    this.webrtcIcePaths = new Counter({
+      name: 'alcantara_webrtc_ice_path_total',
+      help: 'Calls connected, by bounded client and selected ICE path.',
+      labelNames: ['client', 'path'],
+      registers: [this.registry],
+    });
+    for (const client of WEBRTC_CLIENTS) {
+      for (const result of WEBRTC_JOIN_RESULTS)
+        this.webrtcJoins.labels(client, result).inc(0);
+      for (const path of WEBRTC_ICE_PATHS)
+        this.webrtcIcePaths.labels(client, path).inc(0);
+    }
     this.mcpAuth = new Counter({
       name: 'alcantara_mcp_auth_total',
       help: 'MCP endpoint authentications by bounded result.',
@@ -982,6 +1019,14 @@ export class ManagedMetricsService {
         Math.max(0, row.count),
       );
     }
+  }
+
+  recordWebrtcJoin(client: WebrtcClient, result: WebrtcJoinResult): void {
+    this.webrtcJoins.inc({ client, result });
+  }
+
+  recordWebrtcIcePath(client: WebrtcClient, path: WebrtcIcePath): void {
+    this.webrtcIcePaths.inc({ client, path });
   }
 
   recordProgramSseConnection(delta: 1 | -1): void {

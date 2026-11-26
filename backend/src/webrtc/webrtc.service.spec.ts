@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
 import { RoomServiceClient } from 'livekit-server-sdk';
 import { WebrtcService } from './webrtc.service';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
 
 describe('WebrtcService', () => {
   afterEach(() => jest.restoreAllMocks());
@@ -80,6 +81,7 @@ describe('WebrtcService', () => {
         WEBRTC_RENDERER_KEY: 'renderer-secret',
       }),
       prisma as never,
+      new ManagedMetricsService(),
     );
     jest
       .spyOn(RoomServiceClient.prototype, 'listRooms')

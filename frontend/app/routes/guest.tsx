@@ -4,6 +4,7 @@ import { Camera, CameraOff, CheckCircle2, Headphones, Mic, MicOff, PhoneOff, Rad
 import { ConnectionState, Room, RoomEvent, Track, type RemoteParticipant, type RemoteTrack, type RemoteTrackPublication } from 'livekit-client';
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router';
+import { reportJoinFailure, roomIcePath } from '../utils/callTelemetry';
 import { isProgramFeed, preferredProgramFeed } from '../utils/programFeed';
 import { apiUrl } from '../utils/apiBaseUrl';
 import type { Route } from './+types/guest';
@@ -49,6 +50,8 @@ export default function GuestRoute() {
   const roomRef = useRef<Room | null>(null);
   const sessionTokenRef = useRef('');
   const heartbeatRef = useRef<number | null>(null);
+  // Set at each join until a heartbeat has told the studio, so one join is counted once.
+  const announceJoinRef = useRef(false);
   const [status, setStatus] = useState<GuestStatus>('preflight');
   const [error, setError] = useState('');
   // The join was refused (401/403): the invitation is closed, so a rejoin cannot succeed (gaulatti/alcantara#353).
@@ -83,6 +86,9 @@ export default function GuestRoute() {
   const heartbeat = async () => {
     if (!sessionTokenRef.current) return;
     const telemetry = telemetryRef.current;
+    const icePath = await roomIcePath(roomRef.current);
+    const joined = announceJoinRef.current;
+    announceJoinRef.current = false;
     const response = await fetch(apiUrl('/webrtc/session/heartbeat'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -93,7 +99,9 @@ export default function GuestRoute() {
           quality: telemetry.quality,
           returnFeedHealth: telemetry.returnFeed ? 'healthy' : 'missing',
           cameraEnabled: telemetry.cameraEnabled,
-          microphoneEnabled: telemetry.microphoneEnabled
+          microphoneEnabled: telemetry.microphoneEnabled,
+          ...(icePath ? { iceTransport: icePath } : {}),
+          ...(joined ? { joined: true } : {})
         }
       })
     });
@@ -159,6 +167,7 @@ export default function GuestRoute() {
         setNetwork(connection ? `${connection.effectiveType || 'network'} · ${connection.downlink || '?'} Mbps · ${connection.rtt || '?'} ms RTT` : 'Browser network check ready');
         setStatus('ready');
       } catch (reason) {
+        if (!cancelled) void reportJoinFailure(invitation, reason);
         setError(reason instanceof Error ? `Camera or microphone permission failed: ${reason.message}` : 'Camera or microphone permission failed.');
         setStatus('error');
       }
@@ -387,10 +396,12 @@ export default function GuestRoute() {
       const cameraPublication = room.localParticipant.getTrackPublication(Track.Source.Camera);
       if (cameraPublication?.videoTrack && previewRef.current) cameraPublication.videoTrack.attach(previewRef.current);
       setStatus('live');
+      announceJoinRef.current = true;
       stopHeartbeat();
       heartbeatRef.current = window.setInterval(() => void heartbeat(), 20_000);
       void heartbeat();
-    } catch {
+    } catch (reason) {
+      void reportJoinFailure(invitation, reason);
       // Release the half-joined room, without its listeners reporting the
       // disconnect as an ended session, so a retry starts from a clean room.
       const failedRoom = roomRef.current;

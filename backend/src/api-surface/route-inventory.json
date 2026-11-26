@@ -1369,6 +1369,18 @@
   },
   {
     "method": "POST",
+    "path": "/webrtc/join/failure",
+    "public": true,
+    "permission": "alcantara:webrtc:read"
+  },
+  {
+    "method": "POST",
+    "path": "/webrtc/operator-report",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
+  },
+  {
+    "method": "POST",
     "path": "/webrtc/operator-token",
     "public": false,
     "permission": "alcantara:webrtc:operate"

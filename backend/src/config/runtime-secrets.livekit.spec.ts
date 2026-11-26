@@ -45,7 +45,11 @@ function secret(payload: Record<string, unknown>) {
 }
 
 function webrtc(environment: Record<string, string | undefined>) {
-  return new WebrtcService(new ConfigService(environment), {} as never);
+  return new WebrtcService(
+    new ConfigService(environment),
+    {} as never,
+    {} as never,
+  );
 }
 
 describe('LiveKit configuration from the runtime secret', () => {

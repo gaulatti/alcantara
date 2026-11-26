@@ -100,6 +100,21 @@ not a person or invitation identifier. Assigning a replacement invitation to
 the same slot therefore preserves reusable layouts. The normal Preview, CUT,
 and TAKE workflow remains the only way a guest reaches air.
 
+#### Call telemetry
+
+Production shows whether calls work from what each call reports. The API counts, from 0:
+
+- `alcantara_webrtc_joins_total{client,result}`: `client` is `guest` or `operator` (talkback); `result` is
+  `success`, `permission_denied`, `no_device`, `ice_failed`, `token_rejected`, `invite_expired` or `other`.
+- `alcantara_webrtc_ice_path_total{client,path}`: `path` is `udp` or `tcp` (direct) or `relay` (TURN), from the
+  selected candidate pair, counted once per connected call.
+
+A guest's first heartbeat after joining says so and every heartbeat names the path. A join the browser sees fail
+(also before asking to join, when the camera is refused) goes to `POST /webrtc/join/failure` with the invitation.
+The API itself counts the joins it refuses (revoked or invalid: `token_rejected`; expired: `invite_expired`; in use
+elsewhere: `other`). The console reports its talkback to `POST /webrtc/operator-report`. On `/calls`, each guest
+shows the path of their call, or why their last join failed. A call that drops after connecting is not counted.
+
 #### Return routing
 
 Alana remains the owner of captured Program/Preview output publication. Start

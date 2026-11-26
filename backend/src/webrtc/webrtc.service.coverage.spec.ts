@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { createHash, createHmac } from 'node:crypto';
 import { RoomServiceClient, TrackSource } from 'livekit-server-sdk';
 import { WebrtcService } from './webrtc.service';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
 
 jest.mock('livekit-server-sdk', () => {
   const actual = jest.requireActual('livekit-server-sdk');
@@ -49,6 +50,7 @@ function makeInvitation(overrides: Record<string, unknown> = {}) {
     revokedAt: null as Date | null,
     activeSessionId: null as string | null,
     activeSessionUntil: null as Date | null,
+    events: [] as unknown[],
     createdByIdentity: 'operator-1',
     createdByPrincipalId: 'principal-1',
     createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -108,7 +110,11 @@ function setup(config: Record<string, string> = baseConfig) {
   };
   (RoomServiceClient as unknown as jest.Mock).mockReset();
   (RoomServiceClient as unknown as jest.Mock).mockImplementation(() => livekit);
-  const service = new WebrtcService(new ConfigService(config), prisma as never);
+  const service = new WebrtcService(
+    new ConfigService(config),
+    prisma as never,
+    new ManagedMetricsService(),
+  );
   return { service, prisma, livekit };
 }
 

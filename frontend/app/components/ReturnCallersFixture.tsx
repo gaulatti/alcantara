@@ -45,9 +45,9 @@ export function ProgramReturnFixture() {
 }
 
 const guests: StripParticipant[] = [
-  { identity: "g1", name: "Lucía Ferrer", slotNumber: 1, connectionState: "connected", returnVideo: "program", returnAudioBus: "master", sourceGain: 0.75, sourceMuted: false, sourceDelayMs: 100, tracks: [{ sid: "m1", source: "microphone", muted: false }, { sid: "c1", source: "camera", muted: false }], commands: [{ type: "cue", status: "acknowledged", payload: { cue: "live" } }] },
-  { identity: "g2", name: "Diego Montes", slotNumber: 2, connectionState: "connected", returnVideo: "preview", returnAudioBus: "aux-1", sourceGain: 0.75, sourceMuted: false, sourceDelayMs: 0, tracks: [{ sid: "m2", source: "microphone", muted: false }, { sid: "c2", source: "camera", muted: true }], commands: [{ type: "cue", status: "acknowledged", payload: { cue: "standby" } }] },
-  { identity: "g4", name: "Marco Ibáñez", slotNumber: 4, connectionState: "reconnecting", returnVideo: "program", returnAudioBus: "master", sourceGain: 1, sourceMuted: true, sourceDelayMs: 0, tracks: [], commands: [] },
+  { identity: "g1", name: "Lucía Ferrer", slotNumber: 1, connectionState: "connected", returnVideo: "program", returnAudioBus: "master", sourceGain: 0.75, sourceMuted: false, sourceDelayMs: 100, tracks: [{ sid: "m1", source: "microphone", muted: false }, { sid: "c1", source: "camera", muted: false }], commands: [{ type: "cue", status: "acknowledged", payload: { cue: "live" } }], icePath: "udp" },
+  { identity: "g2", name: "Diego Montes", slotNumber: 2, connectionState: "connected", returnVideo: "preview", returnAudioBus: "aux-1", sourceGain: 0.75, sourceMuted: false, sourceDelayMs: 0, tracks: [{ sid: "m2", source: "microphone", muted: false }, { sid: "c2", source: "camera", muted: true }], commands: [{ type: "cue", status: "acknowledged", payload: { cue: "standby" } }], icePath: "relay" },
+  { identity: "g4", name: "Marco Ibáñez", slotNumber: 4, connectionState: "reconnecting", returnVideo: "program", returnAudioBus: "master", sourceGain: 1, sourceMuted: true, sourceDelayMs: 0, tracks: [], commands: [], joinFailure: "ice_failed" },
 ];
 
 export function CallerDeskFixture() {

@@ -9,6 +9,7 @@ import { apiUrl } from '../utils/apiBaseUrl';
 import type { Route } from './+types/calls';
 import { AppPage } from '../components/AppPage';
 import { GuestStrip } from '../components/GuestStrip';
+import { callFailureReason, roomIcePath, type CallFailure, type IcePath } from '../utils/callTelemetry';
 import { deskSlots, latestCue, stripState } from '../utils/callerDesk';
 import '../components/CallerDesk.css';
 
@@ -46,6 +47,8 @@ type Participant = {
   sourceDelayMs: number;
   tracks: Array<{ sid: string; source: string; muted: boolean }>;
   commands: Command[];
+  icePath?: IcePath | null;
+  joinFailure?: CallFailure | null;
 };
 
 export function meta({}: Route.MetaArgs) {
@@ -238,6 +241,18 @@ export default function CallsRoute() {
     setTalkingTo(null);
     closeTalkback();
   };
+  // The operator's side of whether calls work, counted by the API; a report that fails changes nothing here.
+  const reportTalkback = async (result: CallFailure | 'success', icePath: IcePath | null) => {
+    try {
+      await authFetch('/webrtc/operator-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ result, icePath })
+      });
+    } catch {
+      // Nothing to do: the talkback itself has its own error.
+    }
+  };
   const startTalk = async (participant: Participant) => {
     if (talkWanted.current) return;
     talkWanted.current = participant.identity;
@@ -265,7 +280,9 @@ export default function CallsRoute() {
       await room.localParticipant.publishTrack(track, {
         name: `talkback:${participant.invitationId}`
       });
+      void roomIcePath(room).then((icePath) => reportTalkback('success', icePath));
     } catch (error) {
+      void reportTalkback(callFailureReason(error), null);
       stopTalk();
       setNotice(error instanceof Error ? error.message : 'Talkback failed.');
     }

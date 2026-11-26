@@ -19,6 +19,8 @@ import {
   type Cue,
   type DeskCommand,
 } from "../utils/callerDesk";
+import type { CallFailure, IcePath } from "../utils/callTelemetry";
+import { CallPathLine } from "./CallPathLine";
 
 export type ReturnField =
   | "returnVideo"
@@ -39,6 +41,8 @@ export interface StripParticipant {
   sourceDelayMs: number;
   tracks: Array<{ sid: string; source: string; muted: boolean }>;
   commands: Array<DeskCommand & { status: string }>;
+  icePath?: IcePath | null;
+  joinFailure?: CallFailure | null;
 }
 
 /**
@@ -175,6 +179,7 @@ export function GuestStrip({
           {STRIP_LABEL[state]}
         </span>
       </header>
+      <CallPathLine participant={participant} />
       {state === "cued-live" ? (
         <p className="guest-strip-note">
           Sent the live cue. The guest is on the output only through a scene that carries them.
