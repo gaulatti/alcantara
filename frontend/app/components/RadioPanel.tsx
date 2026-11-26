@@ -31,6 +31,7 @@ import { RadioOutputPlayer } from "./RadioOutputPlayer";
 import { PlaybackBar } from "./PlaybackBar";
 import { useRadioMonitor } from "./RadioMonitor";
 import { HoldButton } from "./radio-desk/HoldButton";
+import { isOutputSampleUnverified } from "./radio-desk/outputFreshness";
 import { deriveOnAir } from "./radio-desk/onAir";
 import { OnAirStrip } from "./radio-desk/OnAirStrip";
 import { PlaySongNow } from "./radio-desk/PlaySongNow";
@@ -428,14 +429,23 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   const currentLogIndex = activeLog?.isRunning
     ? activeLog.items.findIndex((item) => item.id === activeLog.activeItemId)
     : -1;
+  // Freshness is re-read every second, so an output whose samples stop goes unverified without a new answer (#706).
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(tick);
+  }, []);
+  const outputUnverified = isOutputSampleUnverified(output, now);
   const outputTone =
     output?.state === "silent" || output?.state === "unavailable"
       ? "live"
-      : output?.state === "audible"
+      : output?.state === "audible" && !outputUnverified
         ? "ready"
         : "warning";
   const outputLabel =
-    output?.state === "audible"
+    outputUnverified
+      ? "Output unverified"
+      : output?.state === "audible"
       ? "Engine audio detected"
       : output?.state === "silent"
         ? "Expected audio is silent"
@@ -469,6 +479,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   });
   const onAirView = deriveOnAir({
     playback: programSongPlayback,
+    outputUnverified,
     next,
     mode: rotation.mode,
     streamRunning: stream === null ? null : isLive,

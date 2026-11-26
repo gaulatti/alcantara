@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import { Button, IconButton } from "@gaulatti/bleecker";
 import { TooltipButton } from "../components/BleeckerButtons";
 import { useSearchParams } from "react-router";
@@ -123,6 +123,19 @@ const consoleInstants = [
   enabled: index !== 5,
   position: index,
 }));
+
+// radio-unverified: audible output whose last sample is 10 s old, so the desk shows Output unverified (#706).
+type RadioFixtureData = NonNullable<ComponentProps<typeof RadioPanel>["fixtureData"]>;
+function withSampleAge(fixture: string, data: RadioFixtureData): RadioFixtureData {
+  if (fixture !== "radio-unverified") return data;
+  return {
+    ...data,
+    output: {
+      ...data.output,
+      lastSampleAt: new Date(Date.now() - 10_000).toISOString(),
+    },
+  };
+}
 
 export default function ConsoleFixture() {
   const [params] = useSearchParams();
@@ -352,7 +365,7 @@ export default function ConsoleFixture() {
         <div className="flex h-full min-h-0">
           <RadioPanel
             programId="fixture"
-            fixtureData={{
+            fixtureData={withSampleAge(fixture, {
               monitorAudioUrl: new URL(
                 "/fifthbell/audio/pipes.ogg",
                 window.location.origin,
@@ -427,7 +440,7 @@ export default function ConsoleFixture() {
                         updatedAt: new Date().toISOString(),
                       },
                     ],
-            }}
+            })}
             songSequence={songs}
             songQueue={songQueue}
             songCatalog={consoleSongs.items

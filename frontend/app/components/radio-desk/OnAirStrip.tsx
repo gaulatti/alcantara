@@ -25,7 +25,9 @@ export function OnAirStrip({
         tone={
           view.state === "on-air"
             ? "live"
-            : view.state === "delayed" || view.state === "unconfirmed"
+            : view.state === "delayed" ||
+                view.state === "unconfirmed" ||
+                view.state === "unverified"
               ? "warn"
               : "idle"
         }
@@ -67,14 +69,19 @@ export function OnAirStrip({
           ) : view.state === "delayed" ? (
             <span className="text-xs text-amber-200">No live clock</span>
           ) : (
-            <>
+            // While the output is unverified the clock keeps its place but is dimmed (#706).
+            <span
+              data-testid="on-air-clock"
+              data-dimmed={view.state === "unverified" ? "true" : undefined}
+              className={view.state === "unverified" ? "opacity-40" : undefined}
+            >
               <span className="text-xs text-text-secondary">
                 {formatClock(view.elapsedMs)}
               </span>{" "}
               <strong className="text-lg">
                 −{formatClock(view.remainingMs)}
               </strong>
-            </>
+            </span>
           )}
         </div>
       ) : null}
