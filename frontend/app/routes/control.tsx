@@ -1999,10 +1999,13 @@ export default function Control() {
   };
 
   const stageSceneForProgram = async (sceneId: number | null) => {
+    // A Preview answer belongs to the program it was asked for: one that arrives after the operator
+    // switched program changes nothing on the program now on screen (gaulatti/alcantara#669).
+    const targetProgramId = activeProgramId;
     setTakeError(null);
     try {
       const response = await fetch(
-        apiUrl(`/program/${encodeURIComponent(activeProgramId)}/stage`),
+        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/stage`),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2014,6 +2017,7 @@ export default function Control() {
       }
 
       const result = (await response.json()) as StageSceneResponse;
+      if (targetProgramId !== activeProgramIdRef.current) return;
       const acceptedResult = acceptStageSceneResponse<Scene>(
         result,
         shouldApplyControlUpdatePayload,
@@ -2036,9 +2040,10 @@ export default function Control() {
       );
 
       if (!isProgramRealtimeConnected) {
-        await fetchProgramState(activeProgramId);
+        await fetchProgramState(targetProgramId);
       }
     } catch (err) {
+      if (targetProgramId !== activeProgramIdRef.current) return;
       setTakeError(err instanceof Error ? `Could not prepare Preview: ${err.message}` : "Could not prepare Preview.");
       return false;
     }
@@ -2069,9 +2074,11 @@ export default function Control() {
   };
 
   const setFadeToBlack = async (active: boolean) => {
+    // Like a Preview answer, a fade answer belongs to the program it was sent for (gaulatti/alcantara#669).
+    const targetProgramId = activeProgramId;
     try {
       const response = await fetch(
-        apiUrl(`/program/${encodeURIComponent(activeProgramId)}/fade-to-black`),
+        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/fade-to-black`),
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -2080,6 +2087,7 @@ export default function Control() {
       );
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const nextState = normalizeProgramState(await response.json());
+      if (targetProgramId !== activeProgramIdRef.current) return;
       if (nextState) syncProgramStateAndStagedScene(nextState);
     } catch (err) {
       console.error("Failed to change fade-to-black state:", err);

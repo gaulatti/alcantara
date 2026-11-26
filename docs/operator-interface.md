@@ -65,7 +65,8 @@ Ordinary actions use Bleecker buttons and controls. Surface hierarchy uses the
 shared Bleecker page, card, panel, border, radius, typography, and theme tokens.
 The broadcast deck reserves a separate semantic action grammar:
 
-- **Stage** selects Preview only.
+- **Stage** selects Preview only. A Preview or fade-to-black answer that arrives after the
+  operator switched program, or its failure, changes nothing on the program now on screen (#669).
 - **CUT** and **TAKE** are the only controls that move Preview to Program.
 - **Fade to black** is a Bleecker `ArmTake`: the first press only
   arms it, a second press within five seconds or
