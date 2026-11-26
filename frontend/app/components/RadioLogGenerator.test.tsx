@@ -339,3 +339,37 @@ it("locks the generator without a draft, and for a running or aired one", () => 
     "/media",
   );
 });
+
+it("does not generate when there is no draft hour to fill", () => {
+  vi.mocked(generateTaggedLog).mockClear();
+  render(
+    <RadioLogGenerator
+      programId="radio-demo"
+      log={null}
+      onGenerated={vi.fn()}
+      fixtureLabels={[{ id: "music", name: "Demo music" }]}
+    />,
+  );
+  fireEvent.change(screen.getByRole("combobox", { name: "Tag for block 1" }), {
+    target: { value: "music" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Generate draft" }));
+  expect(generateTaggedLog).not.toHaveBeenCalled();
+});
+
+it("shows no error for a failed generation that belongs to an hour already left", async () => {
+  let fail!: (reason: Error) => void;
+  vi.mocked(generateTaggedLog).mockReturnValue(
+    new Promise((_done, reject) => {
+      fail = reject;
+    }),
+  );
+  const props = { programId: "radio-demo", onGenerated: vi.fn(), fixtureLabels: [{ id: "music", name: "Music" }] };
+  const { rerender } = render(<RadioLogGenerator {...props} log={log} />);
+  fireEvent.change(screen.getByRole("combobox", { name: "Tag for block 1" }), { target: { value: "music" } });
+  fireEvent.click(screen.getByRole("button", { name: "Generate draft" }));
+  rerender(<RadioLogGenerator {...props} log={{ ...log, id: 8 }} />);
+  fail(new Error("Hour 7 could not be tagged"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Generate draft" })).toBeEnabled());
+  expect(screen.queryByText("Hour 7 could not be tagged")).toBeNull();
+});

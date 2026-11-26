@@ -43,7 +43,7 @@ export function PlaylistSheetPanel({
           programSongPlayback={programSongPlayback}
           view='catalog'
           onChange={(nextSequence) => onChange(nextSequence)}
-          onTakeSelection={onTakeSelection ? async (nextSequence) => await onTakeSelection(nextSequence) : undefined}
+          onTakeSelection={onTakeSelection}
         />
       </div>
     </Sheet>
