@@ -342,6 +342,20 @@ it("presents stale timing explicitly and never turns unavailable output into hea
   expect(screen.queryByText("Engine audio detected")).not.toBeInTheDocument();
 });
 
+// The airing walk's W5: with Palazzo answering and its playout down, a playing song is never On air, in the strip,
+// the rotation rows or the rundown's playback bar, even with fresh output samples.
+it("never shows On air or a running clock while playout is down", () => {
+  const p = props();
+  p.fixtureData!.palazzo = { ...p.fixtureData!.palazzo, playout: "down" };
+  mount(p);
+  const strip = screen.getByRole("region", { name: "On air" });
+  expect(within(strip).getByText("Not confirmed")).toBeVisible();
+  expect(within(strip).getByText("Playout down")).toBeVisible();
+  expect(screen.queryByText("On air")).not.toBeInTheDocument();
+  expect(screen.queryByText("Remaining")).not.toBeInTheDocument();
+  expect(screen.getAllByText("No engine confirmation").length).toBeGreaterThanOrEqual(2);
+});
+
 it("calls a stale report from a connected engine delayed, with no frozen clock", () => {
   const p = props();
   p.programSongPlayback = { ...p.programSongPlayback!, telemetryStale: true };
@@ -743,6 +757,16 @@ it("refuses Take, Take now and Start with fallback while playout is down, and ke
     await within(dialog).findByText("Playout down: nothing can air. Nothing was taken."),
   ).toBeVisible();
   expect(p.onTakeSelection).not.toHaveBeenCalled();
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Play a song now" })).toBeNull());
+
+  // The airing walk's W4: a rotation row's Take on air refused nothing and the song was sent to Palazzo.
+  const rows = screen.getAllByRole("button", { name: "Take on air" });
+  fireEvent.click(rows[1]);
+  expect(
+    await screen.findByText("Playout down: nothing can air. Nothing was taken."),
+  ).toBeVisible();
+  expect(p.onTakeSelection).not.toHaveBeenCalled();
 });
 
 it("reads Engine ready when Palazzo reports its playout up", async () => {
@@ -947,6 +971,25 @@ it("names an unknown not-aired reason as the as-run logged it", () => {
   mount(p);
   expect(
     screen.getByLabelText("Skipped: not aired (audio_missing)"),
+  ).toBeVisible();
+});
+
+it("names a cue a fixed start passed over as skipped, not played", () => {
+  const p = props();
+  const log = onAirLog(p);
+  log.scheduledAt = new Date(Date.now() - 120_000).toISOString();
+  log.activeItemId = "cue-3";
+  log.items = [
+    { id: "cue-1", kind: "playSong", songId: 1, clockOffsetSeconds: 0 },
+    { id: "cue-2", kind: "playSong", songId: 1 },
+    { id: "cue-3", kind: "playSong", songId: 1, clockOffsetSeconds: 60 },
+  ];
+  log.cueOutcomes = [
+    { cueId: "cue-2", state: "not-aired", reason: "fixed_start" },
+  ];
+  mount(p);
+  expect(
+    screen.getByLabelText("Skipped: not aired, cut by a fixed start"),
   ).toBeVisible();
 });
 
@@ -2057,6 +2100,30 @@ it("says On air only for an engine-confirmed song, and refuses Take while the en
 
 // gaulatti/alcantara#694: dead air shows in the on-air strip, and the alarm names the action that cures it for
 // the recovery state the desk knows.
+// Advance answers on the rundown's feedback line when it goes through, and names the failure when it does not.
+it("confirms an advanced rundown on screen, and shows the refusal when it fails", async () => {
+  vi.mocked(flight.goFlight).mockResolvedValue({ ok: true } as never);
+  const p = props();
+  mount(p);
+  fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
+  expect(await screen.findByText("Advanced to the next cue.")).toBeVisible();
+  vi.mocked(flight.goFlight).mockRejectedValueOnce(new Error("Cue refused"));
+  fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
+  expect(await screen.findByText("Cue refused")).toBeVisible();
+  expect(screen.queryByText("Advanced to the next cue.")).toBeNull();
+}, 15_000);
+
+// Advance pressed while the engine's feedback is stale says the command is only sent, not that it took.
+it("says Sent and waits for the engine when Advance is pressed while its feedback is stale", async () => {
+  vi.mocked(flight.goFlight).mockResolvedValue({ ok: true } as never);
+  const p = props();
+  p.programSongPlayback = { ...p.programSongPlayback!, telemetryStale: true };
+  mount(p);
+  fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
+  expect(await screen.findByText("Sent: waiting for the engine to confirm.")).toBeVisible();
+  expect(screen.queryByText("Advanced to the next cue.")).toBeNull();
+}, 15_000);
+
 describe("dead air", () => {
   const deadAir = (
     recovery: NonNullable<ReturnType<typeof props>["fixtureData"]>["recovery"],

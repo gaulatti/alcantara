@@ -31,13 +31,15 @@ export const AS_RUN_ACTOR_VIAS: readonly string[] = ['console', 'mcp'];
  * Palazzo's own and idle-inferred ends.
  */
 export type AsRunEndReason =
-  'stopped' | 'replaced' | 'superseded' | 'preempted';
+  'stopped' | 'replaced' | 'superseded' | 'preempted' | 'fixed_start';
 
 export const AS_RUN_END_REASONS: readonly string[] = [
   'stopped',
   'replaced',
   'superseded',
   'preempted',
+  // A timed block's fixed start cut the song (the airing walk). It aired until then, so it is counted, as a stop is.
+  'fixed_start',
 ];
 
 /**

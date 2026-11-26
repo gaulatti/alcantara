@@ -54,3 +54,11 @@ lookup that fails, or takes more than a second, never blocks the request (Stop m
 last team read for the program still applies. The memory is per backend process: with more than one
 container, another one can be up to 30 seconds stale after a change. Production runs one. `alcantara_program_team_checks_total{result}` counts `refused`, `unowned`
 and `lookup-failed`, all exported at 0.
+
+## Renaming a program that is on air
+
+A rename is refused with 409 while the program is on air (a scene or fade to black, a running log (a selected but stopped one is not), a playing song or
+scene instant): `This show is on air (…). Take it off air before renaming it.` After a rename the radio engine and
+Palazzo telemetry take up the new id in one step. Palazzo itself must be configured for the new program id.
+
+The check runs last before the write, and the write matches the program only while it is still off air, so a scene, fade or log that starts in between rolls the whole rename back with the same refusal. A song playing is known only in the backend's memory: one that starts between the check and the commit is stopped when the engine moves to the new ID. Whatever the engine or telemetry still held under the new ID from a deleted program is dropped.

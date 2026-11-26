@@ -176,6 +176,8 @@ const SESSION_LOG_LIMIT = 20;
 function notAiredReason(reason: string | null): string {
   if (reason === "engine_unavailable")
     return "not aired, the engine was unavailable";
+  // The airing walk's W3: a fixed start passed over the cue.
+  if (reason === "fixed_start") return "not aired, cut by a fixed start";
   return reason ? `not aired (${reason})` : "not aired";
 }
 
@@ -248,6 +250,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   // A command failure shows as the desk's alert and is kept in this session's log; the alert clears when the
   // engine reconnects, the log entry stays (gaulatti/alcantara#707).
   const [queueError, setQueueErrorState] = useState<string | null>(null);
+  // The last rundown command's result, so Advance, Stop and Start answer on screen.
+  const [queueStatus, setQueueStatus] = useState<string | null>(null);
   const [sessionLog, setSessionLog] = useState<
     Array<{ at: number; message: string; count: number }>
   >([]);
@@ -432,6 +436,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   const commandLog = async (action: "start" | "stop" | "advance") => {
     setLogBusy(true);
     setQueueError(null);
+    setQueueStatus(null);
     try {
       if (action === "stop") await stopFlight(programId);
       else if (action === "advance") await goFlight(programId);
@@ -441,6 +446,17 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
         await startFlight(programId);
       }
       /* v8 ignore stop */
+      // Until the engine confirms (its telemetry is fresh and it is ready), the command is only sent: say so.
+      const confirmed = engineReady && programSongPlayback?.telemetryStale !== true;
+      setQueueStatus(
+        !confirmed
+          ? "Sent: waiting for the engine to confirm."
+          : action === "advance"
+            ? "Advanced to the next cue."
+            : action === "stop"
+              ? "Rundown stopped."
+              : "Rundown started.",
+      );
       await refreshLogs();
     } catch (cause) {
       setQueueError(
@@ -507,9 +523,12 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     programSongPlayback,
     rotation.activeItemId ?? null,
   );
-  // A row shows "On air" only for a song the engine has confirmed (gaulatti/alcantara#609).
+  // A row shows "On air" only for a song the engine has confirmed (gaulatti/alcantara#609), never while
+  // its playout is down (W5).
   const confirmedLiveLeaf =
-    engineReady && programSongPlayback?.telemetryStale !== true
+    engineReady &&
+    palazzo?.playout !== "down" &&
+    programSongPlayback?.telemetryStale !== true
       ? liveLeaf
       : null;
   const next = nextUp({
@@ -659,6 +678,11 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                 {playoutError || queueError || logLoadError}
               </p>
             )}
+            {queueStatus && !queueError && !playoutError && !logLoadError ? (
+              <p role="status" className="px-4 py-3 text-sm text-text-secondary">
+                {queueStatus}
+              </p>
+            ) : null}
             {sessionLog.length > 0 ? (
               <details
                 aria-label="Session log"
@@ -889,7 +913,16 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                       }}
                       onTakeSelection={
                         onTakeSelection
-                          ? (next) => runRotation(() => onTakeSelection(next))
+                          ? (next) =>
+                              runRotation(() => {
+                                // A row's Take on air refuses while playout is down, as the transport's Take
+                                // does: it would be accepted and not air (the airing walk's W4).
+                                if (playoutDown)
+                                  throw new Error(
+                                    `${PLAYOUT_DOWN_REASON}. Nothing was taken.`,
+                                  );
+                                return onTakeSelection(next);
+                              })
                           : undefined
                       }
                       onQueueItem={(itemId) => {
@@ -1211,7 +1244,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
       <PlaybackBar
         sequence={rotation}
         programSongPlayback={programSongPlayback}
-        engineUnconfirmed={!engineReady}
+        // Playout down confirms nothing either (W5): the bar holds its clock, as the strip does.
+        engineUnconfirmed={!engineReady || playoutDown}
         onChange={(next) => {
           /* v8 ignore start -- PlaybackBar renders only in the timed block, where its sequence-change controls are hidden, so this save callback is never invoked */
           void Promise.resolve(onSaveSongSequence(next)).catch((cause) =>

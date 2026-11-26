@@ -104,6 +104,11 @@ export class PalazzoInstantRefusedException extends BadGatewayException {
   }
 }
 
+/** What a take is judged by (D4): the engine client's playout report, or null for a program with no client. */
+export interface PlayoutReports {
+  playoutReport(programId: string): 'up' | 'down' | 'stale' | 'unknown' | null;
+}
+
 @Injectable()
 export class RadioService {
   private readonly logger = new Logger(RadioService.name);
@@ -374,6 +379,38 @@ export class RadioService {
           'The radio engine is off (disabled in settings), so nothing was taken.',
       });
     }
+    // The airing walk's D4: Palazzo answers but freshly reports its playout (Liquidsoap) down, so a take would be
+    // accepted and not air. Only a fresh, explicit report refuses; a stale or missing one lets the take through,
+    // counted, because a wrong refusal is dead air too. A program with no engine client is not judged here.
+    const report = this.playoutReports?.playoutReport(programId) ?? null;
+    if (report === 'down') {
+      // As for engine_unavailable (#609), only a radio-only program is refused: a simulcast program's own output
+      // plays the song on TV whatever its radio leg does, so its take goes through, counted (Yakko's #795 review).
+      const state = await this.prisma.programState.findUnique({
+        where: { programId },
+        select: { type: true },
+      });
+      if (state?.type !== 'radio') {
+        this.metrics.recordPlayoutUnconfirmedTake('tv_leg');
+        return;
+      }
+      this.metrics.recordStartRefused('playout_down');
+      throw new ConflictException({
+        statusCode: 409,
+        error: 'Conflict',
+        reason: 'playout_down',
+        message: 'Playout down: nothing can air. Nothing was taken.',
+      });
+    }
+    if (report === 'stale' || report === 'unknown')
+      this.metrics.recordPlayoutUnconfirmedTake(report);
+  }
+
+  private playoutReports?: PlayoutReports;
+
+  /** Bound by the Palazzo telemetry service at startup (D4); the engine already depends on this service. */
+  setPlayoutReports(reports: PlayoutReports): void {
+    this.playoutReports = reports;
   }
 
   async getRadioSettings(programId: string) {
