@@ -1018,8 +1018,23 @@ it("starts and stops the recovery session through Palazzo", async () => {
     expect.stringContaining("/radio/radio-demo/recovery/start"),
     { method: "POST" },
   );
-  fireEvent.click(stop);
+  // Stopping clears program audio: a click only explains, a 0.6 s hold stops (gaulatti/alcantara#693).
+  fireEvent.pointerDown(stop);
+  fireEvent.pointerUp(stop);
+  expect(
+    screen.getByText("Hold to stop the session (0.6 s). Program audio stops."),
+  ).toBeInTheDocument();
+  expect(transport).not.toHaveBeenCalledWith(
+    expect.stringContaining("/radio/radio-demo/recovery/stop"),
+    expect.anything(),
+  );
+  await hold(stop);
   expect(await screen.findByText("Prepared for next session")).toBeInTheDocument();
+  expect(
+    transport.mock.calls.filter(([url]) =>
+      String(url).includes("/radio/radio-demo/recovery/stop"),
+    ),
+  ).toHaveLength(1);
   expect(screen.getByRole("link", { name: "Configure" })).toHaveAttribute(
     "href",
     "/radio-settings",

@@ -1018,17 +1018,19 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   >
                     Start with fallback
                   </Button>
-                  <Button
-                    type="button"
-                    size="xs"
-                    variant="destructive"
-                    onClick={() => void commandRecovery("stop")}
+                  {/* Stopping the session clears program audio, so it is held like Stop and Stop all
+                      (gaulatti/alcantara#693): a click only explains. */}
+                  <HoldButton
+                    label="Stop session"
+                    hint="Hold to stop the session (0.6 s). Program audio stops."
+                    tone="danger"
+                    onConfirm={() => void commandRecovery("stop")}
                     disabled={
                       recoveryBusy || !recovery?.automation?.filler.ready
                     }
                   >
-                    Stop session
-                  </Button>
+                    Hold · stop session
+                  </HoldButton>
                   <Link to="/radio-settings">Configure</Link>
                 </div>
                 {recoveryError && <p role="alert">{recoveryError}</p>}
