@@ -120,14 +120,13 @@ export default function RadioSettingsRoute() {
     void load();
   }, [load]);
 
-  const saveSettings = async () => {
-    if (!settings) return;
+  const saveSettings = async (current: RadioSettings) => {
     setSavingSettings(true);
     try {
       const response = await fetch(apiUrl(`/radio/${encodeURIComponent(programId)}/settings`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
+        body: JSON.stringify(current)
       });
       if (!response.ok) throw new Error(`Radio settings were not saved (${response.status})`);
       setSettings((await response.json()) as RadioSettings);
@@ -266,7 +265,7 @@ export default function RadioSettingsRoute() {
               ) : null}
             </div>
             <div className='flex justify-end'>
-              <Button loading={savingSettings} onClick={() => void saveSettings()}>
+              <Button loading={savingSettings} onClick={() => void saveSettings(settings)}>
                 <Save size={15} /> Save radio settings
               </Button>
             </div>
