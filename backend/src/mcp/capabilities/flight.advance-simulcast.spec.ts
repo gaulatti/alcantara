@@ -25,7 +25,24 @@ function build(type: 'radio' | 'both') {
   const spec = new FlightMcpTools(flights as never, f.programs as never, radio)
     .specs()
     .find((candidate) => candidate.name === 'program_go_flight_by_id')!;
-  const count = (line: string) => metrics.render().includes(line);
+  /** The value of a series, found by its name and its labels in any order. */
+  const count = (name: string, labels: Record<string, string>) => {
+    const wanted = Object.entries(labels);
+    const line = metrics
+      .render()
+      .split('\n')
+      .filter((entry) => entry.startsWith(`${name}{`))
+      .find((entry) => {
+        const found = new Map(
+          [...entry.matchAll(/(\w+)="([^"]*)"/g)].map((m) => [m[1], m[2]]),
+        );
+        return (
+          found.size === wanted.length &&
+          wanted.every(([key, value]) => found.get(key) === value)
+        );
+      });
+    return line === undefined ? undefined : Number(line.split(' ').pop());
+  };
   return { spec, flights, count };
 }
 
@@ -36,23 +53,26 @@ describe('Advance with the real playout judgment, on a fresh down report', () =>
     await spec.run(args, ctx);
     expect(flights.go).toHaveBeenCalledWith('main');
     expect(
-      count(
-        'alcantara_radio_take_playout_unconfirmed_total{report="tv_leg"} 1',
-      ),
-    ).toBe(true);
+      count('alcantara_radio_take_playout_unconfirmed_total', {
+        report: 'tv_leg',
+      }),
+    ).toBe(1);
     expect(
-      count('alcantara_radio_start_refused_total{reason="playout_down"} 0'),
-    ).toBe(true);
+      count('alcantara_radio_start_refused_total', { reason: 'playout_down' }),
+    ).toBe(0);
   });
 
   it('refuses a radio-only program on the same report', async () => {
     const { spec, flights, count } = build('radio');
+    expect((await spec.dryRun!(args, ctx)).summary).toContain(
+      'REFUSED (on_air): Playout down',
+    );
     await expect(spec.run(args, ctx)).rejects.toMatchObject({
       code: 'on_air',
     });
     expect(flights.go).not.toHaveBeenCalled();
     expect(
-      count('alcantara_radio_start_refused_total{reason="playout_down"} 1'),
-    ).toBe(true);
+      count('alcantara_radio_start_refused_total', { reason: 'playout_down' }),
+    ).toBe(1);
   });
 });
