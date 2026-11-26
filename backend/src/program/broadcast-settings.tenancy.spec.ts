@@ -1,13 +1,16 @@
-import { Client } from 'pg';
 import { PrismaService } from '../prisma.service';
 import { ProgramService } from './program.service';
+
+// CI's coverage step runs without DATABASE_URL and starts this database; a local run sets DATABASE_URL to its own
+// disposable one. Without a database the suite fails rather than passing unrun.
+const CI_DATABASE_URL =
+  'postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci?schema=public';
 
 // The gate for scoping the write of the one broadcast settings row to its team
 // (gaulatti/alcantara#122). The read stays public: programme pages load it.
 describe('broadcast settings written by a team, against Postgres', () => {
   const team = 970_000 + (process.pid % 10_000);
-  const url = process.env.DATABASE_URL;
-  let prisma: PrismaService | null = null;
+  let prisma: PrismaService;
   let before: { teamId: number | null } | null = null;
 
   const service = () =>
@@ -18,14 +21,7 @@ describe('broadcast settings written by a team, against Postgres', () => {
     prisma!.broadcastSettings.findUnique({ where: { id: 1 } });
 
   beforeAll(async () => {
-    if (!url) return;
-    const probe = new Client({ connectionString: url });
-    try {
-      await probe.connect();
-      await probe.end();
-    } catch {
-      return;
-    }
+    process.env.DATABASE_URL ||= CI_DATABASE_URL;
     prisma = new PrismaService();
     await prisma.$connect();
   });
@@ -41,7 +37,6 @@ describe('broadcast settings written by a team, against Postgres', () => {
   });
 
   it("refuses another team and keeps the owning team's write on its row", async () => {
-    if (!prisma) return;
     await prisma.broadcastSettings.upsert({
       where: { id: 1 },
       create: { id: 1, teamId: team },
