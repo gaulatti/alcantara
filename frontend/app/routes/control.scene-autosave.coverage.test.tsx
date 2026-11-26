@@ -123,3 +123,15 @@ it("backs off between failed saves and stops growing at the cap", async () => {
   // The real backoff takes about 4.6 s, so the test needs room for the 15 s wait above: vitest's 5 s
   // default cut it off when the suite ran in the Compose image (gaulatti/alcantara#200).
 }, 20000);
+
+it("keeps a scene save that fails while the page is being left from surfacing an error", async () => {
+  open();
+  server.answer("PUT /scenes/1", () => new Response("down", { status: 500 }));
+  fireEvent.click(await screen.findByRole("button", { name: "Show component" }));
+  // Leaving the page flushes the pending save; that save is refused, and the flush swallows the refusal.
+  await act(async () => {
+    window.dispatchEvent(new Event("pagehide"));
+    await new Promise((done) => setTimeout(done, 0));
+  });
+  expect(server.requests("PUT /scenes/1").length).toBeGreaterThanOrEqual(1);
+});
