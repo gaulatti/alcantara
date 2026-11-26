@@ -16,14 +16,12 @@ export interface UserContext {
 interface FeaturesContextValue {
   context: UserContext | null;
   loading: boolean;
-  hasFeature: (slug: string, minLevel?: FeatureLevel) => boolean;
   hasPermission: (permission: string) => boolean;
 }
 
 const FeaturesContext = createContext<FeaturesContextValue>({
   context: null,
   loading: true,
-  hasFeature: () => false,
   hasPermission: () => false
 });
 
@@ -59,33 +57,18 @@ export function FeaturesProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const hasFeature = (slug: string, minLevel: FeatureLevel = 'C'): boolean => {
-    // Feature gating is temporarily disabled.
-    // Previous logic retained for easy rollback:
-    // if (!context?.features || !context.features[slug]) {
-    //   return false;
-    // }
-    // const userLevel = context.features[slug].level;
-    // return (levelValues[userLevel] ?? -1) >= levelValues[minLevel];
-    void slug;
-    void minLevel;
-    void context;
-    return true;
-  };
-
   const hasPermission = (permission: string): boolean => {
     const permissions = context?.authorization?.permissions ?? [];
     return permissions.includes('*') || permissions.includes(permission);
   };
 
-  return <FeaturesContext.Provider value={{ context, loading, hasFeature, hasPermission }}>{children}</FeaturesContext.Provider>;
+  return <FeaturesContext.Provider value={{ context, loading, hasPermission }}>{children}</FeaturesContext.Provider>;
 }
 
-export function Can({ feature, level = 'C', children, fallback = null }: { feature: string; level?: FeatureLevel; children: ReactNode; fallback?: ReactNode }) {
-  const { hasFeature, loading } = useFeatures();
+export function Can({ children }: { children: ReactNode }) {
+  const { loading } = useFeatures();
 
   if (loading) return null;
 
-  /* v8 ignore next -- hasFeature always returns true while feature gating is disabled (see hasFeature above), so the fallback arm cannot run; it becomes reachable again when gating is restored. */
-  return hasFeature(feature, level) ? <>{children}</> : <>{fallback}</>;
+  return <>{children}</>;
 }
