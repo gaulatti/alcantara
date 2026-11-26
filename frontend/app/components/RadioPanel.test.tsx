@@ -2196,6 +2196,41 @@ describe("dead air", () => {
     expect(tone("Engine ready")).toBe("idle");
   });
 
+  // Walk part 4: muting the desk's Music channel while a song aired raised Dead air with "Hold Stop to take the silent
+  // song off air", which would have left the silence for good.
+  it("says the desk's own mute silenced the song, and unmutes it, instead of saying to stop it", () => {
+    const p = deadAir({ preparedVersion: null, automation: null, connection: "connected" });
+    p.mixer = { ...p.mixer, song: { ...p.mixer.song, muted: true } };
+    mount(p);
+    const alarm = screen.getByRole("alert", { name: "Dead air" });
+    expect(alarm).toHaveTextContent(
+      "Music is muted on this desk: the song plays, but nothing reaches the air. Unmute it.",
+    );
+    expect(alarm).not.toHaveTextContent(/Hold Stop/);
+    fireEvent.click(within(alarm).getByRole("button", { name: "Unmute music" }));
+    expect(p.onToggleSongMuted).toHaveBeenCalledTimes(1);
+    expect(
+      within(screen.getByRole("region", { name: "On air" })).getByText("Dead air"),
+    ).toBeVisible();
+  });
+
+  it("says which desk fader is down when the music or the output is at zero", () => {
+    for (const [channel, name] of [
+      ["song", "Music"],
+      ["main", "Output"],
+    ] as const) {
+      const p = deadAir({ preparedVersion: null, automation: null, connection: "connected" });
+      p.mixer = { ...p.mixer, [channel]: { ...p.mixer[channel], volume: 0 } };
+      mount(p);
+      const alarm = screen.getByRole("alert", { name: "Dead air" });
+      expect(alarm).toHaveTextContent(
+        `The ${name} fader is down on this desk: raise it to put the song back on air.`,
+      );
+      expect(alarm).not.toHaveTextContent(/Hold Stop/);
+      cleanup();
+    }
+  });
+
   it("says to take the silent song off air and prepare a playlist when none is prepared", () => {
     mount(deadAir({ preparedVersion: null, automation: null, connection: "connected" }));
     const alarm = screen.getByRole("alert", { name: "Dead air" });

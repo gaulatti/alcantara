@@ -1041,7 +1041,29 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   aria-label="Dead air"
                   className="mt-2 flex flex-col items-start gap-1.5 text-xs text-terracotta"
                 >
-                  {!recovery || recovery.connection !== "connected" ? (
+                  {mixer.song.muted ? (
+                    // Walk part 4: the desk's own mute silenced the song. Taking it off air would leave the
+                    // silence for good; unmuting cures it.
+                    <>
+                      <p>
+                        Music is muted on this desk: the song plays, but nothing
+                        reaches the air. Unmute it.
+                      </p>
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="secondary"
+                        onClick={onToggleSongMuted}
+                      >
+                        Unmute music
+                      </Button>
+                    </>
+                  ) : mixer.song.volume === 0 || mixer.main.volume === 0 ? (
+                    <p>
+                      The {mixer.song.volume === 0 ? "Music" : "Output"} fader is
+                      down on this desk: raise it to put the song back on air.
+                    </p>
+                  ) : !recovery || recovery.connection !== "connected" ? (
                     // The desk cannot say what recovery is ready, so it claims nothing about a playlist
                     // (gaulatti/alcantara#694 review).
                     <p>
