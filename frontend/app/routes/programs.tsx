@@ -96,6 +96,8 @@ const FILLER_ON_AIR_MESSAGE = 'Its filler is on air. Stop it before renaming.';
 
 /** The server's refusal to delete a show that is on air. */
 const ON_AIR_DELETE_MESSAGE = 'This show is on air. Take it off air before deleting it.';
+/** The server's refusal to delete a show whose filler is on air. */
+const FILLER_ON_AIR_DELETE_MESSAGE = 'Its filler is on air. Stop it before deleting.';
 
 /**
  * What the create or edit dialog says when saving fails. It used to say "Ensure the ID is unique" for every failure,
@@ -487,7 +489,10 @@ export default function ProgramsAdmin() {
       console.error('Failed to delete program:', err);
       // A show on air is not deleted: say what the server said.
       showAlert(
-        err instanceof ShowSaveRefused && err.reason === ON_AIR_DELETE_MESSAGE ? err.reason : 'Failed to delete show.',
+        err instanceof ShowSaveRefused &&
+          (err.reason === ON_AIR_DELETE_MESSAGE || err.reason === FILLER_ON_AIR_DELETE_MESSAGE)
+          ? err.reason
+          : 'Failed to delete show.',
         'error'
       );
     }

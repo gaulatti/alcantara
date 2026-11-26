@@ -12,6 +12,7 @@ describe('renaming a program that is on air', () => {
     activeFlightSequenceId: null,
   };
   const build = (state: Partial<typeof off> | Record<string, unknown> = {}) => {
+    const radio = { isRecoveryRunning: jest.fn().mockResolvedValue(false) };
     const prisma = {
       programState: {
         findUnique: jest.fn(({ where }: { where: { programId: string } }) =>
@@ -53,7 +54,7 @@ describe('renaming a program that is on air', () => {
     };
     const service = new ProgramService(
       prisma as never,
-      { isRecoveryRunning: jest.fn().mockResolvedValue(false) } as never,
+      radio as never,
       engine as never,
       undefined,
       undefined,
@@ -62,7 +63,7 @@ describe('renaming a program that is on air', () => {
     jest
       .spyOn(service as never, 'getProgramStateWithScenes')
       .mockResolvedValue({} as never);
-    return { service, prisma, engine };
+    return { service, prisma, engine, radio };
   };
   const refused = async (service: ProgramService, reason: string) => {
     const error: unknown = await service
@@ -167,4 +168,20 @@ describe('renaming a program that is on air', () => {
     expect(engine.removeProgram).toHaveBeenCalledWith('show');
   });
 
+  it('refuses to delete while its filler is on air, held by a session or reported by Palazzo', async () => {
+    const filler = 'Its filler is on air. Stop it before deleting.';
+    const held = build();
+    held.prisma.fillerLeg.count.mockResolvedValueOnce(1);
+    await expect(held.service.deleteProgram('show')).rejects.toThrow(filler);
+
+    const recovering = build();
+    recovering.radio.isRecoveryRunning.mockResolvedValueOnce(true);
+    await expect(recovering.service.deleteProgram('show')).rejects.toThrow(
+      filler,
+    );
+    for (const { prisma, engine } of [held, recovering]) {
+      expect(prisma.programState.delete).not.toHaveBeenCalled();
+      expect(engine.removeProgram).not.toHaveBeenCalled();
+    }
+  });
 });

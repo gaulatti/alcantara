@@ -139,7 +139,8 @@ On backend restart, scheduled blocks whose in-memory timers were lost are marked
 
 A program that is on air is not deleted: 409 "This show is on air. Take it off air before deleting it.", by the same
 check a rename makes (a scene or fade to black, a running log, a playing song or scene instant), and the delete matches
-the program only while it is still off air. A delete of an off-air program removes its rows, stops its song engine's
+the program only while it is still off air. It is also refused, 409 "Its filler is on air. Stop it before deleting.",
+while its filler is on air, by the rule a rename uses ([program-filler.md](program-filler.md)). A delete of an off-air program removes its rows, stops its song engine's
 timers, any armed rundown timer and its Palazzo telemetry client, and drops what they held for it. It sends no command.
 
 ## As-run log and royalty export

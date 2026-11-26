@@ -172,9 +172,11 @@ export const FILLER_ON_AIR_MESSAGE =
 export const LEFTOVER_PROGRAM_ID_MESSAGE =
   "That ID belongs to a deleted show's settings. Choose another ID.";
 
-/** How the refusal to rename a program that is on air begins; the Shows dialog shows such a refusal as it is. */
 export const ON_AIR_DELETE_MESSAGE =
   'This show is on air. Take it off air before deleting it.';
+export const FILLER_ON_AIR_DELETE_MESSAGE =
+  'Its filler is on air. Stop it before deleting.';
+/** How the refusal to rename a program that is on air begins; the Shows dialog shows such a refusal as it is. */
 export const ON_AIR_RENAME_MESSAGE_START = 'This show is on air';
 
 interface OnAirState {
@@ -1575,15 +1577,18 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * A rename takes the program's filler with it, so it is refused while that filler is on air: a session holds a
-   * version (until its Stop), or Palazzo reports recovery automation running.
+   * A rename takes the program's filler with it and a delete ends it, so neither is done while that filler is on air:
+   * a session holds a version (until its Stop), or Palazzo reports recovery automation running.
    */
-  private async refuseRenameWhileFillerAirs(programId: string): Promise<void> {
+  private async refuseWhileFillerAirs(
+    programId: string,
+    message: string,
+  ): Promise<void> {
     const held = await this.prisma.fillerLeg.count({
       where: { programId, activeVersionId: { not: null } },
     });
     if (held || (await this.radioService.isRecoveryRunning(programId)))
-      throw new ConflictException(FILLER_ON_AIR_MESSAGE);
+      throw new ConflictException(message);
   }
 
   /**
@@ -1683,7 +1688,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Program not found');
     }
     if (current !== next) {
-      await this.refuseRenameWhileFillerAirs(current);
+      await this.refuseWhileFillerAirs(current, FILLER_ON_AIR_MESSAGE);
       const existingTarget = await this.prisma.programState.findUnique({
         where: { programId: next },
         select: { id: true },
@@ -1853,6 +1858,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Program not found');
     }
 
+    await this.refuseWhileFillerAirs(normalized, FILLER_ON_AIR_DELETE_MESSAGE);
     if ((await this.onAirReasons(normalized, existing)).length)
       throw new ConflictException(ON_AIR_DELETE_MESSAGE);
     // The delete matches the row only while it is still off air, as the rename's write does.
