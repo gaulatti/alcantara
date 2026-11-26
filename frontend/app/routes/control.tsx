@@ -3589,7 +3589,7 @@ export default function Control() {
         </div>
       ) : null}
       {consoleWorkspace === "audio" && (
-        <div className="tv-audio-transport relative z-20 shrink-0" inert={rotationLoadFailed || undefined}>
+        <div className="tv-audio-transport relative z-20 shrink-0">
           <PlaybackBar
             sequence={programAudioBusSongSequence}
             programSongPlayback={programSongPlaybackState}

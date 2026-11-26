@@ -129,14 +129,28 @@ it("sends no audio-bus write from the playlist when the rotation has not loaded,
   ui.programType = "radio";
 }, 15000);
 
-it("keeps the transport inert while the rotation has not loaded", async () => {
+it("keeps Stop working while the rotation has not loaded: taking the song off air is never blocked", async () => {
+  ui.workspace = "audio";
+  ui.programType = "tv";
+  server.answer("GET /program/main/state", () => Response.json({ ...stateFor("main", [], null, null), type: "tv" }));
+  server.answer("GET /program/main/audio-bus", () => new Response("down", { status: 500 }));
+  server.answer("POST /program/main/song/off-air", () => Response.json({ songPlayback: null }));
+  render(view());
+  await screen.findAllByText(notLoaded, {}, { timeout: 5000 });
+  fireEvent.click(await screen.findByRole("button", { name: "Stop / Take Off Air" }, { timeout: 5000 }));
+  await waitFor(() => expect(server.requests("POST /program/main/song/off-air").length).toBeGreaterThan(0), { timeout: 5000 });
+  ui.workspace = "desktop";
+  ui.programType = "radio";
+}, 15000);
+
+it("keeps the transport's controls enabled while the rotation has not loaded", async () => {
   ui.workspace = "audio";
   ui.programType = "tv";
   server.answer("GET /program/main/state", () => Response.json({ ...stateFor("main", [], null, null), type: "tv" }));
   server.answer("GET /program/main/audio-bus", () => new Response("down", { status: 500 }));
   render(view());
   await screen.findAllByText(notLoaded, {}, { timeout: 5000 });
-  expect(document.querySelector(".tv-audio-transport")).toHaveAttribute("inert");
+  expect(document.querySelector(".tv-audio-transport")).not.toHaveAttribute("inert");
   ui.workspace = "desktop";
   ui.programType = "radio";
 }, 15000);
@@ -148,13 +162,11 @@ it("re-enables the surfaces once a retry loads the rotation", async () => {
   server.answer("GET /program/main/audio-bus", () => new Response("down", { status: 500 }));
   render(view());
   await screen.findAllByText(notLoaded, {}, { timeout: 5000 });
-  expect(document.querySelector(".tv-audio-transport")).toHaveAttribute("inert");
   server.answer("GET /program/main/audio-bus", () =>
     Response.json({ songSequence: { mode: "manual", items: [song("s1", "Fictional opener", 11)], activeItemId: "s1", intervalMs: 4000, loop: true, startedAt: 0 }, songQueue: [] }),
   );
   fireEvent.click((await screen.findAllByRole("button", { name: "Retry" }, { timeout: 5000 }))[0]);
   await waitFor(() => expect(screen.queryByText(notLoaded)).toBeNull(), { timeout: 8000 });
-  expect(document.querySelector(".tv-audio-transport")).not.toHaveAttribute("inert");
   ui.workspace = "desktop";
   ui.programType = "radio";
 }, 20000);
