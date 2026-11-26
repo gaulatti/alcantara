@@ -6,11 +6,23 @@ import type { StatePillTone } from "./primitives";
 // shown as unverified or unavailable, never as a good one.
 
 /**
- * "unconfirmed": the desk has a song playing, but the engine is not connected to confirm it (#609).
+ * "unconfirmed": the desk has a song playing, but the engine is not connected to confirm it (#609), or
+ *   Palazzo answers but its playout (Liquidsoap) is down, so nothing can air (the airing walk's W5).
  * "unverified": the engine is connected, but no fresh output level arrived for a few seconds (#706).
+ * With no song commanded and the output freshly audible, the strip never says Off air (D7). Palazzo airs its local
+ * filler playlist by itself after FILLER_HOLDOFF_SECONDS (15 s) with no song, intro, instant or live input
+ * (gaulatti/palazzo src/stream/liquidsoap-script.ts, `filler_on_air`), and its snapshot names no track for it, so:
+ * "fallback": the engine is connected, its playout is up, and the desk knows no other source is on the air.
+ * "off-rundown": the engine is connected and its playout is up, but another source is on the air, or the desk cannot
+ *   tell: "Audio on air · not from the rundown".
+ * "audio-unconfirmed": the same generic label while the engine is not connected or its playout is down, never in
+ *   the live tone.
  */
 export type OnAirState =
   | "on-air"
+  | "fallback"
+  | "off-rundown"
+  | "audio-unconfirmed"
   | "off-air"
   | "delayed"
   | "unconfirmed"
@@ -69,6 +81,13 @@ export interface OnAirInput {
   outputSilent?: boolean;
   /** Palazzo answers but its playout (Liquidsoap) is down: nothing can air. */
   playoutDown?: boolean;
+  /** Output confidence reads audible: the station is airing something (D7). */
+  outputAudible?: boolean;
+  /**
+   * Whether the desk knows of another source on the air besides a commanded song (D7): an instant, scene audio, live
+   * input or a log event. "none" only when it knows there is none; absent reads as "unknown".
+   */
+  otherAudio?: "none" | "active" | "unknown";
 }
 
 const MODE_LABELS = {
@@ -104,8 +123,10 @@ function introOf(playback: ProgramSongPlaybackState) {
 export function deriveOnAir(input: OnAirInput): OnAirView {
   const { playback } = input;
   const live = playback?.isPlaying === true;
-  // Only the engine confirms that a song is on air (gaulatti/alcantara#609).
-  const unconfirmed = live && !input.engine.connected;
+  // Only the engine confirms that a song is on air (gaulatti/alcantara#609), and never while its playout is
+  // down: a fresh output sample or a running rundown must not turn the pill back to On air (W5).
+  const unconfirmed =
+    live && (!input.engine.connected || input.playoutDown === true);
   const stale = live && !unconfirmed && playback?.telemetryStale === true;
   const unverified =
     live && !unconfirmed && !stale && input.outputUnverified === true;
@@ -199,8 +220,23 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
       )
     : engineChips;
 
+  // D7: with no song commanded, fresh audible output is never "Off air". It is Palazzo's fallback playlist only with
+  // the same engine checks as On air and when the desk knows nothing else is on the air; otherwise it is generic.
+  const audible =
+    !live && input.outputAudible === true && input.outputUnverified !== true;
+  const engineAirs = input.engine.connected && input.playoutDown !== true;
+  const fallback = audible && engineAirs && input.otherAudio === "none";
+  const offRundown = audible && engineAirs && !fallback;
+  const audioUnconfirmed = audible && !engineAirs;
+
   return {
-    state: !live
+    state: fallback
+      ? "fallback"
+      : offRundown
+      ? "off-rundown"
+      : audioUnconfirmed
+      ? "audio-unconfirmed"
+      : !live
       ? "off-air"
       : unconfirmed
         ? "unconfirmed"
@@ -209,7 +245,11 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
           : unverified
             ? "unverified"
             : "on-air",
-    label: !live
+    label: fallback
+      ? "Fallback playlist on air"
+      : offRundown || audioUnconfirmed
+      ? "Audio on air · not from the rundown"
+      : !live
       ? "Off air"
       : unconfirmed
         ? "Not confirmed"

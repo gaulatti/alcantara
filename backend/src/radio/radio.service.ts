@@ -1,3 +1,5 @@
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
+import { releaseActiveFiller } from '../filler/release-active-filler';
 import {
   BadGatewayException,
   BadRequestException,
@@ -13,6 +15,7 @@ import {
   RadioMetricsService,
   type AnalysisDropResult,
   type CueGroupShape,
+  type PlayoutUnconfirmedTake,
 } from './radio-metrics.service';
 import { PrismaService } from '../prisma.service';
 import { PompeiiService } from '../auth/pompeii.service';
@@ -104,6 +107,11 @@ export class PalazzoInstantRefusedException extends BadGatewayException {
   }
 }
 
+/** What a take is judged by (D4): the engine client's playout report, or null for a program with no client. */
+export interface PlayoutReports {
+  playoutReport(programId: string): 'up' | 'down' | 'stale' | 'unknown' | null;
+}
+
 @Injectable()
 export class RadioService {
   private readonly logger = new Logger(RadioService.name);
@@ -115,6 +123,7 @@ export class RadioService {
     private readonly metrics: RadioMetricsService,
     private readonly pompeii: PompeiiService,
     @Optional() private readonly songScope?: PlayoutSongScope,
+    @Optional() private readonly managedMetrics?: ManagedMetricsService,
   ) {}
 
   /**
@@ -329,6 +338,13 @@ export class RadioService {
         `Palazzo could not ${action} the recovery session`,
       );
     }
+    if (action === 'stop')
+      await releaseActiveFiller(
+        this.prisma,
+        programId,
+        'radio',
+        this.managedMetrics,
+      );
     if (action === 'start' && programFiller) {
       // The session's filler is now that version; it stops being pending
       // only if it still is. Each statement is atomic.
@@ -345,6 +361,29 @@ export class RadioService {
       }
     }
     return this.getRecoveryStatus(programId);
+  }
+
+  /**
+   * Whether Palazzo has a recovery session running for the program: automation requested running with a filler bound,
+   * which is what the desk's Stop session ends. (Its `actualState` reads `ready` or `degraded` while running, never
+   * `running`.) A program with no engine address, or one Palazzo cannot be asked about, reports nothing running.
+   */
+  async isRecoveryRunning(programId: string): Promise<boolean> {
+    const state = await this.prisma.programState.findUnique({
+      where: { programId },
+      include: { radioSettings: true },
+    });
+    const settings = state?.radioSettings;
+    if (!settings?.palazzoUrl) return false;
+    try {
+      const automation = await this.palazzo.getAutomation(
+        this.palazzoUrl(settings),
+        programId,
+      );
+      return automation.requestedState === 'running' && automation.filler.ready;
+    } catch {
+      return false;
+    }
   }
 
   /** The program radio filler version a Start binds to, if one is configured. */
@@ -374,6 +413,48 @@ export class RadioService {
           'The radio engine is off (disabled in settings), so nothing was taken.',
       });
     }
+    const verdict = await this.judgePlayout(programId);
+    this.recordPlayoutVerdict(verdict);
+    if (verdict === 'down')
+      throw new ConflictException({
+        statusCode: 409,
+        error: 'Conflict',
+        reason: 'playout_down',
+        message: 'Playout down: nothing can air. Nothing was taken.',
+      });
+  }
+
+  /**
+   * The airing walk's D4: Palazzo answers but freshly reports its playout (Liquidsoap) down, so what is started would
+   * be accepted and not air. Only a fresh, explicit report refuses (`down`); a stale or missing one lets it through,
+   * because a wrong refusal is dead air too. As for engine_unavailable (#609), only a radio-only program is refused:
+   * a simulcast program's own output plays the song on TV whatever its radio leg does (`tv_leg`). A program with no
+   * engine client is not judged (`null`). Nothing is counted here: a dry run judges too.
+   */
+  async judgePlayout(
+    programId: string,
+  ): Promise<'down' | PlayoutUnconfirmedTake | null> {
+    const report = this.playoutReports?.playoutReport(programId) ?? null;
+    if (report === 'stale' || report === 'unknown') return report;
+    if (report !== 'down') return null;
+    const state = await this.prisma.programState.findUnique({
+      where: { programId },
+      select: { type: true },
+    });
+    return state?.type === 'radio' ? 'down' : 'tv_leg';
+  }
+
+  /** Counts a take or an advance that was refused, or let through without a confirmed playout. */
+  recordPlayoutVerdict(verdict: 'down' | PlayoutUnconfirmedTake | null): void {
+    if (verdict === 'down') this.metrics.recordStartRefused('playout_down');
+    else if (verdict) this.metrics.recordPlayoutUnconfirmedTake(verdict);
+  }
+
+  private playoutReports?: PlayoutReports;
+
+  /** Bound by the Palazzo telemetry service at startup (D4); the engine already depends on this service. */
+  setPlayoutReports(reports: PlayoutReports): void {
+    this.playoutReports = reports;
   }
 
   async getRadioSettings(programId: string) {

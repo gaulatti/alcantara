@@ -164,6 +164,12 @@ export interface PalazzoTelemetrySource {
    * authoritative state. Null when it cannot be read.
    */
   currentState?(programId: string): Promise<PalazzoPlaybackState | null>;
+  /** Moves a renamed program's telemetry to its new id, in one synchronous step. */
+  renameProgram?(
+    current: string,
+    next: string,
+    setting: { type: string; palazzoUrl: string | null } | null,
+  ): void;
 }
 
 /**
@@ -395,6 +401,12 @@ interface SongEngineState {
   palazzoBootId: string | null;
   /** The library song of each playback this engine commanded, announced or adopted, newest last. */
   commandedSongs?: Map<string, number>;
+  /**
+   * Playback IDs this process sent to Palazzo, bounded. Palazzo never replays one, so a Play Next claim under an ID
+   * in here is never sent again (walk part 4). A claim persisted before a restart is not in here and is sent once, as
+   * designed, so a command lost in the restart still airs exactly once.
+   */
+  sentRequestIds?: Set<string>;
   /** Boot of a Palazzo without the next route (404); undefined when supported. */
   nextUnsupportedBootId?: string | null;
   /** Announced songs replaced at the handoff before their start arrived. */
@@ -459,7 +471,8 @@ export type SongEngineEndReason =
   | 'stopped'
   | 'replaced'
   | 'superseded'
-  | 'preempted';
+  | 'preempted'
+  | 'fixed_start';
 
 /**
  * Drives radio automation from authoritative Palazzo playback state.
@@ -528,25 +541,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       const pid = s.programState.programId;
       if (!s.palazzoUrl) continue;
       if (!RADIO_PROGRAM_TYPES.has(s.programState.type)) continue;
-      const seq = normalizeProgramSongSequence(s.programState.songSequence);
-      this.radioProgramIds.add(pid);
-      const state = this.ensureState(pid);
-      state.sequence = seq;
-      state.queue = normalizeProgramSongQueue(s.programState.songQueue);
-      state.rotation = normalizeProgramSongRotation(
-        s.programState.songRotation,
-      );
-      this.updateQueueDepthMetric();
-      if (
-        !seq ||
-        (seq.mode !== 'autoplay' && seq.mode !== 'shuffle') ||
-        !seq.items.length
-      )
-        continue;
-      seq.startedAt = Date.now();
-      this.logger.log(
-        `Booting ${pid}, mode=${seq.mode}, awaiting Palazzo snapshot`,
-      );
+      this.hydrate(pid, s.programState);
     }
     this.updateHighRotationFavoriteMetric();
     // A deploy candidate (#223) starts no telemetry and no watchdog.
@@ -563,13 +558,90 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (this.watchdog) clearInterval(this.watchdog);
     this.watchdog = null;
     for (const [programId, state] of this.states) {
-      this.clearTimer(programId);
-      this.stopProgress(programId);
-      if (state.commandRetryTimer) clearTimeout(state.commandRetryTimer);
-      state.commandRetryTimer = null;
-      this.clearInheritedRetry(state);
-      this.clearSimilarityWait(state);
+      this.silence(programId, state);
     }
+  }
+
+  /** Takes up a radio program from its stored sequence, queue and rotation, as at start-up. */
+  private hydrate(
+    pid: string,
+    programState: {
+      songSequence: unknown;
+      songQueue: unknown;
+      songRotation: unknown;
+    },
+  ): void {
+    const seq = normalizeProgramSongSequence(programState.songSequence);
+    this.radioProgramIds.add(pid);
+    const state = this.ensureState(pid);
+    state.sequence = seq;
+    state.queue = normalizeProgramSongQueue(programState.songQueue);
+    state.rotation = normalizeProgramSongRotation(programState.songRotation);
+    this.updateQueueDepthMetric();
+    if (
+      !seq ||
+      (seq.mode !== 'autoplay' && seq.mode !== 'shuffle') ||
+      !seq.items.length
+    )
+      return;
+    seq.startedAt = Date.now();
+    this.logger.log(
+      `Booting ${pid}, mode=${seq.mode}, awaiting Palazzo snapshot`,
+    );
+  }
+
+  /** Stops a program's timers; its state stays. */
+  private silence(programId: string, state: SongEngineState): void {
+    this.clearTimer(programId);
+    this.stopProgress(programId);
+    if (state.commandRetryTimer) clearTimeout(state.commandRetryTimer);
+    state.commandRetryTimer = null;
+    this.clearInheritedRetry(state);
+    this.clearSimilarityWait(state);
+  }
+
+  /**
+   * A renamed program that is off air: the engine forgets the old id and takes up the new one from the database, and
+   * Palazzo telemetry moves with it. Everything is read first, so the switch itself is one synchronous step.
+   */
+  async renameProgram(current: string, next: string): Promise<void> {
+    const setting = await this.prisma.radioSettings.findFirst({
+      where: { enabled: true, programState: { programId: next } },
+      select: {
+        palazzoUrl: true,
+        programState: {
+          select: {
+            type: true,
+            songSequence: true,
+            songQueue: true,
+            songRotation: true,
+          },
+        },
+      },
+    });
+    // The new id may still hold the engine of a deleted program, which would be hydrated over; both ids are dropped.
+    for (const programId of [current, next]) {
+      const state = this.states.get(programId);
+      if (state) this.silence(programId, state);
+      this.states.delete(programId);
+      this.radioProgramIds.delete(programId);
+    }
+    const capable =
+      !!setting?.palazzoUrl &&
+      RADIO_PROGRAM_TYPES.has(setting.programState.type);
+    if (setting && capable) this.hydrate(next, setting.programState);
+    this.telemetry?.renameProgram?.(
+      current,
+      next,
+      setting && capable
+        ? {
+            type: setting.programState.type,
+            palazzoUrl: setting.palazzoUrl,
+          }
+        : null,
+    );
+    this.updateQueueDepthMetric();
+    this.updateHighRotationFavoriteMetric();
   }
 
   private clearSimilarityWait(state: SongEngineState): void {
@@ -1073,6 +1145,49 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /**
+   * Removes a Play Next entry whose claimed playback ID was already sent, then plays what follows: never the same
+   * playback ID again, so a silent re-send cannot loop (walk part 4).
+   */
+  private dropStaleQueueClaim(
+    programId: string,
+    entry: ProgramSongQueueEntry,
+    handoff: boolean,
+    endedRequestId: string | undefined,
+  ): void {
+    const state = this.states.get(programId)!;
+    state.transitioning = true;
+    this.metrics.recordSongQueueAction('stale-claim-dropped');
+    this.logger.warn(
+      `Dropping Play Next entry ${entry.id} on ${programId}: its playback ${entry.playbackRequestId} was already sent and Palazzo never replays one; playing what follows`,
+    );
+    void this.withQueueMutationLock(programId, async () => {
+      const persisted = await this.readQueueState(programId);
+      const queue = normalizeProgramSongQueue(persisted.songQueue);
+      const nextQueue = queue.filter((queued) => queued.id !== entry.id);
+      await this.persistQueue(programId, nextQueue);
+      this.applyPersistedQueue(programId, nextQueue, 'consumed');
+    })
+      .then(() => {
+        state.transitioning = false;
+        if (state.activeSong || state.frozen) return;
+        // The next queued entry plays as the dropped one would have; with none left, only an automatic rotation
+        // continues.
+        const automatic =
+          state.sequence?.mode === 'autoplay' ||
+          state.sequence?.mode === 'shuffle';
+        if (
+          (state.queue.length || automatic) &&
+          this.playNext(programId, handoff, endedRequestId)
+        )
+          return;
+        this.publishStopped(programId);
+      })
+      .catch((error) => {
+        this.blockQueueAfterPersistenceFailure(programId, error);
+      });
+  }
+
   private releaseQueueClaimAfterPlaybackStops(
     programId: string,
     entryId: string,
@@ -1216,6 +1331,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     state.pendingRequestIds.add(playbackRequestId);
     // A new command restarts the watchdog's bound (#230).
     state.noPlaybackSince = null;
+    // A Play Next song this take replaces gives its claim back, as a Stop does: left claimed, the engine re-sent its
+    // playback ID after this song, Palazzo answered it as a duplicate and nothing aired (walk part 4).
+    const replacedQueueEntryId = state.activeSong?.queueEntryId ?? null;
     if (state.activeSong) {
       this.closePlayForAsRun(programId, state.activeSong, 'replaced', actor);
     }
@@ -1244,6 +1362,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       actor,
     };
     this.rememberSong(state, playbackRequestId, state.activeSong.songId);
+    if (replacedQueueEntryId) {
+      this.metrics.recordSongQueueAction('preempted');
+      this.releaseQueueClaimAfterPlaybackStops(programId, replacedQueueEntryId);
+    }
     this.emitPlaybackActive(programId, state.activeSong);
     void this.publishNowPlaying(programId, state.activeSong);
     this.startProgress(programId);
@@ -1278,7 +1400,12 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
    */
   handleStopSong(
     programId: string,
-    options: { keepSequence?: boolean; keepMode?: boolean } = {},
+    options: {
+      keepSequence?: boolean;
+      keepMode?: boolean;
+      /** A timed block's fixed start cut the song, not an operator's stop. */
+      endReason?: 'fixed_start';
+    } = {},
   ): void {
     const actor = ActorContext.current();
     const state = this.states.get(programId);
@@ -1313,7 +1440,12 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     }
     const stoppedQueueEntryId = state.activeSong?.queueEntryId ?? null;
     if (state.activeSong) {
-      this.closePlayForAsRun(programId, state.activeSong, 'stopped', actor);
+      this.closePlayForAsRun(
+        programId,
+        state.activeSong,
+        options.endReason ?? 'stopped',
+        actor,
+      );
     }
     // Palazzo's song stop flushes the announced song as well.
     this.forgetAnnouncement(programId, state, 'stopped', actor);
@@ -1346,6 +1478,14 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     return (
       this.states.get(programId)?.commandedSongs?.get(playbackRequestId) ?? null
     );
+  }
+
+  private rememberSent(state: SongEngineState, playbackRequestId: string): void {
+    const sent = (state.sentRequestIds ??= new Set<string>());
+    sent.add(playbackRequestId);
+    if (sent.size > MAX_ENDED_REQUEST_IDS) {
+      sent.delete(sent.values().next().value as string);
+    }
   }
 
   private rememberSong(
@@ -3635,6 +3775,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     programId: string,
     handoff = false,
     endedRequestId?: string,
+    claimedRequestId?: string,
   ): boolean {
     // Log ownership also protects against queue claims begun before log start.
     if (this.flightService.isClockedLogRunning(programId)) return true;
@@ -3658,7 +3799,14 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           if (!nextState) return;
           nextState.transitioning = false;
           if (claimed) {
-            if (!this.playNext(programId, handoff, endedRequestId)) {
+            if (
+              !this.playNext(
+                programId,
+                handoff,
+                endedRequestId,
+                queuePlaybackRequestId,
+              )
+            ) {
               this.logger.error(
                 `Claimed Play Next item could not be resolved on ${programId}; stopping without falling through`,
               );
@@ -3676,6 +3824,17 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         .catch((error) => {
           this.blockQueueAfterPersistenceFailure(programId, error);
         });
+      return true;
+    }
+    if (
+      queueEntry?.playbackRequestId &&
+      queueEntry.playbackRequestId !== claimedRequestId &&
+      state.sentRequestIds?.has(queueEntry.playbackRequestId)
+    ) {
+      // This claim's ID was already sent (a Play Next song that aired and was cut, or a re-send that aired nothing).
+      // Palazzo's playout journal never replays a playback ID, so sending it again airs nothing: the entry has had its
+      // airing and is dropped, never re-sent, so the watchdog cannot loop on it (walk part 4).
+      this.dropStaleQueueClaim(programId, queueEntry, handoff, endedRequestId);
       return true;
     }
     // At a handoff, the playlist successor that was announced is what plays:
@@ -3939,6 +4098,12 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     const state = this.states.get(programId);
     if (!state) return;
     if (result.ok && result.playbackRequestId) {
+      // Only a song command Palazzo accepted marks its ID as sent: never an announcement, nor a command skipped
+      // because another song took over, nor one that failed (its claim is released and claimed afresh).
+      this.rememberSent(state, playbackRequestId);
+      // A claim keeps the ID Alcantara sent; when Palazzo answers with its own, both are spent.
+      if (result.playbackRequestId !== playbackRequestId)
+        this.rememberSent(state, result.playbackRequestId);
       if (intro && state.activeSong?.playbackRequestId === playbackRequestId) {
         if (result.introPlaybackId === intro.playbackId) {
           state.activeSong.introPlaybackId = result.introPlaybackId;

@@ -1,7 +1,7 @@
 import { useState, type ComponentProps } from "react";
 import { Button, IconButton } from "@gaulatti/bleecker";
 import { TooltipButton } from "../components/BleeckerButtons";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { songRequestFailureNotice } from "../utils/songRequestFailure";
 import {
   BroadcastSwitcherDeck,
@@ -307,6 +307,27 @@ export default function ConsoleFixture() {
         </div>
       </main>
     );
+  if (fixture === "focus-ring")
+    return (
+      <main className="min-h-screen p-8" data-visual-fixture="focus-ring">
+        <h1 className="mb-2 text-xl font-semibold">Link focus ring</h1>
+        <p className="mb-6 text-sm text-text-secondary">
+          Press Tab: each plain link shows the one focus-visible ring from app.css (#688). A mouse
+          click shows none.
+        </p>
+        <p className="mb-8 flex gap-6 text-sm">
+          <a href="#app-link">App link</a>
+          <Link to="/radio-settings">App route link</Link>
+        </p>
+        <section className="broadcast-console rounded p-6">
+          <p className="mb-3 text-sm">In a console, the ring takes the console's ready colour.</p>
+          <p className="flex gap-6 text-sm">
+            <a href="#console-link">Console link</a>
+            <Link to="/radio-settings">Configure</Link>
+          </p>
+        </section>
+      </main>
+    );
   if (fixture === "button-help")
     return (
       <main
@@ -436,7 +457,9 @@ export default function ConsoleFixture() {
                       },
                     },
               logs:
-                fixture === "radio-empty" || fixture === "radio-continuous"
+                fixture === "radio-empty" ||
+                fixture === "radio-continuous" ||
+                fixture === "radio-audio-off-rundown"
                   ? []
                   : [
                       {
@@ -495,7 +518,10 @@ export default function ConsoleFixture() {
                 enabled: true,
               }))}
             programSongPlayback={
-              playbackOnAir && fixture !== "radio-empty"
+              // radio-audio-off-rundown (D7): no song commanded while the station is audible.
+              playbackOnAir &&
+              fixture !== "radio-empty" &&
+              fixture !== "radio-audio-off-rundown"
                 ? {
                     token:
                       fixture === "radio-external"

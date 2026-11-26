@@ -99,6 +99,9 @@ describe('FlightService clocked logs', () => {
       },
       flightSequence: {
         create: jest.fn().mockResolvedValue(record),
+        // No later block: the fixed-start window (#788 item 4) reads it on create, and preflight must report ready
+        // with no following-block warning.
+        findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockImplementation(async () => record),
         updateMany: jest.fn().mockImplementation(async ({ data }) => {
           record.publishedAt = data.publishedAt;
@@ -444,7 +447,7 @@ describe('FlightService tag generation and live log edits', () => {
       });
       expect(runtime.items.map((item) => item.id)).toEqual(['now', 'hard']);
       jest.advanceTimersByTime(1800000);
-      expect(execute).toHaveBeenCalledWith('radio-1', 1, 2);
+      expect(execute).toHaveBeenCalledWith('radio-1', 1, 2, 'fixed_start');
     } finally {
       service.onModuleDestroy();
       jest.useRealTimers();
@@ -584,7 +587,7 @@ describe('FlightService tag generation and live log edits', () => {
       jest.advanceTimersByTime(30000);
       expect(execute).not.toHaveBeenCalled();
       jest.advanceTimersByTime(10000);
-      expect(execute).toHaveBeenCalledWith('radio-1', 2, 5);
+      expect(execute).toHaveBeenCalledWith('radio-1', 2, 5, 'fixed_start');
     } finally {
       service.onModuleDestroy();
       jest.useRealTimers();

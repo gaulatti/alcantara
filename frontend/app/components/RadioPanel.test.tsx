@@ -342,6 +342,20 @@ it("presents stale timing explicitly and never turns unavailable output into hea
   expect(screen.queryByText("Engine audio detected")).not.toBeInTheDocument();
 });
 
+// The airing walk's W5: with Palazzo answering and its playout down, a playing song is never On air, in the strip,
+// the rotation rows or the rundown's playback bar, even with fresh output samples.
+it("never shows On air or a running clock while playout is down", () => {
+  const p = props();
+  p.fixtureData!.palazzo = { ...p.fixtureData!.palazzo, playout: "down" };
+  mount(p);
+  const strip = screen.getByRole("region", { name: "On air" });
+  expect(within(strip).getByText("Not confirmed")).toBeVisible();
+  expect(within(strip).getByText("Playout down")).toBeVisible();
+  expect(screen.queryByText("On air")).not.toBeInTheDocument();
+  expect(screen.queryByText("Remaining")).not.toBeInTheDocument();
+  expect(screen.getAllByText("No engine confirmation").length).toBeGreaterThanOrEqual(2);
+});
+
 it("calls a stale report from a connected engine delayed, with no frozen clock", () => {
   const p = props();
   p.programSongPlayback = { ...p.programSongPlayback!, telemetryStale: true };
@@ -356,6 +370,8 @@ it("shows explicit empty states without hiding transport or inventing a countdow
   p.instants = [];
   p.programSongPlayback = null;
   p.fixtureData!.logs = [];
+  // Nothing airs: with audible output the strip would name the fallback playlist (D7).
+  p.fixtureData!.output = { ...p.fixtureData!.output, state: "idle", outputRms: 0 };
   mount(p);
   expect(screen.getByText(/Nothing on air/)).toBeVisible();
   expect(screen.getByText("Off air")).toBeVisible();
@@ -364,6 +380,52 @@ it("shows explicit empty states without hiding transport or inventing a countdow
     screen.queryByRole("button", { name: "Start rundown" }),
   ).not.toBeInTheDocument();
   expect(screen.getByText("Filler rotation is empty")).toBeVisible();
+});
+
+// D7, from the recovery walk: Palazzo's fallback playlist on air with no song commanded read "Off air". The desk is
+// not told about live input or scene audio, so it cannot rule them out and never claims the fallback playlist
+// (Wakko's #804 review).
+it("says audio is on air, not from the rundown, when no song is commanded and the output is audible", () => {
+  const p = props();
+  p.programSongPlayback = null;
+  p.fixtureData!.logs = [];
+  mount(p);
+  const strip = screen.getByRole("region", { name: "On air" });
+  expect(strip).toHaveAttribute("data-state", "off-rundown");
+  expect(within(strip).getByRole("status")).toHaveTextContent(
+    "Audio on air · not from the rundown",
+  );
+  expect(within(strip).getByRole("status")).toHaveAttribute("data-tone", "live");
+  expect(within(strip).queryByText("Fallback playlist on air")).toBeNull();
+  expect(within(strip).queryByText("Off air")).toBeNull();
+  expect(within(strip).queryByText(/Nothing on air/)).toBeNull();
+});
+
+it("counts an airing instant as another source, and an ended one as none", () => {
+  const p = props();
+  p.programSongPlayback = null;
+  p.fixtureData!.logs = [];
+  p.instantPlayback = {
+    1: { startedAtMs: Date.now() - 1_000, endsAtMs: Date.now() + 5_000 },
+    2: { startedAtMs: Date.now() - 9_000, endsAtMs: Date.now() - 1_000 },
+    3: { startedAtMs: Date.now() - 1_000, endsAtMs: null },
+  };
+  mount(p);
+  expect(screen.getByRole("region", { name: "On air" })).toHaveAttribute(
+    "data-state",
+    "off-rundown",
+  );
+});
+
+it("never shows audible output in the live tone while playout is down", () => {
+  const p = props();
+  p.programSongPlayback = null;
+  p.fixtureData!.logs = [];
+  p.fixtureData!.palazzo = { ...p.fixtureData!.palazzo, playout: "down" };
+  mount(p);
+  const strip = screen.getByRole("region", { name: "On air" });
+  expect(strip).toHaveAttribute("data-state", "audio-unconfirmed");
+  expect(within(strip).getByRole("status")).toHaveAttribute("data-tone", "warn");
 });
 
 it("renders reported metadata when the playing track is absent from the playlist", () => {
@@ -581,10 +643,14 @@ it("treats every unreachable or refused status endpoint as unverified", async ()
     "alert",
   );
   expect(screen.getByText("Stream unverified")).toBeVisible();
-  expect(await screen.findByText("Engine unavailable")).toBeVisible();
+  // The console cannot reach the server, so the engine is not what is unavailable.
+  expect(await screen.findByText("Can\'t reach the Alcántara server")).toBeVisible();
+  expect(screen.queryByText("Engine unavailable")).toBeNull();
   expect(screen.getByText("Output unverified")).toBeVisible();
   expect(screen.getByText("No level sample")).toBeVisible();
-  expect(screen.getByText("No prepared recovery playlist")).toBeInTheDocument();
+  // The recovery status never answered, so there is no last known state to show.
+  expect(screen.getByText("Recovery status unavailable")).toBeInTheDocument();
+  expect(screen.queryByText("No prepared recovery playlist")).toBeNull();
   view.unmount();
 
   radioApi({
@@ -741,6 +807,16 @@ it("refuses Take, Take now and Start with fallback while playout is down, and ke
   fireEvent.click(within(dialog).getByRole("button", { name: "Confirm Paper Satellites" }));
   expect(
     await within(dialog).findByText("Playout down: nothing can air. Nothing was taken."),
+  ).toBeVisible();
+  expect(p.onTakeSelection).not.toHaveBeenCalled();
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Play a song now" })).toBeNull());
+
+  // The airing walk's W4: a rotation row's Take on air refused nothing and the song was sent to Palazzo.
+  const rows = screen.getAllByRole("button", { name: "Take on air" });
+  fireEvent.click(rows[1]);
+  expect(
+    await screen.findByText("Playout down: nothing can air. Nothing was taken."),
   ).toBeVisible();
   expect(p.onTakeSelection).not.toHaveBeenCalled();
 });
@@ -950,6 +1026,25 @@ it("names an unknown not-aired reason as the as-run logged it", () => {
   ).toBeVisible();
 });
 
+it("names a cue a fixed start passed over as skipped, not played", () => {
+  const p = props();
+  const log = onAirLog(p);
+  log.scheduledAt = new Date(Date.now() - 120_000).toISOString();
+  log.activeItemId = "cue-3";
+  log.items = [
+    { id: "cue-1", kind: "playSong", songId: 1, clockOffsetSeconds: 0 },
+    { id: "cue-2", kind: "playSong", songId: 1 },
+    { id: "cue-3", kind: "playSong", songId: 1, clockOffsetSeconds: 60 },
+  ];
+  log.cueOutcomes = [
+    { cueId: "cue-2", state: "not-aired", reason: "fixed_start" },
+  ];
+  mount(p);
+  expect(
+    screen.getByLabelText("Skipped: not aired, cut by a fixed start"),
+  ).toBeVisible();
+});
+
 it("marks rows by position when the backend sends no cue outcomes", () => {
   const p = props();
   const log = onAirLog(p);
@@ -1025,6 +1120,77 @@ it("reloads the log from the API after a command when it is live", async () => {
       loads,
     ),
   );
+});
+
+// Dot's recovery walk: while the console cannot reach the Alcántara server, the engine chip must not blame the
+// engine. A server that answers that the engine is down still reads Engine unavailable.
+it("says the console cannot reach the server, not the engine, when the server is unreachable", async () => {
+  radioApi({
+    "/status": json({ running: true, uptime: 60_000 }),
+    "/palazzo-status": new Error("offline"),
+    "/output-confidence": json(props().fixtureData!.output),
+    "/recovery": json({ preparedVersion: null, automation: null, connection: "connected" }),
+  });
+  vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+  mount(liveProps());
+  expect(await screen.findByText("Can\'t reach the Alcántara server")).toBeVisible();
+  expect(screen.queryByText("Engine unavailable")).toBeNull();
+});
+
+it("keeps Engine unavailable when the server answers that the engine is down", async () => {
+  radioApi({
+    "/status": json({ running: true, uptime: 60_000 }),
+    "/palazzo-status": json({ ...props().fixtureData!.palazzo, connection: "unavailable" }),
+    "/output-confidence": json(props().fixtureData!.output),
+    "/recovery": json({ preparedVersion: null, automation: null, connection: "connected" }),
+  });
+  vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+  mount(liveProps());
+  expect(await screen.findByText("Engine unavailable")).toBeVisible();
+  expect(screen.queryByText("Can\'t reach the Alcántara server")).toBeNull();
+});
+
+// Dot's recovery walk: a failed recovery status read used to replace the known state with "No prepared recovery
+// playlist", although a playlist was prepared and airing. The last known state stays, and the panel says it is
+// unavailable until a read answers again.
+it("keeps the last known recovery state and says it is unavailable when the status read fails", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    let recoveryUp = true;
+    radioApi({
+      "/status": () => json({ running: true, uptime: 60_000 }),
+      "/palazzo-status": () => json(props().fixtureData!.palazzo),
+      "/output-confidence": () => json(props().fixtureData!.output),
+      "/recovery": () =>
+        recoveryUp
+          ? json({ preparedVersion: "v7", automation: null, connection: "connected" })
+          : new Error("offline"),
+    });
+    vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+    mount(liveProps());
+    fireEvent.click(screen.getByText("Recovery & session"));
+    expect(await screen.findByText("Prepared for next session")).toBeVisible();
+
+    recoveryUp = false;
+    await act(async () => {
+      vi.advanceTimersByTime(8_000);
+    });
+    expect(await screen.findByText("Recovery status unavailable")).toBeVisible();
+    expect(screen.getByText("Last known: prepared for next session.")).toBeVisible();
+    expect(screen.queryByText("No prepared recovery playlist")).toBeNull();
+
+    // A read that answers again replaces the last known state and clears the notice.
+    recoveryUp = true;
+    await act(async () => {
+      vi.advanceTimersByTime(8_000);
+    });
+    await waitFor(() =>
+      expect(screen.queryByText("Recovery status unavailable")).toBeNull(),
+    );
+    expect(screen.getByText("Prepared for next session")).toBeVisible();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 // gaulatti/alcantara#707: a command failure shows as the alert and enters the session log; when the engine
@@ -1413,9 +1579,8 @@ it("starts and stops the recovery session through Palazzo", async () => {
   ).toHaveLength(1);
   const configure = screen.getByRole("link", { name: "Configure" });
   expect(configure).toHaveAttribute("href", "/radio-settings");
-  // Keyboard focus shows a ring: the link has no border or background, so without these classes it has no focus indicator.
-  expect(configure.className).toContain("focus-visible:ring-2");
-  expect(configure.className).toContain("focus-visible:ring-sea");
+  // Keyboard focus uses the global :focus-visible ring (#688): no per-link style cancels its outline.
+  expect(configure.className).not.toMatch(/outline-none|focus-visible:/);
 });
 
 // gaulatti/alcantara#693 review: one stop while one is on its way. A second hold sends nothing.
@@ -2058,6 +2223,30 @@ it("says On air only for an engine-confirmed song, and refuses Take while the en
 
 // gaulatti/alcantara#694: dead air shows in the on-air strip, and the alarm names the action that cures it for
 // the recovery state the desk knows.
+// Advance answers on the rundown's feedback line when it goes through, and names the failure when it does not.
+it("confirms an advanced rundown on screen, and shows the refusal when it fails", async () => {
+  vi.mocked(flight.goFlight).mockResolvedValue({ ok: true } as never);
+  const p = props();
+  mount(p);
+  fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
+  expect(await screen.findByText("Advanced to the next cue.")).toBeVisible();
+  vi.mocked(flight.goFlight).mockRejectedValueOnce(new Error("Cue refused"));
+  fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
+  expect(await screen.findByText("Cue refused")).toBeVisible();
+  expect(screen.queryByText("Advanced to the next cue.")).toBeNull();
+}, 15_000);
+
+// Advance pressed while the engine's feedback is stale says the command is only sent, not that it took.
+it("says Sent and waits for the engine when Advance is pressed while its feedback is stale", async () => {
+  vi.mocked(flight.goFlight).mockResolvedValue({ ok: true } as never);
+  const p = props();
+  p.programSongPlayback = { ...p.programSongPlayback!, telemetryStale: true };
+  mount(p);
+  fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
+  expect(await screen.findByText("Sent: waiting for the engine to confirm.")).toBeVisible();
+  expect(screen.queryByText("Advanced to the next cue.")).toBeNull();
+}, 15_000);
+
 describe("dead air", () => {
   const deadAir = (
     recovery: NonNullable<ReturnType<typeof props>["fixtureData"]>["recovery"],
@@ -2083,6 +2272,55 @@ describe("dead air", () => {
     expect(tone("Dead air")).toBe("bad");
     expect(tone("Stream verified")).toBe("idle");
     expect(tone("Engine ready")).toBe("idle");
+  });
+
+  // Walk part 4: muting the desk's Music channel while a song aired raised Dead air with "Hold Stop to take the silent
+  // song off air", which would have left the silence for good.
+  it("says the desk's own mute silenced the song, and unmutes it, instead of saying to stop it", () => {
+    const p = deadAir({ preparedVersion: null, automation: null, connection: "connected" });
+    p.mixer = { ...p.mixer, song: { ...p.mixer.song, muted: true } };
+    mount(p);
+    const alarm = screen.getByRole("alert", { name: "Dead air" });
+    expect(alarm).toHaveTextContent(
+      "Music is muted on this desk: the song plays, but nothing reaches the air. Unmute it.",
+    );
+    expect(alarm).not.toHaveTextContent(/Hold Stop/);
+    fireEvent.click(within(alarm).getByRole("button", { name: "Unmute music" }));
+    expect(p.onToggleSongMuted).toHaveBeenCalledTimes(1);
+    expect(
+      within(screen.getByRole("region", { name: "On air" })).getByText("Dead air"),
+    ).toBeVisible();
+  });
+
+  it("says which desk fader is down when the music or the output is at zero", () => {
+    for (const [channel, name] of [
+      ["song", "Music"],
+      ["main", "Output"],
+    ] as const) {
+      const p = deadAir({ preparedVersion: null, automation: null, connection: "connected" });
+      p.mixer = { ...p.mixer, [channel]: { ...p.mixer[channel], volume: 0 } };
+      mount(p);
+      const alarm = screen.getByRole("alert", { name: "Dead air" });
+      expect(alarm).toHaveTextContent(
+        `The ${name} fader is down on this desk: raise it to put the song back on air.`,
+      );
+      expect(alarm).not.toHaveTextContent(/Hold Stop/);
+      cleanup();
+    }
+  });
+
+  // A zero fader is the desk's own cause even when a recovery playlist is prepared: the recovery advice must not
+  // replace the fader, or the operator would start a playlist while the fader still silences the song.
+  it("names a zero fader before the recovery advice, even when a recovery playlist is prepared", () => {
+    const p = deadAir({ preparedVersion: "v9", automation: null, connection: "connected" });
+    p.mixer = { ...p.mixer, song: { ...p.mixer.song, volume: 0, muted: false } };
+    mount(p);
+    const alarm = screen.getByRole("alert", { name: "Dead air" });
+    expect(alarm).toHaveTextContent(
+      "The Music fader is down on this desk: raise it to put the song back on air.",
+    );
+    expect(alarm).not.toHaveTextContent(/recovery playlist/i);
+    expect(alarm).not.toHaveTextContent(/Hold Stop/);
   });
 
   it("says to take the silent song off air and prepare a playlist when none is prepared", () => {
@@ -2181,4 +2419,35 @@ describe("dead air", () => {
       within(screen.getByRole("region", { name: "On air" })).queryByText("Dead air"),
     ).toBeNull();
   });
+});
+
+// A rotation that failed to load is an error with a Retry, never the empty rotation (the desk read a restarting backend as
+// an empty filler rotation).
+it("shows a rotation that failed to load as an error with Retry, not as an empty rotation", async () => {
+  const onRetryRotation = vi.fn();
+  const p = props();
+  p.fixtureData!.logs = [];
+  mount({ ...p, rotationLoadError: true, onRetryRotation });
+  expect(screen.getByText("Couldn't load the rotation")).toBeVisible();
+  expect(screen.queryByText(/is empty/)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(onRetryRotation).toHaveBeenCalledOnce();
+});
+
+it("says a truly empty rotation is empty, and offers no load error", () => {
+  const p = props();
+  p.fixtureData!.logs = [];
+  mount({ ...p, songSequence: { mode: "manual", items: [], activeItemId: null, intervalMs: 0, loop: false, startedAt: 0 }, rotationLoadError: false });
+  expect(screen.getByText("Filler rotation is empty")).toBeVisible();
+  expect(screen.queryByText("Couldn't load the rotation")).toBeNull();
+});
+
+// The rotation-load error replaces the rotation editor only: taking the song off air stays available (an on-air control).
+it("keeps Stop the song on air working while the rotation-load error is shown", async () => {
+  const p = props();
+  p.fixtureData!.logs = [];
+  mount({ ...p, rotationLoadError: true, onRetryRotation: vi.fn() });
+  expect(screen.getByText("Couldn't load the rotation")).toBeVisible();
+  await hold(screen.getByRole("button", { name: "Stop the song on air" }));
+  await waitFor(() => expect(p.onTakeOffAir).toHaveBeenCalledOnce());
 });

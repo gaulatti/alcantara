@@ -183,7 +183,7 @@ function build(leg: Parameters<typeof store>[0], lifecycle: any, started: any) {
       { commandId: 'command-1', destinationIds: ['primary'], confirmed: true },
       'operator',
     );
-  return { ...db, binding, alana, start, bindings, metrics };
+  return { ...db, binding, alana, start, bindings, metrics, service };
 }
 
 const running = (overrides: Record<string, unknown> = {}) =>
@@ -317,6 +317,59 @@ describe('television Start filler binding', () => {
     await expect(
       h.binding.televisionStartBinding('main', status()),
     ).resolves.toBeNull();
+  });
+
+  it.each([
+    [null, 'filler-tv-1'],
+    ['filler-tv-0', 'filler-tv-0'],
+  ])(
+    'binds after Stop the filler a Start would bind without it (pending %s)',
+    async (pending, bound) => {
+      const leg = { pendingVersionId: pending, activeVersionId: 'filler-tv-1' };
+      const executor = status({
+        activeFiller: executorFiller({ version: bound }),
+      });
+      const without = build({ ...leg }, status(), running());
+      await expect(
+        without.binding.televisionStartBinding('main', executor),
+      ).resolves.toMatchObject({ id: bound });
+
+      const h = build({ ...leg }, status(), running());
+      (h.alana as unknown as { stop: jest.Mock }).stop = jest
+        .fn()
+        .mockResolvedValue(status());
+      await h.service.stop(
+        'main',
+        { commandId: 'command-1', confirmed: true },
+        'operator',
+      );
+      expect(h.leg()).toEqual({
+        pendingVersionId: bound,
+        activeVersionId: null,
+      });
+      await expect(
+        h.binding.televisionStartBinding('main', executor),
+      ).resolves.toMatchObject({ id: bound });
+    },
+  );
+
+  it('stops television even when the release write fails, and counts it', async () => {
+    const h = build({ activeVersionId: 'filler-tv-1' }, status(), running());
+    (h.alana as unknown as { stop: jest.Mock }).stop = jest
+      .fn()
+      .mockResolvedValue(status());
+    h.prisma.fillerLeg.updateMany.mockRejectedValueOnce(new Error('down'));
+    await expect(
+      h.service.stop(
+        'main',
+        { commandId: 'command-1', confirmed: true },
+        'operator',
+      ),
+    ).resolves.toBeDefined();
+    expect(h.command()).toMatchObject({ status: 'succeeded' });
+    expect(await h.metrics.render('')).toContain(
+      'alcantara_filler_releases_total{leg="television",result="failed"} 1',
+    );
   });
 
   it('exposes all four binding results from the first scrape', async () => {

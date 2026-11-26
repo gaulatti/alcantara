@@ -24,7 +24,7 @@ const permissionOf = (key: string): string => {
   )[group][action];
 };
 
-const specs = new FlightMcpTools({} as never, {} as never).specs();
+const specs = new FlightMcpTools({} as never, {} as never, {} as never).specs();
 
 describe('appendix A rows of ticket #215 (flight)', () => {
   it('has the rows the ticket names, none of them excluded', () => {

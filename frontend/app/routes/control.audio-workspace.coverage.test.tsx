@@ -122,7 +122,7 @@ it("opens the playlist sheet from Add songs, and adds a catalog song to the rota
   fireEvent.click(await screen.findByRole("button", { name: "Add songs" }));
   const sheet = await screen.findByRole("dialog");
   const saves = server.requests("PUT /program/main/audio-bus").length;
-  fireEvent.click(within(sheet).getAllByRole("button", { name: "Add to queue" })[0]);
+  fireEvent.click(within(sheet).getAllByRole("button", { name: /^Add .+ to the playlist$/ })[0]);
   await waitFor(() => expect(server.requests("PUT /program/main/audio-bus").length).toBe(saves + 1));
   const [, ...rest] = server.requests("PUT /program/main/audio-bus") as Array<{ songSequence: { items: Array<{ title: string }> } }>;
   const last = (rest.at(-1) ?? server.requests("PUT /program/main/audio-bus")[0]) as { songSequence: { items: Array<{ title: string }> } };

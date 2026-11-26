@@ -285,7 +285,7 @@ optional on `update` (a clocked log needs it).
 | `program_update_recipe_by_id` | Changes a recipe with the revision read (stale is a conflict), then rebuilds its uses not yet on air in the program's operator rundowns; cues on air or played are never touched. The answer counts the rebuilt uses. |
 | `program_add_recipe_use_by_id` | Adds one use of a recipe for a song (the song recipe: bumper, hold, song, slideshow for the song, back) to an operator rundown at a position or at the end, through the rundown's normal update. Refused (`on_air`) at or before the cue on air. Recoverable: remove the cues in the rundown. |
 | `program_delete_recipe_by_id` | Tier D: deletes a recipe read at `revision` (stale is a conflict). The dry run lists its uses per rundown. Refused `on_air` while a use is in a running rundown; with uses left it is refused unless `remove_uses` is true, which removes those use cues from their rundowns first. Not recoverable (gaulatti/alcantara#465). |
-| `program_publish_flight_sequence_by_id` | Publishes a clocked log: the console then starts it by itself at its scheduled time, with nobody present, and its start cannot move. There is no unpublish (the way back is a delete, refused while it is queued, or editing its cues). Not recoverable. |
+| `program_publish_flight_sequence_by_id` | Publishes a clocked log: the console then starts it by itself at its scheduled time, with nobody present, and its start cannot move. There is no unpublish (the way back is a delete, refused while it is queued, or editing its cues). Not recoverable. A log whose content overruns a fixed start is refused with on_air unless `accept_overrun` is true, as the desk asks "Publish anyway"; the dry run gives `overrunMs` and the cut length (#788). |
 
 ### On-air capabilities (`flight.operate`)
 
@@ -302,7 +302,7 @@ stopped, or the log moved to another cue is refused as `confirm_mismatch`; for
 | `program_deactivate_flight_sequence_by_id` | Stops the flight, cuts the song and clears the active sequence. |
 | `program_start_flight_by_id` | Starts the active sequence from cue 1 (a running one stops, cutting the song, and starts over); its cues then act on air by themselves. |
 | `program_stop_flight_by_id` | Stops the cues and cuts the song, turning the rotation to manual; the sequence stays active. |
-| `program_go_flight_by_id` | Runs the next cue at once; with no flight running it starts the active sequence. A clocked log cannot advance before its scheduled start. |
+| `program_go_flight_by_id` | Runs the next cue at once; with no flight running it starts the active sequence. A clocked log cannot advance before its scheduled start. Refused with on_air, dry run included, only while Palazzo freshly reports the playout of a radio-only program down (the take's rule, D4); a stale or missing report and a simulcast program go through, counted (#788). |
 | `program_reset_flight_by_id` | Stops, cuts the song, clears the position; restarts from cue 1 if it was running. |
 
 The answers are the console's (`{activeSequenceId}` or `{ok: true}`).
@@ -481,7 +481,10 @@ guest). A guest link is created and replaced in the console only. The four
   field was given, reconnect telemetry when the Palazzo address or `enabled`
   changed). Its dry run is live for every field except `listener_url`.
 - `radio_start_recovery` and `radio_stop_recovery` confirm against Palazzo's
-  automation state; the manual song and instant routes
+  automation state and refuse what the desk's recovery buttons disable (#788):
+  Start while Palazzo reports its playout down, with no prepared playlist, when
+  Palazzo is not connected or while a session runs; Stop when none runs. Their
+  dry run says `REFUSED (on_air)` first; the manual song and instant routes
   (`radio_play_song`, `radio_stop_song`, `radio_play_instant`,
   `radio_stop_all_instants`) confirm against the program's live stamp, like
   the program actions. `radio_play_instant` accepts `instant_id` as the
@@ -536,8 +539,9 @@ An A capability with `program.operate`, taking `program_id`, `leaf_ids` (1 to 20
 and optional `keep_rotation` and `dry_run`. It has no route of its own: the console
 removes a leaf by sending the whole edited playlist, and
 `program_update_program_audio_bus_by_id` does the same with a whole `songSequence`,
-cursor (`activeItemId`, `startedAt`) included. That cursor changes with every song, so a
-whole-playlist write races the rotation.
+cursor (`activeItemId`, `startedAt`) included, and must send the `sequence_version` that
+`get_queue` gave. The cursor changes with every song and is not part of the version, so a
+whole-playlist write still races the rotation's cursor.
 
 - **What it writes.** Under the engine's queue-mutation lock it reads the row, takes the
   sequence the engine holds when that differs from the stored one only by the cursor
@@ -681,11 +685,11 @@ Every W capability, and whether it changes what is on air or queued:
 | `program_add_scene_to_program` | `backend/src/mcp/capabilities/program.ts:498` | No | - | Assignment only; its plan: nothing goes on air. |
 | `program_add_media_group_to_program` | `backend/src/mcp/capabilities/program.ts:513` | No | - | Assignment only; takes effect when a scene or page reads it. |
 | `program_add_stinger_to_program` | `backend/src/mcp/capabilities/program.ts:530` | No | - | Assignment only; played by a later scene change. |
-| `program_create_flight_sequence_by_id` | `backend/src/mcp/capabilities/flight.ts:270` | No | - | A new inactive sequence; its plan: it does not air until activated and started. |
-| `program_update_flight_sequence_by_id` | `backend/src/mcp/capabilities/flight.ts:293` | Live output | Recorded: an `OperatorChangeRecord` of who made the change, the changed field names and, for names, ids and flags, the value before and after (#236); free text, JSON, cues and template addresses are named, never valued | Declares `onAir` while the sequence runs (flight.ts:322): later cues of a running rundown change at once. Cues fire by timer, which reads no actor. |
-| `program_generate_tagged_log` | `backend/src/mcp/capabilities/flight.ts:333` | No | - | Returns a proposal; nothing is saved or aired. |
-| `program_fill_rundown` | `backend/src/mcp/capabilities/flight.ts:353` | No | - | Returns a proposal; nothing is saved or aired. |
-| `program_publish_flight_sequence_by_id` | `backend/src/mcp/capabilities/flight.ts:375` | Live output | Recorded: an `OperatorChangeRecord` of who made the change, the changed field names and, for names, ids and flags, the value before and after (#236); free text, JSON, cues and template addresses are named, never valued | Schedules a log to start itself at its time; that start is automatic (timer) and stays null by design. |
+| `program_create_flight_sequence_by_id` | `backend/src/mcp/capabilities/flight.ts:299` | No | - | A new inactive sequence; its plan: it does not air until activated and started. |
+| `program_update_flight_sequence_by_id` | `backend/src/mcp/capabilities/flight.ts:322` | Live output | Recorded: an `OperatorChangeRecord` of who made the change, the changed field names and, for names, ids and flags, the value before and after (#236); free text, JSON, cues and template addresses are named, never valued | Declares `onAir` while the sequence runs (flight.ts:322): later cues of a running rundown change at once. Cues fire by timer, which reads no actor. |
+| `program_generate_tagged_log` | `backend/src/mcp/capabilities/flight.ts:362` | No | - | Returns a proposal; nothing is saved or aired. |
+| `program_fill_rundown` | `backend/src/mcp/capabilities/flight.ts:382` | No | - | Returns a proposal; nothing is saved or aired. |
+| `program_publish_flight_sequence_by_id` | `backend/src/mcp/capabilities/flight.ts:413` | Live output | Recorded: an `OperatorChangeRecord` of who made the change, the changed field names and, for names, ids and flags, the value before and after (#236); free text, JSON, cues and template addresses are named, never valued | Schedules a log to start itself at its time; that start is automatic (timer) and stays null by design. |
 | `radio_similarity_upload` | `backend/src/mcp/capabilities/similarity.ts:87` | No | - | Embeddings for song similarity; they inform later automatic picks only. |
 | `radio_update_settings` | `backend/src/mcp/capabilities/radio.ts:204` | Live output | Recorded: an `OperatorChangeRecord` (see "Operator change records" below) | Declares `onAir` for the live settings (radio.ts:225: Palazzo address, bumpers, segue, similarity, enabled). |
 | `radio_prepare_recovery` | `backend/src/mcp/capabilities/radio.ts:266` | No | - | A prepared version; a running session keeps its own. |
@@ -844,9 +848,9 @@ records, the change is never blocked: a record that cannot be stored is logged a
 | `radio_prepare_recovery` | `alcantara:radio:manage` | W | Prepares one to 100 distinct catalog songs as the recovery (fallback) playlist: Palazzo downloads and verifies them, and the version is saved only after it reports ready. |
 | `radio_replace_now_playing_consumers` | `alcantara:radio:manage` | W | Replaces the whole list of endpoints that are told what is playing: any consumer not in the list is deleted. |
 | `radio_similarity_upload` | `alcantara:radio:manage` | W | Stores embeddings computed outside the console for up to 25 songs: {schema: 1, model: {name, version, license}, windowSeconds, songs: [{songId, audioSha256, opening, closing}]}. |
-| `radio_start_recovery` | `alcantara:radio:operate` | A | Starts the recovery (fallback) session of a radio program, bound to the program radio filler version (or, without one, the prepared recovery playlist): when the live song queue runs dry, Palazzo plays the local playlist. |
+| `radio_start_recovery` | `alcantara:radio:operate` | A | Starts the recovery (fallback) session of a radio program, bound to the program radio filler version (or, without one, the prepared recovery playlist): when the live song queue runs dry, Palazzo plays the local playlist. Refused with on_air, as the desk's Start with fallback is disabled, while Palazzo reports its playout down, with no prepared playlist, when Palazzo is not connected, or while a session runs. |
 | `radio_stop_all_instants` | `alcantara:radio:operate` | A | Cuts every instant playing over a radio program. |
-| `radio_stop_recovery` | `alcantara:radio:operate` | A | Stops the recovery session of a radio program: the program audio is cleared and the binding to the playlist is dropped. |
+| `radio_stop_recovery` | `alcantara:radio:operate` | A | Stops the recovery session of a radio program: the program audio is cleared and the binding to the playlist is dropped. Refused with on_air, as the desk's Hold · stop session is disabled, when no session runs. |
 | `radio_stop_song` | `alcantara:radio:operate` | A | Stops the song that is playing on a radio program and tells the engine to stop. |
 | `radio_update_settings` | `alcantara:radio:manage` | W | Changes the radio settings of a program (Palazzo address, listener address, bumpers, segue, similarity, enabled). |
 | `recording_start` | `alcantara:program:operate` | A | Starts recording the program output on the executor: it writes segments to its disk, up to the quota, until stopped. |

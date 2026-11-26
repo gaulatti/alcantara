@@ -1,4 +1,7 @@
 import { Module, Global } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { ProgramTeamAccess } from '../tenancy/program-team-access';
+import { ProgramTeamInterceptor } from '../tenancy/program-team.interceptor';
 import { ProgramController } from './program.controller';
 import { ProgramService } from './program.service';
 import { SceneAssetScope } from './scene-asset-scope';
@@ -35,6 +38,9 @@ import { ArtistLabelsService } from '../artist-labels/artist-labels.service';
     FlightMcpTools,
     RecipesService,
     RecipeMcpTools,
+    // Here, so it shares this module's database client.
+    ProgramTeamAccess,
+    { provide: APP_INTERCEPTOR, useClass: ProgramTeamInterceptor },
     // gaulatti/alcantara#427: the song recipe finds the artist's label through #423's service. A song
     // with no team is the deployment's own, which that service scopes as team 0.
     {
@@ -47,6 +53,11 @@ import { ArtistLabelsService } from '../artist-labels/artist-labels.service';
     },
     PrismaService,
   ],
-  exports: [ProgramService, ProgramRealtimeService, FlightService],
+  exports: [
+    ProgramService,
+    ProgramRealtimeService,
+    FlightService,
+    ProgramTeamAccess,
+  ],
 })
 export class ProgramModule {}

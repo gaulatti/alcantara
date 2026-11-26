@@ -40,3 +40,25 @@ ORDER BY p."programId";
 ```
 
 The owner assigns the team of each listed program by hand. Until then, readers that need a team for such a program use their own fallback, for example the recipes' caller team (#464).
+
+## Program team checks
+
+A request or MCP tool that names a program acts only on a program of the caller's team (gaulatti/alcantara#122): the
+path, query or body `programId`, `main` for the routes that name none (including an instant played or stopped without
+a program), and an MCP `program_id`. Another team's program
+answers 404 `Program not found` (MCP `not_found`). A program with no team stays usable. Station team `0` (local and
+test) is not checked.
+
+A program's team is remembered for 30 seconds and forgotten when the program is created, renamed or deleted. A team
+lookup that fails, or takes more than a second, never blocks the request (Stop must work during a database blip); the
+last team read for the program still applies. The memory is per backend process: with more than one
+container, another one can be up to 30 seconds stale after a change. Production runs one. `alcantara_program_team_checks_total{result}` counts `refused`, `unowned`
+and `lookup-failed`, all exported at 0.
+
+## Renaming a program that is on air
+
+A rename is refused with 409 while the program is on air (a scene or fade to black, a running log (a selected but stopped one is not), a playing song or
+scene instant): `This show is on air (…). Take it off air before renaming it.` After a rename the radio engine and
+Palazzo telemetry take up the new id in one step. Palazzo itself must be configured for the new program id.
+
+The check runs last before the write, and the write matches the program only while it is still off air, so a scene, fade or log that starts in between rolls the whole rename back with the same refusal. A song playing is known only in the backend's memory: one that starts between the check and the commit is stopped when the engine moves to the new ID. Whatever the engine or telemetry still held under the new ID from a deleted program is dropped.

@@ -1,3 +1,4 @@
+import { RotationLoadNotice, ROTATION_NOT_LOADED } from "../components/RotationLoadNotice";
 import {
   Button,
   Input,
@@ -80,6 +81,7 @@ import type {
 } from "../models/broadcast";
 import { songRequestFailureNotice } from "../utils/songRequestFailure";
 import { failureMessage, responseFailure } from "../utils/responseFailure";
+import { createRotationVersion } from "../utils/rotationVersion";
 import {
   DEFAULT_MIXER_TAKE_APPLYING,
   DEFAULT_MIXER_TAKE_PRESETS_DB,
@@ -230,12 +232,18 @@ export default function Control() {
   const [selectedTransitionId, setSelectedTransitionId] =
     useGlobalTransitionId(activeProgramId);
   const consoleWorkspace = consolePreferences.profile.workspace;
+  // The rotation did not load: its surfaces show the notice and every save is refused until a load succeeds.
+  const [rotationLoadFailed, setRotationLoadFailed] = useState(false);
   const [programAudioBusSettings, setProgramAudioBusSettings] =
     useState<ProgramAudioBusSettings>({
       songSequence: createProgramSongSequence("manual"),
       songQueue: [],
     });
   const [isSavingProgramAudioBus, setIsSavingProgramAudioBus] = useState(false);
+  const [rotationVersion] = useState(createRotationVersion);
+  const [songSequenceSaveError, setSongSequenceSaveError] = useState<
+    string | null
+  >(null);
   const [isPlaylistSheetOpen, setIsPlaylistSheetOpen] = useState(false);
   const [mixerLevels, setMixerLevels] = useState<BroadcastSettings>({
     mainMasterVolume: 1,
@@ -459,6 +467,12 @@ export default function Control() {
     fetchSongCatalog();
   }, []);
 
+  // The route's static title is the TV console's; a radio show's tab names the radio desk.
+  const documentTitle = programState?.type === "radio" ? "Control Panel - Radio" : "Control Panel - TV Broadcast";
+  useEffect(() => {
+    document.title = documentTitle;
+  }, [documentTitle]);
+
   useEffect(() => {
     setProgramState(null);
     setSelectedScene(null);
@@ -505,6 +519,8 @@ export default function Control() {
     void fetchMediaGroups(activeProgramId);
     void fetchMediaLabels();
     void fetchBackgroundAudioAssets();
+    rotationVersion.forget();
+    setSongSequenceSaveError(null);
     void fetchProgramState(activeProgramId);
     void fetchProgramAudioBusSettings(activeProgramId);
     void fetchProgramAudioMeter(activeProgramId);
@@ -722,6 +738,7 @@ export default function Control() {
             mixerLevelsRef.current = nextMixerLevels;
             setMixerLevels(nextMixerLevels);
           }
+          rotationVersion.read(payload?.settings);
           const normalizedSongSequence = normalizeProgramSongPlaylist(
             normalizeProgramSongSequence(payload?.settings?.songSequence) ?? {
               ...createProgramSongSequence("manual"),
@@ -834,6 +851,7 @@ export default function Control() {
             mixerLevelsRef.current = nextMixerLevels;
             setMixerLevels(nextMixerLevels);
           }
+          rotationVersion.read(payload?.settings);
           const normalizedSongSequence = normalizeProgramSongPlaylist(
             normalizeProgramSongSequence(payload?.settings?.songSequence) ?? {
               ...createProgramSongSequence("manual"),
@@ -855,6 +873,7 @@ export default function Control() {
           const eventProgramId =
             typeof payload.programId === "string" ? payload.programId : "";
           if (eventProgramId !== activeProgramId) return;
+          rotationVersion.read(payload);
           setProgramAudioBusSettings((previous) => ({
             ...previous,
             songQueue: normalizeProgramSongQueue(payload.songQueue),
@@ -1658,18 +1677,22 @@ export default function Control() {
           activeItemId: null,
         },
       );
+      rotationVersion.read(payload);
       setProgramAudioBusSettings({
         songSequence: normalizedSongSequence,
         songQueue: normalizeProgramSongQueue(payload?.songQueue),
       });
+      setRotationLoadFailed(false);
     } catch (err) {
       if (targetProgramId !== activeProgramIdRef.current) {
         return;
       }
       console.error("Failed to fetch program audio bus settings:", err);
+      rotationVersion.forget();
       const fallbackMixerLevels = normalizeBroadcastSettingsPayload(null);
       mixerLevelsRef.current = fallbackMixerLevels;
       setMixerLevels(fallbackMixerLevels);
+      setRotationLoadFailed(true);
       setProgramAudioBusSettings({
         songSequence: {
           ...createProgramSongSequence("manual"),
@@ -1684,9 +1707,21 @@ export default function Control() {
     }
   };
 
+  // Retry the rotation once the backend answers again, while its load is failing (a restart is the usual cause).
+  useEffect(() => {
+    if (!rotationLoadFailed) return;
+    const retry = window.setTimeout(() => {
+      void fetchProgramAudioBusSettings(activeProgramId, false);
+    }, 3000);
+    return () => window.clearTimeout(retry);
+  }, [rotationLoadFailed, activeProgramId]);
+
   const saveProgramAudioBusSongSequence = async (
     nextSequence: ProgramSongSequence,
   ) => {
+    // The sequence in state is the empty default while the rotation has not loaded: a save would replace the stored
+    // rotation. The surfaces show ROTATION_NOT_LOADED on screen, so a save from them is dropped here.
+    if (rotationLoadFailed) return;
     // Like the mixer levels, the answer belongs to the program the sequence was saved for (gaulatti/alcantara#682).
     const targetProgramId = activeProgramId;
     const normalizedSongSequence = normalizeProgramSongPlaylist(
@@ -1702,24 +1737,26 @@ export default function Control() {
       songSequence: normalizedSongSequence,
     }));
     setIsSavingProgramAudioBus(true);
+    setSongSequenceSaveError(null);
 
     try {
-      const res = await fetch(
-        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/audio-bus`),
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            songSequence: normalizedSongSequence,
-          }),
-        },
-      );
-      if (!res.ok) {
-        throw await responseFailure(res);
-      }
-
-      const payload =
-        (await res.json()) as Partial<ProgramAudioBusSettings> | null;
+      const payload = await rotationVersion.save(async (sequenceVersion) => {
+        const res = await fetch(
+          apiUrl(`/program/${encodeURIComponent(targetProgramId)}/audio-bus`),
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              songSequence: normalizedSongSequence,
+              sequenceVersion,
+            }),
+          },
+        );
+        if (!res.ok) {
+          throw await responseFailure(res);
+        }
+        return (await res.json()) as Partial<ProgramAudioBusSettings> | null;
+      });
       if (targetProgramId !== activeProgramIdRef.current) return;
       if (!shouldApplyControlUpdatePayload(payload, "audioBus")) {
         return;
@@ -1734,6 +1771,7 @@ export default function Control() {
         mixerLevelsRef.current = nextMixerLevels;
         setMixerLevels(nextMixerLevels);
       }
+      rotationVersion.read(payload);
       const persistedSongSequence = normalizeProgramSongPlaylist(
         normalizeProgramSongSequence(payload?.songSequence) ??
           normalizedSongSequence,
@@ -1749,6 +1787,7 @@ export default function Control() {
     } catch (err) {
       console.error("Failed to save program audio bus settings:", err);
       if (targetProgramId !== activeProgramIdRef.current) return;
+      setSongSequenceSaveError(failureMessage(err));
       await fetchProgramAudioBusSettings(targetProgramId, false);
       throw err;
     } finally {
@@ -3025,6 +3064,7 @@ export default function Control() {
           mixerLevelsRef.current = nextMixerLevels;
           setMixerLevels(nextMixerLevels);
         }
+        rotationVersion.read(data?.settings);
         const normalizedSongSequence = normalizeProgramSongPlaylist(
           normalizeProgramSongSequence(data?.settings?.songSequence) ?? {
             ...createProgramSongSequence("manual"),
@@ -3043,6 +3083,7 @@ export default function Control() {
       }
 
       if (data.type === "song_queue_update") {
+        rotationVersion.read(data);
         setProgramAudioBusSettings((previous) => ({
           ...previous,
           songQueue: normalizeProgramSongQueue(data.songQueue),
@@ -3315,10 +3356,14 @@ export default function Control() {
         programId={activeProgramId}
         playoutError={radioPlayoutError ?? radioSongFailure}
         songSequence={programAudioBusSongSequence}
+        rotationLoadError={rotationLoadFailed}
+        onRetryRotation={() => void fetchProgramAudioBusSettings(activeProgramId)}
         songQueue={normalizeProgramSongQueue(programAudioBusSettings.songQueue)}
         songCatalog={songCatalog}
         programSongPlayback={programSongPlaybackState}
         onSaveSongSequence={async (seq) => {
+          // The desk shows a failed save in its own error line, so a refusal is thrown here, not dropped.
+          if (rotationLoadFailed) throw new Error(ROTATION_NOT_LOADED);
           await saveProgramAudioBusSongSequence(seq);
         }}
         onTakeSelection={takeProgramSongSelection}
@@ -3464,7 +3509,8 @@ export default function Control() {
             songCatalog,
             programSongPlayback: programSongPlaybackState,
             onChange: (next) => {
-              void saveProgramAudioBusSongSequence(next);
+              // A refused save is shown on screen and the stored rotation is loaded again.
+              void saveProgramAudioBusSongSequence(next).catch(() => {});
             },
             onTakeSelection: takeProgramSongSelection,
             onAddSongs: () => setIsPlaylistSheetOpen(true),
@@ -3564,13 +3610,24 @@ export default function Control() {
           </div>
         </>
       )}
+      {songSequenceSaveError && !isPlaylistSheetOpen ? (
+        <p role="alert" className="px-3 pt-2 text-sm text-terracotta">
+          {songSequenceSaveError}
+        </p>
+      ) : null}
+      {consoleWorkspace === "audio" && rotationLoadFailed ? (
+        <div className="px-3 pt-2">
+          <RotationLoadNotice onRetry={() => void fetchProgramAudioBusSettings(activeProgramId)} />
+        </div>
+      ) : null}
       {consoleWorkspace === "audio" && (
         <div className="tv-audio-transport relative z-20 shrink-0">
           <PlaybackBar
             sequence={programAudioBusSongSequence}
             programSongPlayback={programSongPlaybackState}
             onChange={(nextSequence) => {
-              void saveProgramAudioBusSongSequence(nextSequence);
+              // A refused save is shown on screen and the stored rotation is loaded again.
+              void saveProgramAudioBusSongSequence(nextSequence).catch(() => {});
             }}
             onTakeSelection={async (nextSequence) => {
               await takeProgramSongSelection(nextSequence);
@@ -3586,13 +3643,16 @@ export default function Control() {
       )}
       <PlaylistSheetPanel
         isOpen={isPlaylistSheetOpen}
+        notice={rotationLoadFailed ? <RotationLoadNotice onRetry={() => void fetchProgramAudioBusSettings(activeProgramId)} /> : null}
         onClose={() => setIsPlaylistSheetOpen(false)}
         sequence={programAudioBusSongSequence}
         songCatalog={songCatalog}
         programSongPlayback={programSongPlaybackState}
         isSaving={isSavingProgramAudioBus}
+        error={songSequenceSaveError}
         onChange={(nextSequence) => {
-          void saveProgramAudioBusSongSequence(nextSequence);
+          // A refused save is shown on screen and the stored rotation is loaded again.
+              void saveProgramAudioBusSongSequence(nextSequence).catch(() => {});
         }}
         /* v8 ignore start -- the sheet renders its editor in catalog view, where the take-on-air buttons are not rendered, so this callback cannot be invoked from the sheet */
         onTakeSelection={async (nextSequence) => {

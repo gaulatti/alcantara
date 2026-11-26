@@ -8,6 +8,7 @@ import { apiUrl, getApiBaseUrl } from '../utils/apiBaseUrl';
 import { useGlobalProgramId } from '../utils/globalProgram';
 import { hasProgramCapability, resolveProgramOutputUrl, type ProgramTemplateManifest } from '../utils/programTemplate';
 import { AppPage } from '../components/AppPage';
+import { RenameFillerNotice } from '../components/RenameFillerNotice';
 
 interface SceneSummary {
   id: number;
@@ -90,6 +91,8 @@ async function showSaveRefusal(response: Response): Promise<ShowSaveRefused> {
 
 /** The server's refusal of a rename onto an ID a deleted show's settings still hold (gaulatti/alcantara#122). */
 const HELD_SHOW_ID_MESSAGE = "That ID belongs to a deleted show's settings. Choose another ID.";
+/** The server's refusal of a rename while the show's filler is on air. */
+const FILLER_ON_AIR_MESSAGE = 'Its filler is on air. Stop it before renaming.';
 
 /**
  * What the create or edit dialog says when saving fails. It used to say "Ensure the ID is unique" for every failure,
@@ -99,9 +102,12 @@ function showSaveErrorMessage(error: unknown, showSaved: boolean): string {
   if (showSaved)
     return 'The show was saved, but its scenes or stingers were not updated. Edit it to try again.';
   if (error instanceof ShowSaveRefused) {
-    // An ID a deleted show's settings still hold is not a show the operator can see: say what the server said.
+    // A show on air, and an ID a deleted show's settings still hold, are not 'a show with this ID': say what the
+    // server said.
     if (error.status === 409)
-      return error.reason === HELD_SHOW_ID_MESSAGE
+      return error.reason === HELD_SHOW_ID_MESSAGE ||
+        error.reason === FILLER_ON_AIR_MESSAGE ||
+        error.reason?.startsWith('This show is on air')
         ? error.reason
         : 'A show with this ID already exists. Choose another ID.';
     if (error.status === 400 && error.reason)
@@ -558,7 +564,13 @@ export default function ProgramsAdmin() {
 
                       </div>
                       <div className='flex items-start gap-2'>
-                        <Button size='sm' variant={isSelected ? 'secondary' : 'ghost'} onClick={() => setSelectedProgramId(program.programId)} className='px-3'>
+                        <Button
+                          size='sm'
+                          variant={isSelected ? 'secondary' : 'ghost'}
+                          onClick={() => setSelectedProgramId(program.programId)}
+                          className='px-3'
+                          aria-label={`Select ${program.programId}`}
+                        >
                           Select
                         </Button>
                         <IconButton
@@ -615,8 +627,9 @@ export default function ProgramsAdmin() {
         <Modal isOpen={showModal} onClose={closeModal} title={editingProgramId ? 'Edit show' : 'Create show'} className='mt-[8vh] mb-auto'>
           <div className='space-y-5'>
             <div>
-              <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Program ID</label>
+              <label htmlFor='show-id' className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Show ID</label>
               <Input
+                id='show-id'
                 value={programIdInput}
                 onChange={(e) => {
                   setProgramIdInput(e.target.value);
@@ -624,15 +637,17 @@ export default function ProgramsAdmin() {
                     setError('');
                   }
                 }}
-                placeholder='main'
+                // Not "main": an example, not a value, and never the name of an existing show (the rundown-building walk).
+                placeholder='morning-show'
                 error={!!error}
                 autoFocus
               />
+              {editingProgramId ? <RenameFillerNotice programId={editingProgramId} nextProgramId={programIdInput} /> : null}
             </div>
 
             <div>
-              <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Program Type</label>
-              <div className='flex gap-2'>
+              <p id='show-type-label' className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Show type</p>
+              <div role='group' aria-labelledby='show-type-label' className='flex gap-2'>
                 {(['tv', 'radio', 'both'] as const).map((type) => (
                   <TooltipButton
                     key={type}
@@ -658,9 +673,10 @@ export default function ProgramsAdmin() {
             </div>
 
             {selectedType !== 'radio' ? <div>
-              <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Template URL</label>
+              <label htmlFor='show-template-url' className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Template URL</label>
               <div className='flex items-start gap-2'>
                 <Input
+                  id='show-template-url'
                   type='url'
                   value={templateUrlInput}
                   onChange={(event) => {

@@ -436,3 +436,12 @@ it("creates the radio settings on the first save, and drops the notice once they
   });
   expect(screen.queryByText("Radio isn't set up yet")).toBeNull();
 });
+
+it("confirms a saved radio settings on the form, beside the Save button", async () => {
+  serve();
+  render(<RadioSettingsRoute />);
+  await screen.findByDisplayValue("http://palazzo:3100");
+  expect(screen.queryByText("Radio settings saved.")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /Save radio settings/ }));
+  expect(await screen.findByText("Radio settings saved.")).toBeVisible();
+});

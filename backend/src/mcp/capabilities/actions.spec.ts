@@ -51,6 +51,8 @@ interface Row {
   service: (f: Fakes) => jest.Mock;
   /** The capability's answer from the console's (default: the same, text isolated). */
   expected?: (rest: any, args: Args) => unknown;
+  /** The service arguments the capability must use, when they differ from the console's by design. */
+  called?: (restCall: unknown[]) => unknown[];
   /** The confirm name the capability asks for (A and D). */
   confirm?: [string, string];
 }
@@ -345,8 +347,11 @@ const ROWS: Row[] = [
         ...(a.mixer_settings ? { mixerSettings: a.mixer_settings } : {}),
       }),
     service: (f) => f.programs.updateProgramAudioBus,
+    // The same save, marked as MCP's, which is held to the rotation version at once.
+    called: ([data, program]) => [data, program, 'mcp'],
     expected: (rest, a) => ({
       program_id: a.program_id,
+      sequence_version: rest.sequenceVersion,
       mixerSettings: rest.mixerSettings,
       version: rest.version,
     }),
@@ -723,6 +728,19 @@ describe('write, on-air and destructive capabilities', () => {
     expect(f.programs.renameProgram).not.toHaveBeenCalled();
   });
 
+  it('says up front that a rename leaves a prepared filler to be prepared again (#122)', async () => {
+    const { f, specs } = build();
+    const plan = async () =>
+      (await specNamed(specs, 'program_rename_program').dryRun!(
+        { program_id: 'main', next_program_id: 'x' },
+        ctx,
+      )) as { summary: string };
+    const sentence = 'Its filler will need preparing again.';
+    expect((await plan()).summary).not.toContain(sentence);
+    f.programs.hasPreparedFiller.mockResolvedValue(true);
+    expect((await plan()).summary).toContain(sentence);
+  });
+
   it("reports the console's own refusals as MCP codes", async () => {
     const { f, specs } = build();
     f.programs.addSceneToProgram.mockRejectedValue(
@@ -804,7 +822,9 @@ describe('write, on-air and destructive capabilities', () => {
       service.mockClear();
 
       const outcome = await spec.run(one.args, ctx);
-      expect(service.mock.calls).toEqual([restCall]);
+      expect(service.mock.calls).toEqual([
+        row.called ? row.called(restCall) : restCall,
+      ]);
       const wanted = row.expected
         ? asRest(row.expected(restBody, one.args))
         : asRest(restBody);

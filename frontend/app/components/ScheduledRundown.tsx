@@ -32,6 +32,7 @@ import {
   type LibraryEntry,
 } from "../utils/rundownBuilder";
 import { rundownTiming } from "../utils/rundownTiming";
+import { fixedStartClock, parseFixedStart } from "../utils/fixedStart";
 import "./Rundown.css";
 import { RadioLogGenerator } from "../components/RadioLogGenerator";
 import { VoiceTrackRecorder } from "../components/VoiceTrackRecorder";
@@ -104,6 +105,12 @@ export default function ScheduledRundown({
     "event",
   );
   const [selectedCueId, setSelectedCueId] = useState<string | null>(null);
+  // What the operator is typing into an event's fixed start, until it is read (D3).
+  const [fixedStartDraft, setFixedStartDraft] = useState<{
+    cueId: string;
+    text: string;
+    error: string | null;
+  } | null>(null);
   const [creating, setCreating] = useState(false);
   const inspectorRef = useRef<HTMLElement>(null);
   const [recordIndex, setRecordIndex] = useState<number | null>(null);
@@ -378,6 +385,27 @@ export default function ScheduledRundown({
   };
   const editIndex = items.findIndex((cue) => cue.id === selectedCueId);
   const editCue = items[editIndex];
+  const fixedDraft =
+    editCue && fixedStartDraft?.cueId === editCue.id ? fixedStartDraft : null;
+  const nextScheduledAt = selected
+    ? (scheduledLogs.find(
+        (log) => Date.parse(log.scheduledAt!) > Date.parse(selected.scheduledAt!),
+      )?.scheduledAt ?? null)
+    : null;
+  const commitFixedStart = (cueId: string, text: string) => {
+    if (!text.trim()) {
+      setFixedStartDraft(null);
+      updateItem(editIndex, { clockOffsetSeconds: undefined });
+      return;
+    }
+    const result = parseFixedStart(text, selected!.scheduledAt!, nextScheduledAt);
+    if (!result.ok) {
+      setFixedStartDraft({ cueId, text, error: result.message });
+      return;
+    }
+    setFixedStartDraft(null);
+    updateItem(editIndex, { clockOffsetSeconds: result.seconds });
+  };
   const editLocked = editIndex <= activeIndex;
   const editable =
     !!selected && (!selected.lastStartedAt || selected.isRunning);
@@ -779,24 +807,41 @@ export default function ScheduledRundown({
                     </>
                   )}
                   <label>
-                    Fixed start (seconds into block)
+                    Fixed start (clock time, +mm:ss or seconds)
                     <Input
                       aria-label="Fixed start"
-                      type="number"
-                      min="0"
-                      value={editCue.clockOffsetSeconds ?? ""}
+                      type="text"
+                      value={
+                        fixedDraft?.text ??
+                        (editCue.clockOffsetSeconds === undefined
+                          ? ""
+                          : formatClock(editCue.clockOffsetSeconds))
+                      }
+                      aria-invalid={fixedDraft?.error ? true : undefined}
                       disabled={editLocked || editIndex === 0 || busy}
                       placeholder="Follow previous event"
                       onChange={(event) =>
-                        updateItem(editIndex, {
-                          clockOffsetSeconds:
-                            event.target.value === ""
-                              ? undefined
-                              : Number(event.target.value),
+                        setFixedStartDraft({
+                          cueId: editCue.id,
+                          text: event.target.value,
+                          error: null,
                         })
                       }
+                      onBlur={(event) => {
+                        if (fixedDraft)
+                          commitFixedStart(editCue.id, event.currentTarget.value);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && fixedDraft)
+                          commitFixedStart(editCue.id, event.currentTarget.value);
+                      }}
                     />
                   </label>
+                  {fixedDraft?.error && (
+                    <p className="rundown-inspector-note" role="alert">
+                      {fixedDraft.error}
+                    </p>
+                  )}
                   {editIndex > 0 && (
                     <Button
                       size="xs"
@@ -821,7 +866,7 @@ export default function ScheduledRundown({
                   <p className="rundown-inspector-note">
                     {editCue.clockOffsetSeconds === undefined
                       ? "Follows the previous event. The start in the log is estimated from catalog duration."
-                      : `${formatClock(editCue.clockOffsetSeconds)} · Starts on time and cuts the preceding filler.`}
+                      : `${fixedStartClock(selected!.scheduledAt!, editCue.clockOffsetSeconds)} · ${formatClock(editCue.clockOffsetSeconds)} · Starts on time and cuts the preceding filler.`}
                   </p>
                   {editCue.voiceTrackInstantId && (
                     <p className="rundown-inspector-note">
@@ -882,7 +927,7 @@ export default function ScheduledRundown({
         <label className="block text-sm">
           Scheduled start
           <Input
-            aria-label="New block"
+            aria-label="Scheduled start"
             type="datetime-local"
             step="60"
             value={startTime}
@@ -891,7 +936,7 @@ export default function ScheduledRundown({
         </label>
         <p className="my-3 text-xs text-text-secondary">
           Choose any start minute. The block goes on air after publishing and
-          returns to continuous fillers when its events finish.
+          returns to what was playing before when its events finish.
         </p>
         <Button disabled={busy} onClick={() => void create()}>
           Create timed block

@@ -162,6 +162,7 @@ describe('ProgramController delegation', () => {
     expect(program.updateProgramAudioBus).toHaveBeenCalledWith(
       { songSequence: [] },
       'p',
+      'console',
     );
   });
 

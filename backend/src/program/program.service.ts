@@ -22,6 +22,7 @@ import {
 } from '../operator-change/operator-change-recorder';
 import { INSTANT_CHANGE_FIELDS } from '../operator-change/library-change-fields';
 import { PrismaService } from '../prisma.service';
+import { ProgramTeamAccess } from '../tenancy/program-team-access';
 import { PlayoutSongScope } from '../radio/playout-song-scope';
 import { forTeam } from '../tenancy/scoped-prisma';
 import {
@@ -50,10 +51,15 @@ import {
 } from '../radio/song-queue.utils';
 import {
   collectHighRotationProgramSongLeaves,
+  collectProgramSongLeaves,
   countProgramSongLeavesBySong,
   normalizeProgramSongSequence,
   type ProgramSongSequence,
 } from '../radio/song-sequence.utils';
+import {
+  programSongSequenceVersion,
+  ROTATION_CHANGED_MESSAGE,
+} from '../radio/song-sequence-version';
 import { MAX_HIGH_ROTATION_SONGS } from '../radio/song-rotation.utils';
 import {
   projectProgramTemplateSignal,
@@ -165,8 +171,25 @@ export function startsSongPlayback(
 }
 
 /** The refusal of a rename onto the id a deleted program's settings still hold (gaulatti/alcantara#122). */
+export const FILLER_ON_AIR_MESSAGE =
+  'Its filler is on air. Stop it before renaming.';
+
 export const LEFTOVER_PROGRAM_ID_MESSAGE =
   "That ID belongs to a deleted show's settings. Choose another ID.";
+
+/** How the refusal to rename a program that is on air begins; the Shows dialog shows such a refusal as it is. */
+export const ON_AIR_RENAME_MESSAGE_START = 'This show is on air';
+
+/** How often a checked save is read and checked again when the row changes under it. */
+const AUDIO_BUS_SAVE_ATTEMPTS = 3;
+
+export interface ProgramAudioBusSaved {
+  songSequence: unknown;
+  sequenceVersion: string;
+  songQueue: ReturnType<typeof normalizeProgramSongQueue>;
+  mixerSettings: ProgramAudioMixerSettings;
+  version: number;
+}
 
 @Injectable()
 export class ProgramService implements OnModuleInit, OnModuleDestroy {
@@ -244,6 +267,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly recorder?: OperatorChangeRecorder,
     @Optional() private readonly songScope?: PlayoutSongScope,
     @Optional() private readonly sceneAssets?: SceneAssetScope,
+    @Optional() private readonly programTeams?: ProgramTeamAccess,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -1540,7 +1564,76 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         },
       }),
     ]);
+    this.programTeams?.invalidate(normalized);
     return this.getProgramStateWithScenes(normalized);
+  }
+
+  /** Whether a rename would leave the program's filler needing preparation again (gaulatti/alcantara#122). */
+  async hasPreparedFiller(programId: string): Promise<boolean> {
+    const legs = await this.prisma.fillerLeg.count({
+      where: {
+        programId: this.normalizeProgramId(programId),
+        OR: [
+          { pendingVersionId: { not: null } },
+          { activeVersionId: { not: null } },
+        ],
+      },
+    });
+    return legs > 0;
+  }
+
+  /**
+   * A rename takes the program's filler with it, so it is refused while that filler is on air: a session holds a
+   * version (until its Stop), or Palazzo reports recovery automation running.
+   */
+  private async refuseRenameWhileFillerAirs(programId: string): Promise<void> {
+    const held = await this.prisma.fillerLeg.count({
+      where: { programId, activeVersionId: { not: null } },
+    });
+    if (held || (await this.radioService.isRecoveryRunning(programId)))
+      throw new ConflictException(FILLER_ON_AIR_MESSAGE);
+  }
+
+  /**
+   * A rename moves the program's engines and outputs to another id, so a program that is on air is not renamed: it
+   * would go silent, or lose its output.
+   */
+  private async refuseRenameOnAir(
+    programId: string,
+    state: {
+      activeSceneId: number | null;
+      fadeToBlack: boolean;
+      activeFlightSequenceId: number | null;
+    },
+  ): Promise<void> {
+    // A selected log that is not running airs nothing.
+    const log =
+      state.activeFlightSequenceId == null
+        ? null
+        : await this.prisma.flightSequence.findUnique({
+            where: { id: state.activeFlightSequenceId },
+            select: { isRunning: true },
+          });
+    const reasons = [
+      [state.activeSceneId != null, 'a scene is on air'],
+      [!!state.fadeToBlack, 'fade to black is on'],
+      [!!log?.isRunning, 'a log is running'],
+      [
+        !!this.programSongPlaybackByProgramId.get(programId)?.isPlaying ||
+          !!this.songExecutionEngine.getOnAirView(programId).playbackRequestId,
+        'a song is playing',
+      ],
+      [
+        !!this.programSceneInstantPlaybackByProgramId.get(programId)?.isPlaying,
+        'a scene instant is playing',
+      ],
+    ]
+      .filter(([holds]) => holds)
+      .map(([, reason]) => reason as string);
+    if (reasons.length === 0) return;
+    throw new ConflictException(
+      `${ON_AIR_RENAME_MESSAGE_START} (${reasons.join('; ')}). Take it off air before renaming it.`,
+    );
   }
 
   private requireRecorder(): OperatorChangeRecorder {
@@ -1570,13 +1663,19 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
 
     const existingSource = await this.prisma.programState.findUnique({
       where: { programId: current },
-      select: { id: true, type: true },
+      select: {
+        id: true,
+        type: true,
+        activeSceneId: true,
+        fadeToBlack: true,
+        activeFlightSequenceId: true,
+      },
     });
     if (!existingSource) {
       throw new Error('Program not found');
     }
-
     if (current !== next) {
+      await this.refuseRenameWhileFillerAirs(current);
       const existingTarget = await this.prisma.programState.findUnique({
         where: { programId: next },
         select: { id: true },
@@ -1590,7 +1689,16 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         where: { programId: next },
         select: { programId: true },
       });
-      if (leftover) {
+      const leftoverFiller = await this.prisma.fillerLeg.findFirst({
+        where: { programId: next },
+        select: { programId: true },
+      });
+      // A version can be left with no leg, and would otherwise be listed as the renamed program's own.
+      const leftoverVersion = await this.prisma.fillerVersion.findFirst({
+        where: { programId: next },
+        select: { id: true },
+      });
+      if (leftover || leftoverFiller || leftoverVersion) {
         throw new ConflictException(LEFTOVER_PROGRAM_ID_MESSAGE);
       }
     }
@@ -1615,23 +1723,66 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       Object.assign(updateData, this.programTemplateUpdateData(template));
     }
 
-    const updateState = this.prisma.programState.update({
-      where: { id: existingSource.id },
-      data: updateData,
-    });
+    // The on-air check is the last thing before the write, and the write itself matches the row only while it is
+    // still off air, so a scene or a log that starts in between rolls the rename back. A song playing is known only
+    // in memory: one that starts between this check and the commit is stopped by the engine's move to the new id.
+    if (current !== next) await this.refuseRenameOnAir(current, existingSource);
+    const updateState = () =>
+      this.prisma.programState.update({
+        where:
+          current === next
+            ? { id: existingSource.id }
+            : {
+                id: existingSource.id,
+                activeSceneId: null,
+                fadeToBlack: false,
+                activeFlightSequenceId: existingSource.activeFlightSequenceId,
+                flightSequences: {
+                  none: {
+                    id: existingSource.activeFlightSequenceId ?? 0,
+                    isRunning: true,
+                  },
+                },
+              },
+        data: updateData,
+      });
     if (current === next) {
-      await updateState;
+      await updateState();
     } else {
       // gaulatti/alcantara#122: the Program row carries the program's team and branding, so it is renamed with the
       // program, or the renamed program would belong to no team.
-      await this.prisma.$transaction([
-        this.prisma.program.updateMany({
-          where: { programId: current },
-          data: { programId: next },
-        }),
-        updateState,
-      ]);
+      // Its filler moves with it, marked as not prepared: Alana and Palazzo hold a prepared version under the old
+      // id, so a Start binding it under the new one would be refused. With no pointer, Start behaves as it does
+      // with no filler, and the desk says it needs preparing again.
+      try {
+        await this.prisma.$transaction([
+          this.prisma.program.updateMany({
+            where: { programId: current },
+            data: { programId: next },
+          }),
+          this.prisma.fillerVersion.updateMany({
+            where: { programId: current },
+            data: { programId: next },
+          }),
+          this.prisma.fillerLeg.updateMany({
+            where: { programId: current },
+            data: {
+              programId: next,
+              pendingVersionId: null,
+              activeVersionId: null,
+            },
+          }),
+          updateState(),
+        ]);
+      } catch (error) {
+        if ((error as { code?: string }).code !== 'P2025') throw error;
+        throw new ConflictException(
+          `${ON_AIR_RENAME_MESSAGE_START} (it changed while it was being renamed). Take it off air before renaming it.`,
+        );
+      }
     }
+    this.programTeams?.invalidate(current);
+    this.programTeams?.invalidate(next);
     await recorder.record({
       actor,
       target: 'program',
@@ -1683,6 +1834,9 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       });
       this.programSceneInstantPlaybackByProgramId.delete(current);
     }
+    // The radio engine and Palazzo telemetry take up the new id; without this the renamed show has no engine until
+    // its radio is switched off and on.
+    await this.songExecutionEngine.renameProgram(current, next);
     return this.getProgramStateWithScenes(next);
   }
 
@@ -1700,6 +1854,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.programState.delete({
       where: { id: existing.id },
     });
+    this.programTeams?.invalidate(normalized);
 
     const subject = this.eventSubjects.get(normalized);
     if (subject) {
@@ -1819,6 +1974,36 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /**
+   * An operator's save replaces the whole stored rotation, so it must be made from the rotation now stored. A desk
+   * whose load failed holds an empty one, which would otherwise be written over the real rotation.
+   */
+  private checkSongSequenceSave(
+    data: { songSequence?: unknown; sequenceVersion?: unknown },
+    stored: unknown,
+    client: 'console' | 'mcp',
+  ): 'versioned' | 'unversioned' {
+    const sent = data.sequenceVersion;
+    const refuse = (result: 'missing' | 'stale' | 'emptying'): never => {
+      this.metrics?.recordSongSequenceSave(`refused_${result}`);
+      throw new ConflictException(ROTATION_CHANGED_MESSAGE);
+    };
+    if (sent === undefined) {
+      // MCP callers read the tool's description each time, so they are held to the version at once.
+      if (client === 'mcp') return refuse('missing');
+      // A console or pilot built before the version sends none. It still saves, except to empty a rotation, or
+      // leave it one song, which is what a desk that never loaded it does.
+      const count = (value: unknown) =>
+        collectProgramSongLeaves(normalizeProgramSongSequence(value)).length;
+      if (count(stored) > 2 && count(data.songSequence) < 2)
+        return refuse('emptying');
+      return 'unversioned';
+    }
+    if (typeof sent !== 'string') return refuse('missing');
+    if (sent !== programSongSequenceVersion(stored)) return refuse('stale');
+    return 'versioned';
+  }
+
   async getProgramAudioBus(
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
   ) {
@@ -1837,6 +2022,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
 
     return {
       songSequence: state.songSequence ?? null,
+      sequenceVersion: programSongSequenceVersion(state.songSequence),
       songQueue: normalizeProgramSongQueue(state.songQueue),
       mixerSettings,
       version: this.getProgramTopicVersion(normalizedProgramId, 'audioBus'),
@@ -1883,7 +2069,10 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       | null
       | undefined,
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
-  ) {
+    // Given for a save by an operator, who must have made it from the stored rotation. Automation gives none.
+    client?: 'console' | 'mcp',
+    attempt = 1,
+  ): Promise<ProgramAudioBusSaved> {
     const normalizedProgramId = this.normalizeProgramId(programId);
     if (
       data !== null &&
@@ -1900,6 +2089,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         songQueue: true,
         audioMixer: true,
         type: true,
+        updatedAt: true,
       },
     });
     if (!currentState) {
@@ -1919,11 +2109,21 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     if (!hasSongSequenceUpdate && !hasMixerSettingsUpdate) {
       return {
         songSequence: currentState.songSequence ?? null,
+        sequenceVersion: programSongSequenceVersion(currentState.songSequence),
         songQueue: normalizeProgramSongQueue(currentState.songQueue),
         mixerSettings: currentMixerSettings,
         version: this.getProgramTopicVersion(normalizedProgramId, 'audioBus'),
       };
     }
+
+    const save =
+      client && hasSongSequenceUpdate
+        ? this.checkSongSequenceSave(
+            data as { songSequence?: unknown; sequenceVersion?: unknown },
+            currentState.songSequence,
+            client,
+          )
+        : null;
 
     const nextSongSequence = hasSongSequenceUpdate
       ? ((data as { songSequence?: unknown }).songSequence ?? null)
@@ -1968,8 +2168,13 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         )
       : currentMixerSettings;
 
-    const updatedState = await this.prisma.programState.update({
-      where: { programId: normalizedProgramId },
+    // A checked save writes only the row it was checked against. When the row changed in between (the engine moving
+    // the cursor, or another save) it is read and checked again.
+    const write = this.prisma.programState.update({
+      where: {
+        programId: normalizedProgramId,
+        ...(save ? { updatedAt: currentState.updatedAt } : {}),
+      },
       data: {
         // A mixer-only change must not write the song sequence back. It was
         // read a moment earlier, so writing it could undo a song that ended in
@@ -1984,9 +2189,22 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       },
       select: { songSequence: true, songQueue: true, audioMixer: true },
     });
+    let updatedState: Awaited<typeof write>;
+    try {
+      updatedState = await write;
+    } catch (error) {
+      if (!save || (error as { code?: string }).code !== 'P2025') throw error;
+      if (attempt >= AUDIO_BUS_SAVE_ATTEMPTS) {
+        this.metrics?.recordSongSequenceSave('refused_stale');
+        throw new ConflictException(ROTATION_CHANGED_MESSAGE);
+      }
+      return this.updateProgramAudioBus(data, programId, client, attempt + 1);
+    }
+    if (save) this.metrics?.recordSongSequenceSave(save);
 
     const nextSettings = {
       songSequence: updatedState.songSequence ?? null,
+      sequenceVersion: programSongSequenceVersion(updatedState.songSequence),
       songQueue: normalizeProgramSongQueue(updatedState.songQueue),
       mixerSettings: this.withResolvedProgramAudioMixerSettings(
         updatedState.audioMixer,
@@ -2069,6 +2287,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       programId: normalizedProgramId,
       settings: {
         songSequence: outcome.songSequence,
+        sequenceVersion: programSongSequenceVersion(outcome.songSequence),
         songQueue: outcome.songQueue,
         mixerSettings: this.withResolvedProgramAudioMixerSettings(
           state?.audioMixer,
@@ -3462,14 +3681,16 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  stopProgramSongForTimedBlock(programId: string) {
-    return this.stopProgramSong(programId, true);
+  /** `fixed_start`: the stop cuts the song for a fixed start, and its as-run end says so (the airing walk). */
+  stopProgramSongForTimedBlock(programId: string, cut?: 'fixed_start') {
+    return this.stopProgramSong(programId, true, false, cut);
   }
 
   private async stopProgramSong(
     programId: string,
     preserveRotation: boolean,
     flightDriven = false,
+    cut?: 'fixed_start',
   ) {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const updatedAt = new Date().toISOString();
@@ -3508,6 +3729,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         programId: normalizedProgramId,
         settings: {
           songSequence: updatedSequence,
+          sequenceVersion: programSongSequenceVersion(updatedSequence),
           mixerSettings: currentMixerSettings,
         },
         updatedAt,
@@ -3560,6 +3782,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     if (preserveRotation)
       this.songExecutionEngine.handleStopSong(normalizedProgramId, {
         keepSequence: true,
+        ...(cut ? { endReason: cut } : {}),
       });
     else if (flightDriven)
       this.songExecutionEngine.handleStopSong(normalizedProgramId, {
@@ -4058,8 +4281,13 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
           type: 'song_queue_update',
           programId: normalizedProgramId,
           songQueue: event.songQueue,
+          // The engine writes the stored mode as well as the cursor (a Stop leaves it manual), so the sequence it
+          // sends carries its version, or the console's next save would be refused as stale.
           ...(event.songSequence !== undefined
-            ? { songSequence: event.songSequence }
+            ? {
+                songSequence: event.songSequence,
+                sequenceVersion: programSongSequenceVersion(event.songSequence),
+              }
             : {}),
         });
         break;

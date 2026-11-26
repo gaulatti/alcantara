@@ -14,7 +14,7 @@ Build from tags previews concrete enabled catalog songs for a timed block, with 
 
 ## Scheduled rundowns
 
-Radio and Simulcast shows use **Rundown** at `/flight`. An operator creates a future local start time, drags catalog songs, audio clips, or a stop cue from the library onto the timeline, and optionally fixes a start by dragging its pin on the ruler (5 s steps) or typing the seconds from the scheduled time (see [operator-interface.md](operator-interface.md#scheduled-rundown-workspace)). The first item starts at zero. Unfixed items follow the previous song's confirmed Palazzo end event. A fixed start cuts to that item at its clock position. Logs cannot loop.
+Radio and Simulcast shows use **Rundown** at `/flight`. An operator creates a future local start time, drags catalog songs, audio clips, or a stop cue from the library onto the timeline, and optionally fixes a start by dragging its pin on the ruler (5 s steps) or typing a clock time, a +mm:ss offset or seconds from the scheduled time (see [operator-interface.md](operator-interface.md#scheduled-rundown-workspace)). The first item starts at zero. Unfixed items follow the previous song's confirmed Palazzo end event. A fixed start cuts to that item at its clock position. Logs cannot loop. The save path the console and MCP share also enforces the desk's fixed-start window (#788): when the cues or the start are written, a fixed start 6 hours or more after the block start, or at or after the next scheduled block of the show, is refused with 400 (`A fixed start at +20:00 is after the next block starts at <UTC time>.`, `… is more than 6 hours after this block starts at <UTC time>.`). A block saved before the rule still loads and can be renamed.
 
 Save keeps the log a draft. **Check** validates cue shape and referenced enabled audio. **Publish** repeats validation and marks the block for automatic start. The backend claims a published block once when its time arrives; a failed start is visible through the `radio_log_start_failed` event and is not retried automatically after an ambiguous failure. The planner and Radio desk show the current and next items. On-air and already played items are locked; stopped/previously aired logs cannot be rewritten, and published blocks cannot be rescheduled. Future items can be changed with an optimistic revision check. Cue execution and edits are serialized per program, and fixed-time timers are rebound to cue IDs after an edit. A log cannot be published for a past start time. Scheduled logs require the backend process to be running when the block begins. If the process is down beyond five seconds after the block, the log is not started late.
 
@@ -72,7 +72,9 @@ runs dry, the silent song comes off air first: hold Stop, then **Start with fall
 prepared (**Go to recovery** opens Recovery & session), or **Prepare a recovery playlist** when none is. When one
 is already bound, it plays once the queue runs dry. While the recovery status is unknown or the engine is
 unavailable, the alarm says to take the silent song off air and check the engine, and claims nothing about a
-playlist. The `state=radio-dead-air` fixture shows this state.
+playlist. When the desk itself silenced the song, the alarm says so first: with the Music channel muted it reads
+"Music is muted on this desk" with **Unmute music**, and with the Music or Output fader at zero it names the fader to
+raise, never "hold Stop", which would leave the silence on air. The `state=radio-dead-air` fixture shows this state.
 
 **Engine audio detected** measures Palazzo's post-master mix before Icecast.
 **Listen** returns Icecast audio through Palazzo and Alcántara's
@@ -115,6 +117,7 @@ A timed-block cue that fails while the automation engine is unavailable (the son
 
 - When the engine is back within 60 seconds (`ENGINE_OUTAGE_GRACE_MS`) of the cue's due time, the cue is retried once. When it then plays, `cue-retried` is counted and the block goes on as usual. A fixed-time cue's due time is its clock time; a cue without one counts from when it first failed.
 - Past the grace, the cue is skipped and `cue-skipped` is counted. A skipped song writes a `not-aired` as-run row with end reason `engine_unavailable` (#715) that names its rundown and cue, so the on-air rundown shows it as **SKIPPED** (#726). The desk shows "A timed cue was skipped", and the block runs the next cue.
+- A fixed start that arrives while earlier cues have not played jumps over them: the fixed cue starts on time, each cue passed over counts `cue-skipped` and is broadcast as skipped, and each song among them writes a `not-aired` as-run row with end reason `fixed_start` naming its rundown and cue, so the rundown shows it as **SKIPPED** ("not aired, cut by a fixed start") instead of played. Not-aired rows are never counted as performances. The song the fixed start cuts ends with end reason `fixed_start` rather than `stopped`; it aired until then, so it still counts as a performance.
 - A retry that fails again stays held until the same deadline. A cue failure while the engine is up still stops the block (`cue-failed`), as before.
 
 
@@ -133,6 +136,27 @@ No database migration or automatic rewriting of saved data is needed. Existing r
 An explicit operator Stop takes audio off air and sets the base rotation to Manual, preventing an idle telemetry snapshot from starting it again. This holds for every Stop path, including `POST /radio/:programId/song/stop`: the song engine itself turns an Autoplay or Shuffle rotation Manual and persists it, cued past the stopped song, so neither idle snapshots nor a backend restart start playback. Playback resumes only when the operator acts: Play (the rotation set back to Autoplay or Shuffle) or a manual pick. Only operator stops halt: a stop the flight itself drives (a manual flight ending, a failed timed cue, a failed rotation resume, a rundown Stop song cue) keeps the rotation's mode and cues it past the stopped song, so it neither halts nor replays. Internal timed-block cuts preserve the rotation and cursor.
 
 On backend restart, scheduled blocks whose in-memory timers were lost are marked interrupted (`isRunning:false`) without resetting `lastStartedAt` or rewriting the rotation. They are not replayed automatically. The continuous engine retains its normal authoritative Palazzo snapshot reconciliation before sending a new selection. The bounded `interrupted` metric counts startup batches containing such blocks.
+
+## Saving the rotation
+
+`PUT /program/:programId/audio-bus` with a `songSequence` replaces the whole stored rotation, so a save names the
+rotation it was made from. `GET /program/:programId/audio-bus`, the save's answer and the `audio_bus_update` and
+snapshot messages carry `sequenceVersion`: a hash of the playlist and mode. The cursor is left out, so a song ending
+does not change it. The engine also stores the mode: a Stop in autoplay or shuffle leaves it manual, which is a new
+version, sent with the queue update that carries the stopped sequence. The save sends it back as `sequenceVersion`.
+
+| The save sends | Console HTTP | MCP |
+| --- | --- | --- |
+| the current version | written | written |
+| another version, or `null` (its load failed) | 409 | 409 |
+| no version | written, unless it would cut 3 or more songs to 1 or none: 409 | 409 |
+
+The refusal is "The rotation changed or didn't load: reload before saving". Over MCP, `get_queue` gives
+`sequence_version`. A save of the mixer alone, scheduled rundown automation, leaf removal and Play Next need none.
+
+`alcantara_song_sequence_saves_total{result}` counts operator saves: `versioned`, `unversioned`, `refused_missing`,
+`refused_stale` and `refused_emptying`. The console accepts a save with no version only because the installed pilot
+sends none; once the pilot is re-synced and `unversioned` stays flat, those saves will be refused too.
 
 ## As-run log and royalty export
 
@@ -308,6 +332,29 @@ subscribers only.
   `replaced`. The
   two filtered exports add up to the default one. The `inferred` parameter is
   rejected with `format=csv`.
+
+## Play Next claims and playback IDs
+
+The engine claims the Play Next head before commanding it: the entry is saved as active with a newly minted
+playback ID, and that ID is the one sent to Palazzo. Palazzo's playout journal never replays a playback ID; a
+command that repeats one is answered `duplicate: true` and airs nothing. So:
+
+- **An ID is sent once per process.** The engine remembers the playback IDs it sent (the last 128). A claimed head
+  under one of them (a Play Next song that aired and was cut, or a re-send that aired nothing) is dropped from the
+  queue and counted as `stale-claim-dropped`, and the next queued entry plays, else an automatic rotation continues,
+  else the desk stops. It is never sent again, so the watchdog cannot loop on it.
+- **A claim saved before a restart is sent once.** Its command may have been lost in the restart, so the restarted
+  engine sends it, as before: it airs exactly once. If it had already aired, Palazzo answers `duplicate: true` and
+  nothing plays; the watchdog then finds the ID already sent and drops the entry. A `duplicate: true` answer alone
+  is not a failure: the client retries a song command under the same key, so it can also mean the first attempt was
+  accepted and is airing.
+- **Take now and Stop give the claim back.** A Take now that replaces a Play Next song on air releases its claim
+  (`preempted`), as Stop and a failed command already did; the entry stays at the head and airs again after the
+  taken song, under a new playback ID.
+- **A song that ends normally is consumed** as before.
+
+Walk part 4 (2026-11-26) found the gap: after a Take now over a Play Next song, the engine re-sent the claim's ID at
+the next end, Palazzo aired nothing while the desk said On air with Dead air, and every watchdog resume re-sent it.
 
 ## Gapless handoff: announcing the next song
 

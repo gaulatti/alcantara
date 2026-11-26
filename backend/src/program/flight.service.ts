@@ -32,6 +32,7 @@ import {
 } from '../radio/radio-metrics.service';
 import { generateRadioLog, parseRadioLogRules } from './radio-log-generator';
 import { fillRadioRundown, parseFillerRules } from './radio-rundown-filler';
+import { fixedStartWindowRefusal } from './fixed-start-window';
 import type {
   FlightCue,
   FlightCueKind,
@@ -609,6 +610,31 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     return parsed;
   }
 
+  /**
+   * #788 (MCP parity, item 4): the desk's fixed-start window (D3), enforced on the save path the console and MCP
+   * share: within FIXED_START_MAX_HOURS of the block start and before the next scheduled block of the program.
+   */
+  private async refuseOutsideFixedStartWindow(
+    programStateId: number,
+    sequenceId: number | null,
+    scheduledAt: Date,
+    items: FlightCue[],
+  ): Promise<void> {
+    const later = await this.prisma.flightSequence.findMany({
+      where: {
+        programStateId,
+        scheduledAt: { gt: scheduledAt },
+        ...(sequenceId === null ? {} : { id: { not: sequenceId } }),
+      },
+      select: { id: true, scheduledAt: true },
+      orderBy: { scheduledAt: 'asc' },
+      take: 1,
+    });
+    const next = later?.[0]?.scheduledAt ?? null;
+    const why = fixedStartWindowRefusal(items, scheduledAt, next);
+    if (why) throw new BadRequestException(why);
+  }
+
   private validateClockItems(items: FlightCue[]): void {
     if (!items.length || items.length > 120) {
       throw new BadRequestException('a clocked log needs 1-120 items');
@@ -746,7 +772,15 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     return items;
   }
 
-  private async preflightClockItems(programId: string, items: FlightCue[]) {
+  private async preflightClockItems(
+    programId: string,
+    items: FlightCue[],
+    timing?: {
+      scheduledAt: Date;
+      rotationMode: string | null;
+      hasFollowingBlock: boolean;
+    },
+  ) {
     this.validateClockItems(items);
     const songIds = [
       ...new Set(items.flatMap((cue) => (cue.songId ? [cue.songId] : []))),
@@ -806,6 +840,8 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
           issues.push(`Item ${index + 1}: audio clip unavailable`);
       }
     }
+    if (timing)
+      warnings.push(...this.clockTimingWarnings(items, playableSongs, timing));
     // A block whose show's radio is not set up, or is off, would air nothing: say so, without blocking, since the
     // engine may be set up before the block starts (the rundown-building walk; GM's decision D1).
     if (engine === 'not-configured')
@@ -819,6 +855,60 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     return { programId, ready: issues.length === 0, issues, warnings, engine };
   }
 
+  /**
+   * Timing warnings for a clocked block, from the times its items name. D5: a block with nothing scheduled after it,
+   * on a Manual rotation, goes silent at its end. D6: an unknown-length song before a fixed start may be cut by it.
+   * A warning is only given where the times are known: an unknown song length makes the block's end unknown.
+   */
+  private clockTimingWarnings(
+    items: FlightCue[],
+    playableSongs: Map<number, { durationMs: number | null }>,
+    timing: {
+      scheduledAt: Date;
+      rotationMode: string | null;
+      hasFollowingBlock: boolean;
+    },
+  ): string[] {
+    const clock = (seconds: number) =>
+      new Date(timing.scheduledAt.getTime() + seconds * 1000)
+        .toISOString()
+        .slice(11, 16);
+    const warnings: string[] = [];
+    let cursor = 0;
+    let endKnown = true;
+    const unknownBefore: boolean[] = [];
+    for (const cue of items) {
+      const start = cue.clockOffsetSeconds ?? cursor;
+      if (cue.clockOffsetSeconds !== undefined && unknownBefore.some(Boolean)) {
+        warnings.push(
+          `May be cut by the fixed start at ${clock(cue.clockOffsetSeconds)}.`,
+        );
+      }
+      let duration: number | null = 0;
+      if (cue.songId) {
+        const song = playableSongs.get(cue.songId);
+        if (song && song.durationMs == null) {
+          unknownBefore.push(true);
+          duration = null;
+        } else {
+          duration = song?.durationMs != null ? song.durationMs / 1000 : 0;
+        }
+      }
+      if (duration === null) endKnown = false;
+      cursor = start + (duration ?? 0);
+    }
+    if (
+      endKnown &&
+      timing.rotationMode === 'manual' &&
+      !timing.hasFollowingBlock
+    ) {
+      warnings.push(
+        `After this block nothing is scheduled and the rotation is Manual: the station goes silent at ${clock(cursor)}.`,
+      );
+    }
+    return warnings;
+  }
+
   async preflightFlightSequence(programId: string, sequenceId: number) {
     const state = await this.getProgramStateRecord(programId);
     const sequence = await this.prisma.flightSequence.findFirst({
@@ -827,9 +917,33 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     if (!sequence) throw new NotFoundException('flight sequence not found');
     if (!sequence.scheduledAt)
       throw new BadRequestException('not a clocked log');
+    const [rotation, following] = await Promise.all([
+      this.prisma.programState.findUnique({
+        where: { programId },
+        select: { songSequence: true },
+      }),
+      this.prisma.flightSequence.findMany({
+        where: {
+          programStateId: state.id,
+          scheduledAt: { gt: sequence.scheduledAt },
+        },
+        select: { id: true },
+        take: 1,
+      }),
+    ]);
+    const rotationMode =
+      rotation?.songSequence &&
+      typeof (rotation.songSequence as { mode?: unknown }).mode === 'string'
+        ? (rotation.songSequence as { mode: string }).mode
+        : null;
     return this.preflightClockItems(
       programId,
       normalizeFlightItems(sequence.items),
+      {
+        scheduledAt: sequence.scheduledAt,
+        rotationMode,
+        hasFollowingBlock: following.length > 0,
+      },
     );
   }
 
@@ -1001,6 +1115,8 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         : normalizeFlightItems(data.items);
     if (scheduledAt && data.loop === true)
       throw new BadRequestException('a clocked log cannot loop');
+    if (scheduledAt && items.length)
+      await this.refuseOutsideFixedStartWindow(state.id, null, scheduledAt, items);
 
     try {
       const sequence = await this.prisma.flightSequence.create({
@@ -1153,6 +1269,18 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
             : normalizeFlightItems(updateData.items);
       if (nextScheduledAt && nextItems.length)
         this.validateClockItems(nextItems);
+      // The window is checked only when the cues or the start are written, so an older block still loads and renames.
+      if (
+        nextScheduledAt &&
+        nextItems.length &&
+        (data.items !== undefined || data.scheduledAt !== undefined)
+      )
+        await this.refuseOutsideFixedStartWindow(
+          state.id,
+          sequenceId,
+          nextScheduledAt,
+          nextItems,
+        );
       if (updateData.items !== undefined)
         updateData.items = nextItems as unknown as Prisma.InputJsonValue;
       if (isActiveRuntime && runtime?.isRunning) {
@@ -1564,9 +1692,13 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     programId: string,
     index: number,
     generation: number,
+    /** Why the song on air is cut for this cue: a fixed start it reached (W3), logged as the song's end reason. */
+    cut?: 'fixed_start',
   ): Promise<void> {
     return this.serializeCueOperation(programId, () =>
-      this.executeCueAtIndexUnlocked(programId, index, generation),
+      cut
+        ? this.executeCueAtIndexUnlocked(programId, index, generation, cut)
+        : this.executeCueAtIndexUnlocked(programId, index, generation),
     );
   }
 
@@ -1574,6 +1706,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     programId: string,
     index: number,
     generation: number,
+    cut?: 'fixed_start',
   ): Promise<void> {
     const runtime = this.runtimes.get(programId);
     if (!runtime || runtime.generation !== generation || !runtime.isRunning) {
@@ -1616,7 +1749,9 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         runtime.scheduledAtMs !== null &&
         (cue.kind === 'playSong' || (cue.kind === 'instant' && cue.durationMs))
       )
-        await this.programService.stopProgramSongForTimedBlock(programId);
+        await (cut
+          ? this.programService.stopProgramSongForTimedBlock(programId, cut)
+          : this.programService.stopProgramSongForTimedBlock(programId));
       await this.executeCue(programId, cue);
     } catch (err) {
       if (err instanceof AutomationEngineUnavailableError) {
@@ -1831,10 +1966,58 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
           this.armTimedClip(current);
           return;
         }
-        void this.executeCueAtIndex(runtime.programId, index, generation);
+        const skipped = this.cuesPassedOver(current, index);
+        void (due <= target
+          ? this.executeCueAtIndex(runtime.programId, index, generation, 'fixed_start')
+          : this.executeCueAtIndex(runtime.programId, index, generation));
+        void this.logCuesSkippedByFixedStart(current, skipped);
       },
       Math.min(2_147_483_647, Math.max(0, Math.min(target, due) - Date.now())),
     );
+  }
+
+  /** The cues between the one on air and a fixed start the block jumps to: they never air. */
+  private cuesPassedOver(runtime: FlightRuntimeState, index: number): FlightCue[] {
+    return runtime.items.slice(runtime.activeIndex + 1, index);
+  }
+
+  /**
+   * The airing walk's W3: a cue a fixed start passed over never aired, but with no as-run row the rundown showed it
+   * as played. Each song cue gets a not-aired row naming its cue (`fixed_start`), as an outage skip does (#726). The
+   * fixed cue has already been started; a failed write is logged and never holds the block.
+   */
+  private async logCuesSkippedByFixedStart(
+    runtime: FlightRuntimeState,
+    cues: FlightCue[],
+  ): Promise<void> {
+    // Nothing here may reject: the caller does not wait, and the block has already moved on.
+    for (const cue of cues) {
+      try {
+        this.metrics.recordRadioLogResult('cue-skipped');
+        this.programService.broadcastUpdate(runtime.programId, {
+          type: 'radio_log_cue_skipped',
+          sequenceId: runtime.sequenceId,
+          cueId: cue.id,
+        });
+        if (cue.kind === 'playSong' && typeof cue.songId === 'number')
+          await this.prisma.asRunRecord.create({
+            data: {
+              programId: runtime.programId,
+              songId: cue.songId,
+              state: 'not-aired',
+              endReason: 'fixed_start',
+              at: new Date(),
+              flightSequenceId: runtime.sequenceId,
+              flightCueId: cue.id,
+            },
+          });
+      } catch (err) {
+        this.logger.error(
+          `Could not log a cue passed over by a fixed start as not aired for ${runtime.programId}`,
+          err,
+        );
+      }
+    }
   }
 
   private armNextHardCue(runtime: FlightRuntimeState): void {
@@ -1861,11 +2044,15 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         }
         current.waitingForSongEnd = false;
         current.generation += 1;
+        const skipped = this.cuesPassedOver(current, index);
+        // The song on air is still playing: the fixed start cuts it.
         void this.executeCueAtIndex(
           current.programId,
           index,
           current.generation,
+          'fixed_start',
         );
+        void this.logCuesSkippedByFixedStart(current, skipped);
       },
       Math.min(
         2_147_483_647,

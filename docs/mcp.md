@@ -62,7 +62,7 @@ A signed-in caller sees only the tools whose permission they hold, checked again
 | `list_capabilities` | `alcantara:access` | Every capability you may run, paged and searchable, with tier and input schema. |
 | `call_capability` | `alcantara:access` | Runs one listed capability through its own permission, tier, dry-run, confirmation, rate-limit and audit path ([action framework](./mcp-action-framework.md)). |
 | `get_on_air` | `alcantara:radio:read` | Reports what the radio is playing now: the song (playback request id, start time, seconds remaining), the song announced next, the rotation mode (manual, autoplay or shuffle), whether automation is frozen, the Palazzo connection and the output confidence. |
-| `get_queue` | `alcantara:radio:read` | Lists the Play Next queue in order, with each entry's id (entry_id), song id and whether it is the one playing. |
+| `get_queue` | `alcantara:radio:read` | Lists the Play Next queue in order, with each entry's id (entry_id), song id and whether it is the one playing, and the rotation's `sequence_version`. |
 | `get_rundown` | `alcantara:flight:read` | Lists the program's rundown sequences (flight logs) with the active one and, for each clocked log that has not started, a preflight summary (ready, the number of issues, and the number of warnings that never block a start). |
 | `wait_for_change` | `alcantara:radio:read` | Holds the call open until the radio changes, for at most timeout_seconds (30 at most), and returns the first change or {timeout: true}. |
 | `get_as_run` | `alcantara:radio:read` | Lists as-run log rows between from and to (at most 7 days apart), oldest first, at most limit rows (500 at most). |

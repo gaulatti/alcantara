@@ -389,6 +389,16 @@ it("opens the single-component fixtures", () => {
   expect(screen.getByRole("option", { name: /Stop program audio/ })).toBeInTheDocument();
   cleanup();
 
+  // #688: plain links in the app and in a console, for the global focus-visible ring.
+  open("?state=focus-ring");
+  for (const name of ["App link", "App route link", "Console link", "Configure"]) {
+    const link = screen.getByRole("link", { name });
+    expect(link.className).not.toMatch(/outline-none|focus-visible:/);
+  }
+  expect(screen.getByRole("link", { name: "Configure" }).closest(".broadcast-console")).not.toBeNull();
+  expect(screen.getByRole("link", { name: "App link" }).closest(".broadcast-console")).toBeNull();
+  cleanup();
+
   open("?state=button-help");
   expect(
     screen.getByRole("heading", { name: "Button help" }),
@@ -536,6 +546,7 @@ it("hands the radio desk its fixture data for every radio state", () => {
     ["?state=radio-not-configured", { palazzo: "unavailable" }],
     ["?state=radio-playout-down", { palazzo: "connected", playout: "down" }],
     ["?state=radio-continuous", { logs: [] }],
+    ["?state=radio-audio-off-rundown", { logs: [], playback: null, output: "audible" }],
     [
       "?state=radio-skipped",
       { skipped: ["fixture-cue-2"], active: ["fixture-cue-3"] },

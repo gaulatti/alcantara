@@ -240,7 +240,7 @@ it("lists shows by id with their type, assets, renderer and selection", async ()
       "https://templates.test/fixture/index.html?programId=templated",
     ),
   );
-  fireEvent.click(within(card("sim")).getByRole("button", { name: "Select" }));
+  fireEvent.click(within(card("sim")).getByRole("button", { name: "Select sim" }));
   expect(selection.set).toHaveBeenCalledWith("sim");
 });
 
@@ -263,7 +263,7 @@ it("creates a TV show with the scenes and stingers chosen, and selects it", asyn
   expect(network.mock.calls.some((call) => call[1]?.method === "POST")).toBe(
     false,
   );
-  fireEvent.change(within(dialog).getByPlaceholderText("main"), {
+  fireEvent.change(within(dialog).getByLabelText("Show ID"), {
     target: { value: " late " },
   });
   expect(message()).toBeNull();
@@ -312,7 +312,7 @@ it("creates a radio show without visual assets, and a simulcast show from a temp
   await loaded();
   fireEvent.click(screen.getAllByRole("button", { name: /Create show/ })[0]);
   let dialog = await screen.findByRole("dialog", { name: "Create show" });
-  fireEvent.change(within(dialog).getByPlaceholderText("main"), {
+  fireEvent.change(within(dialog).getByLabelText("Show ID"), {
     target: { value: "night radio" },
   });
   fireEvent.click(within(dialog).getByRole("button", { name: /Radio/ }));
@@ -341,7 +341,7 @@ it("creates a radio show without visual assets, and a simulcast show from a temp
     );
   fireEvent.click(screen.getAllByRole("button", { name: /Create show/ })[0]);
   dialog = await screen.findByRole("dialog", { name: "Create show" });
-  fireEvent.change(within(dialog).getByPlaceholderText("main"), {
+  fireEvent.change(within(dialog).getByLabelText("Show ID"), {
     target: { value: "sim2" },
   });
   fireEvent.click(within(dialog).getByRole("button", { name: /Simulcast/ }));
@@ -439,10 +439,10 @@ it("edits a show: renames it, syncs scenes and stingers, and keeps the selection
   await loaded();
   fireEvent.click(screen.getByRole("button", { name: "Edit news" }));
   const dialog = await screen.findByRole("dialog", { name: "Edit show" });
-  expect(within(dialog).getByPlaceholderText("main")).toHaveValue("news");
+  expect(within(dialog).getByLabelText("Show ID")).toHaveValue("news");
   expect(scene(dialog, "Wide").checked).toBe(true);
   expect(scene(dialog, "Swoosh").checked).toBe(true);
-  fireEvent.change(within(dialog).getByPlaceholderText("main"), {
+  fireEvent.change(within(dialog).getByLabelText("Show ID"), {
     target: { value: "evening news" },
   });
   fireEvent.click(scene(dialog, "Wide"));
@@ -535,6 +535,21 @@ it("edits a show that is not selected, and one whose template takes neither scen
   expect(calls("POST")).toEqual([]);
 });
 
+// The rundown-building walk: the ID placeholder read "main", the name of an existing show, and the fields had no
+// accessible names.
+it("labels the show fields and shows an example ID, never an existing show's", async () => {
+  open();
+  await loaded();
+  fireEvent.click(screen.getAllByRole("button", { name: /Create show/ })[0]);
+  const dialog = await screen.findByRole("dialog", { name: "Create show" });
+  const id = within(dialog).getByLabelText("Show ID");
+  expect(id).toHaveAttribute("placeholder", "morning-show");
+  expect(within(dialog).getByRole("group", { name: "Show type" })).toBeVisible();
+  expect(within(dialog).getByLabelText("Template URL")).toBeVisible();
+  for (const name of ["news", "sim"])
+    expect(screen.getByRole("button", { name: `Select ${name}` })).toBeVisible();
+});
+
 it("keeps the dialog open with a message when a save or a sync is refused", async () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   open();
@@ -563,6 +578,12 @@ it("keeps the dialog open with a message when a save or a sync is refused", asyn
         new Response("Duplicate id", { status: 409 })),
     () => {},
     "A show with this ID already exists. Choose another ID.",
+  );
+  const onAir = "This show is on air (a song is playing). Take it off air before renaming it.";
+  await attempt(
+    () => (routes["PUT /program/news"] = () => json({ statusCode: 409, message: onAir }, 409)),
+    () => {},
+    onAir,
   );
   await attempt(
     () =>
@@ -644,7 +665,7 @@ it.each(refusedCreates)("says why creating a show was refused: %s", async (_case
   routes["POST /program"] = answer;
   fireEvent.click(screen.getAllByRole("button", { name: /Create show/ })[0]);
   const dialog = await screen.findByRole("dialog", { name: "Create show" });
-  fireEvent.change(within(dialog).getByPlaceholderText("main"), {
+  fireEvent.change(within(dialog).getByLabelText("Show ID"), {
     target: { value: "dup" },
   });
   fireEvent.click(within(dialog).getByRole("button", { name: "Create show" }));

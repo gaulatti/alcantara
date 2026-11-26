@@ -213,6 +213,12 @@ const RECIPE_DELETE_RESULTS = new Set([
   'conflict',
 ]);
 const SCENE_HANDOFF_RESULTS = new Set(['success', 'failure']);
+/** gaulatti/alcantara#122: a program another team owns, one nobody owns, or a team that could not be read. */
+const PROGRAM_TEAM_CHECK_RESULTS = new Set([
+  'refused',
+  'unowned',
+  'lookup-failed',
+]);
 /** gaulatti/alcantara#122: why a scene background asset read was not served by the program's team. */
 export type SceneAssetScopeReason = 'no-team' | 'other-team' | 'lookup-failed';
 const SCENE_ASSET_SCOPE_REASONS = new Set<string>([
@@ -295,6 +301,7 @@ const FILLER_START_BINDING_RESULTS: readonly FillerStartBindingResult[] = [
   'not-configured',
   'legacy-executor',
 ];
+const FILLER_RELEASE_RESULTS = ['released', 'failed'] as const;
 const PLAYING_TRACK_COVER_LOOKUP_RESULTS: readonly PlayingTrackCoverLookupResult[] =
   ['included', 'absent', 'rejected', 'error'];
 const RECORDING_ACTIONS = new Set(['start', 'stop']);
@@ -338,6 +345,14 @@ function buildVersion(): string {
   return /^[A-Za-z0-9._-]{1,64}$/.test(candidate) ? candidate : 'unknown';
 }
 
+const SONG_SEQUENCE_SAVE_RESULTS = [
+  'versioned',
+  'unversioned',
+  'refused_missing',
+  'refused_stale',
+  'refused_emptying',
+] as const;
+
 @Injectable()
 export class ManagedMetricsService {
   readonly registry = new Registry();
@@ -350,10 +365,12 @@ export class ManagedMetricsService {
   private readonly artistLabelWrites: Counter<string>;
   private readonly operatorChangeRecords: Counter<string>;
   private readonly recipeExpansions: Counter<string>;
+  private readonly songSequenceSaves: Counter<'result'>;
   private readonly songPlaybackWrites: Counter<string>;
   private readonly recipeRebuilds: Counter<string>;
   private readonly recipeDeletes: Counter<string>;
   private readonly sceneHandoffs: Counter<string>;
+  private readonly programTeamChecks: Counter<string>;
   private readonly sceneAssetScopeRefusals: Counter<string>;
   private readonly jobLastSuccess: Gauge<string>;
   private readonly preferenceOperations: Counter<string>;
@@ -376,6 +393,7 @@ export class ManagedMetricsService {
   private readonly playingTrackCoverLookups: Counter<string>;
   private readonly fillerPreparations: Counter<string>;
   private readonly fillerStartBindings: Counter<string>;
+  private readonly fillerReleases: Counter<'leg' | 'result'>;
   private readonly alanaLiveProfileUnknownKeys: Counter<string>;
   private readonly programTemplateUnknowns: Counter<string>;
   private readonly recordingCommands: Counter<string>;
@@ -464,6 +482,14 @@ export class ManagedMetricsService {
     });
     for (const result of SONG_PLAYBACK_WRITE_RESULTS)
       this.songPlaybackWrites.inc({ result }, 0);
+    this.songSequenceSaves = new Counter({
+      name: 'alcantara_song_sequence_saves_total',
+      help: 'Operator saves of a rotation, by result: versioned, unversioned (a client that sends no version), or refused because the version was missing or stale, or the save would have emptied the rotation. Exposed from 0.',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    for (const result of SONG_SEQUENCE_SAVE_RESULTS)
+      this.songSequenceSaves.inc({ result }, 0);
     this.recipeExpansions = new Counter({
       name: 'alcantara_recipe_expansions_total',
       help: 'Rundown recipe uses previewed or built, by result.',
@@ -482,6 +508,14 @@ export class ManagedMetricsService {
       labelNames: ['result'],
       registers: [this.registry],
     });
+    this.programTeamChecks = new Counter({
+      name: 'alcantara_program_team_checks_total',
+      help: 'Requests naming a program of another team (refused) or of no team (unowned), and team lookups that failed (lookup-failed). Exposed from 0.',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    for (const result of PROGRAM_TEAM_CHECK_RESULTS)
+      this.programTeamChecks.inc({ result }, 0);
     this.sceneAssetScopeRefusals = new Counter({
       name: 'alcantara_scene_asset_scope_refusals_total',
       help: 'Scene background asset reads the program team could not serve, read unscoped instead, by reason. Exposed from 0.',
@@ -618,6 +652,15 @@ export class ManagedMetricsService {
       labelNames: ['leg', 'result'],
       registers: [this.registry],
     });
+    this.fillerReleases = new Counter({
+      name: 'alcantara_filler_releases_total',
+      help: 'Active filler versions released after a Stop, by leg and result. A failed release leaves the version active and never fails the Stop.',
+      labelNames: ['leg', 'result'],
+      registers: [this.registry],
+    });
+    for (const leg of FILLER_LEGS)
+      for (const result of FILLER_RELEASE_RESULTS)
+        this.fillerReleases.inc({ leg, result }, 0);
     this.fillerStartBindings = new Counter({
       name: 'alcantara_filler_start_bindings_total',
       help: 'Television Start filler bindings by bounded result.',
@@ -669,6 +712,12 @@ export class ManagedMetricsService {
       labelNames: ['state', 'result'],
       registers: [this.registry],
     });
+  }
+
+  recordSongSequenceSave(
+    result: (typeof SONG_SEQUENCE_SAVE_RESULTS)[number],
+  ): void {
+    this.songSequenceSaves.inc({ result });
   }
 
   recordHttp(
@@ -778,6 +827,14 @@ export class ManagedMetricsService {
     this.operatorChangeRecords.inc({
       target: bounded(target, OPERATOR_CHANGE_TARGETS),
       result: bounded(result, OPERATOR_CHANGE_RESULTS),
+    });
+  }
+
+  recordProgramTeamCheck(
+    result: 'refused' | 'unowned' | 'lookup-failed',
+  ): void {
+    this.programTeamChecks.inc({
+      result: bounded(result, PROGRAM_TEAM_CHECK_RESULTS),
     });
   }
 
@@ -942,6 +999,13 @@ export class ManagedMetricsService {
     result: FillerPreparationResult,
   ): void {
     this.fillerPreparations.inc({ leg, result });
+  }
+
+  recordFillerRelease(
+    leg: (typeof FILLER_LEGS)[number],
+    result: (typeof FILLER_RELEASE_RESULTS)[number],
+  ): void {
+    this.fillerReleases.inc({ leg, result });
   }
 
   recordFillerStartBinding(result: FillerStartBindingResult): void {
