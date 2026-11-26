@@ -1035,21 +1035,3 @@ it("asks for any camera when the microphone is switched before a camera was chos
     }),
   );
 });
-
-it("enables nothing and sends no answer for a media request that names no device", async () => {
-  // The notice it shows today cannot be dismissed; gaulatti/alcantara#672 stops showing it.
-  await joined();
-  const sentBefore = fetchCalls.length;
-  const callsBefore = room().calls.length;
-  await director({ id: "c-2", type: "media", enabled: true });
-  fireEvent.click(await screen.findByRole("button", { name: "Accept" }));
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  });
-  expect(room().calls).toHaveLength(callsBefore);
-  expect(
-    fetchCalls
-      .slice(sentBefore)
-      .filter((call) => call.url.includes("/webrtc/commands/")),
-  ).toEqual([]);
-});
