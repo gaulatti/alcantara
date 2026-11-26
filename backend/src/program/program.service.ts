@@ -1600,10 +1600,25 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       Object.assign(updateData, this.programTemplateUpdateData(template));
     }
 
-    await this.prisma.programState.update({
+    const updateState = this.prisma.programState.update({
       where: { id: existingSource.id },
       data: updateData,
     });
+    if (current === next) {
+      await updateState;
+    } else {
+      // gaulatti/alcantara#122: the Program row carries the program's team and branding, so it is renamed with the
+      // program, or the renamed program would belong to no team. A row already under the new id was left by a
+      // deleted program (no program uses that id) and is removed, so its team is not inherited.
+      await this.prisma.$transaction([
+        this.prisma.program.deleteMany({ where: { programId: next } }),
+        this.prisma.program.updateMany({
+          where: { programId: current },
+          data: { programId: next },
+        }),
+        updateState,
+      ]);
+    }
     await recorder.record({
       actor,
       target: 'program',

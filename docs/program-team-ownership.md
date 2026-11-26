@@ -12,6 +12,11 @@ Every program has one `Program` row (`backend/prisma/schema.prisma`), and its `t
   - **A program that already has a team** is never changed.
   - **Re-running** the migration inserts and updates nothing.
 
+## Renaming a program
+
+The `Program` row is renamed with the program, so its team and branding stay with it. A row already under the new id,
+left by a deleted program, is removed.
+
 ## Programs still without a team
 
 After the deploy, this read-only query lists the programs the backfill couldn't assign, with how many distinct positive teams their attachments name:
