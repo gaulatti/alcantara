@@ -84,7 +84,7 @@ const specs = [
   ).specs(),
   ...new ScenesMcpTools({} as never, {} as never).specs(),
   ...new LayoutsMcpTools({} as never, {} as never).specs(),
-  ...new MediaGroupsMcpTools({} as never, {} as never).specs(),
+  ...new MediaGroupsMcpTools({} as never, {} as never, { teamId: 7 } as never).specs(),
 ];
 
 describe('appendix A rows of ticket #216', () => {

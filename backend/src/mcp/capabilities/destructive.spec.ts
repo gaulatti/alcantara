@@ -29,7 +29,7 @@ function build() {
     ).specs(),
     ...new ScenesMcpTools(f.scenes as never, f.programs as never).specs(),
     ...new LayoutsMcpTools(f.layouts as never, f.programs as never).specs(),
-    ...new MediaGroupsMcpTools(f.groups as never, f.programs as never).specs(),
+    ...new MediaGroupsMcpTools(f.groups as never, f.programs as never, { teamId: 7 } as never).specs(),
   ];
   return { f, spec: (name: string) => specNamed(specs, name) };
 }

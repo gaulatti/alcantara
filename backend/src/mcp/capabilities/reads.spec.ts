@@ -49,7 +49,11 @@ const specs = [
   ).specs(),
   ...new ScenesMcpTools(services.scenes as never, {} as never).specs(),
   ...new LayoutsMcpTools(services.layouts as never, {} as never).specs(),
-  ...new MediaGroupsMcpTools(services.groups as never, {} as never).specs(),
+  ...new MediaGroupsMcpTools(
+    services.groups as never,
+    {} as never,
+    { teamId: 7 } as never,
+  ).specs(),
 ];
 const ctx = { principal: {} as never };
 const run = async (name: string, args: Record<string, unknown>) =>
@@ -65,6 +69,7 @@ beforeEach(() => {
   services.layouts.findOne.mockResolvedValue({ ...layout, scenes: [scene] });
   services.groups.findAll.mockResolvedValue(mediaGroupsPage);
 });
+const GROUP_TEAM = { user: { authorization: { teamId: 7 } } };
 
 describe('read capabilities return what the controller returns', () => {
   it('program_list_programs', async () => {
@@ -112,22 +117,30 @@ describe('read capabilities return what the controller returns', () => {
 
   it('media_group_find_all passes the console paging, defaults included', async () => {
     expect(rebuilt(await run('media_group_find_all', {}))).toEqual(
-      asRest(await controllers.groups.findAll()),
+      asRest(await controllers.groups.findAll(GROUP_TEAM)),
     );
-    expect(services.groups.findAll).toHaveBeenNthCalledWith(1, {
-      search: undefined,
-      sortBy: undefined,
-      sortOrder: undefined,
-      page: 1,
-      limit: 20,
-    });
-    expect(services.groups.findAll).toHaveBeenNthCalledWith(2, {
-      search: undefined,
-      sortBy: undefined,
-      sortOrder: undefined,
-      page: 1,
-      limit: 20,
-    });
+    expect(services.groups.findAll).toHaveBeenNthCalledWith(
+      1,
+      {
+        search: undefined,
+        sortBy: undefined,
+        sortOrder: undefined,
+        page: 1,
+        limit: 20,
+      },
+      7,
+    );
+    expect(services.groups.findAll).toHaveBeenNthCalledWith(
+      2,
+      {
+        search: undefined,
+        sortBy: undefined,
+        sortOrder: undefined,
+        page: 1,
+        limit: 20,
+      },
+      7,
+    );
     await run('media_group_find_all', {
       search: 'head',
       sort_by: 'name',

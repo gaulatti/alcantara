@@ -19,7 +19,7 @@ describe('capability provider decorator metadata under unresolved circular impor
         MediaGroupsMcpTools,
       ])
         expect(Reflect.getMetadata('design:paramtypes', provider)).toEqual(
-          provider === ProgramMcpTools
+          provider === ProgramMcpTools || provider === MediaGroupsMcpTools
             ? [Object, Object, Object]
             : [Object, Object],
         );
