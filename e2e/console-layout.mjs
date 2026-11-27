@@ -208,9 +208,10 @@ export async function runLayoutPass(browser, { app, api, token, shots }) {
             record(`${name}: ${panel} visible without scrolling`, state.visible, state.present ? `bottom ${state.bottom}px of ${state.fold}px fold` : "not on the page");
           }
         } else {
-          // Report only: below the fold at this width is accepted for now.
+          // Every panel must be on the page (gaulatti/alcantara#875: a show picked while the tablet profile loaded was
+          // undone, so the panels came and went between runs). Below the fold at this width is still accepted.
           for (const [panel, state] of Object.entries(d)) {
-            record(`${name}: ${panel} (report only)`, true, state.present ? (state.visible ? "visible" : `below the fold, bottom ${state.bottom}px of ${state.fold}px`) : "not on the page");
+            record(`${name}: ${panel} on the page`, state.present, state.present ? (state.visible ? "visible" : `below the fold, bottom ${state.bottom}px of ${state.fold}px (accepted at this width)`) : "not on the page");
           }
         }
         await page.screenshot({ path: join(shots, `desk-${size.width}x${size.height}.png`) });

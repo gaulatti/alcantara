@@ -179,6 +179,48 @@ describe("ConsolePreferencesProvider", () => {
     expect(ctx).toMatchObject({ version: 4, syncState: "synced" });
   });
 
+  // gaulatti/alcantara#875: on a tablet, picking a show while the stored profile was still loading was undone when it
+  // arrived (and saved back), so the radio desk came up on another show in one run and the right one in the next.
+  it("keeps an edit made while the server profile loads, on top of it, and saves it at the server's version", async () => {
+    let answer!: (value: unknown) => void;
+    fetchMock.mockReset();
+    fetchMock.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    fetchMock.mockResolvedValue(res(200, { version: 4, profile: { ...serverProfile, selectedProgramId: "radio-demo.fm" } }));
+    await mountProvider();
+    act(() => ctx.updateProfile({ selectedProgramId: "radio-demo.fm" }));
+    answer(res(200, { version: 3, profile: { ...serverProfile, selectedProgramId: "main" } }));
+    await flush();
+    expect(ctx.profile.selectedProgramId).toBe("radio-demo.fm");
+    // The rest of the server's profile is adopted.
+    expect(ctx.profile.workspace).toBe("audio");
+    await flush(700);
+    const put = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT");
+    expect(JSON.parse(put![1].body)).toMatchObject({ version: 3, profile: { selectedProgramId: "radio-demo.fm", workspace: "audio" } });
+    expect(ctx.profile.selectedProgramId).toBe("radio-demo.fm");
+  });
+
+  it("keeps nothing extra when two loads overlap and the earlier one answers last", async () => {
+    const answers: Array<(value: unknown) => void> = [];
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(() => new Promise((resolve) => answers.push(resolve)));
+    await mountProvider();
+    act(() => ctx.setDeviceClassOverride("tablet"));
+    await flush();
+    expect(answers).toHaveLength(2);
+    answers[1](res(200, { version: 7, profile: { ...defaultConsoleProfile("tablet"), selectedProgramId: "radio-demo.fm" } }));
+    await flush();
+    answers[0](res(200, { version: 3, profile: serverProfile }));
+    await flush(700);
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(false);
+  });
+
+  it("adopts the server profile as it is when nothing was edited while it loaded", async () => {
+    await mountProvider();
+    expect(ctx.profile).toEqual(serverProfile);
+    await flush(700);
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(false);
+  });
+
   it("keeps the edit dirty and retries every five seconds when the save fails", async () => {
     await mountProvider();
     fetchMock.mockResolvedValueOnce(res(500));

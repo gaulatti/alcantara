@@ -163,6 +163,8 @@ export function ConsolePreferencesProvider({
   const [syncState, setSyncState] = useState<SyncState>("loading");
   const [conflict, setConflict] = useState<ConflictState | null>(null);
   const dirty = useRef(false);
+  /** Edits made since the server profile was asked for; they are kept on top of it when it arrives. */
+  const editsWhileLoading = useRef<Partial<ConsoleProfile> | null>(null);
   const profileRef = useRef(profile);
   const versionRef = useRef(version);
   profileRef.current = profile;
@@ -183,6 +185,7 @@ export function ConsolePreferencesProvider({
   useEffect(() => {
     if (!authLoaded || !preferenceIdentity) return;
     dirty.current = false;
+    editsWhileLoading.current = {};
     setConflict(null);
     const cached = readPreferenceCache(user, deviceClass);
     if (cached) acknowledge(preferenceIdentity, cached.version, cached.profile);
@@ -200,10 +203,23 @@ export function ConsolePreferencesProvider({
         }>;
       })
       .then((payload) => {
-        acknowledge(preferenceIdentity, payload.version, payload.profile);
+        // An edit made while this was loading (a show picked on a tablet that had not answered yet) is the operator's
+        // newest choice: it stays, on top of the server's profile and at its version, and is saved from there.
+        const edits = editsWhileLoading.current ?? {};
+        editsWhileLoading.current = null;
+        const kept = dirty.current && Object.keys(edits).length > 0;
+        acknowledge(
+          preferenceIdentity,
+          payload.version,
+          kept ? { ...payload.profile, ...edits } : payload.profile,
+        );
+        // Kept edits are saved by the debounce below, as any edit is.
         setSyncState("synced");
       })
-      .catch(() => setSyncState("degraded"));
+      .catch(() => {
+        editsWhileLoading.current = null;
+        setSyncState("degraded");
+      });
   }, [acknowledge, authLoaded, deviceClass, preferenceIdentity, user]);
 
   const save = useCallback(async () => {
@@ -285,6 +301,8 @@ export function ConsolePreferencesProvider({
 
   const updateProfile = useCallback((update: Partial<ConsoleProfile>) => {
     dirty.current = true;
+    if (editsWhileLoading.current)
+      editsWhileLoading.current = { ...editsWhileLoading.current, ...update };
     setProfile((current) => ({ ...current, ...update }));
   }, []);
 

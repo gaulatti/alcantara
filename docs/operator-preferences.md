@@ -48,6 +48,11 @@ backend rather than copied between classes.
 
 The browser fetches `GET /operator-preferences/:deviceClass` after
 authentication. A missing row returns safe class defaults at version zero.
+A change the operator makes while that read is still on its way (a show
+picked on a tablet that has not answered yet) is kept: when the read
+arrives, the edited fields stay on top of the server's profile and are saved
+at its version, as any change is. They are never reverted to the stored
+value.
 Changes are sent after a bounded 700 ms debounce with the last acknowledged
 version. The backend update is atomic. A stale version returns HTTP 409 with
 the authoritative value, and the UI offers “Use server” or “Retry mine”; it
