@@ -3,10 +3,11 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "End-to-end checks that drive a real browser against a running Alcántara: the WebRTC guest call (alcantara#354).",
+  "description": "End-to-end checks that drive a real browser against a running Alc\u00e1ntara: the WebRTC guest call (alcantara#354).",
   "scripts": {
     "webrtc": "node webrtc-call.mjs",
-    "browsers": "playwright install chromium"
+    "browsers": "playwright install chromium",
+    "touch": "node touch-regressions.mjs"
   },
   "devDependencies": {
     "livekit-client": "2.21.0",
