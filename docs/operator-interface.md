@@ -89,6 +89,13 @@ The broadcast deck reserves a separate semantic action grammar:
 - Below 1280 px the monitor header drops the word beside the Listen icon (the
   button keeps its accessible name) and the local-return note, so the scene
   name on Preview and Program stays readable (#875).
+- A long source name wraps to a second line instead of being cut. On a touch
+  screen Listen, Workspace options, the table sort headers and the media
+  selection checkboxes have finger-sized targets (#875).
+- The line under the header that says what the desk does appears on the live
+  desk only. Library tables keep their caption for assistive technology without
+  printing it under the rows, and the Shows list offers **Select** only on shows
+  that are not already active (#875).
 - The transition, device class and preset visibility pickers are Bleecker
   `Select`; the source panel width is a Bleecker `Slider`. No text on the deck
   is smaller than 12 px.

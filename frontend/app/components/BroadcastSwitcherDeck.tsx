@@ -720,7 +720,7 @@ export function BroadcastSwitcherDeck(props: Props) {
               <span className="switcher-source-index">
                 {String(props.scenes.indexOf(scene) + 1).padStart(2, "0")}
               </span>
-              <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+              <span className="switcher-source-name line-clamp-2 min-w-0 flex-1 break-words text-sm font-semibold">
                 {scene.name}
               </span>
               {isProgram ? (
@@ -792,7 +792,7 @@ export function BroadcastSwitcherDeck(props: Props) {
         ))}
         <ConsoleClock />
         <details className="relative ml-auto">
-          <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-[var(--radius-button)] px-2 py-1 text-xs text-text-secondary">
+          <summary className="switcher-options-summary flex cursor-pointer list-none items-center gap-1.5 rounded-[var(--radius-button)] px-2 py-1 text-xs text-text-secondary">
             <Settings2 size={15} />
             Workspace options
           </summary>

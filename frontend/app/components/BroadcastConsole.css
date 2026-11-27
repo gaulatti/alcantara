@@ -1361,3 +1361,21 @@
     display: none;
   }
 }
+
+/* alcantara#875: on a tablet Listen, Workspace options and the sort headers were too small to hit with a finger.
+   Listen is as tall as the monitor header allows, and its negative margins keep it from taking width from the
+   scene name. */
+@media (pointer: coarse) {
+  .switcher-return-listen {
+    min-width: 44px;
+    min-height: 32px;
+    margin-inline: -20px -10px;
+    justify-content: center;
+  }
+  .switcher-options-summary {
+    min-height: 44px;
+  }
+  thead th button {
+    min-height: 44px;
+  }
+}

@@ -137,7 +137,8 @@ export function LibraryList<T>({ caption, columns, data, getRowKey, status, onRe
       ) : data.length === 0 ? (
         <Empty title={empty.title} description={empty.description} action={empty.action} />
       ) : (
-        <DataTable caption={caption} density='dense' columns={columns} data={data} getRowKey={getRowKey} sort={sort} onSortChange={onSortChange} />
+        // The caption names the table for assistive technology; on screen it only repeated the heading (#875).
+        <DataTable caption={caption} className='[&_caption]:sr-only' density='dense' columns={columns} data={data} getRowKey={getRowKey} sort={sort} onSortChange={onSortChange} />
       )}
     </Card>
   );

@@ -325,7 +325,7 @@ it("selects the first known show when the saved one is gone, and opens its telev
     screen.getByRole("status", { name: "program type" }),
   ).toHaveTextContent("tv");
   expect(screen.getAllByText("Television").length).toBeGreaterThan(0);
-  expect(screen.getByText("Preview and Program switching")).toBeInTheDocument();
+  expect(screen.queryByText("Preview and Program switching")).toBeNull();
   expect(
     within(programSelects()[0])
       .getAllByRole("option")
@@ -780,7 +780,7 @@ it("switches the shell to a radio show: listener monitor, radio-only commands", 
   open("/radio");
   await waitFor(() => expect(network).toHaveBeenCalledTimes(4));
   expect(screen.getAllByText("Radio").length).toBeGreaterThan(0);
-  expect(screen.getByText("Continuous audio playout")).toBeInTheDocument();
+  expect(screen.queryByText("Continuous audio playout")).toBeNull();
   expect(screen.queryByRole("button", { name: "Refresh Program" })).toBeNull();
   const monitor = screen.getByText("Listener monitor");
   monitor.scrollIntoView = vi.fn();
@@ -828,7 +828,6 @@ it("opens a simulcast show's template output and labels it", async () => {
   open();
   await waitFor(() => expect(network).toHaveBeenCalledTimes(4));
   expect(screen.getAllByText("Simulcast").length).toBeGreaterThan(0);
-  expect(screen.getByText("Television and radio legs")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Open Program Output" }));
   const opened = new URL(windowOpen.mock.lastCall![0] as string);
   expect(opened.origin + opened.pathname).toBe(
@@ -838,13 +837,21 @@ it("opens a simulcast show's template output and labels it", async () => {
   await openCommands();
   expect(command("Go to Radio Distribution")).toBeInTheDocument();
   expect(command("Go to Media")).toBeInTheDocument();
-  // A show with no type reads as television.
   fireEvent.click(command("Select Program: plain"));
-  await waitFor(() =>
-    expect(
-      screen.getByText("Preview and Program switching"),
-    ).toBeInTheDocument(),
-  );
+  await waitFor(() => expect(shell.program).toBe("plain"));
+});
+
+// #875: the line under the header says what the live desk does, so only the desk carries it.
+it.each([
+  ["news", "Preview and Program switching"],
+  ["sim", "Television and radio legs"],
+  ["radio one", "Continuous audio playout"],
+  // A show with no type reads as television.
+  ["plain", "Preview and Program switching"],
+])("describes the %s desk on the desk itself", async (program, description) => {
+  shell.program = program;
+  open("/");
+  expect(await screen.findByText(description)).toBeInTheDocument();
 });
 
 it("sets, validates and disables the global broadcast time override", async () => {

@@ -255,6 +255,14 @@ it("lists shows by id with their type, assets, renderer and selection", async ()
   expect(selection.set).toHaveBeenCalledWith("sim");
 });
 
+// #875: the active show already says Active; Select beside it did nothing.
+it("offers Select on every show but the active one", async () => {
+  open();
+  await loaded();
+  expect(within(card("news")).queryByRole("button", { name: "Select news" })).toBeNull();
+  expect(within(card("sim")).getByRole("button", { name: "Select sim" })).toBeVisible();
+});
+
 it("creates a TV show with the scenes and stingers chosen, and selects it", async () => {
   open();
   await loaded();
@@ -557,8 +565,7 @@ it("labels the show fields and shows an example ID, never an existing show's", a
   expect(id).toHaveAttribute("placeholder", "morning-show");
   expect(within(dialog).getByRole("group", { name: "Show type" })).toBeVisible();
   expect(within(dialog).getByLabelText("Template URL")).toBeVisible();
-  for (const name of ["news", "sim"])
-    expect(screen.getByRole("button", { name: `Select ${name}` })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Select sim" })).toBeVisible();
 });
 
 it("keeps the dialog open with a message when a save or a sync is refused", async () => {

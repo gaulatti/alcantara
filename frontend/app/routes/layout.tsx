@@ -1027,7 +1027,8 @@ function ConsoleShell() {
                 {programModeIcon} {programModeLabel}
               </span>
               <span className='hidden min-w-0 flex-1 truncate text-xs text-text-secondary lg:block'>
-                {selectedProgramType === 'radio' ? 'Continuous audio playout' : selectedProgramType === 'both' ? 'Television and radio legs' : 'Preview and Program switching'}
+                {/* What the live desk does; on any other page it described a screen that is not there (#875). */}
+                {location.pathname !== '/' && location.pathname !== '/control' ? null : selectedProgramType === 'radio' ? 'Continuous audio playout' : selectedProgramType === 'both' ? 'Television and radio legs' : 'Preview and Program switching'}
               </span>
               {radioMonitor && radioMonitor.state !== 'stopped' ? (
                 <span

@@ -584,15 +584,11 @@ export default function ProgramsAdmin() {
 
                       </div>
                       <div className='flex items-start gap-2'>
-                        <Button
-                          size='sm'
-                          variant={isSelected ? 'secondary' : 'ghost'}
-                          onClick={() => setSelectedProgramId(program.programId)}
-                          className='px-3'
-                          aria-label={`Select ${program.programId}`}
-                        >
-                          Select
-                        </Button>
+                        {isSelected ? null : (
+                          <Button size='sm' variant='ghost' onClick={() => setSelectedProgramId(program.programId)} className='px-3' aria-label={`Select ${program.programId}`}>
+                            Select
+                          </Button>
+                        )}
                         <IconButton
                           onClick={() => openEditModal(program)}
                           className='text-sea '
