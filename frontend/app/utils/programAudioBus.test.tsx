@@ -441,6 +441,25 @@ describe("program audio bus: snapshots, events and volume", () => {
     expect(getProgramAudioBusSnapshot(programId).isPlaying).toBe(true);
   });
 
+  it("stays quiet when the browser blocks autoplay, and still reports any other refusal", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const blocked = Object.assign(new Error("play() failed"), { name: "NotAllowedError" });
+    EventAudio.playResult = () => Promise.reject(blocked);
+    const one = busTrack("one");
+    ensureProgramAudioBusTrack(programId, one);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(errors).not.toHaveBeenCalled();
+    expect(getProgramAudioBusSnapshot(programId).isPlaying).toBe(false);
+
+    stopProgramAudioBus(programId);
+    const broken = Object.assign(new Error("decode failed"), { name: "NotSupportedError" });
+    EventAudio.playResult = () => Promise.reject(broken);
+    const two = busTrack("two");
+    ensureProgramAudioBusTrack(programId, two);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(errors).toHaveBeenCalledWith(`Failed to start audio bus track "${two.audioUrl}"`, broken);
+  });
+
   it("fades between tracks, and handles an incoming track that will not start", async () => {
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     ensureProgramAudioBusTrack(programId, busTrack("one"));

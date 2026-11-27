@@ -2,6 +2,16 @@ import { interpolateGainLog } from './audioTaper';
 import { apiUrl } from './apiBaseUrl';
 import { canRouteMediaThroughWebAudio } from './mediaWebAudioAccess';
 
+
+/**
+ * A browser that refuses to start audio without a user gesture (autoplay) is the expected state of an unattended
+ * output page, not a fault: the track is marked stopped and nothing is logged. Any other refusal is still reported.
+ */
+function reportStartRefusal(audioUrl: string, err: unknown): void {
+  if (err instanceof Error && err.name === 'NotAllowedError') return;
+  console.error(`Failed to start audio bus track "${audioUrl}"`, err);
+}
+
 export interface ProgramAudioBusTrack {
   token: string;
   audioUrl: string;
@@ -572,7 +582,7 @@ function replaceTrack(state: ProgramAudioBusState, track: ProgramAudioBusTrack):
   const playPromise = audio.play();
   if (playPromise && typeof playPromise.catch === 'function') {
     playPromise.catch((err) => {
-      console.error(`Failed to start audio bus track "${track.audioUrl}"`, err);
+      reportStartRefusal(track.audioUrl, err);
       state.isPlaying = false;
       emit(state);
     });
@@ -619,7 +629,7 @@ async function transitionToTrackWithFade(state: ProgramAudioBusState, track: Pro
       await playPromise;
     }
   } catch (err) {
-    console.error(`Failed to start audio bus track "${track.audioUrl}"`, err);
+    reportStartRefusal(track.audioUrl, err);
     state.isPlaying = false;
     emit(state);
     return;
