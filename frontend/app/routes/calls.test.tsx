@@ -292,7 +292,7 @@ it("shows this program's slots and each guest's state", async () => {
   serve();
   render(<CallsRoute />);
   expect(await screen.findByText("Ada", { selector: "h3" })).toBeVisible();
-  expect(screen.getByText("1/6 slots assigned")).toBeVisible();
+  expect(screen.getByText("1 of 6 slots")).toBeVisible();
   // A participant without an invitation of this program is not shown.
   expect(screen.queryByText("Ghost")).not.toBeInTheDocument();
   expect(within(card()).getByText("Live")).toBeVisible();
@@ -352,19 +352,16 @@ it("shows an empty room with the create action inside it, and says why it is dis
     "div",
   )!.parentElement as HTMLElement;
   const create = within(empty).getByRole("button", {
-    name: /Create private link/,
+    name: /Create link/,
   });
   expect(create).toBeDisabled();
-  expect(
-    screen.getAllByText("Enter a guest name to create a private link.")[0],
-  ).toBeVisible();
+  // The disabled button is the only hint for an empty name: no sentence is shown.
+  expect(create).not.toHaveAttribute("aria-describedby");
   fireEvent.change(screen.getByPlaceholderText("Fictional guest"), {
     target: { value: "Grace" },
   });
   expect(create).toBeEnabled();
-  expect(
-    screen.queryByText("Enter a guest name to create a private link."),
-  ).not.toBeInTheDocument();
+  expect(create).not.toHaveAttribute("aria-describedby");
 });
 
 it("says why creating a link is disabled: no permission, or every slot assigned", async () => {
@@ -381,7 +378,7 @@ it("says why creating a link is disabled: no permission, or every slot assigned"
     invitation({ id: `inv-${index + 1}` }),
   );
   render(<CallsRoute />);
-  await screen.findByText("6/6 slots assigned");
+  await screen.findByText("6 of 6 slots");
   expect(
     screen.getByText("All 6 guest slots are assigned. Revoke a link to free one."),
   ).toBeVisible();
@@ -454,12 +451,12 @@ it("creates a private link for a named guest and copies it", async () => {
   );
   render(<CallsRoute />);
   await screen.findByText("Ada", { selector: "h3" });
-  const create = screen.getByRole("button", { name: /Create private link/ });
+  const create = screen.getByRole("button", { name: /Create link/ });
   expect(create).toBeDisabled();
   fireEvent.change(screen.getByPlaceholderText("Fictional guest"), {
     target: { value: "Grace" },
   });
-  fireEvent.change(screen.getByDisplayValue("24 hours (default)"), {
+  fireEvent.change(screen.getByDisplayValue("24 h"), {
     target: { value: "72" },
   });
   fireEvent.click(create);
@@ -489,7 +486,7 @@ it("keeps the new link on screen when the browser refuses the copy", async () =>
   fireEvent.change(screen.getByPlaceholderText("Fictional guest"), {
     target: { value: "Grace" },
   });
-  fireEvent.click(screen.getByRole("button", { name: /Create private link/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Create link/ }));
   expect(
     await screen.findByText(
       "Guest slot 2 is ready. Copy the private link below and send it to the guest.",
@@ -505,12 +502,12 @@ it("blocks a seventh slot", async () => {
   );
   serve();
   render(<CallsRoute />);
-  await screen.findByText("6/6 slots assigned");
+  await screen.findByText("6 of 6 slots");
   fireEvent.change(screen.getByPlaceholderText("Fictional guest"), {
     target: { value: "Grace" },
   });
   expect(
-    screen.getByRole("button", { name: /Create private link/ }),
+    screen.getByRole("button", { name: /Create link/ }),
   ).toBeDisabled();
 });
 
@@ -524,7 +521,7 @@ it("explains an invitation that could not be created, and an action failure that
   fireEvent.change(screen.getByPlaceholderText("Fictional guest"), {
     target: { value: "Grace" },
   });
-  fireEvent.click(screen.getByRole("button", { name: /Create private link/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Create link/ }));
   expect(await screen.findByText("No free slot")).toBeVisible();
 
   serve({
@@ -532,7 +529,7 @@ it("explains an invitation that could not be created, and an action failure that
       throw "offline";
     },
   });
-  fireEvent.click(screen.getByRole("button", { name: /Create private link/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Create link/ }));
   expect(await screen.findByText("Action failed.")).toBeVisible();
 });
 
@@ -904,8 +901,9 @@ it("shows an invited slot whose guest has not joined yet", async () => {
   participants = [];
   serve();
   render(<CallsRoute />);
-  expect(await screen.findByText("Ada · Invited")).toBeVisible();
-  expect(screen.getByText("1/6 slots assigned")).toBeVisible();
+  expect(await screen.findByText("invited")).toBeVisible();
+  expect(screen.getByText("Ada")).toBeVisible();
+  expect(screen.getByText("1 of 6 slots")).toBeVisible();
 });
 
 it("shows a guest who was in the call and left as Left, with the link still usable", async () => {
@@ -913,7 +911,7 @@ it("shows a guest who was in the call and left as Left, with the link still usab
   participants = [];
   serve();
   render(<CallsRoute />);
-  expect(await screen.findByText("Ada · Left")).toBeVisible();
+  expect(await screen.findByText("left")).toBeVisible();
 });
 
 it("does not start a second guest's talkback while the first is being set up", async () => {
@@ -1066,9 +1064,9 @@ it("drops the previous show's late answer when the show changes", async () => {
   await waitFor(() => expect(release).toBeDefined());
   shown.program = "other show";
   view.rerender(<CallsRoute />);
-  await screen.findByText("Bea · Left");
+  await screen.findByText("left");
   await act(async () => release(Response.json({ room, participants: [participant()] })));
-  expect(screen.getByText("Bea · Left")).toBeVisible();
+  expect(screen.getByText("left")).toBeVisible();
   expect(screen.queryByText("Ada", { selector: "h3" })).toBeNull();
   expect(screen.queryByText(/Ada/)).toBeNull();
 });
@@ -1113,7 +1111,7 @@ const typeGuest = async () => {
   fireEvent.change(screen.getByPlaceholderText("Fictional guest"), {
     target: { value: "Grace" },
   });
-  fireEvent.click(screen.getByRole("button", { name: /Create private link/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Create link/ }));
 };
 const stubClipboard = (write: () => Promise<void>) => {
   vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText: vi.fn(), write } });
@@ -1152,7 +1150,9 @@ it("lists a guest who is waiting to be let in, off their strip, and admits or de
   participants = [participant({ screening: true })];
   const calls = serve();
   render(<CallsRoute />);
-  expect(await screen.findByText("Ada · waiting to be let in")).toBeVisible();
+  // The card and the slot both show the guest: the name and state appear in each.
+  expect((await screen.findAllByText("waiting")).length).toBeGreaterThan(0);
+  expect(screen.getAllByText("Ada").length).toBeGreaterThan(0);
   expect(screen.getByText("Waiting · 1")).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "Admit Ada" }));
   await waitFor(() =>

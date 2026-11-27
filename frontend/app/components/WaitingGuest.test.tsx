@@ -69,7 +69,7 @@ const talk = () => screen.getByRole('button', { name: 'Talk to Ada privately' })
 
 it('says the guest is off air, and admits or declines', () => {
   mount();
-  expect(screen.getByText('Slot 2 · waiting to be let in · not on air')).toBeVisible();
+  expect(screen.getByText('waiting')).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: 'Admit Ada' }));
   fireEvent.click(screen.getByRole('button', { name: 'Decline Ada' }));
   expect(admit).toHaveBeenCalledTimes(1);

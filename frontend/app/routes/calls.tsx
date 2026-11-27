@@ -408,12 +408,12 @@ function CallsDesk({ programId }: { programId: string }) {
     ? 'You do not have permission to create guest links.'
     : activeInvitations.length >= 6
       ? 'All 6 guest slots are assigned. Revoke a link to free one.'
-      : !displayName.trim()
-        ? 'Enter a guest name to create a private link.'
-        : null;
+      : null;
+  // The name is a placeholder until typed: the disabled button is the only hint, so no sentence is shown for it.
+  const nameMissing = !displayName.trim();
   const createLink = (
-    <Button fullWidth disabled={createBlockedReason !== null} aria-describedby={createBlockedReason ? 'create-blocked-reason' : undefined} loading={busy === 'create'} onClick={() => void createInvitation()}>
-      <Link2 size={15} /> Create private link
+    <Button fullWidth disabled={createBlockedReason !== null || nameMissing} aria-describedby={createBlockedReason ? 'create-blocked-reason' : undefined} loading={busy === 'create'} onClick={() => void createInvitation()}>
+      <Link2 size={15} /> Create link
     </Button>
   );
   const slots = deskSlots(activeInvitations, participants);
@@ -483,8 +483,8 @@ function CallsDesk({ programId }: { programId: string }) {
         <div className='caller-desk'>
           <aside className='caller-desk-queue' aria-label='Waiting and invitations'>
             <section aria-label='Waiting'>
-              <h2 className='text-sm font-semibold'>Waiting · {toAdmit.length + waiting.length}</h2>
-              {toAdmit.length + waiting.length ? (
+              <h2 className='text-sm font-semibold'>Waiting · {toAdmit.length}</h2>
+              {toAdmit.length ? (
                 <ul className='caller-desk-waiting'>
                   {toAdmit.map(({ slot, invitation }) => (
                     <WaitingGuest
@@ -498,14 +498,6 @@ function CallsDesk({ programId }: { programId: string }) {
                       onDecline={() => void screen(invitation!.id, 'decline')}
                     />
                   ))}
-                  {waiting.map(({ slot, invitation }) => (
-                    <li key={slot}>
-                      <strong>{invitation!.displayName}</strong>
-                      <span className='text-xs text-text-secondary'>
-                        Slot {slot} · invited, not joined · expires {new Date(invitation!.expiresAt).toLocaleString()}
-                      </span>
-                    </li>
-                  ))}
                 </ul>
               ) : (
                 <p className='text-xs text-text-secondary'>No one is waiting to join.</p>
@@ -514,7 +506,6 @@ function CallsDesk({ programId }: { programId: string }) {
             </section>
             <Card variant='outlined' className='p-5'>
               <h2 className='text-base font-medium'>Create invitation</h2>
-              <p className='mt-1 text-sm text-text-secondary'>{activeInvitations.length}/6 slots assigned</p>
               <div className='mt-4 space-y-4'>
                 <Field label='Guest name'>
                   <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder='Fictional guest' maxLength={80} />
@@ -524,9 +515,9 @@ function CallsDesk({ programId }: { programId: string }) {
                     value={expiresInHours}
                     onChange={setExpiresInHours}
                     options={[
-                      { value: '1', label: '1 hour' },
-                      { value: '6', label: '6 hours' },
-                      { value: '24', label: '24 hours (default)' },
+                      { value: '1', label: '1 h' },
+                      { value: '6', label: '6 h' },
+                      { value: '24', label: '24 h' },
                       { value: '72', label: '3 days' },
                       { value: '168', label: '7 days' }
                     ]}
@@ -560,7 +551,7 @@ function CallsDesk({ programId }: { programId: string }) {
             ) : activeInvitations.length === 0 ? (
               <Empty
                 title='No assigned guest slots'
-                description='To invite a guest: type their name, choose how long the link lasts, then press Create private link. The link is copied for you to send. The guest opens it on their phone and joins.'
+                description='To invite a guest: type their name, choose how long the link lasts, then press Create link. The link is copied for you to send. The guest opens it on their phone and joins.'
                 action={createLink}
               />
             ) : (
@@ -569,7 +560,8 @@ function CallsDesk({ programId }: { programId: string }) {
                   return (
                     <div key={slot} className='guest-strip guest-strip-free' aria-label={`Slot ${slot}: waiting`}>
                       <span className='guest-strip-slot'>{String(slot).padStart(2, '0')}</span>
-                      <span className='text-xs text-amber-300'>{invitation.displayName} · waiting to be let in</span>
+                      <span className='text-xs text-amber-300'>waiting</span>
+                      <span className='text-sm'>{invitation.displayName}</span>
                     </div>
                   );
                 }
@@ -577,7 +569,8 @@ function CallsDesk({ programId }: { programId: string }) {
                   return (
                     <div key={slot} className='guest-strip guest-strip-free' aria-label={`Slot ${slot}: free`}>
                       <span className='guest-strip-slot'>{String(slot).padStart(2, '0')}</span>
-                      <span className='text-xs text-text-secondary'>{invitation ? `${invitation.displayName} · ${emptySlotLabel(invitation.status)}` : 'Free'}</span>
+                      <span className='text-xs text-text-secondary'>{invitation ? emptySlotLabel(invitation.status).toLowerCase() : 'free'}</span>
+                      {invitation ? <span className='text-sm'>{invitation.displayName}</span> : null}
                     </div>
                   );
                 }

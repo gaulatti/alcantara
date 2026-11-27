@@ -89,9 +89,9 @@ export function WaitingGuest({
 
   return (
     <li className='space-y-2'>
-      <div>
+      <div className='flex items-center justify-between gap-2'>
         <strong>{name}</strong>
-        <span className='block text-xs text-amber-300'>Slot {slot} · waiting to be let in · not on air</span>
+        <span className='text-xs text-amber-300'>waiting</span>
       </div>
       {talking ? (
         <div>

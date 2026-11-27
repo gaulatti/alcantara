@@ -161,3 +161,24 @@
 .guest-strip-status {
   min-height: 1.25rem;
 }
+
+/* The calls status bar: one row, the cells on the left and the mic, headphones and refresh grouped on the right. */
+.caller-desk-status-end {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* Slot cards on /calls: a bordered card per slot, number and state on one line, the name below. */
+.caller-desk-strips > .guest-strip-free {
+  border: 1px solid color-mix(in srgb, var(--app-sand) 30%, transparent);
+  border-radius: var(--radius-ui);
+  padding: 10px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+}
+
