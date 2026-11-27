@@ -493,6 +493,7 @@ export default function CallsRoute() {
                     key={slot}
                     participant={participant}
                     expiresAt={invitation.expiresAt}
+                    neverJoined={invitation.status === 'available'}
                     canOperate={canOperate}
                     busy={busy !== null}
                     talking={talkingTo === participant.identity}
