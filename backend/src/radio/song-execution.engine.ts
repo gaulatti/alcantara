@@ -494,6 +494,56 @@ export type SongEngineEndReason =
  * matches the command this engine issued. Estimated media duration is used
  * solely to interpolate UI progress between authoritative updates.
  */
+/** A rotation's leaf ids in the order that plays: Shuffle's own order at the top level, nested playlists in row order. */
+function leavesInPlayOrder(sequence: ProgramSongSequence): string[] {
+  return programSongPlayOrder(sequence).flatMap((item) =>
+    item.kind === 'preset'
+      ? [item.id]
+      : collectProgramSongLeaves(item.sequence).map((leaf) => leaf.id),
+  );
+}
+
+/**
+ * Moves a rotation's cursor off leaves about to be removed, and returns the leaf it now names (null when none).
+ * The engine reads the cursor as the song on air or last aired and plays the one after it, unless the cursor is
+ * cued (`cuedItemId`: named after a Stop or an end, not aired yet). An aired or airing cursor goes back to the
+ * nearest kept leaf before it, so the removed song's successor still plays next; moving it forward skipped that
+ * successor (walk part 5, as the desk's own removal did). A cued cursor, or one with nothing kept before it, moves
+ * forward to the nearest kept leaf and is cued there, since that song has not aired.
+ */
+function moveCursorOffRemovedLeaves(
+  sequence: ProgramSongSequence,
+  wanted: ReadonlySet<string>,
+  leafCount: number,
+): string | null {
+  const active = activeProgramSongLeafId(sequence);
+  const cued =
+    sequence.cuedItemId !== undefined &&
+    sequence.cuedItemId === sequence.activeItemId;
+  if (active && !cued) {
+    const order = leavesInPlayOrder(sequence);
+    const place = order.indexOf(active);
+    const candidates = [
+      ...order.slice(0, Math.max(0, place)).reverse(),
+      ...(sequence.loop !== false ? order.slice(place + 1).reverse() : []),
+    ];
+    const predecessor = candidates.find((id) => !wanted.has(id));
+    if (predecessor && activateProgramSongLeaf(sequence, predecessor))
+      return predecessor;
+  }
+  for (let moves = 0; moves <= leafCount; moves += 1) {
+    const now = activeProgramSongLeafId(sequence);
+    if (!wanted.has(now as string)) break;
+    if (!advanceProgramSongSequence(sequence, now as string)) break;
+  }
+  const next = activeProgramSongLeafId(sequence);
+  if (next && wanted.has(next))
+    throw new BadRequestException('No leaf is left to move the rotation to');
+  if (next && sequence.activeItemId)
+    sequence.cuedItemId = sequence.activeItemId;
+  return next;
+}
+
 @Injectable()
 export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SongExecutionEngine.name);
@@ -1045,17 +1095,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
             throw new BadRequestException(
               `Leaf ${active} is the active leaf; set keep_rotation to move the rotation to the next leaf`,
             );
-          for (let moves = 0; moves <= known.size; moves += 1) {
-            const now = activeProgramSongLeafId(base);
-            if (!wanted.has(now as string)) break;
-            if (!advanceProgramSongSequence(base, now as string)) break;
-          }
-          const next = activeProgramSongLeafId(base);
-          if (next && wanted.has(next))
-            throw new BadRequestException(
-              'No leaf is left to move the rotation to',
-            );
-          cursorMovedTo = next;
+          cursorMovedTo = moveCursorOffRemovedLeaves(base, wanted, known.size);
         }
         const before = known.size;
         const removed = removeProgramSongLeavesInPlace(base, wanted);
@@ -1085,6 +1125,15 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         const live = this.states.get(programId);
         if (live?.sequence) {
           const current = clone(live.sequence);
+          // The live cursor on a removed leaf moves the same way, never to the first song by a reset.
+          const liveActive = activeProgramSongLeafId(current);
+          if (liveActive && wanted.has(liveActive)) {
+            try {
+              moveCursorOffRemovedLeaves(current, wanted, known.size);
+            } catch {
+              // Nothing left to move to: the removal resets the cursor, as before.
+            }
+          }
           removeProgramSongLeavesInPlace(current, wanted);
           live.sequence = current;
           result.songSequence = current;

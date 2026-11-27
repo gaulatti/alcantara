@@ -555,8 +555,11 @@ whole-playlist write still races the rotation's cursor.
   It then broadcasts the same `audio_bus_update` as the normal path. A song that ends
   between the read and the write is not undone: the engine's in-memory cursor is kept.
 - **Refusals.** An unknown leaf id (nothing changes); a program with no playlist; the
-  leaf on air, unless `keep_rotation` is set, which moves the rotation to the next leaf
-  the way a song ending does (a refusal if no other leaf is left).
+  leaf on air, unless `keep_rotation` is set, which keeps the rotation going: the leaf after
+  the removed one plays next (a refusal if no other leaf is left). The engine reads the cursor
+  as the song on air or last aired, so it moves back to the nearest kept leaf before the removed
+  one (wrapping in a loop); a cursor cued after a Stop or an end (`cuedItemId`, not aired yet),
+  or one with nothing kept before it, moves forward and stays cued (walk part 5).
 - **Dry run.** Returns the leaves that would be removed (id, song id, artist, title,
   high rotation) and the leaf count before and after, and writes nothing.
 - **Metrics.** None new: it does not use the engine's best-effort cursor write, so

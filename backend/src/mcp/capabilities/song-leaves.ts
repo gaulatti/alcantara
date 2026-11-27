@@ -27,7 +27,7 @@ export class SongLeavesMcpTools {
         name: 'program_remove_program_song_leaves_by_id',
         title: 'Remove songs from the playlist of a program by leaf id',
         description:
-          'Removes exactly the playlist leaves with these ids (1 to 200, nested blocks included) and changes nothing else: the rotation cursor is the live one, never rewritten from an old read. An unknown id is refused. Removing the leaf on air is refused unless keep_rotation is set, which moves the rotation to the next leaf. With dry_run the leaves that would go and the leaf counts before and after are returned and nothing is written.',
+          'Removes exactly the playlist leaves with these ids (1 to 200, nested blocks included) and changes nothing else: the rotation cursor is the live one, never rewritten from an old read. An unknown id is refused. Removing the leaf on air is refused unless keep_rotation is set, which keeps the rotation going: the leaf after the removed one plays next. With dry_run the leaves that would go and the leaf counts before and after are returned and nothing is written.',
         permission: ALCANTARA_PERMISSIONS.program.operate,
         tier: 'A',
         shape: {

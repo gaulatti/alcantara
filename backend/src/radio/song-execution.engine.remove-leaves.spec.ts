@@ -4,6 +4,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { SongExecutionEngine } from './song-execution.engine';
+import {
+  activeProgramSongLeafId,
+  advanceProgramSongSequence,
+  normalizeProgramSongSequence,
+} from './song-sequence.utils';
 import type { RadioService } from './radio.service';
 import type { FlightService } from '../program/flight.service';
 import type { PrismaService } from '../prisma.service';
@@ -157,24 +162,68 @@ describe('SongExecutionEngine.removeSongLeaves (#327)', () => {
     ).rejects.toThrow(/x1, x2, x3, x4, x5 and 2 more/);
   });
 
-  it('refuses the active leaf, and with keep_rotation moves the cursor to the next leaf', async () => {
+  // Walk part 5 (GM): the cursor names the song on air or last aired, and the engine plays the one after it. Moving it
+  // forward onto the successor skipped that successor; it goes back to the nearest kept leaf instead (wrapping in a
+  // loop), so the successor still airs next.
+  it('refuses the active leaf, and with keep_rotation moves the cursor back so its successor still airs', async () => {
     const refused = harness();
     await expect(remove(refused, ['a'])).rejects.toThrow(/active leaf/);
     expect(refused.prisma.programState.updateMany).not.toHaveBeenCalled();
 
     const h = harness();
     const result = await remove(h, ['a'], { keepRotation: true });
-    expect(result.cursorMovedTo).toBe('b');
-    expect((h.stored() as any).songSequence.activeItemId).toBe('b');
+    // "a" is first in a loop: the leaf before it is the last one, "e".
+    expect(result.cursorMovedTo).toBe('e');
+    expect((h.stored() as any).songSequence.activeItemId).toBe('e');
+    // What the engine plays after that cursor is the removed leaf's successor.
+    const after = normalizeProgramSongSequence(
+      (h.stored() as any).songSequence,
+    )!;
+    advanceProgramSongSequence(after, 'e');
+    expect(activeProgramSongLeafId(after)).toBe('b');
     expect(
       (h.stored() as any).songSequence.items.map((i: { id: string }) => i.id),
     ).toEqual(['b', 'block', 'e']);
   });
 
-  it('moves past removed neighbours when the active leaf and the next are both removed', async () => {
+  it('skips removed neighbours: the successor that airs is the next kept leaf', async () => {
     const h = harness();
     const result = await remove(h, ['a', 'b'], { keepRotation: true });
+    expect(result.cursorMovedTo).toBe('e');
+    const after = normalizeProgramSongSequence(
+      (h.stored() as any).songSequence,
+    )!;
+    advanceProgramSongSequence(after, 'e');
+    expect(activeProgramSongLeafId(after)).toBe('c');
+  });
+
+  it('moves a cued cursor forward and keeps it cued: that song has not aired', async () => {
+    const row = {
+      programId: 'radio-1',
+      type: 'radio',
+      songSequence: { ...stored(), activeItemId: 'b', cuedItemId: 'b' },
+      songQueue: [],
+      updatedAt: new Date(1),
+    };
+    const h = harness({ row });
+    const result = await remove(h, ['b'], { keepRotation: true });
     expect(result.cursorMovedTo).toBe('c');
+    expect((h.stored() as any).songSequence).toMatchObject({
+      activeItemId: 'block',
+      cuedItemId: 'block',
+    });
+  });
+
+  it('moves the cursor the engine holds the same way, never to the first song', async () => {
+    const h = harness();
+    h.engine.handleSequenceUpdated('radio-1', {
+      ...stored(),
+      activeItemId: 'e',
+    });
+    await remove(h, ['e'], { keepRotation: true });
+    const live = (h.engine as any).states.get('radio-1').sequence;
+    expect(live.activeItemId).toBe('block');
+    expect(activeProgramSongLeafId(live)).toBe('d');
   });
 
   it('refuses when no leaf is left to move the rotation to', async () => {
@@ -196,7 +245,7 @@ describe('SongExecutionEngine.removeSongLeaves (#327)', () => {
     );
   });
 
-  it('lets the last leaf of a playlist that does not loop go: nothing is left to move to', async () => {
+  it('lets the last leaf of a playlist that does not loop go: the cursor goes back to the leaf before it', async () => {
     const row = {
       programId: 'radio-1',
       type: 'radio',
@@ -211,7 +260,8 @@ describe('SongExecutionEngine.removeSongLeaves (#327)', () => {
     };
     const h = harness({ row });
     const result = await remove(h, ['b'], { keepRotation: true });
-    expect(result.cursorMovedTo).toBeNull();
+    // The leaf before it has aired: nothing follows, so the rotation ends after it.
+    expect(result.cursorMovedTo).toBe('a');
     expect(
       (h.stored() as any).songSequence.items.map((i: { id: string }) => i.id),
     ).toEqual(['a']);
