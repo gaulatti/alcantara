@@ -1194,3 +1194,17 @@ describe("ProgramSongSequenceEditor undo per program", () => {
     expect(view.onChange.mock.lastCall![0].items.map((i: any) => i.id)).toEqual(["a", "b", "c"]);
   });
 });
+
+// On a touch screen there is no hover, so a row's star and its label controls must not stay at opacity 0 there:
+// a touch operator could not see how to add a high-rotation song. The class is a guard; touch is checked in a capture.
+it("keeps the high-rotation star visible on a touch screen, where there is no hover", () => {
+  render(
+    <ProgramSongSequenceEditor
+      undoScope="test-program"
+      sequence={{ mode: "manual", activeItemId: "a", items: [preset("a")] } as any}
+      view="queue"
+      onChange={vi.fn()}
+    />,
+  );
+  expect(screen.getByLabelText("Add Title a to high rotation").className).toContain("[@media(hover:none)]:opacity-100");
+});
