@@ -1,5 +1,5 @@
 import { TooltipButton } from "./BleeckerButtons";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo, type ReactNode } from "react";
 import { Button, Select } from "@gaulatti/bleecker";
 import { apiUrl } from "../utils/apiBaseUrl";
 import {
@@ -28,6 +28,7 @@ import {
 } from "../utils/programSequence";
 import { RadioOutputPlayer } from "./RadioOutputPlayer";
 import { usePreListen } from "./radio-desk/usePreListen";
+import { ChannelPreListen, type PreFadeSource } from "./radio-desk/ChannelPreListen";
 import { PlaybackBar } from "./PlaybackBar";
 import { useRadioMonitor } from "./RadioMonitor";
 import { HoldButton } from "./radio-desk/HoldButton";
@@ -534,7 +535,42 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     palazzo?.connection === "connected" || palazzo?.connection === "polling";
 
   const monitor = useRadioMonitor();
-  const preListen = usePreListen(monitor?.setPreListening);
+  const preListen = usePreListen();
+  // The program monitor is muted while anything is pre-listened on this device, a sounder or a channel.
+  const [preFade, setPreFade] = useState<Record<string, boolean>>({});
+  const onPreFade = useCallback(
+    (channel: string, active: boolean) => setPreFade((current) => ({ ...current, [channel]: active })),
+    [],
+  );
+  const preListening = !!preListen.playing || Object.values(preFade).some(Boolean);
+  const setMonitorPreListening = monitor?.setPreListening;
+  useEffect(() => {
+    if (!preListening) return;
+    setMonitorPreListening?.(true);
+    return () => setMonitorPreListening?.(false);
+  }, [preListening, setMonitorPreListening]);
+  // What is on air on each channel, for its pre-fade listen (#835).
+  const musicOnAir = useMemo<PreFadeSource[]>(() => {
+    const song = programSongPlayback;
+    if (!song?.isPlaying || song.telemetryStale || !song.audioUrl) return [];
+    return [{ key: song.token || song.audioUrl, url: song.audioUrl, positionMs: () => song.currentTimeMs }];
+  }, [programSongPlayback]);
+  const cartwallOnAir = useMemo<PreFadeSource[]>(
+    () =>
+      instants.flatMap((instant) => {
+        const playback = instantPlayback[instant.id];
+        if (!playback || (playback.endsAtMs !== null && playback.endsAtMs <= Date.now())) return [];
+        return [
+          {
+            key: `${instant.id}:${playback.startedAtMs}`,
+            url: instant.audioUrl,
+            positionMs: () => Date.now() - playback.startedAtMs,
+            volume: instant.volume,
+          },
+        ];
+      }),
+    [instants, instantPlayback],
+  );
   const [findingSong, setFindingSong] = useState(false);
   // The engine coming back (#707): a command failure from while it was away no longer describes the desk.
   // Only a known "not connected" turning into "connected" counts: before the first status answer the engine's
@@ -1251,12 +1287,14 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   channel={mixer.song}
                   onVolumeChange={onSongVolumeChange}
                   onToggleMuted={onToggleSongMuted}
+                  preListen={<ChannelPreListen channel="song" label="Music" sources={musicOnAir} onActive={onPreFade} />}
                 />
                 <RadioMixerChannel
                   label="Cartwall"
                   channel={mixer.instants}
                   onVolumeChange={onInstantVolumeChange}
                   onToggleMuted={onToggleInstantMuted}
+                  preListen={<ChannelPreListen channel="instant" label="Cartwall" sources={cartwallOnAir} onActive={onPreFade} />}
                 />
                 <RadioMixerChannel
                   label="Output"
@@ -1440,11 +1478,13 @@ function RadioMixerChannel({
   channel,
   onVolumeChange,
   onToggleMuted,
+  preListen,
 }: {
   label: string;
   channel: RadioMixerChannelState;
   onVolumeChange: (value: number) => void;
   onToggleMuted?: () => void;
+  preListen?: ReactNode;
 }) {
   const db = faderToDb(channel.volume);
   const level = Number.isFinite(db) ? `${db.toFixed(1)} dB` : "-∞ dB";
@@ -1481,6 +1521,7 @@ function RadioMixerChannel({
       ) : (
         <span className="console-eyebrow text-center mt-2">Master</span>
       )}
+      {preListen}
     </section>
   );
 }
