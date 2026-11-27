@@ -75,8 +75,16 @@ export function toneReport(samples, rate, hz) {
   };
 }
 
-/** The proof's verdict from its three measurements. */
-export const proven = (before, live, after) => Boolean(before?.absent && live?.present && after?.absent);
+/** The proof's verdict from its three measurements and the guest page's two banner checks. */
+export const proven = (before, live, after, guestPage = {}) =>
+  Boolean(before?.absent && live?.present && after?.absent && guestPage.liveShown === true && guestPage.offShown === true);
+
+/** Whether the guest page shows this exact banner text within the time allowed. */
+const bannerShown = (page, text, timeout = 5_000) =>
+  page
+    .getByText(text, { exact: true })
+    .waitFor({ timeout })
+    .then(() => true, () => false);
 
 const report = (step, details = {}) => console.log(JSON.stringify({ step, at: new Date().toISOString(), ...details }));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -170,6 +178,7 @@ async function main() {
   let live = null;
   let after = null;
   let guest = null;
+  const guestPage = { liveShown: null, offShown: null };
   try {
     const decoder = await browser.newPage();
     const listen = async (seconds) => {
@@ -215,6 +224,9 @@ async function main() {
     console.log("WAITING FOR CUE LIVE");
     await cue("live").first().waitFor({ timeout: 600_000 });
     report("cued-live");
+    // The guest's page must say so within 5 s of the cue. The banner follows the studio's cue on the heartbeat.
+    guestPage.liveShown = await bannerShown(guest, "You're on air");
+    report("guest-page", { step: "live", shows: "You're on air", shown: guestPage.liveShown, withinSeconds: 5 });
     live = await measureWhen("present", Date.now());
     report("live", live);
     console.log(live.present ? "TONE IS ON AIR" : "TONE NOT HEARD ON AIR");
@@ -223,6 +235,8 @@ async function main() {
     await cue("wrap").or(cue("standby")).first().waitFor({ timeout: 900_000 });
     report("wrapped");
     // The guest stays connected, so what goes is gone because of the wrap.
+    guestPage.offShown = await bannerShown(guest, "Off air");
+    report("guest-page", { step: "standby-or-wrap", shows: "Off air", shown: guestPage.offShown, withinSeconds: 5 });
     after = await measureWhen("absent", Date.now());
     report("after", after);
   } catch (error) {
@@ -232,10 +246,20 @@ async function main() {
     await sleep(500);
     await browser.close();
   }
-  const ok = proven(before, live, after);
+  const ok = proven(before, live, after, guestPage);
   const line = (name, r) => `${name}: ${r ? `tone in ${r.withTone}/${r.windows} half-second windows, ${r.toneDbfs} dBFS, ${r.aboveNeighboursDb} dB above neighbours` : "not measured"}`;
   console.log("--- summary");
-  console.log([line("before", before), line("live", live), line("after wrap", after), ok ? "ON-AIR PROOF PASSED" : "ON-AIR PROOF FAILED"].join("\n"));
+  const guestLine = (label, value) => `guest page ${label}: ${value === null ? "not checked" : value ? "shown within 5 s" : "NOT shown"}`;
+  console.log(
+    [
+      line("before", before),
+      line("live", live),
+      line("after wrap", after),
+      guestLine('"You\'re on air" after the live cue', guestPage.liveShown),
+      guestLine('"Off air" after standby or wrap', guestPage.offShown),
+      ok ? "ON-AIR PROOF PASSED" : "ON-AIR PROOF FAILED",
+    ].join("\n"),
+  );
   process.exit(ok ? 0 : 1);
 }
 
