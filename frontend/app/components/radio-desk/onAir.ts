@@ -58,6 +58,8 @@ export interface OnAirView {
   label: string;
   /** A jingle is on in front of the next song: the title names the jingle and there is no song clock. */
   jingle?: boolean;
+  /** Expected audio is silent: the main pill says Dead air instead of anything else (#879). */
+  deadAir?: boolean;
   title: string | null;
   artist: string | null;
   /** Null when there is no length, or when a stale report would show a frozen clock. */
@@ -157,20 +159,10 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
       ? Math.min(elapsed, playback!.durationMs as number)
       : elapsed;
 
+  // Palazzo's playout being down is said as itself, with its own advice.
+  const deadAir = input.outputSilent === true && !(input.engine.connected && input.playoutDown);
+
   const chips: OnAirChip[] = [
-    // Dead air leads the chips, so the strip never reads as all good while the output is silent
-    // (gaulatti/alcantara#694).
-    ...(input.outputSilent
-      ? [
-          {
-            id: "output" as const,
-            tone: "bad" as const,
-            label: "Dead air",
-            title:
-              "Expected audio is silent: a song is playing but the output is quiet.",
-          },
-        ]
-      : []),
     input.streamRunning === null
       ? { id: "stream", tone: "warn", label: "Stream unverified" }
       : input.streamRunning
@@ -230,7 +222,7 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
             : chip,
         )
       : chips;
-  // While Dead air shows, the good chips stay truthful but neutral, so the red Dead air chip is the
+  // While the output is silent, the good chips stay truthful but neutral, so the red Dead air pill is the
   // only coloured "all is well / not well" signal on the strip (gaulatti/alcantara#694 closing walk).
   // Warnings keep their colour: they are a second problem, not a good state.
   const shownChips = input.outputSilent
@@ -309,5 +301,7 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
     modeLabel: input.next?.via === "queue" ? "Play Next" : MODE_LABELS[input.mode],
     chips: shownChips,
   };
-  return commandedJingle ? { ...view, state: "on-air", label: "On air" } : view;
+  const shown: OnAirView = commandedJingle ? { ...view, state: "on-air", label: "On air" } : view;
+  // gaulatti/alcantara#879 reverses #694's small chip: dead air is the one thing that must not be missed.
+  return deadAir ? { ...shown, deadAir, label: "Dead air" } : shown;
 }

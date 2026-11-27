@@ -30,6 +30,29 @@ export function LiveOnAirStrip({
   return <OnAirStrip view={call ? { ...view, chips: [call, ...view.chips] } : view} programId={programId} controls={controls} />;
 }
 
+/** Dead air, impossible to miss, with the advice one press away (gaulatti/alcantara#879). */
+function DeadAirPill() {
+  const showAdvice = () => {
+    const advice = document.querySelector<HTMLElement>('[role="alert"][aria-label="Dead air"]');
+    advice?.scrollIntoView({ block: "center" });
+    advice?.focus();
+  };
+  return (
+    <span role="status">
+      <button
+        type="button"
+        data-tone="bad"
+        onClick={showAdvice}
+        title="Expected audio is silent. Show what to do."
+        className="inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-full border-2 border-white bg-accent-red px-4 text-base font-extrabold uppercase tracking-wider text-white motion-safe:animate-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+      >
+        <i aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-current" />
+        Dead air
+      </button>
+    </span>
+  );
+}
+
 /**
  * The line that never scrolls away: whether the program is on air, what plays, how long is left,
  * what comes next, and whether the listener hears it. Props follow the OnAirStrip pinned in
@@ -54,9 +77,10 @@ export function OnAirStrip({
     <section
       aria-label="On air"
       data-state={view.state}
-      className="sticky top-0 z-20 flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-sand/30 bg-deep-sea px-3 py-1.5 text-text-primary md:gap-x-5 md:gap-y-2 md:px-4 md:py-2.5"
+      data-dead-air={view.deadAir ? "true" : undefined}
+      className={`sticky top-0 z-20 flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-3 py-1.5 text-text-primary md:gap-x-5 md:gap-y-2 md:px-4 md:py-2.5 ${view.deadAir ? "border-accent-red bg-[color-mix(in_srgb,var(--color-accent-red)_28%,var(--app-deep-sea))]" : "border-sand/30 bg-deep-sea"}`}
     >
-      <StatePill
+      {view.deadAir ? <DeadAirPill /> : <StatePill
         tone={
           view.state === "on-air" || fallback || view.state === "off-rundown"
             ? "live"
@@ -71,7 +95,7 @@ export function OnAirStrip({
         label={view.label}
         pulse={view.state === "on-air"}
         live
-      />
+      />}
       <div className="min-w-0 flex-1 basis-40 md:basis-64">
         {on ? (
           <>

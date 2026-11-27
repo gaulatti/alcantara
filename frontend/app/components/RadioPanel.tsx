@@ -1140,6 +1140,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                 <div
                   role="alert"
                   aria-label="Dead air"
+                  // The strip's Dead air pill brings the operator here.
+                  tabIndex={-1}
                   className="mt-2 flex flex-col items-start gap-1.5 text-xs text-terracotta"
                 >
                   {mixer.song.muted ? (

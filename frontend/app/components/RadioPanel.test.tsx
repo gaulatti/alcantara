@@ -2364,11 +2364,17 @@ describe("dead air", () => {
     return p;
   };
 
-  it("leads the on-air strip with a dead-air chip", () => {
+  it("says Dead air as the strip's main pill, with the advice one press away", () => {
     mount(deadAir({ preparedVersion: null, automation: null, connection: "connected" }));
-    expect(
-      within(screen.getByRole("region", { name: "On air" })).getByText("Dead air"),
-    ).toBeVisible();
+    const strip = screen.getByRole("region", { name: "On air" });
+    const pill = within(strip).getByRole("button", { name: "Dead air" });
+    expect(strip).toHaveAttribute("data-dead-air", "true");
+    expect(within(strip).queryByText("On air")).toBeNull();
+    const advice = screen.getByRole("alert", { name: "Dead air" });
+    advice.scrollIntoView = vi.fn();
+    fireEvent.click(pill);
+    expect(advice.scrollIntoView).toHaveBeenCalledWith({ block: "center" });
+    expect(advice).toHaveFocus();
   });
 
   it("leaves Dead air the only coloured chip on the strip: the good chips render neutral", () => {
