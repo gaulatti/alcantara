@@ -52,6 +52,7 @@ function fixture(overrides: Record<string, unknown> = {}) {
     updatedAt: new Date(),
     commands: [],
     events: [],
+    _count: { events: 0 },
     admittedAt: new Date(),
   };
   const prisma = {
@@ -540,7 +541,12 @@ describe('WebrtcService invitation/session and LiveKit boundary', () => {
         id: second,
         activeSessionUntil: new Date(Date.now() + 1000),
       },
-      { ...f.invitation(), id: '33333333-3333-4333-8333-333333333333' },
+      {
+        ...f.invitation(),
+        id: '33333333-3333-4333-8333-333333333333',
+        // A call that reported from the room before it dropped.
+        _count: { events: 3 },
+      },
     ]);
     participants.mockResolvedValue([
       {
@@ -563,6 +569,12 @@ describe('WebrtcService invitation/session and LiveKit boundary', () => {
       'connected',
       'reconnecting',
       'offline',
+    ]);
+    // An offline guest whose call once reported from the room dropped; the desk must not call them "not joined".
+    expect(result.participants.map((guest) => guest.everJoined)).toEqual([
+      false,
+      false,
+      true,
     ]);
     expect(result.participants[0].tracks).toEqual([
       {

@@ -51,6 +51,7 @@ function makeInvitation(overrides: Record<string, unknown> = {}) {
     activeSessionId: null as string | null,
     activeSessionUntil: null as Date | null,
     events: [] as unknown[],
+    _count: { events: 0 },
     // Already admitted: screening has its own spec.
     admittedAt: new Date() as Date | null,
     createdByIdentity: 'operator-1',

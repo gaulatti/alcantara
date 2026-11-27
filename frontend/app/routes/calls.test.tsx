@@ -586,6 +586,24 @@ it("disables controls a guest cannot take", async () => {
   expect(within(card()).queryByText(/Latest/)).not.toBeInTheDocument();
 });
 
+// Review of #860: an offline guest's invitation has no live lease whether the call dropped or never started, so the
+// invitation's status cannot tell them apart; the call's own reports can.
+it("says Dropped for a guest whose call reported from the room, and Invited, not joined only for one who never did", async () => {
+  invitations = [invitation({ status: "available" })];
+  participants = [participant({ connectionState: "offline", tracks: [], commands: [], everJoined: true })];
+  serve();
+  const view = render(<CallsRoute />);
+  await screen.findByText("Ada", { selector: "h3" });
+  expect(within(card()).getByText("Dropped")).toBeVisible();
+  view.unmount();
+
+  participants = [participant({ connectionState: "offline", tracks: [], commands: [], everJoined: false })];
+  serve();
+  render(<CallsRoute />);
+  await screen.findByText("Ada", { selector: "h3" });
+  expect(within(card()).getByText("Invited, not joined")).toBeVisible();
+});
+
 it("shows a reconnecting guest muted in returns, with a muted microphone", async () => {
   participants = [
     participant({

@@ -26,6 +26,7 @@ function setup() {
     activeSessionUntil: null,
     commands: [],
     events: [] as Array<{ type: string; details: unknown }>,
+    _count: { events: 0 },
     admittedAt: new Date() as Date | null,
   };
   const prisma = {

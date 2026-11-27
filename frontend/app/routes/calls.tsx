@@ -50,6 +50,8 @@ type Participant = {
   commands: Command[];
   // Joined and not admitted yet; absent from a backend without screening.
   screening?: boolean;
+  // Whether the call ever reported from the room; absent from an older backend.
+  everJoined?: boolean;
   icePath?: IcePath | null;
   joinFailure?: CallFailure | null;
 };
@@ -493,7 +495,9 @@ export default function CallsRoute() {
                     key={slot}
                     participant={participant}
                     expiresAt={invitation.expiresAt}
-                    neverJoined={invitation.status === 'available'}
+                    // "Invited, not joined" only for a guest who never reached the room: a dropped call also leaves the
+                    // invitation without a live lease, and must still read "Dropped". An older backend says neither.
+                    neverJoined={participant.everJoined === false}
                     canOperate={canOperate}
                     busy={busy !== null}
                     talking={talkingTo === participant.identity}

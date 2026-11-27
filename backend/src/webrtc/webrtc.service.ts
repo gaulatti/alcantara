@@ -542,6 +542,9 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       where: { programId, revokedAt: null, expiresAt: { gt: new Date() } },
       include: {
         commands: { orderBy: { createdAt: 'desc' }, take: 10 },
+        // Whether the guest's call ever reported from the room: a guest whose lease ran out after a call dropped, not
+        // one who never arrived (the lease alone cannot tell them apart).
+        _count: { select: { events: { where: { type: 'telemetry' } } } },
         // The latest report on the call decides what the row shows.
         events: {
           where: { type: { in: ['telemetry', 'join_failed'] } },
@@ -602,6 +605,7 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
             invitation.activeSessionUntil &&
             invitation.activeSessionUntil > new Date(),
           ),
+          everJoined: invitation._count.events > 0,
           ...this.reportedCall(invitation.events[0]),
         };
       }),

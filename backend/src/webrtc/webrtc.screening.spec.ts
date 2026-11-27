@@ -36,6 +36,7 @@ function setup(overrides: Record<string, unknown> = {}) {
     activeSessionUntil: null as Date | null,
     commands: [],
     events: [],
+    _count: { events: 0 },
     ...overrides,
   };
   const prisma = {
