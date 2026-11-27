@@ -214,8 +214,10 @@ The desk's **Mic on air** (on `/calls`, off by default, red ON AIR while on) pub
 as `onair:host`, receivable only by the contribution worker and the return router. It joins with its own token
 (`POST /webrtc/host-mic-token`), whose identity is fixed per show, so LiveKit admits one host microphone at a time: a
 second tab or device that goes on air takes over, and the first says "Mic moved to another tab or device". The
-worker and the return router take `onair:host` from that identity only, so air never carries two host microphones
-(#879). Switching it off, leaving the
+worker and the return router take `onair:host` from that identity, so air never carries two host microphones (#879).
+For now, a console opened before that change still publishes `onair:host` from its ordinary operator connection: it is
+taken only while the show's host mic is absent, and never together with it, so a console that has not reloaded is not
+silently off air. That transitional rule goes once the host-mic read shows no such track for 24 hours (#880). Switching it off, leaving the
 page or losing the room unpublishes it. Palazzo mixes the live input over the music at the music's own level
 (ducking is not automatic yet), so while its live input is on air and the music is up the radio desk shows
 "Guest on air, music at full level" beside the Mixer faders.

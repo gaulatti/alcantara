@@ -50,17 +50,37 @@ export function readConfig(env) {
   };
 }
 
+/** The program's one host microphone (gaulatti/alcantara#879): LiveKit admits its identity once at a time. */
+export function isHostMicTrack(track, programId) {
+  return track.kind === "audio" && track.identity === `operator-host-mic-${programId}` && track.name === "onair:host";
+}
+
+/**
+ * Transitional, removed by gaulatti/alcantara#880: a console opened before the host-mic token publishes `onair:host`
+ * from an ordinary operator connection. It goes on air only while the program's host mic is not in the room, so the
+ * two are never on air together, and a console that has not reloaded is not silently off air.
+ */
+export function isLegacyHostMicTrack(track, programId) {
+  return (
+    track.kind === "audio" &&
+    track.name === "onair:host" &&
+    track.identity.startsWith("operator-") &&
+    // No host-mic identity is a legacy one, the program's own or another's.
+    !track.identity.startsWith("operator-host-mic-")
+  );
+}
+
 /**
  * Whether a track goes on air: an on-air guest's audio, or the host's microphone. Never talkback. The host's microphone
- * is `onair:host` from the program's one host-mic identity only (gaulatti/alcantara#879): LiveKit admits one
- * participant per identity, so at most one host microphone reaches air, and an `onair:host` track from any other
- * operator connection is ignored.
+ * is `onair:host` from the program's one host-mic identity (gaulatti/alcantara#879), or, while that is absent, from a
+ * console that predates it (`hostMicPresent` says whether the program's host mic is in the room).
  */
-export function isOnAirTrack(track, onAirGuests, programId) {
+export function isOnAirTrack(track, onAirGuests, programId, hostMicPresent = false) {
   if (track.kind !== "audio") return false;
   if (track.name.startsWith("talkback:")) return false;
   if (track.identity.startsWith("guest-")) return onAirGuests.has(track.identity);
-  return track.identity === `operator-host-mic-${programId}` && track.name === "onair:host";
+  if (isHostMicTrack(track, programId)) return true;
+  return !hostMicPresent && isLegacyHostMicTrack(track, programId);
 }
 
 /** Sums the on-air sources into one mono 48 kHz feed. Each source queues what it receives; a pull drains them all. */
@@ -174,6 +194,8 @@ export function createWorker({ config, fetch, connectRoom, spawn, now = Date.now
 
   const headers = { "X-Renderer-Key": config.key, "Content-Type": "application/json" };
   const backoff = (failures) => BACKOFF_MS[Math.min(failures - 1, BACKOFF_MS.length - 1)];
+  /** Whether the program's host mic is in the room: while it is, no older console's onair:host goes on air. */
+  const hostMicPresent = () => [...tracks.values()].some((track) => isHostMicTrack(track, config.programId));
 
   const query = `programId=${encodeURIComponent(config.programId)}`;
   const guestsOf = (body) => {
@@ -222,7 +244,7 @@ export function createWorker({ config, fetch, connectRoom, spawn, now = Date.now
         frame: (key, samples) => {
           const track = tracks.get(key);
           if (track && samples.some((sample) => sample !== 0)) lastFrameAt.set(key, now());
-          if (push && track && isOnAirTrack(track, onAirGuests, config.programId)) mixer.push(key, samples);
+          if (push && track && isOnAirTrack(track, onAirGuests, config.programId, hostMicPresent())) mixer.push(key, samples);
         },
         disconnected: () => {
           room = null;
@@ -341,8 +363,9 @@ export function createWorker({ config, fetch, connectRoom, spawn, now = Date.now
 
   function evaluate() {
     const time = now();
+    const present = hostMicPresent();
     const sources = [...tracks.values()].filter(
-      (track) => isOnAirTrack(track, onAirGuests, config.programId) && time - (lastFrameAt.get(track.key) ?? -Infinity) < FRAME_STALE_MS,
+      (track) => isOnAirTrack(track, onAirGuests, config.programId, present) && time - (lastFrameAt.get(track.key) ?? -Infinity) < FRAME_STALE_MS,
     );
     metrics.state.sources = sources.length;
     if (sources.length) {

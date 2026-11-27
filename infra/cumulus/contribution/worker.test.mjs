@@ -130,9 +130,11 @@ test("puts on air only on-air guests and the host's onair:host track, never talk
   assert.equal(isOnAirTrack(track("b", "guest-cy"), live), false);
   const program = "modoitaliano.fm";
   assert.equal(isOnAirTrack(track("c", "operator-host-mic-modoitaliano.fm", "onair:host"), live, program), true);
-  // gaulatti/alcantara#879: only the program's one host-mic identity; any other operator connection's onair:host is
-  // ignored, so two tabs can never put two host microphones on air.
-  assert.equal(isOnAirTrack(track("c2", "operator-1", "onair:host"), live, program), false);
+  // gaulatti/alcantara#879: the program's one host-mic identity. An older console's onair:host (another operator
+  // connection) is taken only while that host mic is absent (transitional, gaulatti/alcantara#880).
+  assert.equal(isOnAirTrack(track("c2", "operator-1", "onair:host"), live, program), true);
+  assert.equal(isOnAirTrack(track("c2", "operator-1", "onair:host"), live, program, true), false);
+  assert.equal(isOnAirTrack(track("c", "operator-host-mic-modoitaliano.fm", "onair:host"), live, program, true), true);
   assert.equal(isOnAirTrack(track("c3", "operator-host-mic-other.fm", "onair:host"), live, program), false);
   assert.equal(isOnAirTrack(track("c4", "operator-host-mic-modoitaliano.fm", "microphone"), live, program), false);
   assert.equal(isOnAirTrack(track("d", "operator-1", "talkback:all"), live, program), false);
@@ -473,16 +475,32 @@ test("still takes a dead publisher off air on the silence timer while the stream
   await following;
 });
 
-test("puts no onair:host on air from an operator connection other than the program's one host mic", async () => {
+test("keeps an older console's host mic on air alone, and only the program's host mic once both are in the room", async () => {
   const h = harness();
   await h.worker.step();
-  // A second tab's microphone on an ordinary operator token: never on air (gaulatti/alcantara#879).
-  sending(h, "stray", "operator-1", "onair:host");
-  await h.worker.step();
-  assert.equal(h.worker.isPushing(), false);
-  assert.equal(h.worker.metrics.state.sources, 0);
-  sending(h, "host", "operator-host-mic-modoitaliano.fm", "onair:host");
+  // A console from before the host-mic token, on its ordinary operator connection: still on air (#880 removes this).
+  sending(h, "old", "operator-1", "onair:host");
   await h.worker.step();
   assert.equal(h.worker.isPushing(), true);
+  assert.equal(h.worker.metrics.state.sources, 1);
+
+  // The program's host mic joins: only it reaches air, never both (gaulatti/alcantara#879).
+  sending(h, "new", "operator-host-mic-modoitaliano.fm", "onair:host");
+  await h.worker.step();
+  assert.equal(h.worker.metrics.state.sources, 1);
+  // What was queued before the host mic joined plays out first (at most MAX_QUEUE_SAMPLES).
+  h.advance(1_000);
+  h.worker.writeAudio();
+  h.handlers().frame("old", new Int16Array(960).fill(3000));
+  h.handlers().frame("new", new Int16Array(960).fill(200));
+  h.advance(20);
+  h.worker.writeAudio();
+  const written = h.children[0].written.at(-1);
+  assert.ok(written.length > 0);
+  assert.ok(written.every((sample) => sample === 200), "only the program's host mic is mixed");
+
+  // It leaves: the older console's mic is back on its own.
+  h.handlers().untrack("new");
+  await h.worker.step();
   assert.equal(h.worker.metrics.state.sources, 1);
 });
