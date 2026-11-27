@@ -424,6 +424,67 @@ describe("ProgramSongSequenceEditor queue", () => {
     );
   });
 
+  it("moves a row up or down with its buttons, persisting the order as drag does", () => {
+    const sequence = {
+      mode: "manual",
+      activeItemId: "a",
+      items: [preset("a"), preset("b"), preset("c")],
+    };
+    const { onChange, rerender } = editor({ sequence, view: "queue" });
+    // The first row cannot move up and the last cannot move down.
+    expect(
+      screen.getByRole("button", { name: "Move Title a up" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Move Title c down" }),
+    ).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Move Title a down" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        items: [
+          expect.objectContaining({ id: "b" }),
+          expect.objectContaining({ id: "a" }),
+          expect.objectContaining({ id: "c" }),
+        ],
+      }),
+    );
+    // The change is saved by the parent, so the next render shows the saved order.
+    const saved = onChange.mock.calls.at(-1)![0];
+    rerender(
+      <ProgramSongSequenceEditor
+        undoScope="test-program"
+        onChange={onChange}
+        sequence={saved}
+        view="queue"
+      />,
+    );
+    expect(rows().map((row) => row.textContent)).toEqual([
+      expect.stringContaining("Title b"),
+      expect.stringContaining("Title a"),
+      expect.stringContaining("Title c"),
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Move Title c up" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        items: [
+          expect.objectContaining({ id: "b" }),
+          expect.objectContaining({ id: "c" }),
+          expect.objectContaining({ id: "a" }),
+        ],
+      }),
+    );
+  });
+
+  it("keeps the drag handle visible without hover", () => {
+    editor({
+      sequence: { mode: "manual", activeItemId: "a", items: [preset("a")] },
+      view: "queue",
+    });
+    expect(
+      screen.getByLabelText("Drag to reorder").className,
+    ).not.toMatch(/opacity-0/);
+  });
+
   it("reorders by dragging a row's handle onto another row", () => {
     const { onChange } = editor({
       sequence: {
