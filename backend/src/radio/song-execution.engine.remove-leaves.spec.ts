@@ -368,4 +368,71 @@ describe('SongExecutionEngine.removeSongLeaves (#327)', () => {
       BadRequestException,
     );
   });
+
+  // The engine moved onto a song while the row that removes every song was being written: nothing is left to move
+  // the live cursor to, and the removal still goes through.
+  it('lets the removal reset a live cursor that has nowhere to go', async () => {
+    const h = harness({
+      row: {
+        programId: 'radio-1',
+        type: 'radio',
+        // Manual: an automatic rotation with no cursor is started at its first song when the engine takes it.
+        songSequence: { ...stored(), mode: 'manual', activeItemId: null },
+        songQueue: [],
+        updatedAt: new Date(1),
+      },
+    });
+    h.engine.handleSequenceUpdated('radio-1', { ...stored(), mode: 'manual', activeItemId: null });
+    h.prisma.programState.updateMany.mockImplementationOnce(() => {
+      (h.engine as any).states.get('radio-1').sequence.activeItemId = 'a';
+      return Promise.resolve({ count: 1 });
+    });
+    const result = await remove(h, ['a', 'b', 'c', 'd', 'e']);
+    expect(result.removed).toHaveLength(5);
+    const live = (h.engine as any).states.get('radio-1').sequence;
+    expect(activeProgramSongLeafId(live)).toBeNull();
+  });
+
+  // Cued on the last song of a rotation that does not loop: nothing follows it, so the cursor is left empty.
+  it('leaves no cursor when the cued last song of a rotation that does not loop is removed', async () => {
+    const h = harness({
+      row: {
+        programId: 'radio-1',
+        type: 'radio',
+        songSequence: { ...stored(), loop: false, activeItemId: 'e', cuedItemId: 'e' },
+        songQueue: [],
+        updatedAt: new Date(1),
+      },
+    });
+    const result = await remove(h, ['e'], { keepRotation: true });
+    expect(result.cursorMovedTo).toBeNull();
+    expect(activeProgramSongLeafId(result.songSequence)).not.toBe('e');
+  });
+
+  // A block with no songs has no leaf to cue: the cursor rests on it and nothing is marked.
+  it('marks nothing cued when the cursor moves onto an empty block', async () => {
+    const h = harness({
+      row: {
+        programId: 'radio-1',
+        type: 'radio',
+        songSequence: {
+          ...stored(),
+          activeItemId: 'a',
+          cuedItemId: 'a',
+          items: [
+            leaf('a', 1),
+            { id: 'empty', kind: 'sequence', label: 'Empty', sequence: { mode: 'autoplay', loop: true, activeItemId: null, items: [] } },
+            leaf('e', 5),
+          ],
+        },
+        songQueue: [],
+        updatedAt: new Date(1),
+      },
+    });
+    const result = await remove(h, ['a'], { keepRotation: true });
+    expect(result.cursorMovedTo).toBeNull();
+    expect(result.songSequence.activeItemId).toBe('empty');
+    // The old mark names the removed song and is not moved to anything.
+    expect(result.songSequence.cuedItemId).not.toBe('empty');
+  });
 });
