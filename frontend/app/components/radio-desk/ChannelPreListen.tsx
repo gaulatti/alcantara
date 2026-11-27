@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TooltipButton } from "../BleeckerButtons";
+import { holdLocalAudio } from "../../utils/localAudio";
 
 /** A file on air on a mixer channel, and how far into it the desk reads air to be. */
 export interface PreFadeSource {
@@ -37,6 +38,7 @@ export function ChannelPreListen({
   const [on, setOn] = useState(false);
   const [failed, setFailed] = useState(false);
   const playing = useRef(new Map<string, HTMLAudioElement>());
+  const releases = useRef(new WeakMap<HTMLAudioElement, () => void>());
   const report = useRef(onActive);
   report.current = onActive;
 
@@ -44,6 +46,7 @@ export function ChannelPreListen({
     for (const [key, audio] of playing.current) {
       if (keep.has(key)) continue;
       audio.pause();
+      releases.current.get(audio)?.();
       playing.current.delete(key);
     }
   }, []);
@@ -57,6 +60,7 @@ export function ChannelPreListen({
         const added = !audio;
         if (!audio) {
           audio = new Audio(source.url);
+          releases.current.set(audio, holdLocalAudio(audio));
           playing.current.set(source.key, audio);
         }
         audio.volume = Math.min(1, Math.max(0, source.volume ?? 1));

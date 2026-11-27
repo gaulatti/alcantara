@@ -877,6 +877,7 @@ it("says a live microphone on any page, with its off switch", async () => {
   shell.program = "news";
   open("/media/library");
   expect(await screen.findByText("Mic on air · news")).toBeVisible();
+  expect(screen.getByText("PFL muted")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Switch the microphone off air" }));
   expect(stop).toHaveBeenCalled();
   hostMic.live = null;

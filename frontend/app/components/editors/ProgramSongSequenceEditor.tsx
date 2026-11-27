@@ -1,3 +1,4 @@
+import { holdLocalAudio } from '../../utils/localAudio';
 import { StatePill } from '../radio-desk/primitives';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Input, Select } from '@gaulatti/bleecker';
@@ -133,6 +134,7 @@ export function ProgramSongSequenceEditor({
   const [addSongValue, setAddSongValue] = useState('');
   const [previewingItemId, setPreviewingItemId] = useState<string | null>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const previewRelease = useRef<(() => void) | null>(null);
   const isNested = depth > 0;
   const showQueue = view !== 'catalog';
   const showCatalog = view !== 'queue';
@@ -200,6 +202,9 @@ export function ProgramSongSequenceEditor({
 
     previewAudioRef.current?.pause();
     const audio = new Audio(audioUrl);
+    // Muted while the host microphone is open without headphones.
+    previewRelease.current?.();
+    previewRelease.current = holdLocalAudio(audio);
     previewAudioRef.current = audio;
     audio.onended = () => {
       if (previewAudioRef.current === audio) {

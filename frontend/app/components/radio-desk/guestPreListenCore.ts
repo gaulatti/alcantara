@@ -1,3 +1,4 @@
+import { holdLocalAudio } from "../../utils/localAudio";
 import { RoomEvent, Track } from "livekit-client";
 
 // Guest pre-fade listen (gaulatti/alcantara#835). The operator's browser subscribes to one guest's microphone track and
@@ -50,11 +51,13 @@ export function createGuestPreListen(room: PreListenRoom, onChange: (state: Gues
   } | null = null;
 
   const set = (state: GuestPreListenState) => onChange(state);
+  let release: (() => void) | null = null;
 
   const attach = () => {
     if (!current || current.element || !current.publication.track) return;
     current.element = current.publication.track.attach();
-    current.element.muted = false;
+    // Muted while the host microphone is open without headphones: the guest would hear themselves on air.
+    release = holdLocalAudio(current.element);
     set({ status: "listening", identity: current.identity, subscribed: true });
   };
 
@@ -66,6 +69,8 @@ export function createGuestPreListen(room: PreListenRoom, onChange: (state: Gues
   const stop = () => {
     if (!current) return;
     const { element, publication } = current;
+    release?.();
+    release = null;
     if (element) publication.track?.detach(element);
     if (current.subscribed) publication.setSubscribed(false);
     room.off(RoomEvent.TrackSubscribed, onSubscribed);

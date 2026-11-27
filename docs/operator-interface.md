@@ -182,8 +182,12 @@ between pages, every page's header says **Mic on air** with an **Off** button
 while it is on, and switching shows or signing out switches it off (#879). While
 the microphone is open, from the press until it is off, **Listen** is muted so
 the speakers cannot feed back to air, and says **Muted while your mic is live**;
-it is heard again when the microphone goes off. Headphone pre-listens (PFL) are
-not muted.
+it is heard again when the microphone goes off. Every pre-listen
+and local preview on the desk (Music, Cartwall, a sounder, a guest, **Preview
+locally**) is muted too: the browser cannot tell speakers from headphones. An
+operator on headphones ticks **I'm on headphones: keep pre-fade** beside Mic on
+air, which this device remembers; the header chip says **PFL muted** or **PFL on
+headphones**.
 
 Guest calls belongs to the show in its header: switching shows starts a fresh
 desk, dropping the previous show's lists, drafts, link and open microphones, and

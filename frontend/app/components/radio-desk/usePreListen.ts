@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { holdLocalAudio } from "../../utils/localAudio";
 
 /**
  * Pre-fade listen for one file on this device (gaulatti/alcantara#835): it plays in the operator's browser and sends
@@ -7,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
  */
 export function usePreListen(onActive?: (active: boolean) => void) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const release = useRef<(() => void) | null>(null);
   const notify = useRef(onActive);
   notify.current = onActive;
   const [playing, setPlaying] = useState<{ id: number; name: string } | null>(null);
@@ -15,6 +17,8 @@ export function usePreListen(onActive?: (active: boolean) => void) {
   const stop = useCallback(() => {
     audioRef.current?.pause();
     audioRef.current = null;
+    release.current?.();
+    release.current = null;
     notify.current?.(false);
     setPlaying(null);
   }, []);
@@ -27,6 +31,7 @@ export function usePreListen(onActive?: (active: boolean) => void) {
       if (same) return;
       const audio = new Audio(source.audioUrl);
       audioRef.current = audio;
+      release.current = holdLocalAudio(audio);
       // Only the file still being listened to can end or fail the pre-listen.
       const finish = (failure: string | null) => {
         if (audioRef.current !== audio) return;

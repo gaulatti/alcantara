@@ -55,6 +55,7 @@ import { SCENE_TRANSITIONS, getSceneTransitionPreset } from '../utils/sceneTrans
 import { useLogout } from '../hooks/useAuth';
 import { RadioMonitorProvider, useRadioMonitor } from '../components/RadioMonitor';
 import { HostMicProvider, useHostMic } from '../components/HostMicOnAir';
+import { LocalAudioGuard, usePreFadeOnHeadphones } from '../components/LocalAudioGuard';
 import { useFeatures } from '../hooks/useFeatures';
 import { isTestAuth } from '../services/session';
 import { getAppNavigationSections, isNavigationItemActive, sidebarSectionsKey, type ProgramType } from '../utils/appNavigation';
@@ -185,6 +186,7 @@ export default function Layout() {
   return (
     // The microphone is outside the monitor, which mutes itself while the microphone is open.
     <HostMicProvider programId={selectedProgramId}>
+      <LocalAudioGuard />
       <RadioMonitorProvider programId={selectedProgramId}>
         <ConsoleShell />
       </RadioMonitorProvider>
@@ -198,6 +200,7 @@ function ConsoleShell() {
   const { logout: signOut } = useLogout();
   const radioMonitor = useRadioMonitor();
   const hostMic = useHostMic();
+  const preFadeSilenced = !usePreFadeOnHeadphones();
   const logout = () => {
     hostMic?.stop();
     radioMonitor?.stop();
@@ -1045,6 +1048,7 @@ function ConsoleShell() {
                   <span className='max-w-32 truncate'>
                     {hostMic.state === 'on' ? 'Mic on air' : 'Mic starting…'} · {hostMic.programId}
                   </span>
+                  <span className='font-medium'>{preFadeSilenced ? 'PFL muted' : 'PFL on headphones'}</span>
                   <Button size='xs' variant='ghost' className='text-white' onClick={() => hostMic.stop()} aria-label='Switch the microphone off air'>
                     Off
                   </Button>
