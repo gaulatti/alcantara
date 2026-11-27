@@ -4,7 +4,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { Readable } from 'node:stream';
+import { Readable, Transform } from 'node:stream';
 import type { ReadableStream } from 'node:stream/web';
 import { RadioService } from './radio.service';
 import { RadioMetricsService } from './radio-metrics.service';
@@ -15,11 +15,31 @@ import { PalazzoMachineClient } from './palazzo-machine.client';
 // deadline: 60 seconds to connect, then 30 seconds after the last disconnect.
 const CONNECT_WINDOW_MS = 60_000;
 const RECONNECT_WINDOW_MS = 30_000;
+// Icecast opens each listener with a burst of buffered audio (about 16 s at Palazzo's burst size), so a reader that
+// plays everything it receives stays that far behind. A return feed drops what arrives in its first 750 ms and
+// starts close to live; the MP3 decoder resynchronizes on the next frame.
+const BURST_SKIP_MS = 750;
+
+/** Drops the stream's opening burst: everything received until BURST_SKIP_MS after the first chunk. */
+export function skipOpeningBurst(now: () => number = Date.now): Transform {
+  let firstChunkAt: number | null = null;
+  return new Transform({
+    transform(chunk: Buffer, _encoding, done) {
+      firstChunkAt ??= now();
+      done(null, now() - firstChunkAt < BURST_SKIP_MS ? undefined : chunk);
+    },
+  });
+}
 @Injectable()
 export class RadioMonitorService {
   private readonly tickets = new Map<
     string,
-    { programId: string; expiresAt: number; connections: number }
+    {
+      programId: string;
+      expiresAt: number;
+      connections: number;
+      skipBurst: boolean;
+    }
   >();
 
   constructor(
@@ -30,6 +50,7 @@ export class RadioMonitorService {
 
   async issue(
     programId: string,
+    options: { skipBurst?: boolean } = {},
   ): Promise<{ streamPath: string; expiresInMs: number }> {
     const settings = await this.radio.getRadioSettings(programId);
     if (!settings)
@@ -44,6 +65,7 @@ export class RadioMonitorService {
       programId,
       expiresAt: Date.now() + CONNECT_WINDOW_MS,
       connections: 0,
+      skipBurst: options.skipBurst === true,
     });
     return {
       streamPath: `/radio/${encodeURIComponent(programId)}/monitor-audio?ticket=${encodeURIComponent(ticket)}`,
@@ -81,9 +103,14 @@ export class RadioMonitorService {
         programId,
         signal,
       );
-      const stream = Readable.fromWeb(
+      const source = Readable.fromWeb(
         response.body as ReadableStream<Uint8Array>,
       );
+      const stream = grant.skipBurst
+        ? source.pipe(skipOpeningBurst()).once('close', () => source.destroy())
+        : source;
+      if (grant.skipBurst)
+        source.once('error', (error) => stream.destroy(error));
       this.metrics.recordMonitor('opened');
       let failed = false;
       stream.once('error', () => {

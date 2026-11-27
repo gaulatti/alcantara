@@ -1422,6 +1422,18 @@
     "permission": "alcantara:webrtc:read"
   },
   {
+    "method": "POST",
+    "path": "/webrtc/return-audio-ticket",
+    "public": true,
+    "permission": "alcantara:webrtc:read"
+  },
+  {
+    "method": "GET",
+    "path": "/webrtc/return-routers",
+    "public": true,
+    "permission": "alcantara:webrtc:read"
+  },
+  {
     "method": "GET",
     "path": "/webrtc/rooms/:programId/participants",
     "public": false,

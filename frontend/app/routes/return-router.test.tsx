@@ -1,6 +1,6 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ReturnRouterRoute, { meta } from "./return-router";
 
 // The machine-only return router: it joins the program's LiveKit room as the
@@ -63,6 +63,7 @@ vi.mock("livekit-client", () => ({
     TrackUnsubscribed: "trackUnsubscribed",
     ParticipantConnected: "participantConnected",
     ParticipantDisconnected: "participantDisconnected",
+    Disconnected: "disconnected",
     Reconnecting: "reconnecting",
     Reconnected: "reconnected",
   },
@@ -112,6 +113,9 @@ class FakeAudioContext {
   createGain() {
     return node("gain", { gain: { value: 0 } });
   }
+  createMediaElementSource(element: FakeAudio) {
+    return node(`element:${element.src}`);
+  }
   createDelay() {
     return node("delay", { delayTime: { value: -1 } });
   }
@@ -119,6 +123,38 @@ class FakeAudioContext {
   async close() {
     audioClosed = true;
   }
+}
+/** The program-audio player: it records what it was asked to play and lets a test end or break the stream. */
+class FakeAudio {
+  static all: FakeAudio[] = [];
+  src = "";
+  srcObject: unknown = undefined;
+  muted = false;
+  crossOrigin: string | null = null;
+  preload = "";
+  paused = true;
+  listeners = new Map<string, () => void>();
+  static play: () => Promise<void> = () => Promise.resolve();
+  constructor() {
+    FakeAudio.all.push(this);
+  }
+  addEventListener(event: string, listener: () => void) {
+    this.listeners.set(event, listener);
+  }
+  fire(event: string) {
+    this.listeners.get(event)?.();
+  }
+  play() {
+    this.paused = false;
+    return FakeAudio.play();
+  }
+  pause() {
+    this.paused = true;
+  }
+  removeAttribute(name: string) {
+    if (name === "src") this.src = "";
+  }
+  load() {}
 }
 class FakeMediaStream {
   label: string;
@@ -184,6 +220,7 @@ let routes: RouteState[] = [];
 let tokenStatus = 200;
 let stateStatus = 200;
 let fetchCalls: { url: string; init: RequestInit }[] = [];
+let audioTicket: () => Response = () => new Response(null, { status: 502 });
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -194,7 +231,12 @@ beforeEach(() => {
   tokenStatus = 200;
   stateStatus = 200;
   fetchCalls = [];
+  audioTicket = () => new Response(null, { status: 502 });
+  FakeAudio.all = [];
+  delete document.documentElement.dataset.returnRouter;
+  delete document.documentElement.dataset.mixCount;
   window.sessionStorage.clear();
+  vi.stubGlobal("Audio", FakeAudio);
   vi.stubGlobal("AudioContext", FakeAudioContext);
   vi.stubGlobal("MediaStream", FakeMediaStream);
   vi.stubGlobal(
@@ -209,6 +251,7 @@ beforeEach(() => {
               token: "fictional-token",
             })
           : new Response(null, { status: tokenStatus });
+      if (url.endsWith("/webrtc/return-audio-ticket")) return audioTicket();
       if (url.endsWith("/webrtc/renderer-state"))
         return stateStatus === 200
           ? Response.json({ routes })
@@ -608,4 +651,251 @@ it("stops before publishing when the page closes during a rebuild", async () => 
     await vi.advanceTimersByTimeAsync(0);
   });
   expect(screen.queryByText(/synchronized/)).not.toBeInTheDocument();
+});
+
+// The server-run return router (gaulatti/alcantara: calls work with nothing extra open).
+describe("the server-run return router", () => {
+  const grant = (path = "/radio/main/monitor-audio?ticket=fictional-ticket") => () =>
+    Response.json({ streamPath: path, expiresInMs: 60000 });
+  // The program-audio players (the keep-alive elements of remote tracks carry a srcObject instead).
+  const players = () => FakeAudio.all.filter((audio) => audio.srcObject === undefined);
+  const elementSource = () => nodes.find((n) => n.label.startsWith("element:"));
+
+  it("asks for the program's fixed router identity only when the runner opened it", async () => {
+    tokenStatus = 401;
+    window.history.replaceState(null, "", "/");
+    await openRouter("#key=fictional-renderer-key", "/return-router/main");
+    expect(JSON.parse(String(fetchCalls[0].init.body))).toEqual({ programId: "main" });
+    cleanup();
+    fetchCalls = [];
+    window.history.replaceState(null, "", "/return-router/main?runner=1#key=fictional-renderer-key");
+    render(
+      <MemoryRouter initialEntries={["/return-router/main"]}>
+        <Routes>
+          <Route path="/return-router/:programId" element={<ReturnRouterRoute />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(JSON.parse(String(fetchCalls[0].init.body))).toEqual({ programId: "main", role: "return-router" });
+    expect(document.documentElement.dataset.returnRouter).toBe("failed");
+  });
+
+  it("reports starting, then connected with the number of mixes it publishes", async () => {
+    routes = [guestRoute("guest-anna")];
+    await openRouter();
+    expect(document.documentElement.dataset.returnRouter).toBe("starting");
+    room().remoteParticipants.set("guest-anna", { identity: "guest-anna" });
+    emit("participantConnected");
+    await settle();
+    expect(document.documentElement.dataset.returnRouter).toBe("connected");
+    expect(document.documentElement.dataset.mixCount).toBe("1");
+  });
+
+  it("reports failed when LiveKit drops it, so the runner reopens it", async () => {
+    await openRouter();
+    await settle();
+    emit("disconnected");
+    expect(document.documentElement.dataset.returnRouter).toBe("failed");
+  });
+
+  it("mixes the program's own audio into the program bus while no program feed is in the room, never the guest's own voice", async () => {
+    audioTicket = grant();
+    routes = [guestRoute("guest-anna", { returnAudioBus: "master" }), guestRoute("guest-cy", { returnAudioBus: "monitor" })];
+    await openRouter();
+    await settle();
+    const ticket = fetchCalls.find((call) => call.url.endsWith("/webrtc/return-audio-ticket"))!;
+    expect(new Headers(ticket.init.headers).get("X-Renderer-Key")).toBe("fictional-renderer-key");
+    expect(JSON.parse(String(ticket.init.body))).toEqual({ programId: "main" });
+    expect(players()).toHaveLength(1);
+    expect(players()[0].src).toContain("/radio/main/monitor-audio?ticket=fictional-ticket");
+    expect(players()[0].crossOrigin).toBe("anonymous");
+    expect(players()[0].paused).toBe(false);
+
+    room().remoteParticipants.set("guest-anna", { identity: "guest-anna" });
+    room().remoteParticipants.set("guest-cy", { identity: "guest-cy" });
+    emit("trackSubscribed", ...audioTrack("anna-mic", "t1", "mic", "guest-anna"));
+    await settle();
+    expect(elementSource()!.feeds).toContain(mixFor("guest-anna")!);
+    // Another bus does not take the program audio.
+    expect(elementSource()!.feeds).not.toContain(mixFor("guest-cy")!);
+    expect(sourceOf("anna-mic").feeds).not.toContain(mixFor("guest-anna")!);
+
+    // A program feed joins: it is the program bus, and the fallback steps aside.
+    emit("trackSubscribed", ...audioTrack("alana-feed", "t2", "program", "program-feed-main"));
+    await settle();
+    const withFeed = mixFor("guest-anna")!;
+    expect(sourceOf("alana-feed").feeds).toContain(withFeed);
+    expect(elementSource()!.feeds).not.toContain(withFeed);
+  });
+
+  it("refuses a grant that does not point at the program audio, and asks again later", async () => {
+    audioTicket = grant("https://elsewhere.example/stream");
+    await openRouter();
+    await settle();
+    expect(players()).toHaveLength(0);
+    const asked = () => fetchCalls.filter((call) => call.url.endsWith("/webrtc/return-audio-ticket")).length;
+    expect(asked()).toBe(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(asked()).toBe(2);
+    // Then less often: 15 s, then every minute.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(asked()).toBe(3);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(59_000);
+    });
+    expect(asked()).toBe(3);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(asked()).toBe(4);
+  });
+
+  it("asks for the program audio again when the stream drops or cannot play, and stops it when the page closes", async () => {
+    audioTicket = grant();
+    routes = [guestRoute("guest-anna", { returnAudioBus: "program" })];
+    const view = await openRouter();
+    await settle();
+    const first = players()[0];
+    first.fire("playing");
+    first.fire("ended");
+    // A stale element's events change nothing.
+    first.fire("error");
+    expect(first.paused).toBe(true);
+    expect(first.src).toBe("");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(players()).toHaveLength(2);
+    const second = players()[1];
+    second.fire("error");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(players()).toHaveLength(3);
+    view.unmount();
+    expect(players()[2].paused).toBe(true);
+    expect(players()[2].src).toBe("");
+  });
+
+  it("drops the program audio and asks again when the browser refuses to play it", async () => {
+    audioTicket = grant();
+    FakeAudio.play = () => Promise.reject(new Error("autoplay refused"));
+    try {
+      await openRouter();
+      await settle();
+    } finally {
+      FakeAudio.play = () => Promise.resolve();
+    }
+    expect(players()[0].src).toBe("");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(players()).toHaveLength(2);
+  });
+
+  it("does not start the program audio after the page has closed", async () => {
+    let answer: (response: Response) => void = () => undefined;
+    audioTicket = () => new Promise<Response>((resolve) => (answer = resolve)) as unknown as Response;
+    const view = await openRouter();
+    view.unmount();
+    await act(async () => {
+      answer(Response.json({ streamPath: "/radio/main/monitor-audio?ticket=late" }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(players()).toHaveLength(0);
+  });
+
+  it("changes nothing once the page has closed: a late disconnect, a late refusal, or a connection that finishes late", async () => {
+    let refuse: (response: Response) => void = () => undefined;
+    audioTicket = () => new Promise<Response>((resolve) => (refuse = resolve)) as unknown as Response;
+    const view = await openRouter();
+    await settle();
+    expect(document.documentElement.dataset.returnRouter).toBe("connected");
+    view.unmount();
+    emit("disconnected");
+    await act(async () => {
+      refuse(new Response(null, { status: 502 }));
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(document.documentElement.dataset.returnRouter).toBe("connected");
+    expect(fetchCalls.filter((call) => call.url.endsWith("/webrtc/return-audio-ticket"))).toHaveLength(1);
+
+    cleanup();
+    fetchCalls = [];
+    let connected: () => void = () => undefined;
+    const original = lk.FakeRoom.prototype.connect;
+    lk.FakeRoom.prototype.connect = async function (this: InstanceType<typeof lk.FakeRoom>) {
+      await new Promise<void>((resolve) => (connected = resolve));
+      this.state = "connected";
+    };
+    try {
+      const late = await openRouter();
+      late.unmount();
+      await act(async () => {
+        connected();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+    } finally {
+      lk.FakeRoom.prototype.connect = original;
+    }
+    expect(fetchCalls.some((call) => call.url.endsWith("/webrtc/return-audio-ticket"))).toBe(false);
+  });
+});
+
+// Chromium leaves a remote WebRTC track silent in Web Audio unless a media element plays it too.
+it("keeps every subscribed track playing, muted, in an element, and lets it go when the track leaves or the page closes", async () => {
+  routes = [guestRoute("guest-anna")];
+  const view = await openRouter();
+  await settle();
+  emit("trackSubscribed", ...audioTrack("anna-mic", "t1", "mic", "guest-anna"));
+  const keep = FakeAudio.all.find((audio) => audio.srcObject !== undefined)!;
+  expect(keep.muted).toBe(true);
+  expect(keep.paused).toBe(false);
+  expect((keep.srcObject as { label: string }).label).toBe("anna-mic");
+  // The same track again replaces the element.
+  emit("trackSubscribed", ...audioTrack("anna-mic", "t1", "mic", "guest-anna"));
+  expect(keep.paused).toBe(true);
+  const again = FakeAudio.all.filter((audio) => audio.srcObject !== undefined).at(-1)!;
+  emit("trackUnsubscribed", null, { trackSid: "t1" });
+  expect(again.paused).toBe(true);
+  expect(again.srcObject).toBeNull();
+  emit("trackSubscribed", ...audioTrack("cy-mic", "t2", "mic", "guest-cy"));
+  const last = FakeAudio.all.filter((audio) => audio.srcObject !== undefined).at(-1)!;
+  FakeAudio.play = () => Promise.reject(new Error("refused"));
+  try {
+    emit("trackSubscribed", ...audioTrack("dee-mic", "t3", "mic", "guest-dee"));
+    await settle();
+  } finally {
+    FakeAudio.play = () => Promise.resolve();
+  }
+  view.unmount();
+  expect(last.paused).toBe(true);
+  expect(last.srcObject).toBeNull();
+});
+
+it("does not join the room when the page closed while it was being authorized", async () => {
+  let authorize: (response: Response) => void = () => undefined;
+  const fetchMock = vi.mocked(fetch);
+  const original = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (input, init) => {
+    if (String(input).endsWith("/webrtc/renderer-token")) {
+      fetchCalls.push({ url: String(input), init: init as RequestInit });
+      return new Promise<Response>((resolve) => (authorize = resolve));
+    }
+    return original(input, init);
+  });
+  const view = await openRouter();
+  view.unmount();
+  await act(async () => {
+    authorize(Response.json({ serverUrl: "wss://livekit.example", token: "fictional-token" }));
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  expect(room().connectedWith).toBeNull();
 });

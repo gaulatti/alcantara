@@ -801,12 +801,21 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
   async createRendererToken(
     rendererKey: string | undefined,
     programIdValue: unknown,
+    roleValue?: unknown,
   ) {
     this.requireConfiguration();
     this.requireRendererKey(rendererKey);
     const programId = this.normalizeProgramId(programIdValue);
+    if (roleValue !== undefined && roleValue !== 'return-router')
+      throw new BadRequestException('Invalid renderer role.');
+    // The server-run return router has one fixed identity per program: a second instance replaces the first in
+    // LiveKit, so a room never gets two sets of return mixes. Guests already accept a `return-router-` publisher.
+    const identity =
+      roleValue === 'return-router'
+        ? `return-router-${programId}`
+        : `renderer-${programId}-${randomUUID()}`;
     const token = new AccessToken(this.apiKey, this.apiSecret, {
-      identity: `renderer-${programId}-${randomUUID()}`,
+      identity,
       name: `Alcantara return publisher ${programId}`,
       ttl: '5m',
       metadata: JSON.stringify({ role: 'renderer', programId }),
@@ -830,6 +839,53 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       token: await token.toJwt(),
       roomName: this.roomName(programId),
     };
+  }
+
+  /** The program id rule every call endpoint applies, for the return router's endpoints. */
+  normalizeRendererProgramId(value: unknown): string {
+    return this.normalizeProgramId(value);
+  }
+
+  /** Refuses anything but the renderer key; the return router's endpoints share it with the renderer pages. */
+  authorizeRenderer(rendererKey: string | undefined) {
+    this.requireConfiguration();
+    this.requireRendererKey(rendererKey);
+  }
+
+  /**
+   * The programs whose room holds at least one admitted guest with an open session right now. A program whose room
+   * LiveKit cannot list is left out this time and asked again on the next call.
+   */
+  async programsWithAdmittedGuests(): Promise<string[]> {
+    const now = new Date();
+    const rows = await this.prisma.guestInvitation.findMany({
+      where: {
+        revokedAt: null,
+        expiresAt: { gt: now },
+        admittedAt: { not: null },
+        activeSessionId: { not: null },
+      },
+      select: { id: true, programId: true },
+    });
+    const byProgram = new Map<string, Set<string>>();
+    for (const row of rows) {
+      const ids = byProgram.get(row.programId) ?? new Set<string>();
+      ids.add(this.guestIdentity(row.id));
+      byProgram.set(row.programId, ids);
+    }
+    const programs: string[] = [];
+    for (const [programId, identities] of byProgram) {
+      try {
+        const present = await this.roomService.listParticipants(
+          this.roomName(programId),
+        );
+        if (present.some((participant) => identities.has(participant.identity)))
+          programs.push(programId);
+      } catch {
+        // A missing room has no guest in it; LiveKit away is asked again on the next call.
+      }
+    }
+    return programs.sort();
   }
 
   async getRendererState(

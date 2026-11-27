@@ -39,6 +39,7 @@ import { RadioMcpTools } from '../mcp/capabilities/radio';
   ],
   exports: [
     RadioService,
+    RadioMonitorService,
     SongExecutionEngine,
     NowPlayingPublisherService,
     PalazzoRadioTelemetryService,

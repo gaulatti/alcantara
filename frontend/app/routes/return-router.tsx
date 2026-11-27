@@ -19,7 +19,15 @@ type InputTrack = {
   participantIdentity: string;
   trackName: string;
   source: MediaStreamAudioSourceNode;
+  /** Chromium leaves a remote WebRTC track silent in Web Audio unless a media element also plays it (muted is enough). */
+  keepAlive: HTMLAudioElement;
 };
+
+function releaseInput(input: InputTrack) {
+  input.source.disconnect();
+  input.keepAlive.pause();
+  input.keepAlive.srcObject = null;
+}
 
 type PublishedMix = {
   track: LocalAudioTrack;
@@ -36,6 +44,16 @@ function readRendererKey() {
   if (key) window.sessionStorage.setItem('alcantara-renderer-key', key);
   window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
   return key;
+}
+
+/** Retry delays for the program-audio fallback: a dropped stream is asked for again, then less often. */
+const PROGRAM_AUDIO_RETRY_MS = [5_000, 15_000, 60_000];
+
+/** Tells a supervising runner how the page is doing: `starting`, `connected` or `failed`, plus the live mix count. */
+function reportState(state: 'starting' | 'connected' | 'failed', mixCount?: number) {
+  const root = document.documentElement;
+  root.dataset.returnRouter = state;
+  if (mixCount !== undefined) root.dataset.mixCount = String(mixCount);
 }
 
 /** A short, fixed message with a code. The raw error text is never shown (gaulatti/alcantara#353). */
@@ -60,6 +78,14 @@ export default function ReturnRouterRoute() {
     let routes: RouteState[] = [];
     let rebuildTimer = 0;
     let stateTimer = 0;
+    let programAudioTimer = 0;
+    let programAudioFailures = 0;
+    // The program's own audio (Palazzo's output, through the backend's grant), mixed in as the program bus when no
+    // program feed is in the room. Without it a guest hears nothing unless the desktop Feed or Alana is publishing.
+    let programAudio: { element: HTMLAudioElement; source: MediaElementAudioSourceNode } | null = null;
+    // The server-run router (opened by the return runner with `?runner=1`) takes the program's one fixed identity.
+    const runner = new URLSearchParams(window.location.search).get('runner') === '1';
+    reportState('starting', 0);
 
     const unpublishMixes = async () => {
       const pending = Array.from(mixes.values()).map(async (mix) => {
@@ -111,6 +137,9 @@ export default function ReturnRouterRoute() {
             input.source.connect(gain).connect(delay).connect(destination);
           }
         }
+        // No program feed carries audio: the program bus is the program's own audio, when the program has it.
+        const programBus = route.returnAudioBus === 'master' || route.returnAudioBus === 'program';
+        if (programBus && programFeedsWithAudio.size === 0 && programAudio) programAudio.source.connect(destination);
         const mediaTrack = destination.stream.getAudioTracks()[0];
         const localTrack = new LocalAudioTrack(mediaTrack);
         await room.localParticipant.publishTrack(localTrack, {
@@ -124,6 +153,7 @@ export default function ReturnRouterRoute() {
       }
       if (!cancelled) {
         setMixCount(mixes.size);
+        reportState('connected', mixes.size);
         setProblem(null);
         setStatus(`${mixes.size} synchronized N-1 return mix${mixes.size === 1 ? '' : 'es'} active`);
       }
@@ -137,21 +167,84 @@ export default function ReturnRouterRoute() {
     const addTrack = (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
       if (track.kind !== Track.Kind.Audio || !track.mediaStreamTrack) return;
       const key = publication.trackSid;
-      const source = context.createMediaStreamSource(new MediaStream([track.mediaStreamTrack]));
+      const stream = new MediaStream([track.mediaStreamTrack]);
+      const source = context.createMediaStreamSource(stream);
+      const keepAlive = new Audio();
+      keepAlive.muted = true;
+      keepAlive.srcObject = stream;
+      void Promise.resolve(keepAlive.play()).catch(() => undefined);
+      inputs.get(key)?.keepAlive.pause();
       inputs.set(key, {
         key,
         participantIdentity: participant.identity,
         trackName: publication.trackName,
-        source
+        source,
+        keepAlive
       });
       scheduleRebuild();
     };
 
     const removeTrack = (_track: RemoteTrack, publication: RemoteTrackPublication) => {
       const input = inputs.get(publication.trackSid);
-      input?.source.disconnect();
+      if (input) releaseInput(input);
       inputs.delete(publication.trackSid);
       scheduleRebuild();
+    };
+
+    const retryProgramAudio = () => {
+      if (cancelled) return;
+      const delay = PROGRAM_AUDIO_RETRY_MS[Math.min(programAudioFailures, PROGRAM_AUDIO_RETRY_MS.length - 1)];
+      programAudioFailures += 1;
+      window.clearTimeout(programAudioTimer);
+      programAudioTimer = window.setTimeout(() => void startProgramAudio(), delay);
+    };
+
+    const stopProgramAudio = () => {
+      if (!programAudio) return;
+      programAudio.source.disconnect();
+      programAudio.element.pause();
+      programAudio.element.removeAttribute('src');
+      programAudio.element.load();
+      programAudio = null;
+    };
+
+    const startProgramAudio = async () => {
+      if (cancelled) return;
+      try {
+        const response = await fetch(apiUrl('/webrtc/return-audio-ticket'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Renderer-Key': rendererKey },
+          body: JSON.stringify({ programId })
+        });
+        if (!response.ok) throw new Error(`Program audio grant failed (${response.status}).`);
+        const grant = (await response.json()) as { streamPath?: unknown };
+        if (typeof grant.streamPath !== 'string' || !grant.streamPath.startsWith('/radio/')) throw new Error('Malformed program audio grant.');
+        if (cancelled) return;
+        stopProgramAudio();
+        const element = new Audio();
+        element.crossOrigin = 'anonymous';
+        element.preload = 'none';
+        const source = context.createMediaElementSource(element);
+        programAudio = { element, source };
+        element.addEventListener('playing', () => {
+          programAudioFailures = 0;
+        });
+        const dropped = () => {
+          if (programAudio?.element !== element) return;
+          stopProgramAudio();
+          scheduleRebuild();
+          retryProgramAudio();
+        };
+        element.addEventListener('error', dropped);
+        element.addEventListener('ended', dropped);
+        element.src = apiUrl(grant.streamPath);
+        await element.play();
+        scheduleRebuild();
+      } catch {
+        // No radio connection, or the stream dropped: the program feeds still apply, and it is asked for again.
+        stopProgramAudio();
+        retryProgramAudio();
+      }
     };
 
     const loadRoutes = async () => {
@@ -178,13 +271,16 @@ export default function ReturnRouterRoute() {
           'Content-Type': 'application/json',
           'X-Renderer-Key': rendererKey
         },
-        body: JSON.stringify({ programId })
+        body: JSON.stringify(runner ? { programId, role: 'return-router' } : { programId })
       });
       if (!response.ok) throw new Error(`Renderer authorization failed (${response.status}).`);
       const credentials = (await response.json()) as {
         serverUrl: string;
         token: string;
       };
+      // A page unmounted before it connected (React's development double mount) must not join: with the fixed
+      // identity the two copies would replace each other in LiveKit.
+      if (cancelled) return;
       room.on(RoomEvent.TrackSubscribed, addTrack);
       room.on(RoomEvent.TrackUnsubscribed, removeTrack);
       room.on(RoomEvent.ParticipantConnected, scheduleRebuild);
@@ -194,22 +290,32 @@ export default function ReturnRouterRoute() {
         setStatus('Reconnecting return router…');
       });
       room.on(RoomEvent.Reconnected, scheduleRebuild);
+      // Replaced by another router with the same identity, or the server ended the session: the runner reopens it.
+      room.on(RoomEvent.Disconnected, () => {
+        if (!cancelled) reportState('failed');
+      });
       await room.connect(credentials.serverUrl, credentials.token, {
         autoSubscribe: true
       });
       await context.resume();
       await loadRoutes();
+      void startProgramAudio();
       stateTimer = window.setInterval(() => void loadRoutes().catch(() => setProblem(boundedProblem('route_refresh', 'Route refresh failed; the last routes still apply.'))), 3000);
       scheduleRebuild();
     };
 
-    void start().catch((error) => setStatus(boundedProblem('start', 'The return router could not start. Reload this page to try again.')));
+    void start().catch(() => {
+      reportState('failed');
+      setStatus(boundedProblem('start', 'The return router could not start. Reload this page to try again.'));
+    });
     return () => {
       cancelled = true;
       window.clearTimeout(rebuildTimer);
       window.clearInterval(stateTimer);
+      window.clearTimeout(programAudioTimer);
+      stopProgramAudio();
       void unpublishMixes();
-      inputs.forEach((input) => input.source.disconnect());
+      inputs.forEach(releaseInput);
       room.disconnect();
       void context.close();
     };
@@ -227,7 +333,7 @@ export default function ReturnRouterRoute() {
           </p>
         ) : null}
         <p className='mt-6 text-xs text-white/35'>
-          This machine-only page produces a distinct Program/Monitor/Aux N-1 mix for every connected guest. Keep it isolated with the Alana renderer.
+          This machine-only page produces a distinct Program/Monitor/Aux N-1 mix for every connected guest. The return runner opens it for every program with a guest on a call; nobody needs to open it by hand.
         </p>
       </div>
     </main>

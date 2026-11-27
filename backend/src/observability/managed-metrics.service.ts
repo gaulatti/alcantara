@@ -64,6 +64,22 @@ export const WEBRTC_JOIN_RESULTS = [
 ] as const;
 /** The selected ICE path: direct over UDP or TCP, or relayed by TURN. */
 export const WEBRTC_ICE_PATHS = ['udp', 'tcp', 'relay'] as const;
+/** Return runner polls (alcantara_webrtc_return_router_polls_total). */
+export const RETURN_ROUTER_POLL_RESULTS = [
+  'ok',
+  'rejected',
+  'failure',
+] as const;
+export type ReturnRouterPollResult =
+  (typeof RETURN_ROUTER_POLL_RESULTS)[number];
+/** Program-audio grants for the return router (alcantara_webrtc_return_audio_tickets_total). */
+export const RETURN_AUDIO_TICKET_RESULTS = [
+  'issued',
+  'rejected',
+  'unavailable',
+] as const;
+export type ReturnAudioTicketResult =
+  (typeof RETURN_AUDIO_TICKET_RESULTS)[number];
 export type WebrtcClient = (typeof WEBRTC_CLIENTS)[number];
 export type WebrtcJoinResult = (typeof WEBRTC_JOIN_RESULTS)[number];
 export type WebrtcIcePath = (typeof WEBRTC_ICE_PATHS)[number];
@@ -271,10 +287,7 @@ const SOURCE_RESULTS = new Set(['success', 'rejected', 'not-found', 'failure']);
 const PROGRAM_SSE_SNAPSHOT_RESULTS = new Set(['success', 'failure']);
 /** How a confirmed playing track's cover lookup ended (gaulatti/alcantara#179). */
 export type PlayingTrackCoverLookupResult =
-  | 'included'
-  | 'absent'
-  | 'rejected'
-  | 'error';
+  'included' | 'absent' | 'rejected' | 'error';
 /** How a filler version's preparation ended (gaulatti/alcantara#126). */
 export type FillerPreparationResult =
   | 'ready'
@@ -293,10 +306,7 @@ const FILLER_PREPARATION_RESULTS: readonly FillerPreparationResult[] = [
 ];
 /** What a television Start did with the program filler (gaulatti/alcantara#126). */
 export type FillerStartBindingResult =
-  | 'bound'
-  | 'mismatch'
-  | 'not-configured'
-  | 'legacy-executor';
+  'bound' | 'mismatch' | 'not-configured' | 'legacy-executor';
 /**
  * A template manifest member Alcantara does not know and leaves out instead of
  * refusing the template (gaulatti/ariston#217). The label is the member kind,
@@ -404,6 +414,11 @@ export class ManagedMetricsService {
   private readonly webrtcIcePaths: Counter<'client' | 'path'>;
   private readonly webrtcDrops: Counter;
   private readonly webrtcRoomAdmissionRemovals: Counter;
+  private readonly returnRouterPolls: Counter;
+  private readonly returnRoutersWanted: Gauge;
+  private readonly returnRoutersRunning: Gauge;
+  private readonly returnRunnerLastPoll: Gauge;
+  private readonly returnAudioTickets: Counter;
   private readonly mcpAuth: Counter<string>;
   private readonly mcpOAuth: Counter<string>;
   private readonly mcpRequests: Counter<string>;
@@ -646,6 +661,37 @@ export class ManagedMetricsService {
       help: 'Guests the admission check removed from a program room: no open, admitted session for them.',
       registers: [this.registry],
     });
+    this.returnRouterPolls = new Counter({
+      name: 'alcantara_webrtc_return_router_polls_total',
+      help: 'Return runner polls for the programs that need a return router, by bounded result.',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    this.returnRoutersWanted = new Gauge({
+      name: 'alcantara_webrtc_return_routers_wanted',
+      help: 'Programs that need a server-run return router at the last poll: an admitted guest present, or within the linger after the last one left.',
+      registers: [this.registry],
+    });
+    this.returnRoutersRunning = new Gauge({
+      name: 'alcantara_webrtc_return_routers_running',
+      help: 'Return routers the runner reported open and connected at its last poll.',
+      registers: [this.registry],
+    });
+    this.returnRunnerLastPoll = new Gauge({
+      name: 'alcantara_webrtc_return_runner_last_poll_timestamp_seconds',
+      help: "Unix time of the return runner's last accepted poll; a stale value means no runner is polling.",
+      registers: [this.registry],
+    });
+    this.returnAudioTickets = new Counter({
+      name: 'alcantara_webrtc_return_audio_tickets_total',
+      help: 'Program-audio grants requested by the return router, by bounded result.',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    for (const result of RETURN_ROUTER_POLL_RESULTS)
+      this.returnRouterPolls.labels(result).inc(0);
+    for (const result of RETURN_AUDIO_TICKET_RESULTS)
+      this.returnAudioTickets.labels(result).inc(0);
     for (const client of WEBRTC_CLIENTS) {
       for (const result of WEBRTC_JOIN_RESULTS)
         this.webrtcJoins.labels(client, result).inc(0);
@@ -1047,6 +1093,20 @@ export class ManagedMetricsService {
 
   recordWebrtcRoomAdmissionRemoval(): void {
     this.webrtcRoomAdmissionRemovals.inc();
+  }
+
+  recordReturnRouterPoll(result: ReturnRouterPollResult): void {
+    this.returnRouterPolls.labels(result).inc();
+    if (result === 'ok') this.returnRunnerLastPoll.set(Date.now() / 1000);
+  }
+
+  setReturnRouters(wanted: number, running: number): void {
+    this.returnRoutersWanted.set(wanted);
+    this.returnRoutersRunning.set(running);
+  }
+
+  recordReturnAudioTicket(result: ReturnAudioTicketResult): void {
+    this.returnAudioTickets.labels(result).inc();
   }
 
   recordProgramSseConnection(delta: 1 | -1): void {

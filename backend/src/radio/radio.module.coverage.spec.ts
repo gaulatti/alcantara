@@ -75,6 +75,7 @@ describe('RadioModule wiring', () => {
     );
     expect(Reflect.getMetadata('exports', RadioModule)).toEqual([
       RadioService,
+      RadioMonitorService,
       SongExecutionEngine,
       NowPlayingPublisherService,
       PalazzoRadioTelemetryService,

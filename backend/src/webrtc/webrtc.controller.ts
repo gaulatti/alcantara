@@ -187,7 +187,11 @@ export class WebrtcController {
     @Headers('x-renderer-key') rendererKey: string | undefined,
     @Body() body: Record<string, unknown>,
   ) {
-    return this.webrtc.createRendererToken(rendererKey, body.programId);
+    return this.webrtc.createRendererToken(
+      rendererKey,
+      body.programId,
+      body.role,
+    );
   }
 
   @Post('renderer-state')

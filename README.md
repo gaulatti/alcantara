@@ -141,10 +141,11 @@ publishes it as `desktop-program-feed-<programId>`, with a token from
 track and its sound as a microphone-source track named `program-audio`, the only app-audio
 track LiveKit's Swift SDK publishes); while that participant is in the
 room, guests' program video and the router's program bus take it instead of
-`program-feed-<programId>`, and fall back to Alana's feed when it leaves. Run one isolated
-`/return-router/<programId>#key=<WEBRTC_RENDERER_KEY>` renderer alongside it.
-The fragment is immediately moved to session storage and removed from browser
-history; it is never sent in a URL request.
+`program-feed-<programId>`, and fall back to Alana's feed when it leaves. The
+return runner keeps the router page open (below); for local work it can still be
+opened as `/return-router/<programId>#key=<WEBRTC_RENDERER_KEY>`. The fragment is
+immediately moved to session storage and removed from browser history; it is
+never sent in a URL request.
 
 The return router subscribes to the selected processed base bus, connected
 guest microphones, and targeted producer talkback. It creates and publishes a
@@ -152,6 +153,39 @@ distinct Web Audio destination for every guest, excluding only that guest's
 own microphone. Guests subscribe only to their selected video output and their
 own `mixminus:<identity>:<bus>` track. This replaces the earlier fixed 250 ms
 browser relay and keeps isolated guest tracks out of the guest UI.
+
+Nobody has to open the router by hand: a guest gets a return with nothing else
+open. The return runner on Helix (`infra/helix/compose.return-runner.yml`) polls
+`GET /webrtc/return-routers` with the renderer key every few seconds and keeps
+one headless `/return-router/<programId>?runner=1` page open for each program it
+lists. A program is listed while an admitted guest with an open session is in its
+room, and for 60 seconds after the last one leaves. The runner puts the key in
+session storage before the page loads, never in a URL. With `?runner=1` the page
+takes the program's fixed identity `return-router-<programId>`
+(`POST /webrtc/renderer-token` with `role: "return-router"`), so a second router for
+the same program replaces the first instead of doubling the mixes. A page opened by
+hand keeps a `renderer-<programId>-<uuid>` identity. The page reports its state on
+the root element as `data-return-router` (`starting`, `connected`, `failed`) and
+`data-mix-count`; on `failed` the runner reopens it.
+
+When no program feed (desktop or Alana) carries audio, the router's program bus
+is the program's own audio. It asks `POST /webrtc/return-audio-ticket` for a
+short-lived grant to the existing program-audio relay
+(`/radio/<programId>/monitor-audio`, Palazzo's output) and plays it into every
+guest's mix on the Program/Master bus. A program feed that joins takes the bus
+back. A program with no radio connection gets no grant, and the router asks
+again every minute. For a return grant the relay drops Icecast's opening burst
+(about 16 seconds of buffered audio), so the program bed reaches the guest about
+2 to 5 seconds behind air. Talkback and the other guests are still mixed in real
+time through LiveKit; only the program bed is late. Radio guests are not in
+Palazzo's output, so the bed never carries a guest's own voice back to them.
+
+Metrics: `alcantara_webrtc_return_router_polls_total{result}` (`ok`, `rejected`,
+`failure`), `alcantara_webrtc_return_routers_wanted`,
+`alcantara_webrtc_return_routers_running` (as the runner reports it, capped at 64),
+`alcantara_webrtc_return_runner_last_poll_timestamp_seconds` (stale means no runner
+is polling) and `alcantara_webrtc_return_audio_tickets_total{result}` (`issued`,
+`rejected`, `unavailable`). None carries a program label.
 
 Authorized operators can control Alana's independent composed-Program recorder
 without treating a requested or finalizing operation as safe media. See
