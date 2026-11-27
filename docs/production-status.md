@@ -70,3 +70,20 @@ host it cannot reach without a prompt gives 0 lines, never a hang.
 - that an MCP body can never carry a `confirm`, and that the token goes only in the header;
 - git's blob id;
 - the host scripts run through `sh` against a stand-in `docker`.
+
+## The older-console host-mic gate (#880)
+
+`node scripts/host-mic-gate.mjs` reads log files already pulled and says whether 24 hours have passed with no host
+microphone from an ordinary `operator-*` connection since 2026-11-27T12:29Z. Save the worker's lines before any
+worker redeploy: a new container starts with an empty log.
+
+```sh
+ssh helix.gaulatti.com "sh -c 'docker logs alcantara-livekit 2>&1 | grep \"mediaTrack published\"'" > livekit.log
+ssh helix.gaulatti.com "sh -c 'docker inspect -f {{.Created}} alcantara-livekit'"
+ssh cumulus.gaulatti.com "sh -c 'docker logs --timestamps alcantara-contribution 2>&1 | grep \"track subscribed\" || true'" > worker.log
+node scripts/host-mic-gate.mjs --livekit livekit.log --livekit-created <the inspect output> --worker worker.log
+```
+
+LiveKit does not log track names, so any audio an ordinary operator connection published counts, talkback included;
+the printed sighting shows its time and identity.
+
