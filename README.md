@@ -327,7 +327,7 @@ distribution at `/radio-settings` owns Palazzo automation,
 bumper policy, and now-playing consumers so live playout is not mixed with
 configuration. Simulcast uses the TV switcher with an explicit radio-leg status
 rail. Mixer mutations are applied to Palazzo as well as persisted; bumper
-configuration fields are validated and saved by the radio settings API.
+configuration fields are validated and saved by the radio settings API. A field sent as null, or a blank Palazzo URL while radio is off, is read as not set, so a show with no settings yet saves from the blank form (#875); `bumperInterval` and `listenerUrl` keep their null, which clears them.
 All Palazzo traffic is backend-only, restricted to the private broadcast
 network and approved origin, and explicitly program-scoped. The shared machine
 client preserves playback/idempotency IDs across retries and is also used by

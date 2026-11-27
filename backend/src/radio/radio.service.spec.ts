@@ -245,6 +245,92 @@ describe('RadioService settings', () => {
   });
 });
 
+// alcantara#875: a show with no radio settings starts from a blank form, and saving it must work.
+describe('RadioService settings from a blank form', () => {
+  const build = () => {
+    const upsert = jest.fn().mockImplementation(async ({ create }) => create);
+    const prisma = {
+      programState: { findUnique: jest.fn().mockResolvedValue({ id: 10 }) },
+      radioSettings: { upsert },
+    } as any;
+    const palazzo = {
+      validateBaseUrl: jest.fn((value: string) => {
+        if (!value.trim()) throw new BadRequestException('invalid URL');
+        return value;
+      }),
+    };
+    const service = new RadioService(
+      prisma,
+      palazzo as never,
+      {} as any,
+      new RadioMetricsService(),
+      { teamId: 0 } as never,
+    );
+    return { service, upsert, palazzo };
+  };
+  const blank = {
+    palazzoUrl: '',
+    bumperEnabled: false,
+    bumperInterval: null,
+    bumperInstantIds: [],
+    bumperMode: null,
+    enabled: false,
+  };
+
+  it('saves the blank form, with the defaults for what it leaves empty', async () => {
+    const { service, upsert, palazzo } = build();
+
+    await expect(
+      service.updateRadioSettings('new-show', blank as never),
+    ).resolves.toMatchObject({
+      palazzoUrl: 'http://palazzo:3100',
+      bumperMode: 'sequential',
+      bumperInterval: null,
+      enabled: false,
+    });
+    expect(palazzo.validateBaseUrl).not.toHaveBeenCalled();
+    expect(upsert.mock.calls[0][0].update).not.toHaveProperty('bumperMode');
+    expect(upsert.mock.calls[0][0].update).not.toHaveProperty('palazzoUrl');
+  });
+
+  it('reads a null in any optional field as not set', async () => {
+    const { service, upsert } = build();
+
+    await service.updateRadioSettings('new-show', {
+      palazzoUrl: null,
+      bumperEnabled: null,
+      bumperInstantIds: null,
+      bumperMode: null,
+      enabled: null,
+      segueMode: null,
+      similarityMode: null,
+      similarityPool: null,
+      similarityThreshold: null,
+      similarityWindowSeconds: null,
+    } as never);
+
+    expect(upsert.mock.calls[0][0].update).toEqual({});
+  });
+
+  it('still refuses a blank engine URL when the save turns radio on, and a wrong value anywhere', async () => {
+    const { service, upsert } = build();
+
+    await expect(
+      service.updateRadioSettings('new-show', {
+        ...blank,
+        enabled: true,
+      } as never),
+    ).rejects.toThrow('invalid URL');
+    await expect(
+      service.updateRadioSettings('new-show', {
+        ...blank,
+        bumperMode: 'shuffled',
+      } as never),
+    ).rejects.toThrow('bumperMode must be sequential or random');
+    expect(upsert).not.toHaveBeenCalled();
+  });
+});
+
 describe('RadioService recovery playlist', () => {
   it('verifies managed audio, prepares Palazzo, then persists the ready version', async () => {
     const settings = {

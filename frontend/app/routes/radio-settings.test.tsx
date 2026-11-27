@@ -247,6 +247,10 @@ it("clears the interval when it is not a number, and hides bumpers when they are
 
 it.each([
   [new Response(null, { status: 409 }), "Radio settings were not saved (409)"],
+  [
+    Response.json({ message: "bumperMode must be sequential or random" }, { status: 400 }),
+    "Radio settings were not saved (400): bumperMode must be sequential or random",
+  ],
   ["offline", "Radio settings were not saved."],
 ])(
   "reports settings that could not be saved (%s)",

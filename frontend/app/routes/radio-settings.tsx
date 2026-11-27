@@ -145,7 +145,12 @@ export default function RadioSettingsRoute() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(current)
       });
-      if (!response.ok) throw new Error(`Radio settings were not saved (${response.status})`);
+      if (!response.ok) {
+        // The server says which field it refused; the status alone tells the operator nothing.
+        const refusal = (await response.json().catch(() => null)) as { message?: unknown } | null;
+        const reason = typeof refusal?.message === 'string' ? `: ${refusal.message}` : '';
+        throw new Error(`Radio settings were not saved (${response.status})${reason}`);
+      }
       setSettings((await response.json()) as RadioSettings);
       setSettingsExist(true);
       setSettingsSaved(true);

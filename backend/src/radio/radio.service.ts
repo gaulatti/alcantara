@@ -112,6 +112,38 @@ export interface PlayoutReports {
   playoutReport(programId: string): 'up' | 'down' | 'stale' | 'unknown' | null;
 }
 
+/** Fields a form sends as null when it has nothing in them: nothing to validate or write. */
+const NULL_MEANS_UNSET = [
+  'palazzoUrl',
+  'bumperEnabled',
+  'bumperInstantIds',
+  'bumperMode',
+  'enabled',
+  'segueMode',
+  'similarityMode',
+  'similarityPool',
+  'similarityThreshold',
+  'similarityWindowSeconds',
+] as const;
+
+/**
+ * The payload with only what it actually sets (alcantara#875): a show with no radio settings starts from a blank
+ * form, and saving it must work. `bumperInterval` and `listenerUrl` keep their null, which clears them. A blank
+ * Palazzo URL is unset too, unless the save turns radio on, which needs one.
+ */
+function withoutUnsetFields(data: RadioSettingsPayload): RadioSettingsPayload {
+  const out: Record<string, unknown> = { ...data };
+  for (const field of NULL_MEANS_UNSET)
+    if (out[field] === null) delete out[field];
+  if (
+    typeof out.palazzoUrl === 'string' &&
+    !out.palazzoUrl.trim() &&
+    out.enabled !== true
+  )
+    delete out.palazzoUrl;
+  return out as RadioSettingsPayload;
+}
+
 @Injectable()
 export class RadioService {
   private readonly logger = new Logger(RadioService.name);
@@ -488,6 +520,7 @@ export class RadioService {
       select: { id: true },
     });
     if (!state) throw new Error('Program not found');
+    data = withoutUnsetFields(data);
     if (data.palazzoUrl !== undefined) {
       data.palazzoUrl = this.palazzo.validateBaseUrl(data.palazzoUrl);
     }
