@@ -608,6 +608,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
    * the playout lease (alcantara#873): a standby must not adopt the song another instance is driving.
    */
   async onModuleInit(): Promise<void> {
+    // A deploy candidate (#223) loads every program read-only, as before; takeOver() starts no watchdog for it. It never
+    // holds the lease, so it must not wait for it.
+    if (isDeployCandidate()) return this.takeOver();
     await startWhenActive(this.lease, () => this.takeOver());
   }
 

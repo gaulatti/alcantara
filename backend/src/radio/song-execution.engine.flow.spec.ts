@@ -1,3 +1,5 @@
+import { DEPLOY_CANDIDATE_ENV } from '../config/deploy-candidate';
+import type { PlayoutLease } from '../playout/playout-lease.service';
 import { Logger } from '@nestjs/common';
 import {
   COMMAND_RETRY_BASE_MS,
@@ -429,8 +431,9 @@ describe('SongExecutionEngine Play Next claims', () => {
     ctx.store.current!.songQueue = queue;
     const write = deferred<unknown>();
     const update = ctx.prisma.programState.update.getMockImplementation()!;
-    ctx.prisma.programState.update.mockImplementationOnce((args: { data: Record<string, unknown> }) =>
-      write.promise.then(() => update(args)),
+    ctx.prisma.programState.update.mockImplementationOnce(
+      (args: { data: Record<string, unknown> }) =>
+        write.promise.then(() => update(args)),
     );
     ctx.engine.handleSequenceUpdated('radio-1', AUTO);
     ctx.engine.handleQueueUpdated('radio-1', queue);
@@ -821,9 +824,13 @@ describe('SongExecutionEngine authoritative track end', () => {
     ctx.palazzo.state = playing('inherited', 'https://example.test/b.mp3', 3);
     end(ctx, 'inherited');
     await flush(80);
-    expect((ctx.engine.getPlaybackState('radio-1') as { playbackRequestId?: string } | null)?.playbackRequestId).not.toBe(
-      'inherited',
-    );
+    expect(
+      (
+        ctx.engine.getPlaybackState('radio-1') as {
+          playbackRequestId?: string;
+        } | null
+      )?.playbackRequestId,
+    ).not.toBe('inherited');
     expect(playedUrls(ctx)).toHaveLength(1);
   });
 
@@ -858,9 +865,13 @@ describe('SongExecutionEngine authoritative track end', () => {
       'resumed',
     );
     expect(ctx.radioService.playSong).toHaveBeenCalledTimes(1);
-    expect((ctx.engine.getPlaybackState('radio-1') as { playbackRequestId?: string } | null)?.playbackRequestId).not.toBe(
-      'inherited',
-    );
+    expect(
+      (
+        ctx.engine.getPlaybackState('radio-1') as {
+          playbackRequestId?: string;
+        } | null
+      )?.playbackRequestId,
+    ).not.toBe('inherited');
   });
 
   it('ignores an end event without a request id', async () => {
@@ -1093,15 +1104,24 @@ describe('SongExecutionEngine bumpers', () => {
     function bumpered() {
       const ctx = setup();
       ctx.radioService.getRadioSettings.mockResolvedValue(SETTINGS);
-      ctx.prisma.instant.findUnique.mockImplementation(({ where }: { where: { id: number } }) =>
-        Promise.resolve({ name: `i${where.id}`, audioUrl: `https://example.test/${where.id}.mp3` }),
+      ctx.prisma.instant.findUnique.mockImplementation(
+        ({ where }: { where: { id: number } }) =>
+          Promise.resolve({
+            name: `i${where.id}`,
+            audioUrl: `https://example.test/${where.id}.mp3`,
+          }),
       );
-      ctx.prisma.programState.findUnique.mockImplementation(() => Promise.resolve({ ...ctx.store.current, id: 7 }));
+      ctx.prisma.programState.findUnique.mockImplementation(() =>
+        Promise.resolve({ ...ctx.store.current, id: 7 }),
+      );
       return ctx;
     }
 
     /** A process booting with this row stored, then one song to its end. */
-    async function bootAndEndOneSong(bumperPosition: unknown, setting: Record<string, unknown> = {}) {
+    async function bootAndEndOneSong(
+      bumperPosition: unknown,
+      setting: Record<string, unknown> = {},
+    ) {
       const ctx = bumpered();
       ctx.prisma.radioSettings.findMany.mockResolvedValue([
         {
@@ -1109,7 +1129,14 @@ describe('SongExecutionEngine bumpers', () => {
           bumperInterval: 2,
           bumperInstantIds: [10, 11],
           ...setting,
-          programState: { programId: 'radio-1', type: 'radio', songSequence: AUTO, songQueue: [], songRotation: null, bumperPosition },
+          programState: {
+            programId: 'radio-1',
+            type: 'radio',
+            songSequence: AUTO,
+            songQueue: [],
+            songRotation: null,
+            bumperPosition,
+          },
         },
       ]);
       await ctx.engine.onModuleInit();
@@ -1117,7 +1144,9 @@ describe('SongExecutionEngine bumpers', () => {
       await flush(60);
       end(ctx, activeRequestId(ctx.engine));
       await flush(60);
-      const spots = ctx.radioService.playInstant.mock.calls.map((call) => call[1]);
+      const spots = ctx.radioService.playInstant.mock.calls.map(
+        (call) => call[1],
+      );
       ctx.engine.onModuleDestroy();
       return spots;
     }
@@ -1127,7 +1156,12 @@ describe('SongExecutionEngine bumpers', () => {
       end(first, await startAutomatic(first));
       await flush(60);
       expect(first.radioService.playInstant).not.toHaveBeenCalled();
-      const stored = { songCount: 1, nextBumperIdx: 0, interval: 2, instantIds: [10, 11] };
+      const stored = {
+        songCount: 1,
+        nextBumperIdx: 0,
+        interval: 2,
+        instantIds: [10, 11],
+      };
       expect(first.prisma.radioBumperPosition.upsert).toHaveBeenCalledWith({
         where: { programStateId: 7 },
         create: { programStateId: 7, ...stored },
@@ -1135,28 +1169,45 @@ describe('SongExecutionEngine bumpers', () => {
       });
       first.engine.onModuleDestroy();
 
-      expect(await bootAndEndOneSong(stored)).toEqual(['https://example.test/10.mp3']);
-      expect(await bootAndEndOneSong({ ...stored, songCount: 3, nextBumperIdx: 1 })).toEqual([
-        'https://example.test/11.mp3',
+      expect(await bootAndEndOneSong(stored)).toEqual([
+        'https://example.test/10.mp3',
       ]);
+      expect(
+        await bootAndEndOneSong({ ...stored, songCount: 3, nextBumperIdx: 1 }),
+      ).toEqual(['https://example.test/11.mp3']);
     });
 
     it('starts the count at zero with nothing stored, or a position of another interval or other instants', async () => {
-      const stored = { songCount: 1, nextBumperIdx: 1, interval: 2, instantIds: [10, 11] };
+      const stored = {
+        songCount: 1,
+        nextBumperIdx: 1,
+        interval: 2,
+        instantIds: [10, 11],
+      };
       expect(await bootAndEndOneSong(null)).toEqual([]);
       expect(await bootAndEndOneSong(undefined)).toEqual([]);
-      expect(await bootAndEndOneSong(stored, { bumperInterval: 3 })).toEqual([]);
-      expect(await bootAndEndOneSong(stored, { bumperInstantIds: [11, 10] })).toEqual([]);
+      expect(await bootAndEndOneSong(stored, { bumperInterval: 3 })).toEqual(
+        [],
+      );
+      expect(
+        await bootAndEndOneSong(stored, { bumperInstantIds: [11, 10] }),
+      ).toEqual([]);
     });
 
     it('plays on when the position cannot be stored', async () => {
       const ctx = bumpered();
-      ctx.prisma.radioBumperPosition.upsert.mockRejectedValue(new Error('disk full'));
+      ctx.prisma.radioBumperPosition.upsert.mockRejectedValue(
+        new Error('disk full'),
+      );
       end(ctx, await startAutomatic(ctx));
       await flush(60);
       expect(playedUrls(ctx)).toHaveLength(2);
-      expect(ctx.metrics.recordEngineDegraded).toHaveBeenCalledWith('bumper_position');
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Bumper position not stored on radio-1'));
+      expect(ctx.metrics.recordEngineDegraded).toHaveBeenCalledWith(
+        'bumper_position',
+      );
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Bumper position not stored on radio-1'),
+      );
       // A program deleted meanwhile has no row to store against.
       ctx.prisma.programState.findUnique.mockResolvedValue(null);
       ctx.prisma.radioBumperPosition.upsert.mockClear();
@@ -2114,16 +2165,22 @@ describe('SongExecutionEngine Play Next after Take now', () => {
     await flush(80);
   };
   // Palazzo's answer to a song command names the playback ID it accepted, as RadioService returns it.
-  const accepting = (ctx: ReturnType<typeof setup>, extra: Record<string, unknown> = {}) =>
+  const accepting = (
+    ctx: ReturnType<typeof setup>,
+    extra: Record<string, unknown> = {},
+  ) =>
     ctx.radioService.playSong.mockImplementation((...args: unknown[]) =>
       Promise.resolve({ ok: true, playbackRequestId: args[4], ...extra }),
     );
   const sentSet = (ctx: ReturnType<typeof setup>) =>
-    (stateOf(ctx.engine) as unknown as { sentRequestIds?: Set<string> }).sentRequestIds ?? new Set<string>();
+    (stateOf(ctx.engine) as unknown as { sentRequestIds?: Set<string> })
+      .sentRequestIds ?? new Set<string>();
   // Marks a playback ID as already sent by this process, as an earlier airing would have.
   const alreadySent = (ctx: ReturnType<typeof setup>, id: string) => {
     ctx.engine.handleSequenceUpdated('radio-1', AUTO);
-    (stateOf(ctx.engine) as unknown as { sentRequestIds?: Set<string> }).sentRequestIds = new Set([id]);
+    (
+      stateOf(ctx.engine) as unknown as { sentRequestIds?: Set<string> }
+    ).sentRequestIds = new Set([id]);
   };
 
   it('gives the claim back on Take now, and the Play Next song airs again later under a new playback ID', async () => {
@@ -2153,7 +2210,11 @@ describe('SongExecutionEngine Play Next after Take now', () => {
     expect(reAiring).not.toBe(firstAiring);
     expect(new Set(sentIds(ctx)).size).toBe(3);
     expect(ctx.store.current?.songQueue).toEqual([
-      expect.objectContaining({ id: 'q1', active: true, playbackRequestId: reAiring }),
+      expect.objectContaining({
+        id: 'q1',
+        active: true,
+        playbackRequestId: reAiring,
+      }),
     ]);
     // Palazzo starts it: it is on air, not held silent.
     ctx.engine.handlePalazzoSnapshot(
@@ -2341,7 +2402,10 @@ describe('SongExecutionEngine Play Next after Take now', () => {
     const ctx = setup();
     accepting(ctx);
     for (let index = 0; index < 130; index += 1) {
-      ctx.engine.handleManualSong('radio-1', `https://example.test/${index}.mp3`);
+      ctx.engine.handleManualSong(
+        'radio-1',
+        `https://example.test/${index}.mp3`,
+      );
     }
     return flush(200).then(() => {
       const sent = sentSet(ctx);
@@ -2357,7 +2421,15 @@ describe('SongExecutionEngine Play Next after Take now', () => {
     const lookup = deferred<null>();
     ctx.prisma.songIntro.findUnique.mockReturnValueOnce(lookup.promise);
     // The first take waits for its intro lookup; a second take replaces it meanwhile.
-    ctx.engine.handleManualSong('radio-1', 'https://example.test/first.mp3', 'First', 'Artist', 1000, '', 41);
+    ctx.engine.handleManualSong(
+      'radio-1',
+      'https://example.test/first.mp3',
+      'First',
+      'Artist',
+      1000,
+      '',
+      41,
+    );
     const skipped = activeRequestId(ctx.engine);
     ctx.engine.handleManualSong('radio-1', 'https://example.test/second.mp3');
     const taken = activeRequestId(ctx.engine);
@@ -2403,7 +2475,9 @@ describe('SongExecutionEngine Play Next after Take now', () => {
     expect(playedUrls(automatic)).toHaveLength(1);
     expect(sentIds(automatic)).not.toContain('stale');
 
-    const manual = setup({ songSequence: sequenceOf([SONG_A, SONG_B], 'manual') });
+    const manual = setup({
+      songSequence: sequenceOf([SONG_A, SONG_B], 'manual'),
+    });
     manual.store.current!.songQueue = stale;
     alreadySent(manual, 'stale');
     manual.engine.handleSequenceUpdated(
@@ -2437,13 +2511,18 @@ describe('SongExecutionEngine Play Next after Take now', () => {
     meanwhile.store.current!.songQueue = stale;
     alreadySent(meanwhile, 'stale');
     meanwhile.engine.handleQueueUpdated('radio-1', stale);
-    meanwhile.prisma.programState.update.mockImplementationOnce(() => save.promise);
+    meanwhile.prisma.programState.update.mockImplementationOnce(
+      () => save.promise,
+    );
     const internalsOf = meanwhile.engine as unknown as {
       playNext(programId: string): boolean;
     };
     internalsOf.playNext('radio-1');
     await flush(20);
-    meanwhile.engine.handleManualSong('radio-1', 'https://example.test/live.mp3');
+    meanwhile.engine.handleManualSong(
+      'radio-1',
+      'https://example.test/live.mp3',
+    );
     save.resolve({});
     await flush(120);
     expect(playedUrls(meanwhile)).toEqual(['https://example.test/live.mp3']);
@@ -2452,10 +2531,12 @@ describe('SongExecutionEngine Play Next after Take now', () => {
     failing.store.current!.songQueue = stale;
     alreadySent(failing, 'stale');
     failing.engine.handleQueueUpdated('radio-1', stale);
-    failing.prisma.programState.update.mockRejectedValueOnce(new Error('disk full'));
-    (failing.engine as unknown as { playNext(programId: string): boolean }).playNext(
-      'radio-1',
+    failing.prisma.programState.update.mockRejectedValueOnce(
+      new Error('disk full'),
     );
+    (
+      failing.engine as unknown as { playNext(programId: string): boolean }
+    ).playNext('radio-1');
     await flush(120);
     expect(stateOf(failing.engine).queueBlocked).toBe(true);
     expect(failing.radioService.playSong).not.toHaveBeenCalled();
@@ -2482,7 +2563,11 @@ describe('SongExecutionEngine Play Next after Take now', () => {
 describe('SongExecutionEngine when a rotation that does not loop runs out', () => {
   const ONCE = sequenceOf([SONG_A, SONG_B], 'autoplay', false);
   const stored = (ctx: ReturnType<typeof setup>) =>
-    ctx.store.current!.songSequence as { mode: string; endedAt?: number; loop: boolean };
+    ctx.store.current!.songSequence as {
+      mode: string;
+      endedAt?: number;
+      loop: boolean;
+    };
   const tick = async (ctx: ReturnType<typeof setup>) => {
     await ctx.engine.checkPlayback();
     await flush(80);
@@ -2503,15 +2588,24 @@ describe('SongExecutionEngine when a rotation that does not loop runs out', () =
       'https://example.test/a.mp3',
       'https://example.test/b.mp3',
     ]);
-    expect(stored(ctx)).toMatchObject({ mode: 'manual', loop: false, activeItemId: 'song-a' });
+    expect(stored(ctx)).toMatchObject({
+      mode: 'manual',
+      loop: false,
+      activeItemId: 'song-a',
+    });
     expect(stored(ctx).endedAt).toBe(Date.parse('2099-01-01T10:00:00.000Z'));
     // Rewound, and the top song has not aired since: the desk offers it as next.
     expect(stored(ctx)).toHaveProperty('cuedItemId', 'song-a');
-    expect(ctx.metrics.recordTrackTransition).toHaveBeenCalledWith('rotation-ended');
+    expect(ctx.metrics.recordTrackTransition).toHaveBeenCalledWith(
+      'rotation-ended',
+    );
     expect(ctx.events).toContainEqual(
       expect.objectContaining({
         type: 'song_queue_update',
-        songSequence: expect.objectContaining({ mode: 'manual', endedAt: expect.any(Number) }),
+        songSequence: expect.objectContaining({
+          mode: 'manual',
+          endedAt: expect.any(Number),
+        }),
       }),
     );
     expect(ctx.publisher.publishStopped).toHaveBeenCalledWith('radio-1');
@@ -2522,9 +2616,15 @@ describe('SongExecutionEngine when a rotation that does not loop runs out', () =
       jest.advanceTimersByTime(NO_PLAYBACK_BOUND_MS);
       await tick(ctx);
     }
-    const ended = logSpy.mock.calls.filter((call) => String(call[0]).startsWith('Rotation ended on radio-1'));
+    const ended = logSpy.mock.calls.filter((call) =>
+      String(call[0]).startsWith('Rotation ended on radio-1'),
+    );
     expect(ended).toHaveLength(1);
-    expect(warnSpy.mock.calls.some((call) => String(call[0]).includes('Watchdog resume'))).toBe(false);
+    expect(
+      warnSpy.mock.calls.some((call) =>
+        String(call[0]).includes('Watchdog resume'),
+      ),
+    ).toBe(false);
     expect(playedUrls(ctx)).toHaveLength(2);
   });
 
@@ -2537,7 +2637,10 @@ describe('SongExecutionEngine when a rotation that does not loop runs out', () =
     jest.advanceTimersByTime(NO_PLAYBACK_BOUND_MS);
     await tick(ctx);
     expect(playedUrls(ctx)).toHaveLength(2);
-    expect(stateOf(ctx.engine).sequence).toMatchObject({ mode: 'manual', loop: true });
+    expect(stateOf(ctx.engine).sequence).toMatchObject({
+      mode: 'manual',
+      loop: true,
+    });
   });
 
   it('clears the ended mark at a start: a take, or Autoplay pressed again', async () => {
@@ -2548,7 +2651,10 @@ describe('SongExecutionEngine when a rotation that does not loop runs out', () =
     expect(stateOf(taken.engine).sequence).not.toHaveProperty('endedAt');
 
     const resumed = await runOut();
-    resumed.engine.handleSequenceUpdated('radio-1', { ...stored(resumed), mode: 'autoplay' });
+    resumed.engine.handleSequenceUpdated('radio-1', {
+      ...stored(resumed),
+      mode: 'autoplay',
+    });
     await flush(120);
     // The end rewound the rotation, so Autoplay plays it from the top.
     expect(playedUrls(resumed)[2]).toBe('https://example.test/a.mp3');
@@ -2560,32 +2666,56 @@ describe('SongExecutionEngine when a rotation that does not loop runs out', () =
     const ctx = setup({ songSequence: ONCE });
     end(ctx, await startAutomatic(ctx, ONCE));
     await flush(80);
-    ctx.prisma.programState.update.mockRejectedValueOnce(new Error('disk full'));
+    ctx.prisma.programState.update.mockRejectedValueOnce(
+      new Error('disk full'),
+    );
     end(ctx, activeRequestId(ctx.engine));
     await flush(120);
-    expect(stateOf(ctx.engine).sequence).toMatchObject({ mode: 'manual', endedAt: expect.any(Number) });
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Could not save the ended rotation on radio-1'));
-    ctx.prisma.programState.update.mockRejectedValueOnce(new Error('disk full'));
+    expect(stateOf(ctx.engine).sequence).toMatchObject({
+      mode: 'manual',
+      endedAt: expect.any(Number),
+    });
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Could not save the ended rotation on radio-1'),
+    );
+    ctx.prisma.programState.update.mockRejectedValueOnce(
+      new Error('disk full'),
+    );
     ctx.engine.handleManualSong('radio-1', 'https://example.test/live.mp3');
     await flush(80);
     expect(stateOf(ctx.engine).sequence).not.toHaveProperty('endedAt');
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Could not clear the ended or cued rotation on radio-1'));
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Could not clear the ended or cued rotation on radio-1',
+      ),
+    );
   });
 
   it('never ends a rotation that loops, nor a manual one', async () => {
     const looping = setup();
     end(looping, await startAutomatic(looping));
     await flush(120);
-    expect(looping.metrics.recordTrackTransition).not.toHaveBeenCalledWith('rotation-ended');
-    const manual = setup({ songSequence: sequenceOf([SONG_A], 'manual', false) });
-    manual.engine.handleSequenceUpdated('radio-1', sequenceOf([SONG_A], 'manual', false));
+    expect(looping.metrics.recordTrackTransition).not.toHaveBeenCalledWith(
+      'rotation-ended',
+    );
+    const manual = setup({
+      songSequence: sequenceOf([SONG_A], 'manual', false),
+    });
+    manual.engine.handleSequenceUpdated(
+      'radio-1',
+      sequenceOf([SONG_A], 'manual', false),
+    );
     manual.engine.handlePalazzoSnapshot('radio-1', idle());
     manual.engine.handleManualSong('radio-1', SONG_A.audioUrl);
     await flush(40);
     end(manual, activeRequestId(manual.engine));
     await flush(120);
-    expect(manual.metrics.recordTrackTransition).not.toHaveBeenCalledWith('rotation-ended');
-    expect((manual.store.current!.songSequence as { endedAt?: number }).endedAt).toBeUndefined();
+    expect(manual.metrics.recordTrackTransition).not.toHaveBeenCalledWith(
+      'rotation-ended',
+    );
+    expect(
+      (manual.store.current!.songSequence as { endedAt?: number }).endedAt,
+    ).toBeUndefined();
   });
 });
 
@@ -2593,14 +2723,20 @@ describe('SongExecutionEngine when a rotation that does not loop runs out', () =
 // song after it, so Cue next and Take skipped one.
 describe('SongExecutionEngine cued song', () => {
   const stored = (ctx: ReturnType<typeof setup>) =>
-    ctx.store.current!.songSequence as { activeItemId?: string; cuedItemId?: string };
+    ctx.store.current!.songSequence as {
+      activeItemId?: string;
+      cuedItemId?: string;
+    };
 
   it('marks the song a Stop cues, keeps the mark over another take, and clears it when that song starts', async () => {
     const ctx = setup();
     await startAutomatic(ctx);
     ctx.engine.handleStopSong('radio-1');
     await flush(80);
-    expect(stored(ctx)).toMatchObject({ activeItemId: 'song-b', cuedItemId: 'song-b' });
+    expect(stored(ctx)).toMatchObject({
+      activeItemId: 'song-b',
+      cuedItemId: 'song-b',
+    });
     expect(ctx.events).toContainEqual(
       expect.objectContaining({
         type: 'song_queue_update',
@@ -2618,7 +2754,7 @@ describe('SongExecutionEngine cued song', () => {
     expect(stateOf(ctx.engine).sequence).not.toHaveProperty('cuedItemId');
   });
 
-  it('marks the leaf inside a nested block, so the block\'s next songs do not carry the mark', async () => {
+  it("marks the leaf inside a nested block, so the block's next songs do not carry the mark", async () => {
     const block = {
       id: 'block',
       kind: 'sequence',
@@ -2639,7 +2775,12 @@ describe('SongExecutionEngine cued song', () => {
     ctx.engine.handleStopSong('radio-1');
     await flush(80);
     const note = ctx.engine as unknown as {
-      noteStarted: (id: string, state: unknown, itemId: string, movesCursor: boolean) => void;
+      noteStarted: (
+        id: string,
+        state: unknown,
+        itemId: string,
+        movesCursor: boolean,
+      ) => void;
     };
     note.noteStarted('radio-1', stateOf(ctx.engine), 'song-b', false);
     await flush(80);
@@ -2648,8 +2789,17 @@ describe('SongExecutionEngine cued song', () => {
 
   it('sends a cued song after a restart even when it was the last one to start', async () => {
     const ctx = setup();
-    const pass = ctx.engine as unknown as { passAiredCursorSong: (id: string, state: unknown) => boolean };
-    const state = { airedAtBoot: SONG_A.songId, sequence: { ...sequenceOf([SONG_A, SONG_B]), activeItemId: 'song-a', cuedItemId: 'song-a' } };
+    const pass = ctx.engine as unknown as {
+      passAiredCursorSong: (id: string, state: unknown) => boolean;
+    };
+    const state = {
+      airedAtBoot: SONG_A.songId,
+      sequence: {
+        ...sequenceOf([SONG_A, SONG_B]),
+        activeItemId: 'song-a',
+        cuedItemId: 'song-a',
+      },
+    };
     expect(pass.passAiredCursorSong('radio-1', state)).toBe(true);
     expect(state.sequence.activeItemId).toBe('song-a');
   });
@@ -2659,7 +2809,10 @@ describe('SongExecutionEngine cued song', () => {
     await startAutomatic(ctx);
     ctx.engine.handleStopSong('radio-1');
     await flush(80);
-    ctx.engine.handleSequenceUpdated('radio-1', { ...stored(ctx), mode: 'autoplay' });
+    ctx.engine.handleSequenceUpdated('radio-1', {
+      ...stored(ctx),
+      mode: 'autoplay',
+    });
     await flush(120);
     expect(playedUrls(ctx)[1]).toBe(SONG_B.audioUrl);
     expect(stored(ctx)).not.toHaveProperty('cuedItemId');
@@ -2679,7 +2832,10 @@ describe('SongExecutionEngine cued song', () => {
 // at the first song in the order that plays, for every client; the watchdog, a restart, an update that keeps the mode
 // and Loop start nothing.
 describe('a rotation with no cursor', () => {
-  const STOPPED = { ...sequenceOf([SONG_A, SONG_B], 'manual'), activeItemId: null };
+  const STOPPED = {
+    ...sequenceOf([SONG_A, SONG_B], 'manual'),
+    activeItemId: null,
+  };
   const switchedFromStop = async (next: unknown) => {
     const ctx = setup();
     ctx.engine.handleSequenceUpdated('radio-1', STOPPED);
@@ -2745,5 +2901,87 @@ describe('a rotation with no cursor', () => {
     await flush(80);
     ctx.engine.onModuleDestroy();
     expect(playedUrls(ctx)).toEqual([]);
+  });
+});
+
+// alcantara#873: a standby takes up no program until it holds the playout lease; a deploy candidate loads every
+// program read-only, as it always has, and starts no watchdog.
+describe('SongExecutionEngine and the playout lease', () => {
+  const stored = (ctx: ReturnType<typeof setup>) =>
+    ctx.prisma.radioSettings.findMany.mockResolvedValue([
+      {
+        palazzoUrl: 'http://palazzo',
+        bumperInterval: null,
+        bumperInstantIds: [],
+        programState: {
+          programId: 'radio-1',
+          type: 'radio',
+          songSequence: AUTO,
+          songQueue: [],
+          songRotation: null,
+          bumperPosition: null,
+        },
+      },
+    ]);
+  const programs = (engine: SongExecutionEngine) =>
+    (engine as unknown as { radioProgramIds: Set<string> }).radioProgramIds;
+  const watchdog = (engine: SongExecutionEngine) =>
+    (engine as unknown as { watchdog: unknown }).watchdog;
+
+  it('loads every program as a deploy candidate, without a watchdog and without waiting for the lease', async () => {
+    const saved = process.env[DEPLOY_CANDIDATE_ENV];
+    process.env[DEPLOY_CANDIDATE_ENV] = '1';
+    try {
+      const ctx = setup();
+      stored(ctx);
+      const lease = { whenActive: jest.fn() } as unknown as PlayoutLease;
+      const engine = new SongExecutionEngine(
+        ctx.radioService as unknown as RadioService,
+        ctx.flightService as unknown as FlightService,
+        ctx.prisma as unknown as PrismaService,
+        ctx.publisher as unknown as NowPlayingPublisherService,
+        ctx.metrics as unknown as RadioMetricsService,
+        undefined,
+        undefined,
+        lease,
+      );
+      await engine.onModuleInit();
+      expect(programs(engine).has('radio-1')).toBe(true);
+      expect(watchdog(engine)).toBeNull();
+      expect(lease.whenActive).not.toHaveBeenCalled();
+      engine.onModuleDestroy();
+    } finally {
+      if (saved === undefined) delete process.env[DEPLOY_CANDIDATE_ENV];
+      else process.env[DEPLOY_CANDIDATE_ENV] = saved;
+    }
+  });
+
+  it('takes up nothing as a standby until the lease is held', async () => {
+    const ctx = setup();
+    stored(ctx);
+    let activate: () => unknown = () => undefined;
+    const lease = {
+      whenActive: jest.fn((start: () => unknown) => {
+        activate = start;
+        return undefined;
+      }),
+    } as unknown as PlayoutLease;
+    const engine = new SongExecutionEngine(
+      ctx.radioService as unknown as RadioService,
+      ctx.flightService as unknown as FlightService,
+      ctx.prisma as unknown as PrismaService,
+      ctx.publisher as unknown as NowPlayingPublisherService,
+      ctx.metrics as unknown as RadioMetricsService,
+      undefined,
+      undefined,
+      lease,
+    );
+    await engine.onModuleInit();
+    expect(programs(engine).has('radio-1')).toBe(false);
+    expect(ctx.prisma.radioSettings.findMany).not.toHaveBeenCalled();
+    await activate();
+    expect(programs(engine).has('radio-1')).toBe(true);
+    expect(watchdog(engine)).not.toBeNull();
+    engine.onModuleDestroy();
   });
 });
