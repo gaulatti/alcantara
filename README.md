@@ -159,6 +159,14 @@ the one-time host setup. Validate TURN from a restrictive external network
 before scheduling remote guests. Never use the committed local credentials
 outside Compose.
 
+To prove media flows through production LiveKit from outside the studio's
+network, run [`infra/livekit-load-probe.sh`](infra/livekit-load-probe.sh) on a
+host outside the LAN that can read the runtime secret (cumulus). It loads
+LiveKit's URL, key and secret inside the backend image into a 0600 file, never
+printed, and runs the LiveKit CLI's load test (1 audio and 1 simulcast video
+publisher, 2 subscribers) in a probe room of its own. Then it prints the CLI's
+packet, bitrate and loss table and removes the file and the images it pulled.
+
 In production, LiveKit is configured only by the runtime secret
 (`broadcast/production/config`, #354). The secret holds four fields that must
 all be present or all absent:
