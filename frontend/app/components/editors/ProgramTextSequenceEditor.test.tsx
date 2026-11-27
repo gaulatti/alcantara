@@ -371,3 +371,13 @@ it("shows the default 4000 ms interval for an autoplay sequence that stores none
   editor({ ...root([leaf("a", "One")]), mode: "autoplay" });
   expect(screen.getByRole("spinbutton")).toHaveValue(4000);
 });
+
+it("moves an item with its Move up and Move down buttons, which a touch screen can reach", () => {
+  const { last } = editor(root([leaf("a", "One"), leaf("b", "Two"), leaf("c", "Three")]));
+  expect(screen.getAllByRole("button", { name: "Move item 1 up" })[0]).toBeDisabled();
+  fireEvent.click(screen.getAllByRole("button", { name: "Move item 1 down" })[0]);
+  expect(last().items.map((item) => item.id)).toEqual(["b", "a", "c"]);
+  fireEvent.click(screen.getAllByRole("button", { name: "Move item 3 up" })[0]);
+  expect(last().items.map((item) => item.id)).toEqual(["b", "c", "a"]);
+  expect(screen.getAllByRole("button", { name: "Move item 3 down" })[0]).toBeDisabled();
+});
