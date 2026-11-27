@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GUEST_RETURN_COPY, guestReturnState } from "./guestReturnCopy";
+import { GUEST_RETURN_COPY, guestReturnState, returnFeedHealthFor } from "./guestReturnCopy";
 
 // The guest's three states for the studio's return (display only): connecting, playing, dropped.
 describe("guestReturnState", () => {
@@ -26,6 +26,12 @@ describe("guestReturnState", () => {
     expect(GUEST_RETURN_COPY.stalled).toBe(
       "The studio sound isn't reaching you yet. The producer can see this; you can keep talking.",
     );
+  });
+
+  it("reports healthy while playing, stalled after the stall time, and missing before that", () => {
+    expect(returnFeedHealthFor({ returnFeed: true, stalled: false })).toBe("healthy");
+    expect(returnFeedHealthFor({ returnFeed: false, stalled: true })).toBe("stalled");
+    expect(returnFeedHealthFor({ returnFeed: false, stalled: false })).toBe("missing");
   });
 
   it("never names the internal feed or bus wording a guest should not see", () => {

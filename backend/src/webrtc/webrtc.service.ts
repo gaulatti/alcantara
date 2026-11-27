@@ -65,8 +65,10 @@ const GUEST_FAILURES: readonly WebrtcJoinResult[] = [
   'other',
 ];
 
-function returnReachingFrom(value: unknown): 'healthy' | 'missing' | null {
-  return value === 'healthy' || value === 'missing' ? value : null;
+// The guest's own report of the studio's return (the telemetry field returnFeedHealth): healthy while playing,
+// stalled when it has been missing for the stall time, missing otherwise.
+function returnReachingFrom(value: unknown): 'healthy' | 'stalled' | 'missing' | null {
+  return value === 'healthy' || value === 'stalled' || value === 'missing' ? value : null;
 }
 
 function icePathFrom(value: unknown): WebrtcIcePath | null {

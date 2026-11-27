@@ -8,7 +8,7 @@ import { isDrop, reportJoinFailure, roomIcePath } from '../utils/callTelemetry';
 import { isProgramFeed, preferredProgramFeed } from '../utils/programFeed';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { mediaErrorHelp, type MediaHelp } from '../utils/guestMediaHelp';
-import { GUEST_RETURN_COPY, RETURN_STALL_MS, guestReturnState } from '../components/guest/guestReturnCopy';
+import { GUEST_RETURN_COPY, RETURN_STALL_MS, guestReturnState, returnFeedHealthFor } from '../components/guest/guestReturnCopy';
 import { GuestReturnLevel } from '../components/guest/GuestReturnLevel';
 import type { Route } from './+types/guest';
 
@@ -99,8 +99,8 @@ export default function GuestRoute() {
   const [notice, setNotice] = useState<DirectorCommand | null>(null);
   // The heartbeat is scheduled once per join, so it reads the call through this ref, kept current on every
   // render: each heartbeat reports the call as it is, not as it was at join (gaulatti/alcantara#672).
-  const telemetryRef = useRef({ quality, returnFeed, cameraEnabled, microphoneEnabled });
-  telemetryRef.current = { quality, returnFeed, cameraEnabled, microphoneEnabled };
+  const telemetryRef = useRef({ quality, returnFeed, returnStalled: false, cameraEnabled, microphoneEnabled });
+  telemetryRef.current = { quality, returnFeed, returnStalled, cameraEnabled, microphoneEnabled };
 
   // Tells the studio the guest ended the call, so a stopped heartbeat is not counted as a drop. `keepalive` lets
   // it go out while the page is closing.
@@ -134,7 +134,7 @@ export default function GuestRoute() {
         telemetry: {
           connectionState: roomRef.current?.state ?? 'disconnected',
           quality: telemetry.quality,
-          returnFeedHealth: telemetry.returnFeed ? 'healthy' : 'missing',
+          returnFeedHealth: returnFeedHealthFor({ returnFeed: telemetry.returnFeed, stalled: telemetry.returnStalled }),
           cameraEnabled: telemetry.cameraEnabled,
           microphoneEnabled: telemetry.microphoneEnabled,
           ...(icePath ? { iceTransport: icePath } : {}),

@@ -997,6 +997,15 @@ describe('WebrtcService coverage', () => {
       expect((await service.listParticipants('main')).room).toEqual({ returnSending: true, returnParticipant: 'renderer-main-7f3a' });
     });
 
+    it('reads a stalled return report from the guest, as stalled', async () => {
+      const { service, prisma } = setup();
+      prisma.guestInvitation.findMany.mockResolvedValue([
+        makeInvitation({ activeSessionUntil: new Date(Date.now() + 60_000), ...reported('stalled') }),
+      ]);
+      const [row] = (await service.listParticipants('main')).participants;
+      expect(row.returnReaching).toBe('stalled');
+    });
+
     it('does not read a return from a guest whose latest report is not telemetry', async () => {
       const { service, prisma } = setup();
       prisma.guestInvitation.findMany.mockResolvedValue([

@@ -43,15 +43,9 @@ export interface StripParticipant {
   commands: Array<DeskCommand & { status: string }>;
   icePath?: IcePath | null;
   joinFailure?: CallFailure | null;
-  // Whether the guest's own page has the return: from its latest report. Null when it has not reported yet.
-  returnReaching?: 'healthy' | 'missing' | null;
+  // The guest's own report of the studio's return, from its latest telemetry. Null until it reports.
+  returnReaching?: 'healthy' | 'stalled' | 'missing' | null;
 }
-
-const RETURN_REACHING_LABEL = {
-  healthy: 'Return: reaching them',
-  missing: 'Return: not reaching them',
-  unknown: 'Return: no report from the guest yet',
-} as const;
 
 /**
  * One guest as a channel strip (alcantara#301): state, return, cue and talk in
@@ -193,9 +187,16 @@ export function GuestStrip({
         </span>
       </header>
       <CallPathLine participant={participant} />
-      {connected ? (
-        <p className="guest-strip-note" data-return-reaching={participant.returnReaching ?? 'unknown'}>
-          {RETURN_REACHING_LABEL[participant.returnReaching ?? 'unknown']}
+      {/* What the producer needs to see: the guest hears the studio, or it has not reached them for 15 s. Nothing
+          extra while the guest is still connecting. */}
+      {connected && participant.returnReaching === 'healthy' ? (
+        <p className="guest-strip-note text-emerald-300" data-return-reaching="healthy">
+          Hears the studio
+        </p>
+      ) : null}
+      {connected && participant.returnReaching === 'stalled' ? (
+        <p role="status" className="guest-strip-note font-semibold text-amber-300" data-return-reaching="stalled">
+          Studio sound not reaching guest
         </p>
       ) : null}
       {state === "cued-live" ? (

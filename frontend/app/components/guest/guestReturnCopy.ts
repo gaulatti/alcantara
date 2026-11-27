@@ -24,6 +24,15 @@ export function guestReturnState({
   return everPlayed ? "dropped" : "connecting";
 }
 
+/**
+ * What the guest page reports to the studio on its heartbeat (the existing telemetry field, returnFeedHealth): healthy
+ * while playing, stalled once the return has been missing for the stall time, missing otherwise.
+ */
+export function returnFeedHealthFor({ returnFeed, stalled }: { returnFeed: boolean; stalled: boolean }): "healthy" | "stalled" | "missing" {
+  if (returnFeed) return "healthy";
+  return stalled ? "stalled" : "missing";
+}
+
 export const GUEST_RETURN_COPY: Record<GuestReturnState, string> = {
   connecting: "Connecting you to the studio sound…",
   playing: "You're hearing the studio",

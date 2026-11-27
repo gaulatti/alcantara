@@ -56,7 +56,7 @@ type Participant = {
   icePath?: IcePath | null;
   joinFailure?: CallFailure | null;
   // Whether the guest's own page has the return, from its latest report (null until it reports).
-  returnReaching?: 'healthy' | 'missing' | null;
+  returnReaching?: 'healthy' | 'stalled' | 'missing' | null;
 };
 // Whether the studio sends the return to guests: a return router publishing mix-minus tracks is in the room.
 type RoomReturn = { returnSending: boolean; returnParticipant: string | null };

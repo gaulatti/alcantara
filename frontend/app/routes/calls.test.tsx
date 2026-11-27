@@ -320,16 +320,25 @@ it("says the return is unknown when the studio reports no room state", async () 
   expect(await screen.findByText("Return to guests: unknown")).toBeVisible();
 });
 
-it("shows, next to each live guest, whether their return reaches them", async () => {
-  invitations = [invitation(), invitation({ id: "inv-2", displayName: "Grace", slotNumber: 2 })];
+it("shows what the producer needs: 'Hears the studio' when playing, a warning when stalled, nothing while connecting", async () => {
+  invitations = [
+    invitation(),
+    invitation({ id: "inv-2", displayName: "Grace", slotNumber: 2 }),
+    invitation({ id: "inv-3", displayName: "Linus", slotNumber: 3 }),
+  ];
   participants = [
     participant({ returnReaching: "healthy" }),
-    participant({ invitationId: "inv-2", identity: "guest-inv-2", name: "Grace", slotNumber: 2, returnReaching: "missing" }),
+    participant({ invitationId: "inv-2", identity: "guest-inv-2", name: "Grace", slotNumber: 2, returnReaching: "stalled" }),
+    participant({ invitationId: "inv-3", identity: "guest-inv-3", name: "Linus", slotNumber: 3, returnReaching: "missing" }),
   ];
   serve();
   render(<CallsRoute />);
-  expect(await screen.findByText("Return: reaching them")).toBeVisible();
-  expect(screen.getByText("Return: not reaching them")).toBeVisible();
+  expect(await screen.findByText("Hears the studio")).toBeVisible();
+  expect(screen.getByText("Studio sound not reaching guest")).toBeVisible();
+  // Linus is still connecting: nothing extra is shown for him.
+  const linus = screen.getByRole("article", { name: /: Linus$/ });
+  expect(within(linus).queryByText("Hears the studio")).not.toBeInTheDocument();
+  expect(within(linus).queryByText("Studio sound not reaching guest")).not.toBeInTheDocument();
 });
 
 it("shows an empty room with the create action inside it, and says why it is disabled", async () => {
