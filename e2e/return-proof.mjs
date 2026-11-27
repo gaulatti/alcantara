@@ -24,6 +24,80 @@ const ADMIT_TIMEOUT = process.env.ADMIT_SECONDS ? Number(process.env.ADMIT_SECON
 /** Peak level, 0 to 1, above which the return is not silence. */
 const AUDIBLE = 0.01;
 
+/**
+ * Runs in the guest page. Listens to whatever track the return element holds at each moment (the router may replace
+ * it), and reads the receiver's own statistics. WebAudio alone is not enough: an engine with no sound device may never
+ * start its context.
+ */
+async function measureReturn(seconds) {
+  const element = () => [...document.querySelectorAll("audio")].find((a) => a.srcObject?.getAudioTracks().some((t) => t.readyState === "live"));
+  const context = new AudioContext();
+  await Promise.race([context.resume(), new Promise((resolve) => setTimeout(resolve, 3000))]).catch(() => undefined);
+  const analyser = context.createAnalyser();
+  analyser.fftSize = 2048;
+  const samples = new Float32Array(analyser.fftSize);
+  const inbound = new Map();
+  let source = null;
+  let trackId = "";
+  let tracksHeard = 0;
+  let webAudioPeak = 0;
+  let audibleReads = 0;
+  let reads = 0;
+  let playing = null;
+  const round = (value) => Number((value ?? 0).toFixed(4));
+  const readStats = async () => {
+    for (const pc of window.__guestPcs ?? []) {
+      if (pc.connectionState === "closed") continue;
+      for (const stat of (await pc.getStats()).values()) {
+        if (stat.type !== "inbound-rtp" || stat.kind !== "audio") continue;
+        const key = stat.trackIdentifier || String(stat.ssrc);
+        const seen = inbound.get(key) ?? { track: key, bytes: 0, packets: 0, audioLevelMax: 0, totalAudioEnergy: 0, attached: false };
+        seen.bytes = stat.bytesReceived ?? 0;
+        seen.packets = stat.packetsReceived ?? 0;
+        seen.audioLevelMax = Math.max(seen.audioLevelMax, round(stat.audioLevel));
+        seen.totalAudioEnergy = round(stat.totalAudioEnergy);
+        seen.attached = seen.attached || key === trackId;
+        inbound.set(key, seen);
+      }
+    }
+  };
+  for (const end = Date.now() + seconds * 1000; Date.now() < end; ) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const audio = element();
+    const track = audio?.srcObject.getAudioTracks().find((t) => t.readyState === "live");
+    if (track && track.id !== trackId) {
+      source?.disconnect();
+      source = context.createMediaStreamSource(new MediaStream([track]));
+      source.connect(analyser);
+      trackId = track.id;
+      tracksHeard += 1;
+    }
+    if (audio) playing = { paused: audio.paused, muted: audio.muted, volume: audio.volume, trackMuted: track?.muted ?? null };
+    analyser.getFloatTimeDomainData(samples);
+    let max = 0;
+    for (const sample of samples) max = Math.max(max, Math.abs(sample));
+    webAudioPeak = Math.max(webAudioPeak, max);
+    reads += 1;
+    if (max > 0.01) audibleReads += 1;
+    if (reads % 5 === 0) await readStats();
+  }
+  await readStats();
+  const receive = [...inbound.values()];
+  const statsPeak = Math.max(0, ...receive.filter((r) => r.attached).map((r) => r.audioLevelMax));
+  return {
+    level: {
+      peak: round(Math.max(webAudioPeak, statsPeak)),
+      webAudioPeak: round(webAudioPeak),
+      statsPeak,
+      audibleShare: round(audibleReads / Math.max(reads, 1)),
+      contextState: context.state,
+      tracksHeard,
+      element: playing,
+    },
+    receive,
+  };
+}
+
 const report = (step, details = {}) => console.log(JSON.stringify({ step, at: new Date().toISOString(), ...details }));
 
 async function api(path, { method = "GET", body, token } = {}) {
@@ -79,6 +153,16 @@ try {
       body: JSON.stringify({ accessToken: "", expiresAt: new Date(Date.now() + 3_600_000).toISOString(), user: { sub: "", id: "", name: "", email: "" } }),
     }),
   );
+  // Keeps the page's peer connections, to read what each one receives.
+  await context.addInitScript(() => {
+    window.__guestPcs = [];
+    window.RTCPeerConnection = class extends window.RTCPeerConnection {
+      constructor(...args) {
+        super(...args);
+        window.__guestPcs.push(this);
+      }
+    };
+  });
   const guest = await context.newPage();
   await guest.goto(`${APP}${invitation.invitationPath}`);
   await guest.getByRole("button", { name: /Speaker test/ }).click({ timeout: TIMEOUT });
@@ -99,30 +183,9 @@ try {
   while (!(await track()) && Date.now() < deadline) await guest.waitForTimeout(500);
   const arrived = await track();
   report("return-track", { ok: arrived });
-  const level = arrived
-    ? await guest.evaluate(async (seconds) => {
-        const element = [...document.querySelectorAll("audio")].find((a) => a.srcObject?.getAudioTracks().length);
-        const context = new AudioContext();
-        await context.resume();
-        const analyser = context.createAnalyser();
-        analyser.fftSize = 2048;
-        context.createMediaStreamSource(element.srcObject).connect(analyser);
-        const samples = new Float32Array(analyser.fftSize);
-        let peak = 0;
-        let audibleReads = 0;
-        let reads = 0;
-        for (const end = Date.now() + seconds * 1000; Date.now() < end; ) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          analyser.getFloatTimeDomainData(samples);
-          let max = 0;
-          for (const sample of samples) max = Math.max(max, Math.abs(sample));
-          peak = Math.max(peak, max);
-          reads += 1;
-          if (max > 0.01) audibleReads += 1;
-        }
-        return { peak: Number(peak.toFixed(4)), audibleShare: Number((audibleReads / reads).toFixed(2)) };
-      }, SECONDS)
-    : { peak: 0, audibleShare: 0 };
+  const { level, receive } = arrived ? await guest.evaluate(measureReturn, SECONDS) : { level: { peak: 0, webAudioPeak: 0, statsPeak: 0 }, receive: [] };
+  // What arrived over the wire, whatever the page's audio graph can read.
+  report("return-stats", { inbound: receive });
   ok = arrived && (EXPECT === "silence" ? level.peak < AUDIBLE : level.peak >= AUDIBLE);
   report("return-level", { ok, expect: EXPECT, ...level });
   await guest.getByRole("button", { name: /Leave/ }).click();

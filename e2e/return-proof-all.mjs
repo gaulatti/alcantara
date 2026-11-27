@@ -15,6 +15,8 @@ import { promisify } from "node:util";
 export const BROWSERS = ["chromium", "webkit", "firefox"];
 /** A guest session keeps the invitation for 60 s after the guest leaves; the next browser waits it out. */
 const SESSION_PAUSE_SECONDS = 70;
+/** No engine may hold the run: one that hangs is stopped and reported. */
+const BROWSER_LIMIT_MS = 6 * 60_000;
 
 /** One browser's result from the proof's JSON lines. */
 export function outcome(browser, lines) {
@@ -56,6 +58,8 @@ function runBrowser(browser, env) {
     const child = spawn(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), "return-proof.mjs")], {
       env: { ...env, WEBRTC_BROWSER: browser },
       stdio: ["ignore", "pipe", "inherit"],
+      timeout: BROWSER_LIMIT_MS,
+      killSignal: "SIGKILL",
     });
     const lines = [];
     createInterface({ input: child.stdout }).on("line", (line) => {
