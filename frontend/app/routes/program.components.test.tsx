@@ -51,7 +51,6 @@ const hoisted = vi.hoisted(() => {
     "ModoItalianoGiorgiaClock",
     "ModoItalianoGiorgiaChyron",
     "ModoItalianoBracket",
-    "ModoItalianoPodcastPlayer",
     "ModoItalianoGiorgiaPodcastPlayer",
     "ModoItalianoGiorgiaArtistBumper",
     "CronicaChyron",

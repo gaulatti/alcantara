@@ -7,7 +7,6 @@ import {
   ModoItalianoGiorgiaChyron,
   ModoItalianoGiorgiaClock,
   ModoItalianoGiorgiaPodcastPlayer,
-  ModoItalianoPodcastPlayer,
 } from '../scenes/packagedScenes';
 
 // These tests import the packaged scenes after resetting the module registry, which is slow on a loaded
@@ -44,7 +43,6 @@ it('renders every packaged Giorgia scene without a second React', async () => {
       <ModoItalianoGiorgiaClock programId='main' />
       <ModoItalianoGiorgiaPodcastPlayer {...(podcast as React.ComponentProps<typeof ModoItalianoGiorgiaPodcastPlayer>)} />
       <ModoItalianoBracket title='TORNEO' />
-      <ModoItalianoPodcastPlayer {...(podcast as React.ComponentProps<typeof ModoItalianoPodcastPlayer>)} />
     </>,
   );
   await waitFor(() => expect(view.container.textContent ?? '').toMatch(/CIAO MONDO/i));

@@ -27,5 +27,4 @@ export {
   ModoItalianoGiorgiaChyron,
   ModoItalianoGiorgiaClock,
   ModoItalianoGiorgiaPodcastPlayer,
-  ModoItalianoPodcastPlayer,
 } from '../scenes/packagedScenes';
