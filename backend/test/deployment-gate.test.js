@@ -112,7 +112,8 @@ test('ships the PostgreSQL 17 dump client required by hourly backups', () => {
 });
 
 test('keeps the backend private to nginx and preserves realtime proxy behavior', () => {
-  assert.match(deployScript, /127\.0\.0\.1:3006:3006/);
+  assert.match(deployScript, /-p "127\.0\.0\.1:\$port:\$port"/);
+  assert.match(deployScript, /start_backend alcantara-backend 3006 node dist\/src\/main/);
   assert.match(nginx, /proxy_buffering off/);
   assert.match(nginx, /proxy_set_header Upgrade \$http_upgrade/);
   assert.match(nginx, /proxy_read_timeout 24h/);
@@ -143,7 +144,12 @@ test('retains the previous container until the local-logging replacement is heal
     const retainPrevious = deployment.indexOf(
       'docker rename alcantara-backend alcantara-backend-previous',
     );
-    const createReplacement = deployment.indexOf('--log-driver=local');
+    // The replacement is created after the previous container is set aside (the deploy script also defines its
+    // start helper, which carries the same flags, above that point).
+    const createReplacement =
+      deployment === deployScript
+        ? deployment.indexOf('start_backend alcantara-backend 3006', retainPrevious)
+        : deployment.indexOf('--log-driver=local', retainPrevious);
     const removePrevious = deployment.lastIndexOf(
       'docker rm alcantara-backend-previous',
     );
@@ -210,6 +216,26 @@ function runDeploy({
   certificate = false,
   installedSite = null,
   repositorySite = '# nginx',
+  // gaulatti/alcantara#873: an image that answers /health/ready, the running backend's port, whether the new one
+  // reports standby, whether it takes the lease once the old one stops, and whether nginx accepts the switch.
+  leaseImage = false,
+  livePort = '3006',
+  // The running backend's own /health/ready: 'active' for one that holds the lease, '' for one from before it.
+  liveState = leaseImage ? 'active' : '',
+  standbyReady = true,
+  standbyState = 'standby',
+  activates = true,
+  oldRestores = true,
+  stopFails = false,
+  nginxValid = true,
+  reloadFails = false,
+  memAvailableKb = null,
+  publicStatus = '200',
+  // A full disk: the new site cannot be written beside the old one.
+  fullDisk = false,
+  // A handover container left running without a live backend, and a host with no live backend.
+  leftoverNext = false,
+  noLiveBackend = false,
 }) {
   const {
     mkdtempSync,
@@ -233,12 +259,18 @@ function runDeploy({
     'docker',
     `args="$*"
 case "$args" in
+  "inspect alcantara-backend-next") exit ${leftoverNext ? 0 : 1} ;;
+  "inspect alcantara-backend") exit ${noLiveBackend ? 1 : 0} ;;
   *login*) cat >/dev/null ;;
   "inspect alcantara-backend-previous") exit 1 ;;
   "run --rm"*print-metrics-token*) ${tokenFails ? 'exit 1' : 'echo fictional-scrape-token'} ;;
   *"State.Running"*) echo ${candidateHealthy ? 'true' : 'false'} ;;
   *"State.ExitCode"*) echo 3 ;;
+  "exec alcantara-backend-candidate"*health/ready*) exit ${leaseImage ? 0 : 3} ;;
   "exec alcantara-backend-candidate"*) exit ${candidateHealthy ? 0 : 1} ;;
+  *"Config.Env"*) echo "NODE_ENV=production"; echo "PORT=${livePort}" ;;
+  "stop -t 15 alcantara-backend") ${stopFails ? 'exit 1' : `: > "${'$'}{PLAYOUT_DIR}/${livePort}"; ${activates ? `echo active > "${'$'}{PLAYOUT_DIR}/${livePort === '3006' ? '3007' : '3006'}"` : ':'}`} ;;
+  "start alcantara-backend") ${oldRestores ? `echo active > "${'$'}{PLAYOUT_DIR}/${livePort}"` : ':'} ;;
   "logs alcantara-backend-candidate") echo 'Error: fictional start-up failure' ;;
   "exec alcantara-backend node"*) ${automaticPrograms === null ? 'exit 1' : `echo '${automaticPrograms}'`} ;;
   "exec palazzo node"*) ${radioLive ? "echo 'RADIO_LIVE'" : radioPlays ? "echo 'RADIO_PLAYING startedAt=fictional'" : "echo 'RADIO_NOT_PLAYING {}'; exit 1"} ;;
@@ -250,6 +282,9 @@ exit 0`,
   const certificateFile = join(bin, 'fullchain.pem');
   if (certificate) writeFileSync(certificateFile, 'fictional certificate');
   if (installedSite !== null) writeFileSync(site, installedSite);
+  if (fullDisk) require('node:fs').mkdirSync(`${site}.next`);
+  const meminfo = join(bin, 'meminfo');
+  if (memAvailableKb !== null) writeFileSync(meminfo, `MemTotal: 4000000 kB\nMemAvailable: ${memAvailableKb} kB\n`);
   const script = join(bin, 'cumulus.sh');
   writeFileSync(
     script,
@@ -258,22 +293,38 @@ exit 0`,
       .replace(
         '/etc/letsencrypt/live/api.alcantara.gaulatti.com/fullchain.pem',
         certificateFile,
-      ),
+      )
+      .replace('/proc/meminfo', meminfo),
   );
-  stub('curl', 'case "$*" in *write-out*) printf 200 ;; esac\nexit 0');
+  // Each loopback port's /health/ready answer: the running backend's, and the new one's once it is started.
+  const playout = join(bin, 'playout');
+  require('node:fs').mkdirSync(playout);
+  const otherPort = livePort === '3006' ? '3007' : '3006';
+  writeFileSync(join(playout, livePort), liveState);
+  writeFileSync(join(playout, otherPort), standbyReady ? standbyState : 'starting');
+  stub(
+    'curl',
+    `case "$*" in
+  *write-out*) printf ${publicStatus} ;;
+  *health/ready*)
+    port="$(printf '%s' "$*" | sed -n 's#.*127\\.0\\.0\\.1:\\([0-9]*\\)/health.*#\\1#p')"
+    state="$(cat "${playout}/$port" 2>/dev/null)"
+    [ -n "$state" ] || exit 22
+    printf '{"state":"%s","build":"fictional"}' "$state" ;;
+esac
+exit 0`,
+  );
+
   // The deploy writes the token to a temp file by redirection (no pipe, so no
   // SIGPIPE under pipefail). mktemp is the one command that must hand back a real,
   // writable path; install and mv are recorded.
   stub('mktemp', `command -p mktemp "${bin}/token.XXXXXX"`);
-  for (const name of [
-    'install',
-    'sleep',
-    'mv',
-    'nginx',
-    'systemctl',
-    'certbot',
-  ])
+  for (const name of ['install', 'sleep', 'certbot'])
     stub(name, 'exit 0');
+  stub('nginx', `case "$*" in -t) exit ${nginxValid ? 0 : 1} ;; esac\nexit 0`);
+  stub('systemctl', `case "$*" in "reload nginx") exit ${reloadFails ? 1 : 0} ;; esac\nexit 0`);
+  // mv restores the site when nginx refuses the switch: a real move inside the sandbox, recorded otherwise.
+  stub('mv', `case "$*" in *"${bin}"*) command -p mv "$@" ;; esac\nexit 0`);
   const result = spawnSync(
     'bash',
     [
@@ -287,7 +338,7 @@ exit 0`,
       'fictional-bucket',
     ],
     {
-      env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, PLAYOUT_DIR: playout },
       encoding: 'utf8',
     },
   );
@@ -340,7 +391,7 @@ test('mounts the scrape credential from the production secret read-only without 
   const tokenScript = readFileSync('./scripts/print-metrics-token.mjs', 'utf8');
   const resolve = deployScript.indexOf('node scripts/print-metrics-token.mjs');
   const stop = deployScript.indexOf('docker stop alcantara-backend');
-  const run = deployScript.indexOf('docker run -d --name alcantara-backend \\');
+  const run = deployScript.indexOf('start_backend alcantara-backend 3006');
 
   assert.ok(resolve >= 0);
   assert.ok(resolve < stop);
@@ -414,9 +465,7 @@ test('a healthy deploy waits for a song started after the restart when a program
     /ALCANTARA_HEALTHY\n[\s\S]*RADIO_PLAYING startedAt=fictional/,
   );
   const since = deployScript.indexOf('radio_since="$(date +%s)"');
-  const live = deployScript.indexOf(
-    'if ! docker run -d --name alcantara-backend \\',
-  );
+  const live = deployScript.indexOf('start_backend alcantara-backend 3006');
   assert.ok(
     since > 0 && since < live,
     'the moment is taken before the new backend starts',
@@ -632,8 +681,11 @@ test('never writes the HTTP-only file over a site that serves TLS, and names wha
   assert.match(same.stdout, /NGINX_SITE_KEPT/);
   assert.doesNotMatch(same.stdout, /NGINX_SITE_DRIFT/);
   assert.equal(readFileSync(same.site, 'utf8'), installedSite);
+  // The site is neither rewritten nor reinstalled, and no certificate is asked for. nginx is only checked and
+  // reloaded on the site as it is (#873: the port it already points at).
   for (const line of same.log) {
-    assert.doesNotMatch(line, /^(certbot|nginx) |^systemctl reload|^install -m 0644/);
+    assert.doesNotMatch(line, /^certbot |^install -m 0644/);
+    if (line.startsWith('nginx ')) assert.equal(line, 'nginx -t');
   }
   assert.ok(same.log.includes('systemctl enable --now certbot-renew.timer'));
 
@@ -671,4 +723,199 @@ test('the deployed containers do not migrate again; the one migration runs befor
 
 test('a candidate that stayed up but did not answer says so instead of claiming an exit', () => {
   assert.match(deployScript, /did not answer its health check in time/);
+});
+
+// gaulatti/alcantara#873: an image that holds the playout lease starts beside the running backend, nginx moves to it,
+// the old one stops, and the new one must take the lease. Before the old one stops, any failure leaves it serving.
+const site3006 =
+  'server {\n  location / {\n    proxy_pass http://127.0.0.1:3006;\n    proxy_read_timeout 24h;\n  }\n  ssl_certificate /etc/fictional;\n}\n';
+// The repository's HTTP half, with a setting the installed site already has.
+const repositoryHalf = 'server {\n  location / {\n    proxy_read_timeout 24h;\n  }\n}\n';
+
+test('a lease image takes over beside the running backend: standby, nginx, stop, active, then the radio check', () => {
+  const run = runDeploy({ candidateHealthy: true, leaseImage: true, certificate: true, installedSite: site3006, repositorySite: repositoryHalf });
+  assert.equal(run.status, 0, run.stdout + run.stderr);
+  const at = (prefix) => run.log.findIndex((line) => line.startsWith(prefix));
+  const standby = at('docker run -d --name alcantara-backend-next');
+  assert.ok(standby >= 0);
+  assert.match(run.log[standby], /-p 127\.0\.0\.1:3007:3007 .*-e HTTP_PORT=3007 -e PORT=3007/);
+  assert.match(run.log[standby], /node dist\/src\/main$/);
+  const reload = run.log.indexOf('systemctl reload nginx');
+  const stop = at('docker stop -t 15 alcantara-backend');
+  const promote = run.log.indexOf('docker rename alcantara-backend-next alcantara-backend');
+  assert.ok(standby < reload && reload < stop && stop < promote, run.log.join('\n'));
+  // Fix forward: the stopped backend is removed, not kept as a rollback container that would stop later deploys.
+  assert.equal(run.log.indexOf('docker rename alcantara-backend alcantara-backend-previous'), -1);
+  assert.ok(run.log.lastIndexOf('docker rm -f alcantara-backend') > stop);
+  // The installed site keeps its TLS half; only the port moved.
+  const after = require('node:fs').readFileSync(run.site, 'utf8');
+  assert.match(after, /proxy_pass http:\/\/127\.0\.0\.1:3007;/);
+  assert.match(after, /ssl_certificate \/etc\/fictional;/);
+  for (const marker of ['BACKEND_SWITCH', 'OWNER_RELEASED', 'OWNER_ACQUIRED', 'ALCANTARA_HEALTHY', 'RADIO_PLAYING'])
+    assert.match(run.stdout, new RegExp(marker));
+  // Today's path (stop first, then start in its place) is not taken.
+  assert.equal(at('docker stop alcantara-backend'), -1);
+  assert.equal(at('docker run -d --name alcantara-backend '), -1);
+});
+
+test('a backend on 3007 is followed by one on 3006', () => {
+  const run = runDeploy({
+    candidateHealthy: true,
+    leaseImage: true,
+    livePort: '3007',
+    certificate: true,
+    installedSite: site3006, repositorySite: repositoryHalf.replace('3006', '3007'),
+  });
+  assert.equal(run.status, 0, run.stdout + run.stderr);
+  assert.match(run.log.find((line) => line.startsWith('docker run -d --name alcantara-backend-next')), /-p 127\.0\.0\.1:3006:3006/);
+  assert.match(require('node:fs').readFileSync(run.site, 'utf8'), /proxy_pass http:\/\/127\.0\.0\.1:3006;/);
+});
+
+test('a standby that never reports ready is removed and the running backend is never stopped', () => {
+  const run = runDeploy({ candidateHealthy: true, leaseImage: true, standbyReady: false, installedSite: site3006, repositorySite: repositoryHalf });
+  assert.equal(run.status, 1);
+  assert.match(run.stdout, /Alcantara standby did not report ready; the running backend is untouched/);
+  assert.ok(run.log.includes('docker rm -f alcantara-backend-next'));
+  for (const line of run.log) assert.doesNotMatch(line, /^docker (stop|rename|start) /);
+  assert.match(require('node:fs').readFileSync(run.site, 'utf8'), /127\.0\.0\.1:3006;/);
+});
+
+test('a switch nginx refuses puts the site back and leaves the running backend serving', () => {
+  const run = runDeploy({ candidateHealthy: true, leaseImage: true, nginxValid: false, certificate: true, installedSite: site3006, repositorySite: repositoryHalf });
+  assert.equal(run.status, 1);
+  assert.match(run.stdout, /nginx would not take the new port; the running backend is untouched/);
+  assert.equal(require('node:fs').readFileSync(run.site, 'utf8'), site3006);
+  for (const line of run.log) assert.doesNotMatch(line, /^docker (stop|rename|start) /);
+});
+
+test('a standby that never takes the lease is removed, nginx goes back, and the previous backend starts again', () => {
+  const run = runDeploy({ candidateHealthy: true, leaseImage: true, activates: false, certificate: true, installedSite: site3006, repositorySite: repositoryHalf });
+  assert.equal(run.status, 1);
+  assert.match(run.stdout, /Alcantara standby did not take the playout lease; restoring the previous backend/);
+  const removed = run.log.lastIndexOf('docker rm -f alcantara-backend-next');
+  const restarted = run.log.indexOf('docker start alcantara-backend');
+  assert.ok(removed >= 0 && restarted > removed);
+  // The previous backend is confirmed back, the radio is still checked, and the deploy ends as failed.
+  assert.match(run.stdout, /OWNER_RESTORED/);
+  assert.match(run.stdout, /RADIO_PLAYING/);
+  assert.match(run.stdout, /ALCANTARA_DEPLOY_FAILED: the new backend never took the playout lease/);
+  assert.match(require('node:fs').readFileSync(run.site, 'utf8'), /proxy_pass http:\/\/127\.0\.0\.1:3006;/);
+  assert.equal(run.log.indexOf('docker rename alcantara-backend-next alcantara-backend'), -1);
+});
+
+test('an image without the lease is replaced as before, even when a backend is running', () => {
+  const run = runDeploy({ candidateHealthy: true, leaseImage: false, installedSite: site3006, repositorySite: repositoryHalf, certificate: true });
+  assert.equal(run.status, 0, run.stdout + run.stderr);
+  assert.ok(run.log.includes('docker stop alcantara-backend'));
+  assert.ok(run.log.some((line) => line.startsWith('docker run -d --name alcantara-backend ')));
+  assert.equal(run.log.findIndex((line) => line.startsWith('docker run -d --name alcantara-backend-next')), -1);
+});
+
+// Review of the handover (Yakko, #873): each case below was a way to two engines, an empty nginx site, or a locked deploy.
+test('a running backend from before the lease is replaced as before, never with a standby beside it', () => {
+  const run = runDeploy({ candidateHealthy: true, leaseImage: true, liveState: '', certificate: true, installedSite: site3006, repositorySite: repositoryHalf });
+  assert.equal(run.status, 0, run.stdout + run.stderr);
+  assert.match(run.stdout, /HANDOVER_SKIPPED: the running backend does not hold the playout lease \(state: none\)/);
+  assert.equal(run.log.findIndex((line) => line.startsWith('docker run -d --name alcantara-backend-next')), -1);
+  assert.ok(run.log.includes('docker stop alcantara-backend'));
+});
+
+test('a standby that reports active while the running backend is up is removed at once', () => {
+  const run = runDeploy({ candidateHealthy: true, leaseImage: true, standbyState: 'active', certificate: true, installedSite: site3006, repositorySite: repositoryHalf });
+  assert.equal(run.status, 1);
+  assert.match(run.stdout, /Alcantara standby took the playout lease while the running backend was up; removing it/);
+  assert.ok(run.log.includes('docker rm -f alcantara-backend-next'));
+  for (const line of run.log) assert.doesNotMatch(line, /^docker (stop|rename|start) /);
+});
+
+test('today\'s path after a handover to 3007 serves on 3006 and points nginx back at it', () => {
+  const run = runDeploy({
+    candidateHealthy: true,
+    leaseImage: false,
+    livePort: '3007',
+    certificate: true,
+    installedSite: site3006.replace('3006', '3007'),
+    repositorySite: repositoryHalf,
+  });
+  assert.equal(run.status, 0, run.stdout + run.stderr);
+  assert.match(run.log.find((line) => line.startsWith('docker run -d --name alcantara-backend ')), /-p 127\.0\.0\.1:3006:3006/);
+  assert.match(require('node:fs').readFileSync(run.site, 'utf8'), /proxy_pass http:\/\/127\.0\.0\.1:3006;/);
+});
+
+test('a full disk during the switch never empties the site, and a failed reload puts the previous site back', () => {
+  for (const failure of [{ fullDisk: true }, { reloadFails: true }]) {
+    const run = runDeploy({ candidateHealthy: true, leaseImage: true, certificate: true, installedSite: site3006, repositorySite: repositoryHalf, ...failure });
+    assert.equal(run.status, 1, JSON.stringify(failure));
+    assert.match(run.stdout, /nginx would not take the new port; the running backend is untouched/);
+    assert.equal(require('node:fs').readFileSync(run.site, 'utf8'), site3006);
+    assert.ok(run.log.includes('docker rm -f alcantara-backend-next'));
+    for (const line of run.log) assert.doesNotMatch(line, /^docker (stop|rename|start) /);
+  }
+});
+
+test('an exit between the switch and the lease puts the previous backend back', () => {
+  const run = runDeploy({ candidateHealthy: true, leaseImage: true, stopFails: true, certificate: true, installedSite: site3006, repositorySite: repositoryHalf });
+  assert.equal(run.status, 1);
+  assert.match(run.stdout, /BACKEND_SWITCH/);
+  assert.match(run.stdout, /OWNER_RESTORED/);
+  assert.ok(run.log.lastIndexOf('docker rm -f alcantara-backend-next') > run.log.indexOf('docker stop -t 15 alcantara-backend'));
+  assert.ok(run.log.includes('docker start alcantara-backend'));
+  assert.match(require('node:fs').readFileSync(run.site, 'utf8'), /proxy_pass http:\/\/127\.0\.0\.1:3006;/);
+});
+
+test('a previous backend that does not come back says so loudly and stops the deploy', () => {
+  const run = runDeploy({ candidateHealthy: true, leaseImage: true, activates: false, oldRestores: false, certificate: true, installedSite: site3006, repositorySite: repositoryHalf });
+  assert.equal(run.status, 1);
+  assert.match(run.stdout, /OWNER_NOT_RESTORED: the previous backend did not take the playout lease back/);
+  assert.doesNotMatch(run.stdout, /ALCANTARA_HEALTHY|RADIO_/);
+});
+
+test('a public check that fails after the takeover leaves no rollback container behind', () => {
+  const run = runDeploy({ candidateHealthy: true, leaseImage: true, publicStatus: '502', certificate: true, installedSite: site3006, repositorySite: repositoryHalf });
+  assert.equal(run.status, 1);
+  assert.match(run.stdout, /OWNER_ACQUIRED/);
+  assert.match(run.stdout, /left in place \(fix forward\)/);
+  assert.equal(run.log.indexOf('docker rename alcantara-backend alcantara-backend-previous'), -1);
+});
+
+test('a host short of memory replaces the backend as before', () => {
+  const run = runDeploy({ candidateHealthy: true, leaseImage: true, memAvailableKb: 400 * 1024, certificate: true, installedSite: site3006, repositorySite: repositoryHalf });
+  assert.equal(run.status, 0, run.stdout + run.stderr);
+  assert.match(run.stdout, /HANDOVER_SKIPPED: 400 MB available, under 600 MB/);
+  assert.equal(run.log.findIndex((line) => line.startsWith('docker run -d --name alcantara-backend-next')), -1);
+  const roomy = runDeploy({ candidateHealthy: true, leaseImage: true, memAvailableKb: 1400 * 1024, certificate: true, installedSite: site3006, repositorySite: repositoryHalf });
+  assert.equal(roomy.status, 0, roomy.stdout + roomy.stderr);
+  assert.match(roomy.stdout, /OWNER_ACQUIRED/);
+});
+
+test('today\'s path whose public check fails points nginx back at the previous backend\'s port', () => {
+  const run = runDeploy({
+    candidateHealthy: true,
+    leaseImage: false,
+    livePort: '3007',
+    publicStatus: '502',
+    certificate: true,
+    installedSite: site3006.replace('3006', '3007'),
+    repositorySite: repositoryHalf,
+  });
+  assert.equal(run.status, 1);
+  assert.match(run.stdout, /Alcantara public health check failed; rolling back/);
+  assert.ok(run.log.includes('docker start alcantara-backend'));
+  assert.match(require('node:fs').readFileSync(run.site, 'utf8'), /proxy_pass http:\/\/127\.0\.0\.1:3007;/);
+});
+
+test('a handover that never activated and then fails the public check has nothing more to roll back', () => {
+  const run = runDeploy({ candidateHealthy: true, leaseImage: true, activates: false, publicStatus: '502', certificate: true, installedSite: site3006, repositorySite: repositoryHalf });
+  assert.equal(run.status, 1);
+  assert.match(run.stdout, /OWNER_RESTORED/);
+  assert.match(run.stdout, /The previous backend is back and serving; nothing more to roll back/);
+  assert.doesNotMatch(run.stderr, /command not found/);
+});
+
+test('a handover container left running with no live backend stops the deploy for an operator', () => {
+  const run = runDeploy({ candidateHealthy: true, leaseImage: true, leftoverNext: true, noLiveBackend: true, certificate: true, installedSite: site3006, repositorySite: repositoryHalf });
+  assert.equal(run.status, 1);
+  assert.match(run.stdout, /alcantara-backend-next\) is running with no alcantara-backend: requires operator review/);
+  // The throwaway candidate may have run; nothing touches a live container.
+  for (const line of run.log) assert.doesNotMatch(line, /^docker (run -d --name alcantara-backend(-next)? |stop|rename|start) /);
 });

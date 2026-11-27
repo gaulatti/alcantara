@@ -21,7 +21,26 @@ After the restore check, the runtime preflight and the migrations, and before `d
 1. Start `alcantara-backend-candidate` from the new image. It gets the same configuration and secrets as the live container, plus `ALCANTARA_DEPLOY_CANDIDATE=1`. It is not on the `broadcast-control` network, so it cannot reach Palazzo. It publishes no port, has no restart policy and gets no metrics token mount (its health check calls `GET /`, never `/metrics`; the token is provisioned after the candidate passes, see [radio-telemetry.md](radio-telemetry.md#metrics)).
 2. Check `GET /` from inside the container, up to 45 tries 2 s apart. The check stops early if the container exits.
 3. **Failure:** the deploy prints `Alcantara candidate failed its health check; the running backend is untouched` and the candidate's bounded log tail (on stderr, filtered as for the live container), removes the candidate and exits 1. The running backend is never stopped.
-4. **Success:** the deploy removes the candidate, prints `Alcantara candidate passed its health check`, and replaces the running container exactly as before (with its own health check, rollback and `ALCANTARA_HEALTHY`).
+4. **Success:** the deploy removes the candidate and prints `Alcantara candidate passed its health check`. Before removing it, it asks the candidate for `GET /health/ready`. A 200 means the image holds the playout lease (see below) and the deploy hands over without a gap (4a). Otherwise (an image from before the lease, 404), or when no backend is running, it replaces the running container exactly as before, with its own health check, rollback and `ALCANTARA_HEALTHY`.
+
+4a. **The handover** (gaulatti/alcantara#873). Every live container runs `node dist/src/main` under Docker's init (`--init`).
+
+   **When it runs.** All of these must hold, or the deploy prints `HANDOVER_SKIPPED: …` and replaces the container exactly as before:
+   - the new image answers `/health/ready` (asked of its candidate);
+   - the **running** backend reports `active` on its own port (a running backend from before the lease holds no lock, so a standby beside it would take the free lock and two engines would drive playout);
+   - the host has at least 600 MB available (`MemAvailable`) for a second backend for about a minute.
+
+   Today's path always serves on 3006, and nginx is pointed back at 3006 after it, whatever port a handover left.
+
+   **Steps.**
+   - It starts `alcantara-backend-next` beside the running one, on the other loopback port (3006 or 3007), and waits up to 90 s for `standby`. Seeing `active` while the old one is up removes it at once.
+   - It points nginx at the new port (`BACKEND_SWITCH`). Only the installed site's `proxy_pass` port changes; certbot's TLS half stays. The new site is written beside the old one, checked non-empty and containing the new `proxy_pass`, then moved into place in one step. A full disk, a refused `nginx -t` or a failed reload leaves or puts back the previous site and reloads it, and the running backend stays untouched.
+   - It stops the old one (`docker stop -t 15`, `OWNER_RELEASED`) and waits up to 20 s for `active` (`OWNER_ACQUIRED`). Any exit in between (an error, a signal) runs the restore below first.
+   - After `OWNER_ACQUIRED` it removes the stopped container (fix forward: no rollback container is left to stop later deploys) and renames the new one `alcantara-backend`. The public check and the radio check (5) follow, reading the live port from the container.
+
+   **If the new one never takes the lease.** It is removed, nginx goes back, and the previous backend is started and must report `active` within 20 s (`OWNER_RESTORED`; otherwise `OWNER_NOT_RESTORED`, loudly, exit 1). The public and radio checks still run against the restored backend, and the deploy ends with `ALCANTARA_DEPLOY_FAILED`. That failure leaves no backend driving playout for up to 15 s (stop) + 20 s (wait) + the previous backend's boot to `active` (about 10 s since stage 0; bounded at 20 s), so 35–55 s. That is the same order as every deploy before #873 (46.6 s measured), and it happens only on this failure. Palazzo keeps playing throughout, and its filler covers air.
+
+   The time with no backend driving playout on a normal handover is `OWNER_ACQUIRED − OWNER_RELEASED`.
 
 5. **The radio plays** (gaulatti/alcantara#230). A healthy backend is not a playing radio, so after `ALCANTARA_HEALTHY` the deploy reads `alcantara_radio_automatic_programs` from the new backend (inside its container, with its own mounted scrape token; the token never reaches the host shell).
    - `0`: it prints `RADIO_CHECK_SKIPPED: no radio program is in automation` and ends.

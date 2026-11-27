@@ -116,6 +116,12 @@ if [ "$candidate_ready" != true ]; then
   docker rm -f alcantara-backend-candidate >/dev/null 2>&1 || true
   exit 1
 fi
+# gaulatti/alcantara#873: an image that answers /health/ready holds the playout lease, so it can start beside the
+# running backend and take over without a gap. One that does not (404) is replaced as before.
+lease_supported=false
+if docker exec alcantara-backend-candidate node -e "fetch('http://127.0.0.1:3006/health/ready').then((r) => process.exit(r.status === 200 ? 0 : 3), () => process.exit(1))" >/dev/null 2>&1; then
+  lease_supported=true
+fi
 docker rm -f alcantara-backend-candidate >/dev/null
 echo 'Alcantara candidate passed its health check'
 
@@ -139,82 +145,279 @@ install -m 0400 -o root -g root "$metrics_token_tmp" "$metrics_token_file.new"
 rm -f "$metrics_token_tmp"
 mv -f "$metrics_token_file.new" "$metrics_token_file"
 
-had_previous=false
-if docker inspect alcantara-backend >/dev/null 2>&1; then
-  docker stop alcantara-backend
-  docker rename alcantara-backend alcantara-backend-previous
-  had_previous=true
-fi
-
-rollback_backend() {
-  echo 'Restoring previous Alcantara backend'
-  docker rm -f alcantara-backend >/dev/null 2>&1 || true
-  if [ "$had_previous" = true ]; then
-    docker rename alcantara-backend-previous alcantara-backend
-    docker start alcantara-backend
-  fi
+# Starts the backend image as NAME on loopback PORT, running COMMAND.
+start_backend() {
+  name="$1"
+  port="$2"
+  shift 2
+  # Under Docker's init: as the first process Node ignores SIGTERM, so a stop would wait out the grace period.
+  docker run -d --name "$name" \
+    --init \
+    --network broadcast-control \
+    -p "127.0.0.1:$port:$port" \
+    -e NODE_ENV=production \
+    -e HTTP_PORT="$port" \
+    -e PORT="$port" \
+    -e AWS_REGION=us-east-1 \
+    -e ARAUCO_SECRET_ID="$database_secret_id" \
+    -e ALCANTARA_BUILD_VERSION="${image##*:}" \
+    -e ALCANTARA_CONFIG_SECRET_ID="$broadcast_secret_id" \
+    -e METRICS_TOKEN_FILE=/run/secrets/alcantara-metrics-token \
+    -v "$metrics_token_file":/run/secrets/alcantara-metrics-token:ro \
+    -e ALLOWED_ORIGINS=https://alcantara.gaulatti.com,https://fifthbell.com,https://cdn.fifthbell.com \
+    -e POMPEII_TEAM_ID=1 \
+    -e MEDIA_S3_BUCKET="$media_bucket" \
+    -e CONTAINERIZED=true \
+    --restart=always \
+    --log-driver=local \
+    --log-opt max-size=10m \
+    --log-opt max-file=3 \
+    "$image" \
+    "$@"
 }
 
-# Node runs the server directly, without pnpm's start-up time, under Docker's init: as the first process Node would
-# not exit on SIGTERM, and every stop would wait out the grace period and kill it.
-# The live container starts the server only (gaulatti/alcantara#873): the migrations ran above, from this same image,
-# before the running backend was touched, and a second run here only lengthened the time with no backend.
-# The radio check below waits for a song that started after this moment.
-radio_since="$(date +%s)"
+# The playout state a lease-holding backend on PORT reports (standby, active), or nothing (no backend there, or one
+# from before the lease, whose /health/ready answers 404).
+playout_state() {
+  curl --fail --silent --max-time 2 "http://127.0.0.1:$1/health/ready" | sed -n 's/.*"state":"\([a-z]*\)".*/\1/p'
+}
 
-if ! docker run -d --name alcantara-backend \
-  --init \
-  --network broadcast-control \
-  -p 127.0.0.1:3006:3006 \
-  -e NODE_ENV=production \
-  -e HTTP_PORT=3006 \
-  -e PORT=3006 \
-  -e AWS_REGION=us-east-1 \
-  -e ARAUCO_SECRET_ID="$database_secret_id" \
-  -e ALCANTARA_BUILD_VERSION="${image##*:}" \
-  -e ALCANTARA_CONFIG_SECRET_ID="$broadcast_secret_id" \
-  -e METRICS_TOKEN_FILE=/run/secrets/alcantara-metrics-token \
-  -v "$metrics_token_file":/run/secrets/alcantara-metrics-token:ro \
-  -e ALLOWED_ORIGINS=https://alcantara.gaulatti.com,https://fifthbell.com,https://cdn.fifthbell.com \
-  -e POMPEII_TEAM_ID=1 \
-  -e MEDIA_S3_BUCKET="$media_bucket" \
-  -e CONTAINERIZED=true \
-  --restart=always \
-  --log-driver=local \
-  --log-opt max-size=10m \
-  --log-opt max-file=3 \
-  "$image" \
-  node dist/src/main; then
-  rollback_backend
+# Points the installed nginx site at loopback PORT, changing only its proxy_pass port (certbot's TLS half stays). The
+# new site is written beside it, checked complete (non-empty, the new proxy_pass in it) and moved into place in one
+# step; a full disk or any failure leaves the site as it was. If nginx refuses it or the reload fails, the previous
+# site goes back and nginx is reloaded on it. Returns non-zero on any failure.
+nginx_site='/etc/nginx/conf.d/cumulus-alcantara.conf'
+point_nginx_at() {
+  local port="$1" backup="$nginx_site.before-switch" next="$nginx_site.next"
+  [ -f "$nginx_site" ] || return 0
+  # Already there: nothing to write or reload (a failed switch always puts the previous site back and reloads it, so
+  # the file never says one port while nginx serves another). A site with no loopback proxy_pass has nothing to point.
+  # Reloaded anyway: an earlier run cut off between writing the site and reloading would have left nginx serving the
+  # old port with the file already saying this one.
+  if grep -q "proxy_pass http://127.0.0.1:$port;" "$nginx_site"; then
+    nginx -t && systemctl reload nginx
+    return
+  fi
+  grep -q 'proxy_pass http://127.0.0.1:' "$nginx_site" || return 0
+  rm -f "$next"
+  cp "$nginx_site" "$backup" || { rm -f "$backup"; return 1; }
+  # Through a copy, not sed -i, so it behaves the same with GNU and BSD sed.
+  if ! sed -E "s#proxy_pass http://127\.0\.0\.1:[0-9]+;#proxy_pass http://127.0.0.1:$port;#" "$backup" >"$next" ||
+    [ ! -s "$next" ] || ! grep -q "proxy_pass http://127.0.0.1:$port;" "$next"; then
+    rm -f "$next" "$backup"
+    return 1
+  fi
+  if ! mv -f "$next" "$nginx_site"; then
+    rm -f "$next" "$backup"
+    return 1
+  fi
+  if nginx -t && systemctl reload nginx; then
+    rm -f "$backup"
+    return 0
+  fi
+  mv -f "$backup" "$nginx_site"
+  nginx -t && systemctl reload nginx
+  return 1
+}
+
+# Available memory in MB, or nothing where the host does not say.
+available_mb() {
+  awk '/^MemAvailable:/ { print int($2 / 1024) }' /proc/meminfo 2>/dev/null || true
+}
+
+if docker inspect alcantara-backend-next >/dev/null 2>&1 && ! docker inspect alcantara-backend >/dev/null 2>&1; then
+  echo 'An Alcantara handover container (alcantara-backend-next) is running with no alcantara-backend: requires operator review'
   exit 1
 fi
 
-deployed_ready=false
-for _ in $(seq 1 45); do
-  if curl --fail --silent --max-time 2 http://127.0.0.1:3006/ >/dev/null; then
-    deployed_ready=true
-    break
+live_port=3006
+if docker inspect alcantara-backend >/dev/null 2>&1; then
+  live_port="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' alcantara-backend | sed -n 's/^PORT=//p' | head -n 1)"
+  [ -n "$live_port" ] || live_port=3006
+fi
+
+# gaulatti/alcantara#873: the handover needs both sides to speak the lease. The new image must answer /health/ready
+# (lease_supported, from its candidate) and the running backend must report itself active: a running backend from
+# before the lease holds no lock, so a standby beside it would take the free lock at once and two engines would drive
+# playout. It also needs room for a second backend for a minute. Anything else takes today's path.
+handover=false
+if [ "$lease_supported" = true ] && docker inspect alcantara-backend >/dev/null 2>&1; then
+  live_state="$(playout_state "$live_port" || true)"
+  memory="$(available_mb)"
+  if [ "$live_state" != active ]; then
+    echo "HANDOVER_SKIPPED: the running backend does not hold the playout lease (state: ${live_state:-none}); replacing it as before"
+  elif [ -n "$memory" ] && [ "$memory" -lt 600 ]; then
+    echo "HANDOVER_SKIPPED: ${memory} MB available, under 600 MB; replacing the backend as before"
+  else
+    handover=true
   fi
-  sleep 2
-done
-if [ "$deployed_ready" != true ]; then
-  echo 'Alcantara backend failed its local health check; rolling back'
-  print_startup_log alcantara-backend
-  rollback_backend
-  exit 1
+fi
+
+# Puts the previous backend back after the new one failed between the nginx switch and taking the lease: removes the
+# new container, points nginx back, starts the previous backend and waits for it to hold the lease again.
+restore_previous() {
+  docker rm -f alcantara-backend-next >/dev/null 2>&1 || true
+  point_nginx_at "$live_port" || echo 'NGINX_NOT_RESTORED: nginx could not be pointed back at the previous backend'
+  docker start alcantara-backend || true
+  for _ in $(seq 1 40); do
+    if [ "$(playout_state "$live_port" || true)" = active ]; then
+      echo "OWNER_RESTORED $(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
+      return 0
+    fi
+    sleep 0.5
+  done
+  echo 'OWNER_NOT_RESTORED: the previous backend did not take the playout lease back; no instance drives playout'
+  return 1
+}
+
+if [ "$handover" = true ]; then
+  # The new backend starts beside the old one as a standby (it holds requests and drives nothing), nginx moves to it,
+  # and the old one is stopped: its lease connection closes, the new one takes the lease, adopts the playing song and
+  # serves the held requests. Before the old one stops, a failure removes the new container and leaves the old one
+  # serving and driving playout.
+  had_previous=false
+  if [ "$live_port" = 3006 ]; then new_port=3007; else new_port=3006; fi
+  docker rm -f alcantara-backend-next >/dev/null 2>&1 || true
+  if ! start_backend alcantara-backend-next "$new_port" node dist/src/main; then
+    echo 'Alcantara standby could not be created; the running backend is untouched'
+    exit 1
+  fi
+  standby_ready=false
+  for _ in $(seq 1 45); do
+    state="$(playout_state "$new_port" || true)"
+    if [ "$state" = active ]; then
+      # Only possible if the running backend let go of the lease: never leave two backends that may both drive.
+      echo 'Alcantara standby took the playout lease while the running backend was up; removing it'
+      docker rm -f alcantara-backend-next >/dev/null 2>&1 || true
+      exit 1
+    fi
+    if [ "$state" = standby ]; then
+      standby_ready=true
+      break
+    fi
+    sleep 2
+  done
+  if [ "$standby_ready" != true ]; then
+    echo 'Alcantara standby did not report ready; the running backend is untouched'
+    print_startup_log alcantara-backend-next
+    docker rm -f alcantara-backend-next >/dev/null 2>&1 || true
+    exit 1
+  fi
+  if ! point_nginx_at "$new_port"; then
+    echo 'nginx would not take the new port; the running backend is untouched'
+    docker rm -f alcantara-backend-next >/dev/null 2>&1 || true
+    exit 1
+  fi
+  echo "BACKEND_SWITCH $(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) port=$new_port"
+  # From here to OWNER_ACQUIRED nginx points at a standby. Any exit (an error under set -e, a signal) puts the
+  # previous backend back first.
+  trap 'status=$?; trap - EXIT; rm -rf "$docker_config_dir"; if [ "$status" -ne 0 ]; then restore_previous || true; fi; exit "$status"' EXIT
+  trap 'exit 130' INT TERM
+  # The radio check below waits for a song that started after this moment.
+  radio_since="$(date +%s)"
+  echo "OWNER_RELEASED $(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
+  docker stop -t 15 alcantara-backend
+  # The new one normally holds the lease about a second after the old one's connection closes; activation adopts the
+  # playing song from the database. 20 s bounds the wait.
+  active=false
+  for _ in $(seq 1 40); do
+    if [ "$(playout_state "$new_port" || true)" = active ]; then
+      active=true
+      break
+    fi
+    sleep 0.5
+  done
+  if [ "$active" != true ]; then
+    trap - EXIT INT TERM
+    echo 'Alcantara standby did not take the playout lease; restoring the previous backend'
+    print_startup_log alcantara-backend-next
+    if restore_previous; then
+      handover_failed=true
+      rollback_backend() {
+        echo 'The previous backend is back and serving; nothing more to roll back'
+      }
+    else
+      exit 1
+    fi
+  else
+    trap - EXIT INT TERM
+    echo "OWNER_ACQUIRED $(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
+    # Fix forward from here: the new backend serves and drives playout, so the stopped one is not kept as a rollback
+    # container (one left behind would stop every later deploy for operator review).
+    docker rm -f alcantara-backend >/dev/null 2>&1 || true
+    docker rename alcantara-backend-next alcantara-backend
+    had_previous=false
+    live_port="$new_port"
+    rollback_backend() {
+      echo 'The new backend is serving and driving playout; it is left in place (fix forward)'
+    }
+  fi
+else
+  # Today's path always serves on 3006: nginx is pointed back at it below, whatever port a handover left. The
+  # previous backend's own port is kept for the rollback.
+  old_port="$live_port"
+  live_port=3006
+  had_previous=false
+  if docker inspect alcantara-backend >/dev/null 2>&1; then
+    docker stop alcantara-backend
+    docker rename alcantara-backend alcantara-backend-previous
+    had_previous=true
+  fi
+
+  rollback_backend() {
+    echo 'Restoring previous Alcantara backend'
+    docker rm -f alcantara-backend >/dev/null 2>&1 || true
+    if [ "$had_previous" = true ]; then
+      docker rename alcantara-backend-previous alcantara-backend
+      docker start alcantara-backend
+      # nginx may already point at 3006 for the new backend: back to where the previous one serves.
+      point_nginx_at "$old_port" || echo 'NGINX_NOT_RESTORED: nginx could not be pointed back at the previous backend'
+    fi
+  }
+
+  # The live container starts the server only (gaulatti/alcantara#873): the migrations ran above, from this same image,
+  # before the running backend was touched, and a second run here only lengthened the time with no backend.
+  # The radio check below waits for a song that started after this moment.
+  radio_since="$(date +%s)"
+
+  if ! start_backend alcantara-backend 3006 node dist/src/main; then
+    rollback_backend
+    exit 1
+  fi
+
+  deployed_ready=false
+  for _ in $(seq 1 45); do
+    if curl --fail --silent --max-time 2 http://127.0.0.1:3006/ >/dev/null; then
+      deployed_ready=true
+      break
+    fi
+    sleep 2
+  done
+  if [ "$deployed_ready" != true ]; then
+    echo 'Alcantara backend failed its local health check; rolling back'
+    print_startup_log alcantara-backend
+    rollback_backend
+    exit 1
+  fi
+
+fi
+
+# A handover whose new backend never took the lease put the previous one back: the checks below (public, radio) still
+# run against it, and the deploy then ends as failed.
+if [ "${handover_failed:-false}" = true ]; then
+  trap 'status=$?; trap - EXIT; if [ "$status" -eq 0 ]; then echo "ALCANTARA_DEPLOY_FAILED: the new backend never took the playout lease; the previous backend is back"; exit 1; fi; exit "$status"' EXIT
 fi
 
 # The repository's nginx file is the HTTP half only; certbot writes the TLS half into the installed copy. Writing the
 # repository's file over it takes 443 away until certbot puts it back (gaulatti/alcantara#873), so it is written only
 # while there is no certificate, or the installed site does not use one.
-nginx_site='/etc/nginx/conf.d/cumulus-alcantara.conf'
 certificate='/etc/letsencrypt/live/api.alcantara.gaulatti.com/fullchain.pem'
 printf '%s' "$nginx_config_base64" | base64 -d > /tmp/cumulus-alcantara.conf
 if [ -s "$certificate" ] && grep -q '^[[:space:]]*ssl_certificate ' "$nginx_site" 2>/dev/null; then
   echo 'NGINX_SITE_KEPT: the installed site already serves TLS'
   # Say so when the repository's file has a setting the installed one lacks: it is not applied by itself.
   sed -E 's/^[[:space:]]+//' /tmp/cumulus-alcantara.conf \
-    | grep -vE '^(#|$|listen |server \{|location |\})' \
+    | { grep -vE '^(#|$|listen |server \{|location |\}|proxy_pass )' || true; } \
     | while IFS= read -r directive; do
         grep -qF -- "$directive" "$nginx_site" || echo "NGINX_SITE_DRIFT: not in the installed site: $directive"
       done
@@ -224,6 +427,8 @@ else
   systemctl reload nginx
   certbot --nginx --non-interactive --agree-tos --register-unsafely-without-email --redirect -d api.alcantara.gaulatti.com
 fi
+# The repository's file proxies to 3006; after a handover the live backend may be on 3007.
+point_nginx_at "$live_port"
 rm -f /tmp/cumulus-alcantara.conf
 systemctl enable --now certbot-renew.timer
 
@@ -247,7 +452,7 @@ echo ALCANTARA_HEALTHY
 # the air (live.onAir) passes at once with RADIO_LIVE. Otherwise the
 # deploy fails loudly with the playback state. It does not roll back: the new
 # backend is healthy, and another restart is what turns one stall into three.
-automatic_programs="$(docker exec alcantara-backend node -e "fetch('http://127.0.0.1:3006/metrics',{headers:{authorization:'Bearer '+require('fs').readFileSync(process.env.METRICS_TOKEN_FILE,'utf8').trim()}}).then(async(r)=>{if(!r.ok)process.exit(1);const m=/^alcantara_radio_automatic_programs (\\d+)$/m.exec(await r.text());if(!m)process.exit(1);console.log(m[1])},()=>process.exit(1))" || true)"
+automatic_programs="$(docker exec alcantara-backend node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/metrics',{headers:{authorization:'Bearer '+require('fs').readFileSync(process.env.METRICS_TOKEN_FILE,'utf8').trim()}}).then(async(r)=>{if(!r.ok)process.exit(1);const m=/^alcantara_radio_automatic_programs (\\d+)$/m.exec(await r.text());if(!m)process.exit(1);console.log(m[1])},()=>process.exit(1))" || true)"
 case "$automatic_programs" in
   ''|*[!0-9]*)
     echo 'RADIO_CHECK_FAILED: the backend did not report its automatic programs'
