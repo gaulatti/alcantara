@@ -2592,6 +2592,42 @@ describe('SongExecutionEngine cued song', () => {
     expect(stateOf(ctx.engine).sequence).not.toHaveProperty('cuedItemId');
   });
 
+  it('marks the leaf inside a nested block, so the block\'s next songs do not carry the mark', async () => {
+    const block = {
+      id: 'block',
+      kind: 'sequence',
+      label: 'Block',
+      sequence: sequenceOf([SONG_A, SONG_B]),
+    };
+    const nested = sequenceOf([block]);
+    const ctx = setup({ songSequence: nested });
+    await startAutomatic(ctx, nested);
+    ctx.engine.handleStopSong('radio-1');
+    await flush(80);
+    expect(stored(ctx).cuedItemId).toBe('song-b');
+  });
+
+  it('keeps the mark when the cued song airs from Play Next, which leaves the cursor on it', async () => {
+    const ctx = setup();
+    await startAutomatic(ctx);
+    ctx.engine.handleStopSong('radio-1');
+    await flush(80);
+    const note = ctx.engine as unknown as {
+      noteStarted: (id: string, state: unknown, itemId: string, movesCursor: boolean) => void;
+    };
+    note.noteStarted('radio-1', stateOf(ctx.engine), 'song-b', false);
+    await flush(80);
+    expect(stored(ctx).cuedItemId).toBe('song-b');
+  });
+
+  it('sends a cued song after a restart even when it was the last one to start', async () => {
+    const ctx = setup();
+    const pass = ctx.engine as unknown as { passAiredCursorSong: (id: string, state: unknown) => boolean };
+    const state = { airedAtBoot: SONG_A.songId, sequence: { ...sequenceOf([SONG_A, SONG_B]), activeItemId: 'song-a', cuedItemId: 'song-a' } };
+    expect(pass.passAiredCursorSong('radio-1', state)).toBe(true);
+    expect(state.sequence.activeItemId).toBe('song-a');
+  });
+
   it('clears the mark when Autoplay starts the cued song', async () => {
     const ctx = setup();
     await startAutomatic(ctx);

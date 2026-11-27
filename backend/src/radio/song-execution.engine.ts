@@ -533,8 +533,7 @@ function moveCursorOffRemovedLeaves(
 ): string | null {
   const active = activeProgramSongLeafId(sequence);
   const cued =
-    sequence.cuedItemId !== undefined &&
-    sequence.cuedItemId === sequence.activeItemId;
+    sequence.cuedItemId !== undefined && sequence.cuedItemId === active;
   if (active && !cued && !cursorPending) {
     const order = leavesInPlayOrder(sequence);
     const place = order.indexOf(active);
@@ -555,7 +554,7 @@ function moveCursorOffRemovedLeaves(
   if (next && wanted.has(next))
     throw new BadRequestException('No leaf is left to move the rotation to');
   if (next && sequence.activeItemId)
-    sequence.cuedItemId = sequence.activeItemId;
+    sequence.cuedItemId = next;
   return next;
 }
 
@@ -770,6 +769,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     // maybeStartSequence has already required a rotation; no cursor names no song.
     const sequence = state.sequence!;
     const cursor = activeProgramSongLeafId(sequence) ?? '';
+    // Cued after a Stop, a removal or an end: it has not aired since, even if it was the last song to start.
+    if (sequence.cuedItemId === cursor) return true;
     if (findUniqueProgramSongLeafById(sequence, cursor)?.songId !== aired)
       return true;
     this.metrics.recordTrackTransition('aired-cursor-passed');
@@ -1706,7 +1707,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       ) {
         // Not on the last song of a rotation that does not loop: the cursor stays on it, and it has aired.
         if (advanceProgramSongSequence(halted, stopped.itemId))
-          halted.cuedItemId = halted.activeItemId!;
+          // The leaf, not a nested block that holds it: the block's other songs start without it.
+          halted.cuedItemId = activeProgramSongLeafId(halted)!;
       }
       state.sequence = halted;
       void this.persistPlaylistCursorForQueue(programId, halted).catch(
@@ -3695,7 +3697,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     // The ended song was removed while on air and the cursor was cued on one that has not aired.
     const removedWithCursorCued =
       !!next?.cuedItemId &&
-      next.cuedItemId === next.activeItemId &&
+      next.cuedItemId === activeProgramSongLeafId(next) &&
       !findUniqueProgramSongLeafById(next, endedSong.itemId);
     // Queue entries and songs picked from outside the playlist never moved
     // the cursor, which already points at the pending successor.
@@ -3804,15 +3806,16 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Any start ends a rotation's ended state (walk part 4), and the start of the cued song ends its being cued. Saved
-   * and broadcast only when one of them was set.
+   * Any start ends a rotation's ended state (walk part 4), and the start of the cued song ends its being cued, unless
+   * it started from Play Next, which leaves the cursor on it. Saved and broadcast only when one of them was set.
    */
   private noteStarted(
     programId: string,
     state: SongEngineState,
     itemId: string,
+    movesCursor = true,
   ): void {
-    const cuedAired = state.sequence?.cuedItemId === itemId;
+    const cuedAired = movesCursor && state.sequence?.cuedItemId === itemId;
     if (!state.sequence?.endedAt && !cuedAired) return;
     const resumed = normalizeProgramSongSequence(state.sequence)!;
     delete resumed.endedAt;
@@ -3837,9 +3840,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       mode: 'manual',
       // Rewound to the top, so a start (Autoplay, "Starts the rotation now") plays the rotation from the beginning.
       activeItemId: normalized.items[0]?.id ?? null,
-      cuedItemId: normalized.items[0]?.id,
       endedAt: Date.now(),
     };
+    ended.cuedItemId = activeProgramSongLeafId(ended) ?? undefined;
     this.metrics.recordTrackTransition('rotation-ended');
     this.logger.log(
       `Rotation ended on ${programId}: it does not loop and nothing is scheduled; it stays manual until an operator starts it`,
@@ -4315,7 +4318,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       ? announced.playbackId
       : (queueEntry?.playbackRequestId ?? randomUUID());
     this.rememberSong(state, playbackRequestId, resolved.songId);
-    this.noteStarted(programId, state, resolved.id);
+    this.noteStarted(programId, state, resolved.id, !queueEntry);
     if (handoff) {
       state.announcement = null;
       if (promote) {

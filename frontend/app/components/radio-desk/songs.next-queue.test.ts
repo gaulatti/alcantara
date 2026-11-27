@@ -100,3 +100,14 @@ describe("nextUp after a claim stops or fails", () => {
     expect(nextUp({ sequence, queue, playback: stopped })).toMatchObject({ itemId: "c", entryId: "q1" });
   });
 });
+
+describe("nextUp and a cued song inside a nested block", () => {
+  const block = { id: "block", kind: "sequence", label: "Block", sequence: { items: [leaf("p1"), leaf("p2"), leaf("p3")], activeItemId: "p2", loop: true } };
+  const nested = { items: [leaf("a"), block], activeItemId: "block", loop: true, cuedItemId: "p2" } as unknown as ProgramSongSequence;
+
+  it("names the cued leaf, and nothing cued once the block's cursor has left it", () => {
+    expect(nextUp({ sequence: nested, queue: [], playback: null })).toMatchObject({ itemId: "p2" });
+    const moved = { ...nested, items: [leaf("a"), { ...block, sequence: { ...block.sequence, activeItemId: "p3" } }] } as unknown as ProgramSongSequence;
+    expect(nextUp({ sequence: moved, queue: [], playback: null })?.itemId).not.toBe("p2");
+  });
+});

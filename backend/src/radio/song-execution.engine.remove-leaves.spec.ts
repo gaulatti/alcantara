@@ -210,7 +210,8 @@ describe('SongExecutionEngine.removeSongLeaves (#327)', () => {
     expect(result.cursorMovedTo).toBe('c');
     expect((h.stored() as any).songSequence).toMatchObject({
       activeItemId: 'block',
-      cuedItemId: 'block',
+      // The leaf inside the block, so the block's other songs do not carry the mark.
+      cuedItemId: 'c',
     });
   });
 
@@ -236,7 +237,7 @@ describe('SongExecutionEngine.removeSongLeaves (#327)', () => {
     (h.engine as any).states.get('radio-1').activeSong = song;
     const result = await remove(h, ['b'], { keepRotation: true });
     expect(result.cursorMovedTo).toBe('c');
-    expect(result.songSequence.cuedItemId).toBe(result.songSequence.activeItemId);
+    expect(result.songSequence.cuedItemId).toBe('c');
   });
 
   it('plays the cued song when the removed song on air ends, not the one after it', () => {

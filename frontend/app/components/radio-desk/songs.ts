@@ -56,6 +56,13 @@ export interface NextUpSong extends NextUp {
   entryId?: string;
 }
 
+/** The song the cursor is on, followed into a nested block. */
+function cursorLeafId(sequence: ProgramSongSequence): string | null {
+  const item = sequence.items.find((entry) => entry.id === sequence.activeItemId);
+  if (!item) return null;
+  return item.kind === "preset" ? item.id : cursorLeafId(item.sequence);
+}
+
 /**
  * What Cue next would cue: the head of the Play Next queue, else the song after the one on air in
  * the rotation (the first one when nothing is on air, the first again when the rotation loops).
@@ -106,7 +113,7 @@ export function nextUp({
 
   // The cursor is on a song that has not aired: it is next, not the one after it. A cursor since moved is not cued.
   const cued =
-    sequence.cuedItemId === sequence.activeItemId
+    sequence.cuedItemId === cursorLeafId(sequence)
       ? byId.get(sequence.cuedItemId ?? "")
       : undefined;
   if (cued && cued !== current) return describe(cued, "rotation");
