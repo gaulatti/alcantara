@@ -265,9 +265,16 @@ export class RotationMcpTools {
     const sequence = normalizeProgramSongSequence(bus.songSequence);
     if (!sequence)
       throw new McpToolError('not_found', 'This program has no rotation.');
+    // A stored rotation the normalizer accepts can lack `items` (it reads none as []): the row tools read the stored
+    // rows, so give them the same empty list rather than a TypeError the client sees as an internal error.
+    const raw = bus.songSequence as unknown as Record<string, unknown>;
+    const stored = {
+      ...raw,
+      items: Array.isArray(raw.items) ? raw.items : [],
+    } as Loaded['stored'];
     return {
       live,
-      stored: bus.songSequence as unknown as Loaded['stored'],
+      stored,
       sequence,
       version: bus.sequenceVersion,
       playing: Boolean(this.engine.getPlaybackState(programId)?.isPlaying),

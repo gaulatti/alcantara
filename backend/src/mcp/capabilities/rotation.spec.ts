@@ -288,6 +288,16 @@ describe('rotation capabilities', () => {
     ).toContain('row 4 of 4');
   });
 
+  // Review of #788: a stored rotation the normalizer accepts can have no items array; the row tools threw a TypeError.
+  it('refuses a move cleanly and adds at the end when the stored rotation has no items', async () => {
+    const t = setup({ items: undefined, activeItemId: null });
+    await expect(
+      t.run('radio_move_rotation_song', { item_id: 'row-1', position: 1 }),
+    ).rejects.toThrow('No rotation row');
+    await t.run('radio_add_rotation_song', { song_id: 5 });
+    expect(t.saved()[0].songSequence.items).toHaveLength(1);
+  });
+
   it('adds a library song of the station team at a position or the end', async () => {
     const t = setup();
     await t.run('radio_add_rotation_song', { song_id: 7, position: 2 });
