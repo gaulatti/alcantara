@@ -10,6 +10,7 @@ const lk = vi.hoisted(() => {
     publishes: 0,
     subscribed: [] as boolean[],
     attached: 0,
+    disconnects: 0,
   };
   return { state };
 });
@@ -44,7 +45,9 @@ vi.mock("livekit-client", async (importOriginal) => {
     ]);
     on = vi.fn();
     off = vi.fn();
-    disconnect = vi.fn();
+    disconnect = () => {
+      lk.state.disconnects += 1;
+    };
     localParticipant = {
       publishTrack: () => (lk.state.publishes += 1),
       setMicrophoneEnabled: () => (lk.state.publishes += 1),
@@ -88,6 +91,7 @@ beforeEach(() => {
   lk.state.publishes = 0;
   lk.state.subscribed = [];
   lk.state.attached = 0;
+  lk.state.disconnects = 0;
   authFetch.mockReset();
   answer();
 });
@@ -157,5 +161,36 @@ describe("GuestPreListen", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Pre-listen Ada" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("The studio room is not available for listening.");
     expect(lk.state.subscribed).toEqual([]);
+  });
+
+  it("claims the desk when started, and leaves the room when stopped", async () => {
+    const onActive = vi.fn();
+    render(<GuestPreListen programId="main" onActive={onActive} />);
+    const button = await screen.findByRole("button", { name: "Pre-listen Ada" });
+    fireEvent.click(button);
+    expect(onActive).toHaveBeenCalledWith("guest", true);
+    await waitFor(() => expect(lk.state.subscribed).toEqual([true]));
+    fireEvent.click(button);
+    await waitFor(() => expect(lk.state.disconnects).toBe(1));
+    expect(onActive).toHaveBeenLastCalledWith("guest", false);
+  });
+
+  it("stops when another pre-fade takes the desk, and leaves the room", async () => {
+    const { rerender } = render(<GuestPreListen programId="main" onActive={() => undefined} activeOwner={null} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Pre-listen Ada" }));
+    await waitFor(() => expect(lk.state.subscribed).toEqual([true]));
+    rerender(<GuestPreListen programId="main" onActive={() => undefined} activeOwner="song" />);
+    await waitFor(() => expect(lk.state.subscribed).toEqual([true, false]));
+    await waitFor(() => expect(lk.state.disconnects).toBe(1));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("leaves the room when the desk unmounts while listening", async () => {
+    const view = render(<GuestPreListen programId="main" onActive={() => undefined} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Pre-listen Ada" }));
+    await waitFor(() => expect(lk.state.subscribed).toEqual([true]));
+    view.unmount();
+    expect(lk.state.disconnects).toBeGreaterThanOrEqual(1);
+    expect(lk.state.subscribed).toEqual([true, false]);
   });
 });

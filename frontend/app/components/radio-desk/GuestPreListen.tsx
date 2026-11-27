@@ -19,14 +19,19 @@ const GUEST_REFRESH_MS = 10_000;
 export function GuestPreListen({
   programId,
   onActive,
+  activeOwner = null,
 }: {
   programId: string;
   onActive: (channel: string, active: boolean) => void;
+  /** The pre-fade that holds the desk now: a listened guest stops when another claims it. */
+  activeOwner?: string | null;
 }) {
   const [guests, setGuests] = useState<GuestRow[]>([]);
   const [state, setState] = useState<GuestPreListenState>({ status: "idle" });
   const roomRef = useRef<Room | null>(null);
   const controllerRef = useRef<ReturnType<typeof createGuestPreListen> | null>(null);
+  // True while this component moves from one guest to another, so the room stays joined across the change.
+  const switching = useRef(false);
   const report = useRef(onActive);
   report.current = onActive;
 
@@ -63,6 +68,12 @@ export function GuestPreListen({
     controllerRef.current = createGuestPreListen(room as never, (next) => {
       setState(next);
       report.current("guest", next.status === "listening");
+      // Off the desk's pre-fade, the room is left: nothing stays joined for a stopped listen.
+      if (next.status === "idle" && !switching.current) {
+        roomRef.current?.disconnect();
+        roomRef.current = null;
+        controllerRef.current = null;
+      }
     });
     return controllerRef.current;
   }, [programId]);
@@ -77,10 +88,18 @@ export function GuestPreListen({
         stop();
         return;
       }
+      // Claim the desk before joining, so any other pre-fade stops now.
+      report.current("guest", true);
       try {
         const controller = await ensureRoom();
-        controller.start(identity);
+        switching.current = true;
+        try {
+          controller.start(identity);
+        } finally {
+          switching.current = false;
+        }
       } catch (error) {
+        report.current("guest", false);
         setState({
           status: "error",
           identity,
@@ -90,6 +109,13 @@ export function GuestPreListen({
     },
     [ensureRoom, stop],
   );
+
+  // Another pre-fade took the desk: a guest being listened to stops.
+  useEffect(() => {
+    if (activeOwner === null || activeOwner === "guest") return;
+    if (state.status === "listening") stop();
+    else if (state.status === "error") setState({ status: "idle" });
+  }, [state.status, activeOwner, stop]);
 
   // Esc stops it, as the other pre-listens do, and leaving the desk disconnects.
   useEffect(() => {

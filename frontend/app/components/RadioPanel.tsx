@@ -538,14 +538,20 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     palazzo?.connection === "connected" || palazzo?.connection === "polling";
 
   const monitor = useRadioMonitor();
-  const preListen = usePreListen();
-  // The program monitor is muted while anything is pre-listened on this device, a sounder or a channel.
-  const [preFade, setPreFade] = useState<Record<string, boolean>>({});
+  // One pre-fade at a time on this device: a guest, a mixer channel (Music, Cartwall) or a cartwall sounder. Starting
+  // one stops whichever is active; each component stops itself when another claims the desk (#835).
+  const [preFadeOwner, setPreFadeOwner] = useState<string | null>(null);
   const onPreFade = useCallback(
-    (channel: string, active: boolean) => setPreFade((current) => ({ ...current, [channel]: active })),
+    (channel: string, active: boolean) =>
+      setPreFadeOwner((current) => (active ? channel : current === channel ? null : current)),
     [],
   );
-  const preListening = !!preListen.playing || Object.values(preFade).some(Boolean);
+  const preListen = usePreListen((active) => onPreFade("sounder", active));
+  useEffect(() => {
+    if (preFadeOwner !== null && preFadeOwner !== "sounder" && preListen.playing) preListen.stop();
+  }, [preFadeOwner, preListen.playing, preListen.stop]);
+  // The program monitor is muted while anything is pre-listened on this device.
+  const preListening = !!preListen.playing || preFadeOwner !== null;
   const setMonitorPreListening = monitor?.setPreListening;
   useEffect(() => {
     if (!preListening) return;
@@ -1297,14 +1303,14 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   channel={mixer.song}
                   onVolumeChange={onSongVolumeChange}
                   onToggleMuted={onToggleSongMuted}
-                  preListen={<ChannelPreListen channel="song" label="Music" sources={musicOnAir} onActive={onPreFade} />}
+                  preListen={<ChannelPreListen channel="song" label="Music" sources={musicOnAir} onActive={onPreFade} activeOwner={preFadeOwner} />}
                 />
                 <RadioMixerChannel
                   label="Cartwall"
                   channel={mixer.instants}
                   onVolumeChange={onInstantVolumeChange}
                   onToggleMuted={onToggleInstantMuted}
-                  preListen={<ChannelPreListen channel="instant" label="Cartwall" sources={cartwallOnAir} onActive={onPreFade} />}
+                  preListen={<ChannelPreListen channel="instant" label="Cartwall" sources={cartwallOnAir} onActive={onPreFade} activeOwner={preFadeOwner} />}
                 />
                 <RadioMixerChannel
                   label="Output"
@@ -1312,7 +1318,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   onVolumeChange={onMainVolumeChange}
                 />
               </div>
-              <GuestPreListen programId={programId} onActive={onPreFade} />
+              <GuestPreListen programId={programId} onActive={onPreFade} activeOwner={preFadeOwner} />
               {(mixer.error || mixer.saving) && (
                 <p
                   role={mixer.error ? "alert" : "status"}

@@ -25,11 +25,14 @@ export function ChannelPreListen({
   label,
   sources,
   onActive,
+  activeOwner = null,
 }: {
   channel: string;
   label: string;
   sources: PreFadeSource[];
   onActive: (channel: string, active: boolean) => void;
+  /** The pre-fade that holds the desk now: this one stops when another claims it. */
+  activeOwner?: string | null;
 }) {
   const [on, setOn] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -82,6 +85,11 @@ export function ChannelPreListen({
     if (on) lineUp(sources);
   }, [on, sources, lineUp]);
 
+  // Another pre-fade (a guest, the other channel, a sounder) took the desk: this one stops.
+  useEffect(() => {
+    if (on && activeOwner !== null && activeOwner !== channel) stop();
+  }, [on, activeOwner, channel, stop]);
+
   useEffect(() => {
     if (!on) return;
     report.current(channel, true);
@@ -110,6 +118,8 @@ export function ChannelPreListen({
             return;
           }
           setFailed(false);
+          // Claim the desk before sounding, so the other pre-fade stops in the same update.
+          report.current(channel, true);
           setOn(true);
           // Inside the click, so a browser that blocks sound without one lets it play.
           lineUp(sources);

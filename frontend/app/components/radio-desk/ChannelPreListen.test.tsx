@@ -95,3 +95,23 @@ it("says when the audio cannot be played", async () => {
   fireEvent.click(button());
   expect(await screen.findByRole("alert")).toHaveTextContent("Could not be played here");
 });
+
+// One pre-fade at a time: another claiming the desk stops this one, and starting this one claims it.
+it("claims the desk when started, and stops when another pre-fade takes it", () => {
+  const onActive = vi.fn();
+  const view = render(<ChannelPreListen channel="song" label="Music" sources={[song("a", 0)]} onActive={onActive} activeOwner={null} />);
+  fireEvent.click(button());
+  expect(onActive).toHaveBeenCalledWith("song", true);
+  expect(button()).toHaveAttribute("aria-pressed", "true");
+
+  view.rerender(<ChannelPreListen channel="song" label="Music" sources={[song("a", 0)]} onActive={onActive} activeOwner="guest" />);
+  expect(button()).toHaveAttribute("aria-pressed", "false");
+  expect(paused.length).toBeGreaterThan(0);
+});
+
+it("keeps playing when the desk is held by this same pre-fade", () => {
+  const view = render(<ChannelPreListen channel="song" label="Music" sources={[song("a", 0)]} onActive={vi.fn()} activeOwner={null} />);
+  fireEvent.click(button());
+  view.rerender(<ChannelPreListen channel="song" label="Music" sources={[song("a", 0)]} onActive={vi.fn()} activeOwner="song" />);
+  expect(button()).toHaveAttribute("aria-pressed", "true");
+});
