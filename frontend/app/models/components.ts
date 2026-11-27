@@ -294,6 +294,27 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
     }
   },
   {
+    id: 'modoitaliano-giorgia-bracket',
+    name: 'Modo Italiano Giorgia Bracket',
+    description: "Giorgia's tournament bracket from Round of 16 or Quarterfinals to Final",
+    hasConfigurableSceneAttributes: true,
+    defaultProps: {
+      title: 'TORNEO CANCIÓN',
+      show: true,
+      startRound: 'roundOf16',
+      randomSongPoolIds: [],
+      drawSeed: 5,
+      drawDurationSeconds: 5,
+      drawCommand: null,
+      voters: [],
+      matchVotes: {},
+      activeVotingMatchId: null,
+      votingWinnerId: null,
+      votingResultStartedAt: null,
+      matches: []
+    }
+  },
+  {
     id: 'modoitaliano-podcast-player',
     name: 'Modo Italiano Podcast Player',
     description: 'Full-screen podcast player with animated background and audio visualizer',

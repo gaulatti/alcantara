@@ -608,6 +608,7 @@ export function ComponentPropsFields({
       );
     }
     case 'modoitaliano-bracket':
+    case 'modoitaliano-giorgia-bracket':
       return (
         <ModoItalianoBracketEditorFields
           props={props}

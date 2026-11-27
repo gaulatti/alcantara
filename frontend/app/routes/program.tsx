@@ -1837,7 +1837,9 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                     keySafe={toBoolean(props.keySafe, false)}
                   />
                 );
+              // The bracket under its Giorgia id is the same component: the legacy id stays for stored scenes.
               case 'modoitaliano-bracket':
+              case 'modoitaliano-giorgia-bracket':
                 return (
                   <ModoItalianoBracket
                     key={componentType}
