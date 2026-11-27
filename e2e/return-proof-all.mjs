@@ -20,6 +20,8 @@ export const RUNS = [
   // Most guests join from a phone: its viewport, user agent and touch, on the engine that phone uses.
   { name: "iphone", engine: "webkit", device: "iPhone 15" },
   { name: "android", engine: "chromium", device: "Pixel 7" },
+  // An office or hotel Wi-Fi that blocks UDP: media has to go over TCP or a relay.
+  { name: "chromium-tcp", engine: "chromium", ice: "tcp" },
 ];
 
 /** The runs asked for by name, or all of them. */
@@ -38,6 +40,7 @@ const BROWSER_LIMIT_MS = 6 * 60_000;
 export function outcome(browser, lines) {
   const steps = {};
   let error = "";
+  let offered = "";
   for (const line of lines) {
     let entry;
     try {
@@ -45,8 +48,10 @@ export function outcome(browser, lines) {
     } catch {
       continue;
     }
-    if (entry.step === "error") error = entry.error;
-    else if (entry.step) steps[entry.step] = entry;
+    if (entry.step === "error") {
+      error = entry.error;
+      offered = entry.offered?.join(", ") ?? "";
+    } else if (entry.step) steps[entry.step] = entry;
   }
   return {
     browser,
@@ -56,18 +61,21 @@ export function outcome(browser, lines) {
     copy: steps["guest-copy"]?.copy ?? "none",
     copyOk: steps["guest-copy"]?.ok === true,
     peak: steps["return-level"]?.peak ?? 0,
+    ice: steps["ice-path"]?.used?.join(", ") ?? "",
+    iceOk: steps["ice-path"]?.ok !== false,
+    offered,
     error,
   };
 }
 
-export function summaryLine({ browser, joined, admitted, track, copy = "none", copyOk = false, peak, error }) {
+export function summaryLine({ browser, joined, admitted, track, copy = "none", copyOk = false, peak, ice = "", iceOk = true, offered = "", error }) {
   const yes = (value) => (value ? "yes" : "NO");
   const quiet = peak > 0 && peak < 0.01 ? " (below the 0.01 audible level)" : "";
   const copyNote = track ? `, guest copy "${copy}"${copyOk ? "" : " (NOT playing while audio flows)"}` : "";
-  return `${browser}: joined ${yes(joined)}, admitted ${yes(admitted)}, return track ${yes(track)}, return peak ${peak}${quiet}${copyNote}${error ? `, error: ${error}` : ""}`;
+  return `${browser}: joined ${yes(joined)}, admitted ${yes(admitted)}, return track ${yes(track)}, return peak ${peak}${quiet}${copyNote}${ice ? `, path: ${ice}${iceOk ? "" : " (used UDP)"}` : ""}${error ? `, error: ${error}` : ""}${error && offered ? `, server offered: ${offered}` : ""}`;
 }
 
-export const passed = (results, runs = RUNS.length) => results.length === runs && results.every((r) => r.track && r.peak > 0 && r.copyOk);
+export const passed = (results, runs = RUNS.length) => results.length === runs && results.every((r) => r.track && r.peak > 0 && r.copyOk && r.iceOk !== false);
 
 /** The last 40 lines the router page wrote. */
 export const routerLines = (log) => log.split("\n").filter((line) => line.includes("[return-router] ")).slice(-40);
@@ -75,7 +83,7 @@ export const routerLines = (log) => log.split("\n").filter((line) => line.includ
 function runBrowser(run, env) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), "return-proof.mjs")], {
-      env: { ...env, WEBRTC_BROWSER: run.engine, RETURN_DEVICE: run.device ?? "", RETURN_LABEL: run.name },
+      env: { ...env, WEBRTC_BROWSER: run.engine, RETURN_DEVICE: run.device ?? "", RETURN_ICE: run.ice ?? "", RETURN_LABEL: run.name },
       stdio: ["ignore", "pipe", "inherit"],
       timeout: BROWSER_LIMIT_MS,
       killSignal: "SIGKILL",

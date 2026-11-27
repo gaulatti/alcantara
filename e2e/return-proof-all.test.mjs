@@ -45,14 +45,28 @@ test("keeps the last 40 router lines", () => {
   assert.equal(lines[0], "t [return-router] 5");
 });
 
-test("runs the three engines and the two phones, and can be told which", () => {
+test("runs the three engines, the two phones and the TCP run, and can be told which", () => {
   assert.deepEqual(
     RUNS.map((r) => [r.name, r.engine, r.device ?? ""]),
-    [["chromium", "chromium", ""], ["webkit", "webkit", ""], ["firefox", "firefox", ""], ["iphone", "webkit", "iPhone 15"], ["android", "chromium", "Pixel 7"]],
+    [["chromium", "chromium", ""], ["webkit", "webkit", ""], ["firefox", "firefox", ""], ["iphone", "webkit", "iPhone 15"], ["android", "chromium", "Pixel 7"], ["chromium-tcp", "chromium", ""]],
   );
   assert.deepEqual(selectRuns("iphone, android").map((r) => r.name), ["iphone", "android"]);
-  assert.equal(selectRuns("").length, 5);
+  assert.equal(selectRuns("").length, 6);
   assert.throws(() => selectRuns("safari"), /unknown runs: safari/);
-  // All five by default: three good results are not a pass.
+  // All six by default: three good results are not a pass.
   assert.equal(passed([run("chromium", 0.2), run("webkit", 0.1), run("firefox", 0.3)]), false);
+});
+
+test("has a run with UDP forbidden, and fails it if UDP was used anyway", () => {
+  assert.deepEqual(selectRuns("chromium-tcp"), [{ name: "chromium-tcp", engine: "chromium", ice: "tcp" }]);
+  const lines = (ok, used) =>
+    outcome("chromium-tcp", [
+      '{"step":"return-track","ok":true}',
+      `{"step":"guest-copy","ok":true,"copy":"You're hearing the studio"}`,
+      `{"step":"ice-path","ok":${ok},"used":["${used}"]}`,
+      '{"step":"return-level","ok":true,"peak":0.2}',
+    ]);
+  assert.equal(passed([lines(true, "host tcp -> host :7881")], 1), true);
+  assert.equal(passed([lines(false, "host udp -> host :7882")], 1), false);
+  assert.match(summaryLine(lines(false, "host udp -> host :7882")), /path: host udp -> host :7882 \(used UDP\)/);
 });

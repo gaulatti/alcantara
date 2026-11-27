@@ -83,7 +83,7 @@ Install the three engines once with `pnpm --filter @gaulatti/alcantara-e2e brows
 
 ## Program return proof (`return-proof-all.mjs`)
 
-A guest joins the real guest page in Chromium, WebKit and Firefox, then as a phone twice (`iphone`: WebKit with Playwright's iPhone 15 viewport, user agent and touch; `android`: Chromium with Pixel 7), one after another, and the level of the return that page plays is measured. `RETURN_RUNS=iphone,android` runs only those. Nothing else is opened, so sound means the server's return router delivered it. It defaults to production and `modoitaliano.fm`.
+A guest joins the real guest page in Chromium, WebKit and Firefox, then as a phone twice (`iphone`: WebKit with Playwright's iPhone 15 viewport, user agent and touch; `android`: Chromium with Pixel 7), one after another, and the level of the return that page plays is measured. `RETURN_RUNS=iphone,android` runs only those. `chromium-tcp` is Chromium with plain UDP forbidden to WebRTC, as behind an office or hotel Wi-Fi: it passes the same bar and also fails if the pair used was UDP. Every run prints an `ice-path` line (candidate types, protocols and the server port, no addresses), and a run that cannot connect lists what the server offered. Nothing else is opened, so sound means the server's return router delivered it. It defaults to production and `modoitaliano.fm`.
 
 ```bash
 ALCANTARA_INVITATION_PATH=/guest/<token> pnpm --filter @gaulatti/alcantara-e2e return-proof

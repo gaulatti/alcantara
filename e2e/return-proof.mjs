@@ -6,7 +6,9 @@
 // WEBRTC_BROWSER=chromium|firefox|webkit, RETURN_SECONDS (how long to listen, default 20),
 // RETURN_EXPECT=sound|silence (silence: nothing else is in the room, so any sound would be the guest's own voice),
 // ADMIT_SECONDS (how long to wait for admission, default the timeout), RETURN_DEVICE (a Playwright device name, such
-// as "iPhone 15" or "Pixel 7": its viewport, user agent and touch), RETURN_LABEL (the run's name in the output).
+// as "iPhone 15" or "Pixel 7": its viewport, user agent and touch), RETURN_LABEL (the run's name in the output),
+// RETURN_ICE=tcp (Chromium only: WebRTC may not use plain UDP, as behind an office or hotel Wi-Fi that blocks it; the
+// run then also fails if the pair it used was UDP).
 // return-proof-all.mjs runs the engines and the phones.
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,6 +16,7 @@ import { join } from "node:path";
 import { chromium, devices, firefox, webkit } from "playwright";
 import { SYNTHETIC_MEDIA } from "./synthetic-media.mjs";
 import { PLAYING_COPY, waitForGuestCopy } from "./guest-copy.mjs";
+import { avoidsUdp, describePath, offeredCandidate, selectedPath } from "./ice-path.mjs";
 
 const APP = (process.env.ALCANTARA_APP_URL || "http://localhost:5173").replace(/\/$/, "");
 const API = (process.env.ALCANTARA_API_URL || "http://localhost:3000").replace(/\/$/, "");
@@ -23,6 +26,8 @@ const ENGINE = process.env.WEBRTC_BROWSER || "chromium";
 const DEVICE = process.env.RETURN_DEVICE || "";
 if (DEVICE && !devices[DEVICE]) throw new Error(`RETURN_DEVICE is not a Playwright device: ${DEVICE}`);
 const LABEL = process.env.RETURN_LABEL || ENGINE;
+const ICE = process.env.RETURN_ICE || "";
+if (ICE && (ICE !== "tcp" || ENGINE !== "chromium")) throw new Error("RETURN_ICE takes only tcp, and only with Chromium.");
 const SECONDS = Number(process.env.RETURN_SECONDS || 20);
 const EXPECT = process.env.RETURN_EXPECT || "sound";
 const TIMEOUT = Number(process.env.WEBRTC_TIMEOUT_MS || 60_000);
@@ -137,6 +142,8 @@ const options = {
         "--use-fake-ui-for-media-stream",
         "--autoplay-policy=no-user-gesture-required",
         "--disable-features=LocalNetworkAccessChecks,BlockInsecurePrivateNetworkRequests",
+        // No UDP unless a proxy carries it, and there is none: ICE over TCP or a TURN relay is all that is left.
+        ...(ICE === "tcp" ? ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp", "--webrtc-ip-handling-policy=disable_non_proxied_udp"] : []),
       ],
       ...(process.env.WEBRTC_EXECUTABLE ? { executablePath: process.env.WEBRTC_EXECUTABLE } : {}),
     },
@@ -147,6 +154,23 @@ const options = {
     },
     webkit: {},
 }[ENGINE];
+/** The pair each open connection of the guest page used. */
+async function icePaths(page) {
+  const connections = await page.evaluate(async () => {
+    const seen = [];
+    for (const pc of window.__guestPcs ?? []) {
+      if (pc.connectionState === "closed") continue;
+      seen.push({ state: pc.connectionState, ice: pc.iceConnectionState, reports: [...(await pc.getStats()).values()] });
+    }
+    return seen;
+  });
+  return connections.map(({ state, ice, reports }) => ({ state, ice, path: selectedPath(reports) }));
+}
+/** What the server offered over the whole run, closed connections included: types, protocols and ports only. */
+async function offeredByServer(page) {
+  const lines = await page.evaluate(() => window.__offered ?? []);
+  return [...new Set(lines.map(offeredCandidate).filter(Boolean))];
+}
 let browser;
 let guestPage = null;
 let ok = false;
@@ -192,10 +216,20 @@ try {
   // Keeps the page's peer connections, to read what each one receives.
   await context.addInitScript(() => {
     window.__guestPcs = [];
+    // The server's candidates are noted as they arrive: a connection that fails is closed before anyone can ask it.
+    window.__offered = [];
     window.RTCPeerConnection = class extends window.RTCPeerConnection {
       constructor(...args) {
         super(...args);
         window.__guestPcs.push(this);
+      }
+      addIceCandidate(candidate, ...rest) {
+        if (candidate?.candidate) window.__offered.push(candidate.candidate);
+        return super.addIceCandidate(candidate, ...rest);
+      }
+      setRemoteDescription(description, ...rest) {
+        window.__offered.push(...(description?.sdp ?? "").split("\n").filter((line) => line.startsWith("a=candidate:")));
+        return super.setRemoteDescription(description, ...rest);
       }
     };
   });
@@ -227,12 +261,18 @@ try {
   const { level, receive } = arrived ? await guest.evaluate(measureReturn, SECONDS) : { level: { peak: 0, webAudioPeak: 0, statsPeak: 0 }, receive: [] };
   // What arrived over the wire, whatever the page's audio graph can read.
   report("return-stats", { inbound: receive });
-  ok = arrived && copyOk && (EXPECT === "silence" ? level.peak < AUDIBLE : level.peak >= AUDIBLE);
+  const connections = await icePaths(guest);
+  const used = connections.map((connection) => connection.path).filter(Boolean);
+  const iceOk = ICE !== "tcp" || (used.length > 0 && used.every(avoidsUdp));
+  report("ice-path", { ok: iceOk, used: [...new Set(used.map(describePath))], offered: await offeredByServer(guest), connections });
+  ok = arrived && copyOk && iceOk && (EXPECT === "silence" ? level.peak < AUDIBLE : level.peak >= AUDIBLE);
   report("return-level", { ok, expect: EXPECT, ...level });
   await press(guest.getByRole("button", { name: /Leave/ }));
   report("guest-left", { ok: true });
 } catch (error) {
-  report("error", { ok: false, error: String(error?.message ?? error).split("\n")[0], page: await describeGuest(guestPage) });
+  // A run that cannot connect still says what the server offered and how far each connection got.
+  const offered = guestPage ? await offeredByServer(guestPage).catch(() => []) : [];
+  report("error", { ok: false, error: String(error?.message ?? error).split("\n")[0], page: await describeGuest(guestPage), offered });
 } finally {
   await browser?.close();
   if (invitation.id) await api(`/webrtc/invitations/${encodeURIComponent(invitation.id)}`, { method: "DELETE", token }).catch(() => undefined);

@@ -8,7 +8,7 @@
     "webrtc": "node webrtc-call.mjs",
     "return-proof": "node return-proof-all.mjs",
     "onair-proof": "node onair-proof.mjs",
-    "test": "node --test return-proof-all.test.mjs guest-copy.test.mjs console-layout.test.mjs",
+    "test": "node --test return-proof-all.test.mjs ice-path.test.mjs onair-proof.test.mjs guest-copy.test.mjs console-layout.test.mjs",
     "browsers": "playwright install chromium",
     "touch": "node touch-regressions.mjs",
     "webrtc:matrix": "node webrtc-matrix.mjs",

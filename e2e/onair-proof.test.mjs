@@ -46,10 +46,14 @@ test("a tone for part of the time is neither present nor absent", () => {
 test("passes only on absent, then present, then absent", () => {
   const yes = { present: true, absent: false };
   const no = { present: false, absent: true };
-  assert.equal(proven(no, yes, no), true);
-  assert.equal(proven(no, yes, yes), false);
-  assert.equal(proven(no, no, no), false);
-  assert.equal(proven(yes, yes, no), false);
-  assert.equal(proven(no, yes, null), false);
+  // The guest page said On air and then Off air in time.
+  const page = { liveShown: true, offShown: true };
+  assert.equal(proven(no, yes, no, page), true);
+  assert.equal(proven(no, yes, yes, page), false);
+  assert.equal(proven(no, no, no, page), false);
+  assert.equal(proven(yes, yes, no, page), false);
+  assert.equal(proven(no, yes, null, page), false);
+  assert.equal(proven(no, yes, no, { liveShown: true, offShown: false }), false);
+  assert.equal(proven(no, yes, no), false);
   assert.equal(toneReport(new Float32Array(0), RATE, 1000).absent, false);
 });
