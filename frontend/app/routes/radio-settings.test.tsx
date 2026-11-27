@@ -423,7 +423,8 @@ it("shows the set-up form with a notice when the show has no radio settings yet"
   expect(screen.getByRole("button", { name: /Save radio settings/ })).toBeVisible();
   // Nothing that works on saved settings stands between the notice and the form that creates them.
   expect(screen.queryByText("Song similarity for night radio")).toBeNull();
-  expect(screen.queryByText("Prepared local playlist")).toBeNull();
+  // The recovery panel is mocked here under this text.
+  expect(screen.queryByText("Recovery playlist for night radio")).toBeNull();
 });
 
 it("creates the radio settings on the first save, and drops the notice once they exist", async () => {
@@ -442,6 +443,9 @@ it("creates the radio settings on the first save, and drops the notice once they
     enabled: false,
   });
   expect(screen.queryByText("Radio isn't set up yet")).toBeNull();
+  // Once they exist, what works on saved settings is offered.
+  expect(screen.getByText("Recovery playlist for night radio")).toBeVisible();
+  expect(screen.getByText("Song similarity for night radio")).toBeVisible();
 });
 
 it("confirms a saved radio settings on the form, beside the Save button", async () => {
