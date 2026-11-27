@@ -479,7 +479,7 @@ export function ProgramSongSequenceEditor({
                                 if (onTakeSelection) void onTakeSelection(next);
                                 else applySequence(next);
                               }}
-                              className='relative flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 shadow-none hover:translate-y-0 hover:scale-100 hover:bg-transparent'
+                              className='relative flex h-6 w-6 shrink-0 pointer-coarse:h-11 pointer-coarse:w-8 items-center justify-center border-0 bg-transparent p-0 shadow-none hover:translate-y-0 hover:scale-100 hover:bg-transparent'
                               title='Take on air'
                               aria-label='Take on air'
                             >
@@ -515,7 +515,7 @@ export function ProgramSongSequenceEditor({
                               type='button'
                               onClick={() => void previewItem(displayItem)}
                               disabled={!displayItem.audioUrl?.trim()}
-                              className={`flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 shadow-none hover:translate-y-0 hover:scale-100 hover:bg-transparent ${previewingItemId === displayItem.id ? 'text-sea' : 'text-text-secondary hover:text-text-primary'}`}
+                              className={`flex h-6 w-6 shrink-0 pointer-coarse:h-11 pointer-coarse:w-8 items-center justify-center border-0 bg-transparent p-0 shadow-none hover:translate-y-0 hover:scale-100 hover:bg-transparent ${previewingItemId === displayItem.id ? 'text-sea' : 'text-text-secondary hover:text-text-primary'}`}
                               title={previewingItemId === displayItem.id ? 'Stop local preview' : 'Preview locally'}
                               aria-label={previewingItemId === displayItem.id ? 'Stop local preview' : 'Preview locally'}
                             >
@@ -525,7 +525,7 @@ export function ProgramSongSequenceEditor({
                               type='button'
                               onClick={() => toggleHighRotation(index, displayItem)}
                               disabled={!displayItem.highRotation && highRotationCount >= 12}
-                              className={`flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:bg-transparent ${displayItem.highRotation ? 'text-amber-300' : 'text-text-secondary opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100'} disabled:cursor-not-allowed disabled:opacity-30`}
+                              className={`flex h-6 w-6 shrink-0 pointer-coarse:h-11 pointer-coarse:w-8 items-center justify-center border-0 bg-transparent p-0 shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:bg-transparent ${displayItem.highRotation ? 'text-amber-300' : 'text-text-secondary opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100'} disabled:cursor-not-allowed disabled:opacity-30`}
                               title={
                                 displayItem.highRotation
                                   ? 'Remove from high rotation'
@@ -565,7 +565,7 @@ export function ProgramSongSequenceEditor({
                                 type='button'
                                 onClick={() => reorderItems(index, index - 1)}
                                 disabled={index === 0}
-                                className='flex h-6 w-6 items-center justify-center rounded border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-30'
+                                className='flex h-6 w-6 pointer-coarse:h-11 pointer-coarse:w-8 items-center justify-center rounded border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-30'
                                 title='Move up'
                                 aria-label={`Move ${titleText || 'song'} up`}
                               >
@@ -575,7 +575,7 @@ export function ProgramSongSequenceEditor({
                                 type='button'
                                 onClick={() => reorderItems(index, index + 1)}
                                 disabled={index === sequence.items.length - 1}
-                                className='flex h-6 w-6 items-center justify-center rounded border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-30'
+                                className='flex h-6 w-6 pointer-coarse:h-11 pointer-coarse:w-8 items-center justify-center rounded border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-30'
                                 title='Move down'
                                 aria-label={`Move ${titleText || 'song'} down`}
                               >
@@ -585,7 +585,7 @@ export function ProgramSongSequenceEditor({
                                 <Button
                                   type='button'
                                   onClick={() => void onQueueItem(displayItem.id)}
-                                  className='flex h-6 w-6 items-center justify-center rounded border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-sea'
+                                  className='flex h-6 w-6 pointer-coarse:h-11 pointer-coarse:w-8 items-center justify-center rounded border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-sea'
                                   title='Play next'
                                   aria-label={`Play ${titleText || 'song'} next`}
                                 >
@@ -595,7 +595,7 @@ export function ProgramSongSequenceEditor({
                               <Button
                                 type='button'
                                 onClick={() => setExpandedItemId((prev) => (prev === displayItem.id ? null : displayItem.id))}
-                                className='flex h-6 w-6 items-center justify-center rounded border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary'
+                                className='flex h-6 w-6 pointer-coarse:h-11 pointer-coarse:w-8 items-center justify-center rounded border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary'
                                 title='Edit song'
                                 aria-label='Edit song'
                               >
@@ -616,7 +616,7 @@ export function ProgramSongSequenceEditor({
                               <Button
                                 type='button'
                                 onClick={() => removeItem(index)}
-                                className='flex h-6 w-6 items-center justify-center rounded border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-terracotta'
+                                className='flex h-6 w-6 pointer-coarse:h-11 pointer-coarse:w-8 items-center justify-center rounded border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-terracotta'
                                 title='Remove'
                                 aria-label={`Remove ${displayItem.title?.trim() || 'song'}`}
                               >
@@ -714,7 +714,7 @@ export function ProgramSongSequenceEditor({
                       type='button'
                       disabled={songIdsInPlaylist.has(song.id)}
                       onClick={() => addItemFromCatalog(song)}
-                      className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary shadow-none transition-all hover:translate-y-0 hover:scale-100 hover:bg-sea/20 hover:text-sea disabled:bg-transparent disabled:text-text-secondary disabled:opacity-60'
+                      className='flex h-6 w-6 shrink-0 pointer-coarse:h-11 pointer-coarse:w-8 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary shadow-none transition-all hover:translate-y-0 hover:scale-100 hover:bg-sea/20 hover:text-sea disabled:bg-transparent disabled:text-text-secondary disabled:opacity-60'
                       title={songIdsInPlaylist.has(song.id) ? 'Already in the playlist' : `Add ${song.title || 'song'} to the playlist`}
                       aria-label={songIdsInPlaylist.has(song.id) ? 'Already in the playlist' : `Add ${song.title || 'song'} to the playlist`}
                     >

@@ -1340,3 +1340,14 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* alcantara#875: on touch the mixer's Mute and PFL and the cartwall's pre-listen are full-size targets. */
+@media (pointer: coarse) {
+  .broadcast-console .console-channel button {
+    min-height: 44px;
+  }
+  .radio-cartwall .console-cart-grid button[aria-label^="Pre-listen"] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

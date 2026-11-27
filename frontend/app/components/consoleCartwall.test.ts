@@ -21,3 +21,12 @@ it('puts two pads across in a tablet column, so a sounder name can be read', () 
     /@media \(min-width: 1024px\) and \(max-width: 1279px\) \{\s*\.radio-cartwall \.console-cart-grid \{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/,
   );
 });
+
+it('gives a finger full-size targets on the desk: mixer buttons, pre-listen and the rotation row actions', () => {
+  expect(css).toMatch(/@media \(pointer: coarse\) \{\s*\.broadcast-console \.console-channel button \{\s*min-height: 44px;/);
+  expect(css).toMatch(/button\[aria-label\^="Pre-listen"\] \{\s*min-width: 44px;\s*min-height: 44px;/);
+  const editor = readFileSync(join(__dirname, 'editors/ProgramSongSequenceEditor.tsx'), 'utf8');
+  const small = [...editor.matchAll(/className=\{?[`']flex h-6 w-6[^`']*[`']/g)].map((match) => match[0]);
+  expect(small.length).toBeGreaterThan(5);
+  expect(small.filter((classes) => !classes.includes('pointer-coarse:h-11'))).toEqual([]);
+});
