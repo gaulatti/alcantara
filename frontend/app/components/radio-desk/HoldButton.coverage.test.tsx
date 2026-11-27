@@ -138,6 +138,8 @@ it("labels itself from the label when it has no children, and styles the danger 
   render(<HoldButton label="Delete" hint="Hold to delete." holdMs={600} onConfirm={vi.fn()} tone="danger" />);
   const button = screen.getByRole("button", { name: "Delete" });
   expect(button).toHaveTextContent("Delete");
-  expect(button.className).toContain("text-terracotta");
-  expect(screen.getByTestId("hold-fill").className).toContain("bg-terracotta/50");
+  // The desk key styles the danger tone from data-tone (BroadcastConsole.css), as hardware: red legend, red fill.
+  expect(button).toHaveAttribute("data-tone", "danger");
+  expect(button.className).toContain("desk-key");
+  expect(screen.getByTestId("hold-fill")).toBeInTheDocument();
 });

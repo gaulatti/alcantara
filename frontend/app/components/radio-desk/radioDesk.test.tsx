@@ -158,7 +158,7 @@ it("takes the next song only after it was cued: one press never goes on air", as
   // Space with nothing cued explains itself and takes nothing.
   fireEvent.keyDown(window, { key: " " });
   expect(props.onTake).not.toHaveBeenCalled();
-  expect(screen.getByText(/Cue next \(N\) first/)).toBeInTheDocument();
+  expect(screen.getByText(/Cue first \(N\)/)).toBeInTheDocument();
 
   fireEvent.keyDown(window, { key: "n" });
   expect(screen.getByText("Cued")).toBeInTheDocument();
@@ -488,7 +488,8 @@ it("says off air with nothing on air, and nothing cued when the rotation has no 
   });
   render(<OnAirStrip view={view} programId="radio-demo" />);
   expect(screen.getByText("Off air")).toBeInTheDocument();
-  expect(screen.getByText("Nothing on air · radio-demo")).toBeInTheDocument();
+  expect(screen.getByText("Nothing on air")).toBeInTheDocument();
+  expect(screen.getByText("radio-demo")).toBeInTheDocument();
   expect(screen.getByText("Nothing cued")).toBeInTheDocument();
   expect(screen.getByText("Next · Manual")).toBeInTheDocument();
 });
@@ -660,12 +661,12 @@ it("links the engine chip to the radio settings only when the settings are the r
   }
 });
 
-// alcantara#875: the hint is one sentence, not pieces the row spaces apart.
+// alcantara#875: the cued line is one run, not pieces the row spaces apart; the desk keeps it terse (title, artist, window).
 it("writes the cue hint as one run of text", () => {
   transport();
   fireEvent.keyDown(window, { key: "n" });
   const hint = screen.getByText(/Copper Season — The Paper Hours/);
   expect(hint.textContent).toBe(
-    "Copper Season — The Paper Hours. Take or press Space within 5 s; Esc clears it.",
+    "Copper Season — The Paper Hours · 5 s",
   );
 });

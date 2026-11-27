@@ -47,7 +47,7 @@ it("shows the end in the strip as a warning, with nothing scheduled", () => {
   expect(pill).toHaveTextContent(/^Rotation ended$/);
   expect(pill).toHaveAttribute("data-tone", "warn");
   expect(screen.getByText("Nothing is scheduled")).toBeVisible();
-  expect(screen.getByText(/The rotation does not loop and is manual now/)).toBeVisible();
+  expect(screen.getByText(/Rotation ended, manual now/)).toBeVisible();
   expect(screen.queryByText(/Nothing on air/)).toBeNull();
   expect(screen.queryByTestId("on-air-clock")).toBeNull();
 });

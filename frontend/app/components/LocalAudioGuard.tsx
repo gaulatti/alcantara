@@ -19,9 +19,15 @@ export const usePreFadeMuted = () => useSyncExternalStore(subscribeLocalAudio, p
 export function HeadphonesToggle() {
   const checked = usePreFadeOnHeadphones();
   return (
-    <label className="inline-flex min-h-11 items-center gap-1.5 text-xs text-text-secondary" title="While your mic is live, pre-listens and previews are muted unless you are on headphones. This device remembers.">
-      <input type="checkbox" checked={checked} onChange={(event) => setOnHeadphones(event.target.checked)} />
-      I'm on headphones: keep pre-fade
+    // Terse on the desk; the full meaning is its accessible name and its hover title.
+    <label className="desk-toggle" title="I'm on headphones: keep pre-fade. While your mic is live, pre-listens and previews are muted unless you are on headphones. This device remembers.">
+      <input
+        type="checkbox"
+        aria-label="I'm on headphones: keep pre-fade"
+        checked={checked}
+        onChange={(event) => setOnHeadphones(event.target.checked)}
+      />
+      Phones PFL
     </label>
   );
 }

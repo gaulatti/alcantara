@@ -5,6 +5,10 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { RadioPanel } from "./RadioPanel";
 import * as songs from "./radio-desk/songs";
 
+// The desk folds every status (stream, engine, monitor, output) into one dot; its detail list is where each one is
+// named. A fault is also named beside the dot, so it is looked up in the detail list.
+const statusDetail = () => screen.getByRole("group", { name: "Status detail" });
+
 // The once-a-second freshness tick (gaulatti/alcantara#706) renders the strip and the output reading, not the desk.
 // rotationLeaves is called once per render of the panel, so its calls count those renders.
 vi.mock("./radio-desk/songs", async (importOriginal) => {
@@ -91,7 +95,7 @@ it("updates the strip and the output reading each second without rendering the p
     </MemoryRouter>,
   );
   const strip = screen.getByRole("region", { name: "On air" });
-  expect(screen.getByText("Engine audio detected")).toBeInTheDocument();
+  expect(within(statusDetail()).getByText("Engine audio detected")).toBeInTheDocument();
   expect(within(strip).getByText("On air")).toBeInTheDocument();
   const renders = vi.mocked(songs.rotationLeaves).mock.calls.length;
   expect(renders).toBeGreaterThan(0);
@@ -101,7 +105,7 @@ it("updates the strip and the output reading each second without rendering the p
   });
 
   // The tick did its work: ten seconds without a sample reads unverified in both places.
-  expect(screen.getByText("Output unverified")).toBeInTheDocument();
+  expect(within(statusDetail()).getByText("Output unverified")).toBeInTheDocument();
   expect(within(strip).getByText("Unverified")).toBeInTheDocument();
   expect(vi.mocked(songs.rotationLeaves).mock.calls.length).toBe(renders);
 });

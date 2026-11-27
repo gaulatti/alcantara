@@ -14,9 +14,11 @@ it('keeps the cartwall at its own height beside the desk, up to a bound where it
   expect(css).toMatch(/\.radio-tools \.radio-cartwall \{\s*flex: 1 0 auto;[^}]*max-height: 320px;/);
 });
 
+// The output confidence panel left the column (its reading is the strip's status dot), so the 1440 cap is 300 px and the
+// guests, now a row of the mixer grid, still fit above the fold.
 it('caps the cartwall shorter at 1440 px only, so the guest list fits above the fold', () => {
   expect(css).toMatch(
-    /@media \(min-width: 1440px\) and \(max-width: 1535px\) \{\s*\.radio-tools \.radio-cartwall \{\s*max-height: 190px;/,
+    /@media \(min-width: 1440px\) and \(max-width: 1535px\) \{\s*\.radio-tools \.radio-cartwall \{\s*max-height: 300px;/,
   );
 });
 

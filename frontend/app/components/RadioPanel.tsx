@@ -33,7 +33,6 @@ import { GuestPreListen } from "./radio-desk/GuestPreListen";
 import { PlaybackBar } from "./PlaybackBar";
 import { useRadioMonitor } from "./RadioMonitor";
 import { HoldButton } from "./radio-desk/HoldButton";
-import { OutputReading } from "./radio-desk/OutputReading";
 import type { OnAirInput } from "./radio-desk/onAir";
 import { LiveOnAirStrip } from "./radio-desk/OnAirStrip";
 import { CallHealthBanner } from "./CallHealthBanner";
@@ -746,7 +745,14 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
 
   return (
     <div className="broadcast-console radio-console" data-console="radio">
-      <LiveOnAirStrip input={onAirInput} output={output} programId={programId} guests={callGuests} controls={<DeskHostMic programId={programId} />} />
+      <LiveOnAirStrip
+        input={onAirInput}
+        output={output}
+        programId={programId}
+        guests={callGuests}
+        uptime={isLive && stream?.uptime != null ? formatUptime(stream.uptime) : null}
+        controls={<DeskHostMic programId={programId} />}
+      />
       <CallHealthBanner programId={programId} />
       <div className="radio-console-scroll">
         <div className="radio-workspace">
@@ -1112,6 +1118,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                       rotationLabel="Filler rotation"
                       liveItemId={confirmedLiveLeaf?.id ?? null}
                       nextItemId={next?.itemId ?? null}
+                      dense
                     />
                   )}
                 </div>
@@ -1165,11 +1172,24 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
             )}
           </ConsolePanel>
           <aside className="radio-tools" aria-label="Live audio tools">
+            {/* A timed block's dock is the playback bar, which has no transport: listening, still one control, sits here. */}
+            {timedBlockOnAir ? (
+              <section className="console-panel desk-listen" aria-label="Listen">
+                <RadioOutputPlayer
+                  key={programId}
+                  variant="transport"
+                  {...(fixtureData?.monitorAudioUrl
+                    ? { listenerUrl: fixtureData.monitorAudioUrl }
+                    : { programId })}
+                />
+              </section>
+            ) : null}
+            {/* Output faults only: the reading itself is in the strip's status dot, and listening is in the transport. */}
+            {playoutDown || output?.state === "silent" ? (
             <section
-              className="console-panel radio-next"
-              aria-label="Output confidence"
+              className="console-panel radio-next desk-fault"
+              aria-label="Output fault"
             >
-              <OutputReading output={output} />
               {playoutDown ? (
                 // Palazzo answers but its playout (Liquidsoap) is down: nothing airs, the recovery playlist
                 // included, so the dead-air advice would not help. The cure is on the Palazzo host.
@@ -1266,28 +1286,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   )}
                 </div>
               ) : null}
-              <p className="mt-2 text-xs text-text-secondary">
-                Palazzo mix level before Icecast.
-              </p>
-              <RadioOutputPlayer
-                key={programId}
-                {...(fixtureData?.monitorAudioUrl
-                  ? { listenerUrl: fixtureData.monitorAudioUrl }
-                  : { programId })}
-              />
-              <div className="console-next-foot">
-                <span>
-                  {output?.lastSampleAt
-                    ? `Sample ${new Date(output.lastSampleAt).toLocaleTimeString()}`
-                    : "No level sample"}
-                </span>
-                <span>
-                  {isLive && stream?.uptime != null
-                    ? `Up ${formatUptime(stream.uptime)}`
-                    : ""}
-                </span>
-              </div>
             </section>
+            ) : null}
             <ConsolePanel
               title="Cartwall"
               className="radio-cartwall"
@@ -1384,8 +1384,11 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   channel={mixer.main}
                   onVolumeChange={onMainVolumeChange}
                 />
+                {/* The guests are a row of the mixer grid, under its channels, as on a broadcast console. */}
+                <div className="console-mixer-guests">
+                  <GuestPreListen key={programId} programId={programId} onActive={onPreFade} activeOwner={preFadeOwner} onGuests={setCallGuests} />
+                </div>
               </div>
-              <GuestPreListen key={programId} programId={programId} onActive={onPreFade} activeOwner={preFadeOwner} onGuests={setCallGuests} />
               {(mixer.error || mixer.saving) && (
                 <p
                   role={mixer.error ? "alert" : "status"}
@@ -1537,6 +1540,15 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
               : undefined
           }
           listening={monitor?.state === "playing"}
+          monitor={
+            <RadioOutputPlayer
+              key={programId}
+              variant="transport"
+              {...(fixtureData?.monitorAudioUrl
+                ? { listenerUrl: fixtureData.monitorAudioUrl }
+                : { programId })}
+            />
+          }
         />
       )}
       <PlaySongNow

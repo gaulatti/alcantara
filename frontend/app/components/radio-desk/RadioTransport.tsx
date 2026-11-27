@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { HoldButton } from "./HoldButton";
 import type { NextUpSong } from "./songs";
 import { KeyCap, StatePill } from "./primitives";
@@ -23,6 +23,7 @@ export function RadioTransport({
   keysEnabled = true,
   engineUnavailable = null,
   confirmedItemId = null,
+  monitor,
 }: {
   next: NextUpSong | null;
   onTake: (song: NextUpSong) => Promise<void> | void;
@@ -39,6 +40,8 @@ export function RadioTransport({
   engineUnavailable?: string | null;
   /** The rotation item the engine has confirmed on air, or null. Ends the "waiting" state. */
   confirmedItemId?: string | null;
+  /** The desk's one listen control (Listen with its key and volume), at the transport's right. M still toggles it. */
+  monitor?: ReactNode;
 }) {
   const { armed, arm, take, disarm } = useArmed<NextUpSong>();
   const [note, setNote] = useState<string | null>(null);
@@ -68,7 +71,7 @@ export function RadioTransport({
     setStopped(false);
     setOnAir(null);
     if (!next) {
-      setNote("Nothing to cue: the rotation has no next song.");
+      setNote("Nothing to cue.");
       return;
     }
     setNote(null);
@@ -79,7 +82,7 @@ export function RadioTransport({
   const takeCued = useCallback(async () => {
     const song = take();
     if (!song) {
-      setNote("Cue next (N) first, then Take.");
+      setNote("Cue first (N).");
       return;
     }
     setNote(null);
@@ -88,7 +91,7 @@ export function RadioTransport({
     setOnAir(null);
     if (engineUnavailable) {
       setWaitingFor(null);
-      setNote(`${engineUnavailable}. Nothing was taken.`);
+      setNote(`${engineUnavailable}. Not taken.`);
       return;
     }
     try {
@@ -142,107 +145,83 @@ export function RadioTransport({
   }, [armed, cue, disarm, keysEnabled, onListen, takeCued]);
 
   return (
-    <div
-      role="group"
-      aria-label="Radio transport"
-      className="flex flex-wrap items-center gap-2 border-t border-sand/30 bg-deep-sea/95 px-3 py-1.5 md:gap-3 md:px-4 md:py-2.5"
-    >
-      <button
-        type="button"
-        onClick={cue}
-        className="inline-flex h-9 items-center gap-2 rounded-[7px] border border-sand/50 px-3 text-xs font-semibold uppercase tracking-wide"
-      >
-        Cue next <KeyCap>N</KeyCap>
-      </button>
-      <button
-        type="button"
-        onClick={() => void takeCued()}
-        disabled={!armed}
-        className={`inline-flex h-9 items-center gap-2 rounded-[7px] border px-4 text-xs font-bold uppercase tracking-wide disabled:opacity-40 ${armed ? "border-accent-red bg-accent-red text-white" : "border-sand/50"}`}
-      >
-        Take <KeyCap>Space</KeyCap>
-      </button>
-      {armed ? (
-        // Esc clears a cue on a keyboard; a touch screen has no Esc, so the clear is a button too.
+    <div role="group" aria-label="Radio transport" className="desk-transport">
+      <div className="desk-transport-keys">
+        <button type="button" onClick={cue} className="desk-key">
+          Cue next <KeyCap>N</KeyCap>
+        </button>
         <button
           type="button"
-          data-own-space="true"
-          onClick={() => {
-            disarm();
-            setNote(null);
-          }}
-          className="inline-flex h-9 items-center rounded-[7px] border border-sand/50 px-3 text-xs font-semibold uppercase tracking-wide"
+          onClick={() => void takeCued()}
+          disabled={!armed}
+          data-armed={armed ? "true" : undefined}
+          className="desk-key desk-key-take"
         >
-          Clear cue
+          Take <KeyCap>Space</KeyCap>
         </button>
-      ) : null}
-      <HoldButton
-        label="Stop the song on air"
-        hint="Hold to stop the song on air (0.6 s)."
-        tone="danger"
-        onConfirm={() => void stopSong()}
-        globalKey={(event) =>
-          keysEnabled && event.altKey && (event.code === "Period" || event.key === ".")
-        }
-      >
-        Hold · stop <KeyCap keys={["⌥", "."]} />
-      </HoldButton>
-      {onListen ? (
-        <button
-          type="button"
-          onClick={onListen}
-          aria-pressed={listening === true}
-          className="ml-auto inline-flex h-9 items-center gap-2 rounded-[7px] border border-sand/50 px-3 text-xs font-semibold"
-        >
-          Listen <KeyCap>M</KeyCap>
-        </button>
-      ) : null}
-      {/* The one polite live region for transport outcomes: Cued, Taken, On air and Stopped. */}
-      <div className="basis-full text-xs" role="status" aria-live="polite">
         {armed ? (
-          <span className="inline-flex items-center gap-2 text-accent-yellow">
+          <button
+            type="button"
+            data-own-space="true"
+            aria-label="Clear cue"
+            onClick={() => {
+              disarm();
+              setNote(null);
+            }}
+            className="desk-key"
+          >
+            Clear <KeyCap>Esc</KeyCap>
+          </button>
+        ) : null}
+        <HoldButton
+          label="Stop the song on air"
+          hint="Hold to stop the song on air (0.6 s)."
+          tone="danger"
+          onConfirm={() => void stopSong()}
+          globalKey={(event) =>
+            keysEnabled && event.altKey && (event.code === "Period" || event.key === ".")
+          }
+        >
+          Hold · stop <KeyCap keys={["⌥", "."]} />
+        </HoldButton>
+      </div>
+      {/* The one polite live region for transport outcomes, terse: Cued, Taken, On air, Stopped, and faults. */}
+      <div className="desk-transport-state" role="status" aria-live="polite">
+        {armed ? (
+          <span className="desk-state-arm">
             <StatePill tone="arm" label="Cued" />
             {/* One flex item: as separate ones the row's gap opened holes inside the sentence (#875). */}
-            <span>
-              {armed.title} — {armed.artist}. Take
-              <span className="pointer-coarse:hidden"> or press Space</span> within 5 s
-              <span className="pointer-coarse:hidden">; Esc clears it</span>.
+            <span className="truncate">
+              {armed.title} — {armed.artist}
+              <span className="desk-state-hint"> · 5 s</span>
             </span>
           </span>
         ) : waitingFor ? (
-          <span className="inline-flex items-center gap-2 text-accent-yellow">
+          <span className="desk-state-arm">
             <StatePill tone="arm" label="Taken" />
-            {waitingFor.title}: waiting for the engine to confirm it on air.
+            <span className="truncate">{waitingFor.title} · awaiting engine</span>
           </span>
         ) : stopped ? (
-          <span className="text-text-primary">Stopped.</span>
+          <span>Stopped.</span>
         ) : onAir ? (
-          <span className="text-text-primary">On air: {onAir.title}.</span>
-        ) : (
-          <span className="text-text-secondary">
-            {next ? (
-              <>
-                Next: {next.title}
-                {next.sameSong ? ", same song (loop of one)" : ""}. Cue next<span className="pointer-coarse:hidden"> (N)</span>, then Take
-                <span className="pointer-coarse:hidden"> (Space)</span>.
-              </>
-            ) : (
-              "Nothing cued."
-            )}
-          </span>
-        )}
+          <span className="truncate">On air: {onAir.title}.</span>
+        ) : null}
         {engineUnavailable && !note ? (
-          <span className="ml-2 text-amber-200">
-            {engineUnavailable}. Take is unavailable until the engine is back.
+          <span className="desk-fault-text">{engineUnavailable}. Take unavailable.</span>
+        ) : null}
+        {note ? <span className="desk-fault-text">{note}</span> : null}
+        {error ? (
+          <span role="alert" className="desk-fault-text">
+            {error}
           </span>
         ) : null}
-        {note ? <span className="ml-2 text-amber-200">{note}</span> : null}
       </div>
-      {error ? (
-        <p role="alert" className="basis-full text-xs text-terracotta">
-          {error}
-        </p>
-      ) : null}
+      {monitor ??
+        (onListen ? (
+          <button type="button" onClick={onListen} aria-pressed={listening === true} className="desk-key">
+            Listen <KeyCap>M</KeyCap>
+          </button>
+        ) : null)}
     </div>
   );
 }

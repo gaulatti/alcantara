@@ -89,7 +89,8 @@ export function ProgramSongSequenceEditor({
   rotationLabel = 'Playlist',
   undoScope,
   liveItemId,
-  nextItemId = null
+  nextItemId = null,
+  dense = false
 }: {
   sequence: ProgramSongSequence;
   songCatalog?: SongCatalogItem[];
@@ -107,6 +108,11 @@ export function ProgramSongSequenceEditor({
   /** The rotation song that is on air, and the one Cue next would cue: marked in the list (#298). */
   liveItemId?: string | null;
   nextItemId?: string | null;
+  /**
+   * The radio desk's list, as a broadcast automation's log: one line per song, no cover, a state column and a row tint
+   * for On air and Next instead of pills, tabular times, and the per-row tools shown on hover or focus only.
+   */
+  dense?: boolean;
 }) {
   // Every item the editor shows is a song: the playlist type proves it.
   const sequence = useMemo(
@@ -382,6 +388,11 @@ export function ProgramSongSequenceEditor({
     [updateItem]
   );
 
+  // The desk's list leads with a state column; the grip, the number, PFL and the star stay in their columns.
+  const rowColumns = dense
+    ? 'grid-cols-[64px_16px_24px_24px_24px_minmax(0,1fr)_52px_auto]'
+    : 'grid-cols-[28px_28px_28px_28px_minmax(0,1fr)_52px_auto]';
+
   function formatDurationFromMs(ms: number | null | undefined) {
     if (typeof ms !== 'number' || !Number.isFinite(ms) || ms <= 0) return '—';
     const totalSec = Math.round(ms / 1000);
@@ -418,14 +429,15 @@ export function ProgramSongSequenceEditor({
             ) : (
               <div className='min-h-0 flex-1 overflow-auto'>
                 <div className='playlist-table min-w-100'>
-                  <div className='playlist-column-heading grid grid-cols-[28px_28px_28px_28px_minmax(0,1fr)_52px_auto] items-center border-b border-sand/30 px-3 py-1.5 text-[10px] font-medium uppercase tracking-widest text-text-secondary'>
+                  <div className={`playlist-column-heading grid ${rowColumns} items-center border-b border-sand/30 px-3 py-1.5 text-[10px] font-medium uppercase tracking-widest text-text-secondary`}>
+                    {dense ? <span>State</span> : null}
                     <span />
                     <span className='text-center'>#</span>
                     <span />
                     <span className='text-center' title='High rotation favorites'>
                       ★
                     </span>
-                    <span style={{ paddingLeft: '22px' }}>Title · High rotation {highRotationCount}/12</span>
+                    <span style={{ paddingLeft: dense ? '4px' : '22px' }}>Title · High rotation {highRotationCount}/12</span>
                     <span className='flex items-center justify-end pr-3'>
                       <Clock size={10} />
                     </span>
@@ -458,6 +470,18 @@ export function ProgramSongSequenceEditor({
                       // that does not keeps them on the selected item.
                       const showsBars = liveItemId === undefined ? isActive : displayItem.id === liveItemId;
                       const coverUrl = displayItem.coverUrl.trim();
+                      // The desk names the state in its own column and tints the row; it has no playing bars.
+                      const bars = showsBars && !dense;
+                      const deskState =
+                        displayItem.id === liveItemId
+                          ? programSongPlayback?.jingle
+                            ? 'after-jingle'
+                            : 'on-air'
+                          : displayItem.id === nextItemId
+                            ? 'next'
+                            : undefined;
+                      // Shown on the row's hover or focus only, and always on a touch screen (BroadcastConsole.css).
+                      const hoverOnly = 'desk-hover';
 
                       return (
                         <div
@@ -471,13 +495,23 @@ export function ProgramSongSequenceEditor({
                         >
                           <div
                             data-active={isActive}
-                            className={`playlist-row group grid grid-cols-[28px_28px_28px_28px_minmax(0,1fr)_52px_auto] items-center px-3 py-1.5 transition-colors ${isActive ? 'bg-sea/15' : 'hover:bg-dark-sand/70'}`}
+                            data-desk-state={dense ? deskState : undefined}
+                            className={
+                              dense
+                                ? `playlist-row desk-row group grid ${rowColumns} items-center px-3 py-0.5 ${isActive && !deskState ? 'bg-white/[0.05]' : ''}`
+                                : `playlist-row group grid ${rowColumns} items-center px-3 py-1.5 transition-colors ${isActive ? 'bg-sea/15' : 'hover:bg-dark-sand/70'}`
+                            }
                           >
+                            {dense ? (
+                              <span className='desk-row-state' data-state={deskState}>
+                                {deskState === 'on-air' ? 'On air' : deskState === 'after-jingle' ? 'After jingle' : deskState === 'next' ? 'Next' : ''}
+                              </span>
+                            ) : null}
                             <span
                               draggable
                               onDragStart={() => setDraggingIndex(index)}
                               onDragEnd={() => setDraggingIndex(null)}
-                              className='inline-flex h-6 w-6 cursor-grab select-none items-center justify-center text-text-secondary'
+                              className={`inline-flex h-6 ${dense ? `w-4 ${hoverOnly}` : 'w-6'} cursor-grab select-none items-center justify-center text-text-secondary`}
                               title='Drag to reorder'
                               aria-label='Drag to reorder'
                             >
@@ -495,7 +529,7 @@ export function ProgramSongSequenceEditor({
                               aria-label='Take on air'
                             >
                               <span
-                                className={`text-xs tabular-nums transition-opacity ${isActive || showsBars ? 'opacity-0' : 'text-text-secondary group-hover:opacity-0'}`}
+                                className={`text-xs tabular-nums transition-opacity ${(isActive && !(dense && showsBars)) || bars ? 'opacity-0' : 'text-text-secondary group-hover:opacity-0'}`}
                               >
                                 {index + 1}
                               </span>
@@ -505,7 +539,7 @@ export function ProgramSongSequenceEditor({
                                   <PlayIcon />
                                 </span>
                               )}
-                              {showsBars && (
+                              {bars && (
                                 <span className='absolute inset-0 flex items-end justify-center gap-0.5 pb-0.5 group-hover:opacity-0'>
                                   <span className='w-0.75 rounded-sm bg-sea opacity-100' style={{ animation: 'eq-bar1 0.8s ease-in-out infinite alternate' }} />
                                   <span
@@ -526,7 +560,7 @@ export function ProgramSongSequenceEditor({
                               type='button'
                               onClick={() => void previewItem(displayItem)}
                               disabled={!displayItem.audioUrl?.trim()}
-                              className={`flex h-6 w-6 shrink-0 pointer-coarse:h-11 pointer-coarse:w-8 items-center justify-center border-0 bg-transparent p-0 shadow-none hover:translate-y-0 hover:scale-100 hover:bg-transparent ${previewingItemId === displayItem.id ? 'text-sea' : 'text-text-secondary hover:text-text-primary'}`}
+                              className={`flex h-6 w-6 shrink-0 pointer-coarse:h-11 pointer-coarse:w-8 items-center justify-center border-0 bg-transparent p-0 shadow-none hover:translate-y-0 hover:scale-100 hover:bg-transparent ${previewingItemId === displayItem.id ? (dense ? 'text-accent-yellow' : 'text-sea') : `text-text-secondary hover:text-text-primary ${dense ? hoverOnly : ''}`}`}
                               title={previewingItemId === displayItem.id ? 'Stop local preview' : 'Preview locally'}
                               aria-label={previewingItemId === displayItem.id ? 'Stop local preview' : 'Preview locally'}
                             >
@@ -536,7 +570,7 @@ export function ProgramSongSequenceEditor({
                               type='button'
                               onClick={() => toggleHighRotation(index, displayItem)}
                               disabled={!displayItem.highRotation && highRotationCount >= 12}
-                              className={`flex h-6 w-6 shrink-0 pointer-coarse:h-11 pointer-coarse:w-8 items-center justify-center border-0 bg-transparent p-0 shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:bg-transparent ${displayItem.highRotation ? 'text-amber-300' : 'text-text-secondary opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100'} disabled:cursor-not-allowed disabled:opacity-30`}
+                              className={`flex h-6 w-6 shrink-0 pointer-coarse:h-11 pointer-coarse:w-8 items-center justify-center border-0 bg-transparent p-0 shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:bg-transparent ${displayItem.highRotation ? 'text-amber-300' : `text-text-secondary opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 ${dense ? hoverOnly : ''}`} disabled:cursor-not-allowed disabled:opacity-30`}
                               title={
                                 displayItem.highRotation
                                   ? 'Remove from high rotation'
@@ -548,6 +582,13 @@ export function ProgramSongSequenceEditor({
                             >
                               <Star size={13} fill={displayItem.highRotation ? 'currentColor' : 'none'} />
                             </Button>
+                            {dense ? (
+                              // One line: the title, then the artist, muted. No cover: the desk reads, it does not browse.
+                              <div className='min-w-0 truncate pl-1 text-[13px] leading-6'>
+                                <span className={`font-semibold ${deskState === 'on-air' ? 'text-white' : 'text-text-primary'}`}>{titleText}</span>
+                                {artistText ? <span className='text-text-secondary'> · {artistText}</span> : null}
+                              </div>
+                            ) : (
                             <div className='flex min-w-0 items-center gap-2.5 pl-1'>
                               {coverUrl ? (
                                 <img src={coverUrl} alt={`${artistText} - ${titleText}`} className='h-9 w-9 shrink-0 rounded-sm object-cover shadow-md' />
@@ -569,8 +610,17 @@ export function ProgramSongSequenceEditor({
                                 <div className='truncate text-[11px] leading-tight text-text-secondary mt-0.5'>{artistText}</div>
                               </div>
                             </div>
-                            <span className={`text-right pr-3 text-xs tabular-nums ${isActive ? 'text-sea' : 'text-text-secondary'}`}>{rowDuration}</span>
-                            <div className='playlist-row-actions flex shrink-0 flex-nowrap items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100'>
+                            )}
+                            <span
+                              className={
+                                dense
+                                  ? 'pr-3 text-right font-mono text-xs tabular-nums text-text-secondary'
+                                  : `text-right pr-3 text-xs tabular-nums ${isActive ? 'text-sea' : 'text-text-secondary'}`
+                              }
+                            >
+                              {rowDuration}
+                            </span>
+                            <div className={`playlist-row-actions ${dense ? hoverOnly : ''} flex shrink-0 flex-nowrap items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100`}>
                               {/* Move up and down are the keyboard and touch way to reorder; they use the same
                                   reorderItems as drag, so the new order persists the same way. */}
                               <Button

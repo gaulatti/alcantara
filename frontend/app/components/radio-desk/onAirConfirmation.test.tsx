@@ -73,11 +73,11 @@ it("shows an unconfirmed song with a warning and no clock", () => {
 it("refuses Take while the engine is off: nothing is sent and the desk says so", async () => {
   const onTake = vi.fn();
   render(<RadioTransport next={next} onTake={onTake} onTakeOffAir={vi.fn()} engineUnavailable={label} />);
-  expect(screen.getByText(`${label}. Take is unavailable until the engine is back.`)).toBeVisible();
+  expect(screen.getByText(`${label}. Take unavailable.`)).toBeVisible();
   await cueAndTake();
   expect(onTake).not.toHaveBeenCalled();
-  expect(screen.getByText(`${label}. Nothing was taken.`)).toBeVisible();
-  expect(screen.queryByText(/waiting for the engine/)).not.toBeInTheDocument();
+  expect(screen.getByText(`${label}. Not taken.`)).toBeVisible();
+  expect(screen.queryByText(/awaiting engine/)).not.toBeInTheDocument();
 });
 
 it("after a take waits for the engine, then stops waiting once it confirms the song", async () => {
@@ -86,20 +86,20 @@ it("after a take waits for the engine, then stops waiting once it confirms the s
   await cueAndTake();
   expect(onTake).toHaveBeenCalledWith(next);
   expect(screen.getByText("Taken")).toBeVisible();
-  expect(screen.getByText("Copper Season: waiting for the engine to confirm it on air.")).toBeVisible();
+  expect(screen.getByText("Copper Season · awaiting engine")).toBeVisible();
   // Another song confirmed is not this take.
   view.rerender(<RadioTransport next={next} onTake={onTake} onTakeOffAir={vi.fn()} confirmedItemId="s1" />);
-  expect(screen.getByText(/waiting for the engine/)).toBeVisible();
+  expect(screen.getByText(/awaiting engine/)).toBeVisible();
   view.rerender(<RadioTransport next={next} onTake={onTake} onTakeOffAir={vi.fn()} confirmedItemId="s2" />);
-  expect(screen.queryByText(/waiting for the engine/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/awaiting engine/)).not.toBeInTheDocument();
 });
 
 it("stops waiting when the operator cues again", async () => {
   render(<RadioTransport next={next} onTake={vi.fn(async () => undefined)} onTakeOffAir={vi.fn()} />);
   await cueAndTake();
-  expect(screen.getByText(/waiting for the engine/)).toBeVisible();
+  expect(screen.getByText(/awaiting engine/)).toBeVisible();
   fireEvent.keyDown(window, { key: "n" });
-  expect(screen.queryByText(/waiting for the engine/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/awaiting engine/)).not.toBeInTheDocument();
 });
 
 it("shows the backend's refusal when the take is refused there, and does not wait", async () => {
@@ -109,5 +109,5 @@ it("shows the backend's refusal when the take is refused there, and does not wai
   render(<RadioTransport next={next} onTake={onTake} onTakeOffAir={vi.fn()} />);
   await cueAndTake();
   expect(await screen.findByText("The radio engine is off (disabled in settings), so nothing was taken.")).toBeVisible();
-  expect(screen.queryByText(/waiting for the engine/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/awaiting engine/)).not.toBeInTheDocument();
 });

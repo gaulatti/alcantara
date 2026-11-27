@@ -108,7 +108,8 @@ export function HoldButton({
         onKeyDown={onKeyDown}
         onKeyUp={onKeyUp}
         onBlur={cancel}
-        className={`relative inline-flex h-9 items-center gap-1.5 overflow-hidden rounded-[7px] border px-3 text-xs font-semibold uppercase tracking-wide disabled:opacity-40 ${tone === "danger" ? "border-terracotta/60 text-terracotta" : "border-sand/50 text-text-primary"}`}
+        data-tone={tone}
+        className="desk-key desk-key-hold relative overflow-hidden"
       >
         <span
           aria-hidden="true"

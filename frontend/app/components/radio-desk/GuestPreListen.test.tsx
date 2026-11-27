@@ -137,7 +137,7 @@ describe("GuestPreListen", () => {
     expect(screen.queryByRole("button", { name: "Pre-listen Lin" })).toBeNull();
     expect(screen.getByRole("group", { name: "Cue Ada" })).toBeVisible();
     expect(screen.getByText("Cue · standby")).toBeVisible();
-    expect(screen.queryByText("No guest is connected.")).toBeNull();
+    expect(screen.queryByText("None")).toBeNull();
   });
 
   it("reads the guest list again right after an Admit or a cue from the desk", async () => {
@@ -279,7 +279,7 @@ it("lists no guest for an answer that names none", async () => {
   const onGuests = vi.fn();
   render(<GuestPreListen programId="main" onActive={() => undefined} onGuests={onGuests} />);
   await waitFor(() => expect(onGuests).toHaveBeenCalledWith([]));
-  expect(screen.getByText("No guest is connected.")).toBeVisible();
+  expect(screen.getByText("None")).toBeVisible();
 });
 
 it("moves to a second guest on the room already joined, ignores other keys, and still names a guest gone from the list", async () => {

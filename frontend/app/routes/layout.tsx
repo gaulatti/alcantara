@@ -482,6 +482,9 @@ function ConsoleShell() {
   /* v8 ignore next -- every navigation section has an items array, so the empty fallback cannot be reached */
   const flatSidebarItems: SidebarItem[] = useMemo(() => groupedSidebarItems.flatMap((section) => section.items ?? []), [groupedSidebarItems]);
   const isViewportConstrainedRoute = location.pathname === '/' || location.pathname === '/control' || location.pathname === '/console-fixture';
+  // The radio desk has its one listen control, with its volume, in its transport: the header's listen shortcut and
+  // listening chip would offer it a second and a third time there. Every other page keeps them.
+  const onRadioDesk = location.pathname === '/' && selectedProgramType === 'radio';
 
   const renderHeaderProgramSelector = () => (
     <HeaderSelect
@@ -1067,7 +1070,7 @@ function ConsoleShell() {
               ) : null}
               {/* A new build is deployed: offered, never forced, and held back while the mic or a guest is live (#879). */}
               <NewVersionPrompt programId={selectedProgramId} />
-              {radioMonitor && radioMonitor.state !== 'stopped' ? (
+              {radioMonitor && radioMonitor.state !== 'stopped' && !onRadioDesk ? (
                 <span
                   role='status'
                   className='inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.05] py-0.5 pl-2.5 pr-1 text-xs font-semibold text-text-secondary'
@@ -1083,7 +1086,7 @@ function ConsoleShell() {
                 <Search size={14} />
                 <span className='hidden lg:inline'>Commands</span>
               </Button>
-              {renderOpenProgramButton()}
+              {onRadioDesk ? null : renderOpenProgramButton()}
               {renderRefreshProgramButton()}
               {(getDesktopHost()?.topBarControls ?? []).map((Control, index) => (
                 <Control key={index} programId={selectedProgramId} />

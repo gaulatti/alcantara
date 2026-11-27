@@ -154,8 +154,12 @@ export function GuestPreListen({
 
   return (
     <section aria-label="Guest pre-fade listen" className="space-y-2">
-      <h3 className="text-sm font-medium">Guests</h3>
-      {connected.length === 0 && waiting.length === 0 ? <p className="text-xs text-text-secondary">No guest is connected.</p> : null}
+      <h3 className="desk-eyebrow flex items-center justify-between">
+        <span>Guests</span>
+        <span className="tabular-nums">{connected.length + waiting.length}</span>
+      </h3>
+      {/* Terse, as the rest of the desk: no guest is "None", not a sentence. */}
+      {connected.length === 0 && waiting.length === 0 ? <p className="text-xs text-text-secondary">None</p> : null}
       <ul className="space-y-2">
         {waiting.map((guest) => (
           <li key={guest.identity} className="space-y-1">

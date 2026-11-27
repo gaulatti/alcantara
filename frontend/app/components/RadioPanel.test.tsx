@@ -15,6 +15,11 @@ import { RadioPanel, deadAirLine } from "./RadioPanel";
 import { RadioMonitorProvider } from "./RadioMonitor";
 import { dbToFader, faderToDb } from "../utils/audioTaper";
 import * as flight from "../services/flight";
+
+// The desk folds every status (stream, engine, monitor, output) into one dot; its detail list is where each one is
+// named. A fault is also named beside the dot, so it is looked up in the detail list.
+const statusDetail = () => screen.getByRole("group", { name: "Status detail" });
+const findInStatus = (text: string | RegExp) => waitFor(() => within(statusDetail()).getByText(text));
 vi.mock("../services/flight", () => ({
   fetchFlightSequences: vi.fn(),
   updateFlightSequence: vi.fn(),
@@ -227,7 +232,7 @@ it("keeps one on-air player in the transport dock with timing, confidence and th
   expect(
     screen.getByRole("progressbar", { name: "Track progress" }),
   ).toHaveAttribute("aria-valuenow", "23");
-  expect(screen.getByText("Engine audio detected")).toBeVisible();
+  expect(within(statusDetail()).getByText("Engine audio detected")).toBeVisible();
   expect(screen.getByRole("region", { name: "On-air rundown" })).toBeVisible();
   expect(screen.getByRole("region", { name: "Cartwall" })).toBeVisible();
   expect(screen.getByRole("slider", { name: "Music level" })).toBeVisible();
@@ -336,10 +341,10 @@ it("presents stale timing explicitly and never turns unavailable output into hea
   expect(screen.getByText("—:—")).toBeVisible();
   expect(screen.queryByText("Remaining")).not.toBeInTheDocument();
   expect(screen.queryByText("On air")).not.toBeInTheDocument();
-  expect(screen.getByText("Output unavailable")).toBeVisible();
-  expect(screen.getByText("Stream offline")).toBeVisible();
-  expect(screen.getByText("Engine unavailable")).toBeVisible();
-  expect(screen.queryByText("Engine audio detected")).not.toBeInTheDocument();
+  expect(within(statusDetail()).getByText("Output unavailable")).toBeVisible();
+  expect(within(statusDetail()).getByText("Stream offline")).toBeVisible();
+  expect(within(statusDetail()).getByText("Engine unavailable")).toBeVisible();
+  expect(within(statusDetail()).queryByText("Engine audio detected")).not.toBeInTheDocument();
 });
 
 // The airing walk's W5: with Palazzo answering and its playout down, a playing song is never On air, in the strip,
@@ -350,7 +355,7 @@ it("never shows On air or a running clock while playout is down", () => {
   mount(p);
   const strip = screen.getByRole("region", { name: "On air" });
   expect(within(strip).getByText("Not confirmed")).toBeVisible();
-  expect(within(strip).getByText("Playout down")).toBeVisible();
+  expect(within(statusDetail()).getByText("Playout down")).toBeVisible();
   expect(screen.queryByText("On air")).not.toBeInTheDocument();
   expect(screen.queryByText("Remaining")).not.toBeInTheDocument();
   expect(screen.getAllByText("No engine confirmation").length).toBeGreaterThanOrEqual(2);
@@ -524,24 +529,23 @@ it("monitors listener audio inline without changing the on-air transport or mix"
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
   const { container } = mount(p);
-  const confidence = screen.getByLabelText("Output confidence");
-  const monitor = within(confidence).getByLabelText("Listener audio monitor");
+  // A timed block's dock is the playback bar, so the desk's one listen control sits in its own row of the tools column.
+  const monitor = within(screen.getByLabelText("Listen")).getByLabelText("Listener audio monitor");
+  expect(screen.getAllByLabelText("Listener audio monitor")).toHaveLength(1);
   expect(screen.queryByRole("link", { name: "Listen to Program" })).toBeNull();
   expect(play).not.toHaveBeenCalled();
-  fireEvent.click(within(monitor).getByRole("button", { name: "Listen" }));
+  const key = within(monitor).getByRole("button", { name: /^Listen/ });
+  fireEvent.click(key);
   await waitFor(() =>
-    expect(within(monitor).getByRole("status")).toHaveTextContent(
-      "Listening to broadcast",
-    ),
+    expect(within(monitor).getByRole("status")).toHaveTextContent("Listening"),
   );
+  expect(key).toHaveAttribute("aria-pressed", "true");
   fireEvent.change(
     within(monitor).getByRole("slider", { name: "Monitor volume" }),
     { target: { value: "0.2" } },
   );
   expect(container.querySelector("audio")!.volume).toBe(0.2);
-  fireEvent.click(
-    within(monitor).getByRole("button", { name: "Stop listening" }),
-  );
+  fireEvent.click(key);
   expect(container.querySelector("audio")).not.toHaveAttribute("src");
   for (const fn of [
     p.onSaveSongSequence,
@@ -612,11 +616,12 @@ it("polls the live radio API when no fixture is supplied", async () => {
     { ...onAirLog(props()), isRunning: false, scheduledAt: null },
   ]);
   mount(liveProps());
-  expect(await screen.findByText("Stream verified")).toBeVisible();
-  expect(await screen.findByText("Engine degraded")).toBeVisible();
-  expect(await screen.findByText("Expected audio is silent")).toBeVisible();
+  expect(await findInStatus("Stream verified")).toBeVisible();
+  expect(await findInStatus("Engine degraded")).toBeVisible();
+  expect(await findInStatus("Expected audio is silent")).toBeVisible();
   expect(await screen.findByText("Prepared for next session")).toBeInTheDocument();
-  expect(screen.getByText("Up 1h 2m")).toBeVisible();
+  // Uptime is in the status detail's foot now (the output panel left the column).
+  expect(within(statusDetail()).getByText(/stream up 1h 2m/)).toBeInTheDocument();
   // An unscheduled rundown is not part of the air plan.
   expect(screen.getByRole("region", { name: "Continuous fillers" })).toBeVisible();
   // The live monitor asks the API for a grant instead of a fixture URL.
@@ -642,12 +647,12 @@ it("treats every unreachable or refused status endpoint as unverified", async ()
     "role",
     "alert",
   );
-  expect(screen.getByText("Stream unverified")).toBeVisible();
+  expect(within(statusDetail()).getByText("Stream unverified")).toBeVisible();
   // The console cannot reach the server, so the engine is not what is unavailable.
   expect(await screen.findByText("Can\'t reach the Alcántara server")).toBeVisible();
-  expect(screen.queryByText("Engine unavailable")).toBeNull();
-  expect(screen.getByText("Output unverified")).toBeVisible();
-  expect(screen.getByText("No level sample")).toBeVisible();
+  expect(within(statusDetail()).queryByText("Engine unavailable")).toBeNull();
+  expect(within(statusDetail()).getByText("Output unverified")).toBeVisible();
+  expect(within(statusDetail()).getByText(/no level sample/)).toBeInTheDocument();
   // The recovery status never answered, so there is no last known state to show.
   expect(screen.getByText("Recovery status unavailable")).toBeInTheDocument();
   expect(screen.queryByText("No prepared recovery playlist")).toBeNull();
@@ -665,7 +670,7 @@ it("treats every unreachable or refused status endpoint as unverified", async ()
     "role",
     "alert",
   );
-  expect(screen.getByText("Stream unverified")).toBeVisible();
+  expect(within(statusDetail()).getByText("Stream unverified")).toBeVisible();
   refused.unmount();
 
   // A Palazzo answer with no body is not a status either.
@@ -679,7 +684,7 @@ it("treats every unreachable or refused status endpoint as unverified", async ()
         .mock.calls.some(([url]) => String(url).includes("/palazzo-status")),
     ).toBe(true),
   );
-  expect(await screen.findByText("Engine unavailable")).toBeVisible();
+  expect(await findInStatus("Engine unavailable")).toBeVisible();
 });
 
 // The #734 walk: a page reload left the desk reading "Engine unavailable" for seconds while the engine was fine, only
@@ -713,12 +718,12 @@ it("drops an engine status that answers for the program before a switch", async 
   pending["radio-old"](json({ ...props().fixtureData!.palazzo, connection: "connected" }));
   const strip = screen.getByRole("region", { name: "On air" });
   await new Promise((resolve) => setTimeout(resolve, 20));
-  expect(within(strip).getByText("Checking engine")).toBeVisible();
-  expect(within(strip).queryByText("Engine ready")).toBeNull();
+  expect(within(statusDetail()).getByText("Checking engine")).toBeVisible();
+  expect(within(statusDetail()).queryByText("Engine ready")).toBeNull();
 
   // The new program's own answer decides.
   pending["radio-new"](json({ ...props().fixtureData!.palazzo, connection: "unavailable" }));
-  expect(await within(strip).findByText(/Engine unavailable/)).toBeVisible();
+  expect(await findInStatus(/Engine unavailable/)).toBeVisible();
 });
 
 // A playout status that fails with a 5xx says the playout is unreachable; the real "not configured" answer keeps its words.
@@ -726,14 +731,14 @@ it("says Playout unreachable when the playout status fails, and not configured o
   radioApi({ "/palazzo-status": new Response("bad gateway", { status: 502 }) });
   vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
   const failed = mount(liveProps());
-  expect(await screen.findByText("Playout unreachable")).toBeVisible();
-  expect(screen.queryByText("Engine unavailable: not configured")).toBeNull();
+  expect(await findInStatus("Playout unreachable")).toBeVisible();
+  expect(within(statusDetail()).queryByText("Engine unavailable: not configured")).toBeNull();
   failed.unmount();
 
   radioApi({ "/palazzo-status": json({ reason: "not-configured" }) });
   mount(liveProps());
-  expect(await screen.findByText("Engine unavailable: not configured")).toBeVisible();
-  expect(screen.queryByText("Playout unreachable")).toBeNull();
+  expect(await findInStatus("Engine unavailable: not configured")).toBeVisible();
+  expect(within(statusDetail()).queryByText("Playout unreachable")).toBeNull();
 });
 
 it("reads Checking engine, never Engine unavailable, until the first engine status answers", async () => {
@@ -751,14 +756,14 @@ it("reads Checking engine, never Engine unavailable, until the first engine stat
   vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
   mount(liveProps());
   const strip = screen.getByRole("region", { name: "On air" });
-  const chip = await within(strip).findByText("Checking engine");
+  const chip = await findInStatus("Checking engine");
   expect(chip.closest("[data-tone]")).toHaveAttribute("data-tone", "idle");
   expect(within(strip).queryByText(/Engine unavailable/)).toBeNull();
 
   // The answer decides: here the engine really is unavailable.
   answer(json({ ...props().fixtureData!.palazzo, connection: "unavailable" }));
-  expect(await within(strip).findByText(/Engine unavailable/)).toBeVisible();
-  expect(within(strip).queryByText("Checking engine")).toBeNull();
+  expect(await findInStatus(/Engine unavailable/)).toBeVisible();
+  expect(within(statusDetail()).queryByText("Checking engine")).toBeNull();
 });
 
 // The #734 follow-up: Palazzo answering with its playout (Liquidsoap) down is its own engine state, never Ready.
@@ -778,9 +783,9 @@ it("shows Playout down on the strip and names the action, over the dead-air advi
   vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
   mount(liveProps());
   const strip = screen.getByRole("region", { name: "On air" });
-  const chip = await within(strip).findByText("Playout down");
+  const chip = await findInStatus("Playout down");
   expect(chip.closest("[data-tone]")).toHaveAttribute("data-tone", "bad");
-  expect(within(strip).queryByText("Engine ready")).toBeNull();
+  expect(within(statusDetail()).queryByText("Engine ready")).toBeNull();
   expect(screen.getByRole("alert", { name: "Playout down" })).toHaveTextContent(
     "Restart playout on the Palazzo host or call engineering.",
   );
@@ -801,7 +806,7 @@ it("refuses Take, Take now and Start with fallback while playout is down, and ke
   } as never;
   mount(p);
   expect(
-    screen.getByText("Playout down: nothing can air. Take is unavailable until the engine is back."),
+    screen.getByText("Playout down: nothing can air. Take unavailable."),
   ).toBeVisible();
   const fallback = screen.getByRole("button", { name: "Start with fallback" });
   expect(fallback).toBeDisabled();
@@ -843,7 +848,7 @@ it("reads Engine ready when Palazzo reports its playout up", async () => {
   vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
   mount(liveProps());
   const strip = screen.getByRole("region", { name: "On air" });
-  expect(await within(strip).findByText("Engine ready")).toBeVisible();
+  expect(await findInStatus("Engine ready")).toBeVisible();
   expect(screen.queryByRole("alert", { name: "Playout down" })).toBeNull();
 });
 
@@ -874,7 +879,7 @@ describe("output unverified after six seconds without a sample", () => {
     vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
     const p = liveProps();
     mount(p);
-    expect(await screen.findByText("Engine audio detected")).toBeVisible();
+    expect(await findInStatus("Engine audio detected")).toBeVisible();
     const strip = screen.getByRole("region", { name: "On air" });
     expect(within(strip).getByText("On air")).toBeVisible();
     expect(within(strip).getByTestId("on-air-clock")).not.toHaveAttribute("data-dimmed");
@@ -884,8 +889,8 @@ describe("output unverified after six seconds without a sample", () => {
     await act(async () => {
       vi.advanceTimersByTime(2_100);
     });
-    expect(screen.getByText("Output unverified")).toBeVisible();
-    expect(screen.queryByText("Engine audio detected")).toBeNull();
+    expect(within(statusDetail()).getByText("Output unverified")).toBeVisible();
+    expect(within(statusDetail()).queryByText("Engine audio detected")).toBeNull();
     expect(within(strip).getByText("Unverified")).toBeVisible();
     expect(within(strip).getByTestId("on-air-clock")).toHaveAttribute("data-dimmed", "true");
 
@@ -894,7 +899,7 @@ describe("output unverified after six seconds without a sample", () => {
     await act(async () => {
       vi.advanceTimersByTime(2_000);
     });
-    expect(await screen.findByText("Engine audio detected")).toBeVisible();
+    expect(await findInStatus("Engine audio detected")).toBeVisible();
     expect(within(strip).getByText("On air")).toBeVisible();
     expect(within(strip).getByTestId("on-air-clock")).not.toHaveAttribute("data-dimmed");
   });
@@ -911,27 +916,27 @@ it("names every output confidence state", () => {
     const p = props();
     p.fixtureData!.output.state = state as never;
     const view = mount(p);
-    expect(screen.getByText(label)).toBeVisible();
+    expect(within(statusDetail()).getByText(label)).toBeInTheDocument();
     view.unmount();
   }
 });
 
 it("shows uptime in seconds, minutes and days", () => {
   for (const [uptime, label] of [
-    [42_000, "Up 42s"],
-    [5 * 60_000, "Up 5m"],
-    [(2 * 24 + 3) * 3_600_000, "Up 2d 3h"],
+    [42_000, /stream up 42s$/],
+    [5 * 60_000, /stream up 5m$/],
+    [(2 * 24 + 3) * 3_600_000, /stream up 2d 3h$/],
   ] as const) {
     const p = props();
     p.fixtureData!.stream.uptime = uptime;
     const view = mount(p);
-    expect(screen.getByText(label)).toBeVisible();
+    expect(within(statusDetail()).getByText(label)).toBeInTheDocument();
     view.unmount();
   }
   const p = props();
   p.fixtureData!.stream.uptime = null;
   mount(p);
-  expect(screen.queryByText(/^Up /)).toBeNull();
+  expect(within(statusDetail()).queryByText(/stream up/)).toBeNull();
 });
 
 it("describes each event of the on-air rundown and its timing", () => {
@@ -1149,7 +1154,7 @@ it("says the console cannot reach the server, not the engine, when the server is
   vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
   mount(liveProps());
   expect(await screen.findByText("Can\'t reach the Alcántara server")).toBeVisible();
-  expect(screen.queryByText("Engine unavailable")).toBeNull();
+  expect(within(statusDetail()).queryByText("Engine unavailable")).toBeNull();
 });
 
 it("keeps Engine unavailable when the server answers that the engine is down", async () => {
@@ -1161,7 +1166,7 @@ it("keeps Engine unavailable when the server answers that the engine is down", a
   });
   vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
   mount(liveProps());
-  expect(await screen.findByText("Engine unavailable")).toBeVisible();
+  expect(await findInStatus("Engine unavailable")).toBeVisible();
   expect(screen.queryByText("Can\'t reach the Alcántara server")).toBeNull();
 });
 
@@ -1475,7 +1480,9 @@ it("never names the queued song on air as next, in the strip or the transport", 
   mount(p);
   const strip = screen.getByRole("region", { name: "On air" });
   expect(within(strip).getByText("Harbour morning")).toBeVisible();
-  expect(screen.getByText((_, el) => el?.tagName === "SPAN" && el.textContent === "Next: Harbour morning. Cue next (N), then Take (Space).")).toBeVisible();
+  // The transport no longer repeats what plays next; the strip's Next column is the one place it is named.
+  expect(strip.querySelector(".desk-strip-next")).not.toHaveTextContent("City lights");
+  expect(within(screen.getByRole("group", { name: "Radio transport" })).queryByText(/Harbour morning|City lights/)).toBeNull();
   expect(screen.queryByText(/Next: City lights/)).toBeNull();
 });
 
@@ -1487,9 +1494,7 @@ it("says the next song is the same song in a looping rotation of one", () => {
   mount(p);
   const strip = screen.getByRole("region", { name: "On air" });
   expect(within(strip).getByText(/same song \(loop of one\)/)).toBeVisible();
-  expect(
-    screen.getByText((_, el) => el?.tagName === "SPAN" && el.textContent === "Next: City lights, same song (loop of one). Cue next (N), then Take (Space)."),
-  ).toBeVisible();
+  expect(strip.querySelector(".desk-strip-next")).toHaveTextContent("City lights · same song (loop of one)");
 });
 
 // Walk part 4: the engine left a rotation that ran out manual, with endedAt; the desk says so, never a silent Off air.
@@ -1847,7 +1852,7 @@ async function mountLiveWith(palazzo: Answer) {
   });
   vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
   mount(liveProps());
-  await screen.findByText("Stream verified");
+  await findInStatus("Stream verified");
 }
 
 it.each([
@@ -1857,9 +1862,9 @@ it.each([
   ["deploy-candidate", "Engine unavailable: deploy candidate"],
 ])("says why the engine is unavailable: %s", async (reason, text) => {
   await mountLiveWith(json(unavailableStatus({ reason })));
-  expect(await screen.findByText(text)).toBeVisible();
+  expect(await findInStatus(text)).toBeVisible();
   // The backend's sentence is the tooltip, as with every status detail.
-  expect(screen.getByText(text)).toHaveAttribute(
+  expect(within(statusDetail()).getByText(text)).toHaveAttribute(
     "title",
     "Radio is disabled in this program’s settings",
   );
@@ -1867,18 +1872,18 @@ it.each([
 
 it("keeps today's wording for an unavailable status without a reason, with an unknown reason and for a null body", async () => {
   await mountLiveWith(json(unavailableStatus({})));
-  expect(await screen.findByText("Engine unavailable")).toBeVisible();
+  expect(await findInStatus("Engine unavailable")).toBeVisible();
   cleanup();
   await mountLiveWith(json(unavailableStatus({ reason: "from-the-future" })));
-  expect(await screen.findByText("Engine unavailable")).toBeVisible();
+  expect(await findInStatus("Engine unavailable")).toBeVisible();
   cleanup();
   await mountLiveWith(json(null));
-  expect(await screen.findByText("Engine unavailable")).toBeVisible();
+  expect(await findInStatus("Engine unavailable")).toBeVisible();
 });
 
 it("renders an old backend's live status exactly as before (no reason field)", async () => {
   await mountLiveWith(json({ ...props().fixtureData!.palazzo }));
-  expect(await screen.findByText("Engine ready")).toBeVisible();
+  expect(await findInStatus("Engine ready")).toBeVisible();
 });
 
 // ---------------------------------------------------------------- the rebuilt desk (#298)
@@ -1944,9 +1949,9 @@ it("keeps the on-air strip above the scrolling workspace, with what plays, what 
   expect(within(strip).getByText("City lights")).toBeVisible();
   expect(within(strip).getByText("Next · Autoplay")).toBeVisible();
   expect(within(strip).getByText("Copper Season")).toBeVisible();
-  expect(within(strip).getByText("Stream verified")).toBeVisible();
-  expect(within(strip).getByText("Engine ready")).toBeVisible();
-  expect(within(strip).getByText("Monitor unavailable")).toBeVisible();
+  expect(within(statusDetail()).getByText("Stream verified")).toBeVisible();
+  expect(within(statusDetail()).getByText("Engine ready")).toBeVisible();
+  expect(within(statusDetail()).getByText("Monitor unavailable")).toBeVisible();
 });
 
 it("marks the song on air and the next one in the rotation", () => {
@@ -2283,14 +2288,12 @@ it("starts and stops the shared listener monitor from the desk's M key", async (
       grants.mock.calls.some(([url]) => String(url).includes("/monitor-ticket")),
     ).toBe(true),
   );
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: "Listen" })).toBeEnabled(),
-  );
+  await waitFor(() => expect(desk()).toBeEnabled());
   expect(desk()).toHaveAttribute("aria-pressed", "false");
 
   fireEvent.keyDown(window, { key: "m" });
   await waitFor(() => expect(desk()).toHaveAttribute("aria-pressed", "true"));
-  expect(screen.getByRole("button", { name: "Stop listening" })).toBeInTheDocument();
+  // One listen control on the desk: the transport's key, lit while listening (no second Stop listening button).
   expect(document.querySelector("audio")?.getAttribute("src")).toContain(
     "/radio/radio-demo/monitor-audio?ticket=fixture-grant",
   );
@@ -2298,7 +2301,7 @@ it("starts and stops the shared listener monitor from the desk's M key", async (
   fireEvent.keyDown(window, { key: "M" });
   await waitFor(() => expect(desk()).toHaveAttribute("aria-pressed", "false"));
   expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
-  expect(screen.queryByRole("button", { name: "Stop listening" })).not.toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: /Listen/ })).toHaveLength(1);
 });
 
 // gaulatti/alcantara#527 (RadioPanel, untriaged gaps): bad inputs the desk can receive. A silent fader still moves
@@ -2332,7 +2335,7 @@ it("says On air only for an engine-confirmed song, and refuses Take while the en
   ready.fixtureData!.logs = [];
   const { unmount } = mount(ready);
   expect(screen.getAllByText("On air").length).toBeGreaterThan(0);
-  expect(screen.queryByText(/Take is unavailable until the engine is back/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Take unavailable\./)).not.toBeInTheDocument();
   unmount();
   const down = props();
   down.fixtureData!.logs = [];
@@ -2340,7 +2343,7 @@ it("says On air only for an engine-confirmed song, and refuses Take while the en
   mount(down);
   expect(screen.queryByText("On air")).not.toBeInTheDocument();
   expect(screen.getByText("Not confirmed")).toBeVisible();
-  expect(screen.getByText(/Take is unavailable until the engine is back/)).toBeVisible();
+  expect(screen.getByText(/Take unavailable\./)).toBeVisible();
 });
 
 // gaulatti/alcantara#694: dead air shows in the on-air strip, and the alarm names the action that cures it for
@@ -2591,7 +2594,7 @@ describe("dead air", () => {
       timeout: 4_000,
     });
     expect(screen.queryByRole("alert", { name: "Dead air" })).toBeNull();
-    expect(screen.getByText("Engine audio detected")).toBeVisible();
+    expect(within(statusDetail()).getByText("Engine audio detected")).toBeVisible();
   });
 
   it("shows no dead-air alarm while the output is audible", () => {

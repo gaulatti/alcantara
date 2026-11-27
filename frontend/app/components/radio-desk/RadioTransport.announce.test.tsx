@@ -35,7 +35,7 @@ it("announces a take with the song taken", async () => {
     fireEvent.keyDown(window, { key: " " });
   });
   expect(onTake).toHaveBeenCalledOnce();
-  expect(screen.getByRole("status")).toHaveTextContent(/Taken\s*Copper Season: waiting for the engine/);
+  expect(screen.getByRole("status")).toHaveTextContent(/Taken\s*Copper Season · awaiting engine/);
 });
 
 it("announces a confirmed stop once, and the next cue clears it", async () => {
@@ -70,10 +70,10 @@ it("announces the taken song on air once the engine confirms it, until the next 
   await act(async () => {
     fireEvent.keyDown(window, { key: " " });
   });
-  expect(status).toHaveTextContent(/waiting for the engine/);
+  expect(status).toHaveTextContent(/awaiting engine/);
   // Another item confirmed on air does not end the wait.
   view.rerender(<RadioTransport {...props} confirmedItemId="s9" />);
-  expect(status).toHaveTextContent(/waiting for the engine/);
+  expect(status).toHaveTextContent(/awaiting engine/);
   view.rerender(<RadioTransport {...props} confirmedItemId="s2" />);
   expect(status).toHaveTextContent(/^On air: Copper Season\.$/);
   expect(screen.getAllByRole("status")).toHaveLength(1);
@@ -89,7 +89,7 @@ it("announces the taken song on air once the engine confirms it, until the next 
   await act(async () => {
     fireEvent.keyDown(window, { key: " " });
   });
-  expect(status).toHaveTextContent(/waiting for the engine/);
+  expect(status).toHaveTextContent(/awaiting engine/);
   view.rerender(<RadioTransport {...props} confirmedItemId="s2" />);
   expect(status).toHaveTextContent(/^On air: Copper Season\.$/);
 });
@@ -108,9 +108,9 @@ it("stops naming the taken song once the engine confirms another item or nothing
     view.rerender(<RadioTransport {...props} confirmedItemId="s2" />);
     expect(status).toHaveTextContent(/^On air: Copper Season\.$/);
     view.rerender(<RadioTransport {...props} confirmedItemId={after} />);
-    // Back to what plays next (the fixture's next song happens to share the title), never On air.
+    // Back to quiet (what plays next is in the strip, not repeated here), never On air.
     expect(status).not.toHaveTextContent("On air:");
-    expect(status).toHaveTextContent(/^Next: /);
+    expect(status).toHaveTextContent(/^$/);
     view.unmount();
   }
 });

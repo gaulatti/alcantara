@@ -22,6 +22,9 @@
     var(--app-accent-red) 65%,
     var(--app-persgray-50)
   );
+  /* The radio desk's state colours: a saturated on-air red (the tally) and a dim green for all well. */
+  --desk-onair: #d7191f;
+  --desk-ok: #4f9a64;
   --app-dark-sand: var(--console-panel);
   --app-text-primary: var(--console-text);
   --app-text-secondary: var(--console-muted);
@@ -288,6 +291,63 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1px;
   background: var(--console-border);
+}
+.console-mixer-guests {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 8px 9px;
+  background: var(--console-panel);
+}
+/* The guest row's keys match the channel keys above them: one height, flat, uppercase legends. */
+.broadcast-console .console-mixer-guests button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--console-border);
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--console-muted);
+}
+.broadcast-console .console-mixer-guests button[aria-pressed="true"] {
+  color: var(--console-preview);
+  border-color: var(--console-preview);
+}
+.broadcast-console .console-mixer-guests .guest-strip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.broadcast-console .console-mixer-guests .guest-strip-row button {
+  min-width: 0;
+}
+.broadcast-console .console-mixer-guests .guest-strip-row button[aria-pressed="true"] {
+  color: #fff;
+  background: var(--desk-onair);
+  border-color: var(--desk-onair);
+}
+.broadcast-console .console-mixer-guests .guest-strip-cue {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--console-muted);
+}
+.broadcast-console .console-mixer-guests li {
+  font-size: 13px;
+}
+.broadcast-console .console-mixer-guests [role="group"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--console-muted);
 }
 .console-channel {
   padding: 12px 9px;
@@ -1390,10 +1450,435 @@
 }
 
 /* gaulatti/alcantara#879 item 7, at 1440: the guest list (the last panel of the tools column) sat 13 px below the fold.
-   The cartwall keeps its pads and scrolls inside a shorter box, so the guests, mixer and cartwall all fit above the fold. */
+   The output confidence panel has since left the column (its reading is the strip's status dot), so the cartwall shows
+   its pads whole again and the guests, mixer and cartwall still fit above the fold. */
 @media (min-width: 1440px) and (max-width: 1535px) {
   .radio-tools .radio-cartwall {
-    max-height: 190px;
+    max-height: 300px;
   }
 }
 
+
+/* The radio desk's on-air bar, as a broadcast automation's: fixed columns that never reflow, colour only for state
+   (on air red, armed amber, a fault), tabular numerals for every time. */
+.desk-strip {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr) 150px minmax(0, 240px) auto 84px auto;
+  align-items: center;
+  column-gap: 16px;
+  min-height: 72px;
+  padding: 8px 16px;
+  background: var(--console-canvas);
+  border-bottom: 1px solid var(--console-border);
+  color: var(--console-text);
+}
+.desk-strip[data-dead-air="true"] {
+  background: color-mix(in srgb, var(--desk-onair) 24%, var(--console-canvas));
+  border-bottom-color: var(--desk-onair);
+}
+.desk-lamp {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  border: 1px solid var(--console-border);
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 1.1;
+  color: var(--console-muted);
+  background: transparent;
+  border-color: color-mix(in srgb, var(--console-text) 28%, transparent);
+}
+/* The tally: solid saturated red with white text while on air, neutral-outlined otherwise. */
+.desk-lamp[data-tone="live"] {
+  color: #fff;
+  background: var(--desk-onair);
+  border-color: var(--desk-onair);
+  text-shadow: none;
+}
+.desk-lamp[data-tone="warn"] {
+  color: var(--console-preview);
+  border-color: color-mix(in srgb, var(--console-preview) 60%, transparent);
+}
+.desk-strip-lamp [role="status"] > button {
+  width: 100%;
+  min-height: 40px;
+  border-radius: 4px;
+  justify-content: center;
+  padding: 0 8px;
+}
+.desk-strip-now {
+  min-width: 0;
+}
+.desk-title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.desk-subtitle {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--console-muted);
+}
+.desk-position {
+  position: relative;
+  height: 6px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 1px;
+  background: var(--console-raised);
+}
+.desk-position[data-empty="true"] {
+  background: color-mix(in srgb, var(--console-raised) 50%, transparent);
+}
+.desk-position[data-dimmed="true"] {
+  opacity: 0.4;
+}
+.desk-position-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--console-text);
+}
+.desk-strip-count {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.desk-elapsed {
+  display: block;
+  font-size: 12px;
+  color: var(--console-muted);
+}
+.desk-countdown {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.desk-count-note {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--console-preview);
+}
+.desk-strip-next {
+  min-width: 0;
+  padding-left: 16px;
+  border-left: 1px solid var(--console-border);
+  font-size: 12px;
+}
+.desk-strip-next p {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.desk-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--console-muted);
+}
+.desk-status-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 8px;
+  border-radius: 4px;
+}
+.desk-status-button:hover {
+  background: var(--console-raised);
+}
+.desk-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background: var(--desk-ok);
+}
+.desk-dot[data-tone="warn"] {
+  background: var(--console-preview);
+}
+.desk-dot[data-tone="bad"] {
+  background: var(--desk-onair);
+}
+.desk-status-fault {
+  max-width: 220px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--console-preview);
+}
+.desk-status[data-tone="bad"] .desk-status-fault {
+  color: var(--desk-onair);
+}
+.desk-status-detail {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  min-width: 240px;
+  padding: 10px 12px;
+  border: 1px solid var(--console-border);
+  border-radius: 4px;
+  background: var(--console-panel);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 40%);
+}
+.desk-status-foot {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--console-muted);
+  font-variant-numeric: tabular-nums;
+}
+.desk-clock {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--console-text);
+}
+.desk-strip-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+@media (max-width: 1279px) {
+  .desk-strip {
+    grid-template-columns: 96px minmax(0, 1fr) 124px minmax(0, 180px) auto 76px auto;
+    column-gap: 12px;
+    padding: 8px 12px;
+  }
+  .desk-countdown {
+    font-size: 26px;
+  }
+}
+@media (max-width: 767px) {
+  .desk-strip {
+    grid-template-columns: 88px minmax(0, 1fr) auto;
+    row-gap: 6px;
+  }
+  .desk-strip-next,
+  .desk-clock {
+    display: none;
+  }
+  .desk-strip-controls {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Hardware-style keys: one height, one minimum width, the key cap inside, colour only for state. */
+.desk-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  min-width: 132px;
+  padding: 0 12px;
+  border: 1px solid var(--console-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--console-raised);
+  color: var(--console-text);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.desk-key:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--console-text) 35%, transparent);
+}
+.desk-key:disabled {
+  opacity: 0.45;
+}
+.desk-key[data-armed="true"] {
+  background: var(--desk-onair);
+  border-color: var(--desk-onair);
+  color: #fff;
+}
+.desk-key[data-active="true"] {
+  border-color: var(--desk-ok);
+  color: var(--desk-ok);
+}
+.desk-key[data-tone="danger"] {
+  color: var(--desk-onair);
+  border-color: color-mix(in srgb, var(--desk-onair) 60%, transparent);
+}
+.desk-key[data-tone="danger"] [data-testid="hold-fill"] {
+  background: color-mix(in srgb, var(--desk-onair) 45%, transparent);
+}
+.desk-key [data-testid="hold-fill"] {
+  background: color-mix(in srgb, var(--console-text) 25%, transparent);
+}
+/* State pills on the desk's bars are square, as a hardware legend, never rounded. */
+.desk-strip span[data-tone]:not(.desk-lamp),
+.desk-transport span[data-tone] {
+  border-radius: 3px;
+}
+.desk-strip [data-tone] > i,
+.desk-transport [data-tone] > i {
+  border-radius: 1px;
+}
+.desk-transport {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 16px;
+  min-height: 60px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--console-border);
+  background: var(--console-canvas);
+}
+.desk-transport-keys {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.desk-transport-state {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+.desk-state-arm {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  color: var(--console-preview);
+}
+.desk-state-hint {
+  color: var(--console-muted);
+  font-variant-numeric: tabular-nums;
+}
+.desk-fault-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--console-preview);
+}
+.desk-monitor {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.desk-monitor:focus {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.desk-monitor-volume {
+  width: 140px;
+}
+.desk-monitor-state {
+  min-width: 96px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--console-muted);
+}
+@media (max-width: 1279px) {
+  .desk-key {
+    min-width: 112px;
+  }
+  .desk-monitor-volume {
+    width: 96px;
+  }
+  .desk-monitor-state {
+    display: none;
+  }
+}
+@media (max-width: 767px) {
+  .desk-transport {
+    grid-template-columns: 1fr;
+    row-gap: 8px;
+  }
+  .desk-transport-keys {
+    flex-wrap: wrap;
+  }
+}
+.desk-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  color: var(--console-muted);
+}
+
+/* The desk's rotation list, as an automation log: one line per song, state in its own column and as a row tint, never
+   as a pill, and the per-row tools shown on the row's hover or focus (always on a touch screen). */
+.broadcast-console .playlist-row.desk-row {
+  min-height: 30px;
+  border-left: 3px solid transparent;
+  background: transparent;
+}
+.broadcast-console .playlist-row.desk-row[data-active="true"] {
+  background: color-mix(in srgb, var(--console-text) 5%, transparent);
+  border-left-color: transparent;
+}
+.broadcast-console .playlist-row.desk-row:hover {
+  background: color-mix(in srgb, var(--console-text) 6%, transparent);
+}
+.broadcast-console .playlist-row.desk-row[data-desk-state="on-air"],
+.broadcast-console .playlist-row.desk-row[data-desk-state="after-jingle"] {
+  background: color-mix(in srgb, var(--desk-onair) 20%, transparent);
+  border-left-color: var(--desk-onair);
+}
+.broadcast-console .playlist-row.desk-row[data-desk-state="next"] {
+  border-left-color: var(--console-preview);
+}
+.broadcast-console .playlist-row.desk-row button {
+  min-height: 24px;
+}
+@media (hover: hover) {
+  .broadcast-console .playlist-row.desk-row:not(:hover):not(:focus-within) .desk-hover {
+    opacity: 0;
+  }
+}
+.desk-row-state {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--console-muted);
+}
+.desk-row-state[data-state="on-air"] {
+  color: #fff;
+}
+.desk-row-state[data-state="next"],
+.desk-row-state[data-state="after-jingle"] {
+  color: var(--console-preview);
+}
+
+/* A timed block's listen control: the transport's key and volume, in a one-row panel. */
+.desk-listen {
+  padding: 8px 12px;
+}
