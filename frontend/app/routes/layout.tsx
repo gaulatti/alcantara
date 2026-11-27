@@ -10,6 +10,14 @@ import {
   Clock3,
   Clapperboard,
   Code2,
+  FileText,
+  Film,
+  ListChecks,
+  ListOrdered,
+  Share2,
+  SkipForward,
+  Waves,
+  Workflow,
   Eye,
   ExternalLink,
   Headphones,
@@ -79,16 +87,17 @@ interface BroadcastSettings {
   updatedAt: string;
 }
 
-const NAVIGATION_ICONS: Record<string, ReactNode> = {
+// One icon per item where possible: the collapsed rail shows only these, so a repeated icon reads as the same place.
+export const NAVIGATION_ICONS: Record<string, ReactNode> = {
   control: <SlidersHorizontal size={17} />,
   rundown: <List size={17} />,
-  'radio-log': <List size={17} />,
-  'radio-workflow-fixture': <RadioTower size={17} />,
-  'radio-continuous-fixture': <RadioTower size={17} />,
-  'radio-skipped-fixture': <RadioTower size={17} />,
+  'radio-log': <FileText size={17} />,
+  'radio-workflow-fixture': <Workflow size={17} />,
+  'radio-continuous-fixture': <Waves size={17} />,
+  'radio-skipped-fixture': <SkipForward size={17} />,
   calls: <PhoneCall size={17} />,
   sources: <Video size={17} />,
-  destinations: <RadioTower size={17} />,
+  destinations: <Share2 size={17} />,
   scenes: <Clapperboard size={17} />,
   'scene-templates': <LayoutTemplate size={17} />,
   media: <Images size={17} />,
@@ -99,9 +108,9 @@ const NAVIGATION_ICONS: Record<string, ReactNode> = {
   'radio-distribution': <Cable size={17} />,
   'component-catalog': <BookOpen size={17} />,
   'console-fixture': <Code2 size={17} />,
-  'rundown-desk-fixture': <List size={17} />,
-  'rundown-filler-fixture': <List size={17} />,
-  'media-fixture': <Images size={17} />,
+  'rundown-desk-fixture': <ListChecks size={17} />,
+  'rundown-filler-fixture': <ListOrdered size={17} />,
+  'media-fixture': <Film size={17} />,
   'labels-fixture': <Tag size={17} />,
   'access-fixture': <KeyRound size={17} />
 };
