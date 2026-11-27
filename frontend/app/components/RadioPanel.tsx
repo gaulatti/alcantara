@@ -9,6 +9,7 @@ import {
   ArrowDown,
   Trash2,
   ListPlus,
+  Search,
 } from "lucide-react";
 import { ConsolePanel } from "./ConsoleSurface";
 import { Link } from "react-router";
@@ -648,6 +649,15 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     {addingFillers ? "Done adding" : "Add fillers"}
                   </Button>
                 )}
+                {/* The on-screen way to the song search: / opens it on a keyboard, and a phone has none. */}
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="secondary"
+                  onClick={() => setFindingSong(true)}
+                >
+                  <Search size={13} /> Search songs
+                </Button>
                 <Link
                   to="/flight"
                   className="inline-flex items-center gap-1 text-sm"
@@ -939,6 +949,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   ) : (
                     <ProgramSongSequenceEditor
                       sequence={rotation}
+                      undoScope={programId}
                       songCatalog={songCatalog}
                       programSongPlayback={programSongPlayback}
                       onChange={(next) => {

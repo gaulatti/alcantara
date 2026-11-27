@@ -1925,6 +1925,18 @@ it("takes the next song with N then Space, and never on one key press", async ()
   );
 });
 
+it("opens the song search from its on-screen button, the same dialog as /", async () => {
+  const p = deskProps();
+  mount(p);
+  fireEvent.click(screen.getByRole("button", { name: "Search songs" }));
+  const dialog = await screen.findByRole("dialog", { name: "Play a song now" });
+  expect(
+    within(dialog).getByRole("textbox", { name: "Search the rotation and the library" }),
+  ).toBeInTheDocument();
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+});
+
 it("opens the song search with / and cues a rotation song next, or takes a library song now after confirming", async () => {
   const p = deskProps();
   mount(p);

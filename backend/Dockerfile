@@ -25,6 +25,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY backend/package.json backend/
 COPY frontend/package.json frontend/
 COPY infra/aws/package.json infra/aws/
+COPY e2e/package.json e2e/
 RUN pnpm install --frozen-lockfile --filter backend
 
 # Copy app source and build

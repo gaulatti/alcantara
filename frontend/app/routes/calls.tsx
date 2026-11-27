@@ -9,7 +9,7 @@ import { apiUrl } from '../utils/apiBaseUrl';
 import type { Route } from './+types/calls';
 import { AppPage } from '../components/AppPage';
 import { GuestStrip } from '../components/GuestStrip';
-import { deskSlots, latestCue, stripState } from '../utils/callerDesk';
+import { deskSlots, emptySlotLabel, latestCue, stripState } from '../utils/callerDesk';
 import '../components/CallerDesk.css';
 
 type Command = {
@@ -58,6 +58,23 @@ async function readError(response: Response) {
     return parsed.message || text;
   } catch {
     return text || `Request failed (${response.status})`;
+  }
+}
+
+/**
+ * Copies the link inside the tap that asked for it. The text arrives as a promise, so iOS Safari and Android
+ * Chrome keep the user gesture while the invitation is created. False when the browser refuses; the link stays on screen.
+ */
+async function copyLinkFromTap(created: Promise<{ url: string }>): Promise<boolean> {
+  if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) return false;
+  // A failed link is reported by the create itself; this copy only needs to stay quiet about it.
+  const blob = created.then((invitation) => new Blob([invitation.url], { type: 'text/plain' }));
+  blob.catch(() => undefined);
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -153,25 +170,39 @@ export default function CallsRoute() {
     }
   };
 
+  // One tap creates the link and copies it. The copy starts in the same tap (see copyLinkFromTap); a refused copy
+  // leaves the link on screen with a Copy button.
   const createInvitation = () =>
     run('create', async () => {
-      const response = await authFetch('/webrtc/invitations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          programId,
-          displayName,
-          expiresInHours: Number(expiresInHours)
-        })
-      });
-      if (!response.ok) throw new Error(await readError(response));
-      const created = (await response.json()) as Invitation & {
-        invitationPath: string;
-      };
-      setCreatedUrl(`${window.location.origin}${created.invitationPath}`);
+      const pending = requestInvitation();
+      const copy = copyLinkFromTap(pending);
+      const created = await pending;
+      setCreatedUrl(created.url);
       setDisplayName('');
-      setNotice(`Guest slot ${created.slotNumber} is ready. Copy the private URL now.`);
+      const copied = await copy;
+      setNotice(
+        copied
+          ? `Guest slot ${created.slotNumber} is ready. The private link is copied: send it to the guest.`
+          : `Guest slot ${created.slotNumber} is ready. Copy the private link below and send it to the guest.`
+      );
     });
+
+  const requestInvitation = async () => {
+    const response = await authFetch('/webrtc/invitations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        programId,
+        displayName,
+        expiresInHours: Number(expiresInHours)
+      })
+    });
+    if (!response.ok) throw new Error(await readError(response));
+    const created = (await response.json()) as Invitation & {
+      invitationPath: string;
+    };
+    return { slotNumber: created.slotNumber, url: `${window.location.origin}${created.invitationPath}` };
+  };
 
   const mutateInvitation = (id: string, action: 'replace' | 'revoke') =>
     run(`${action}-${id}`, async () => {
@@ -393,15 +424,19 @@ export default function CallsRoute() {
               </div>
             ) : loadState === 'error' ? (
               <ErrorState title='Guest calls could not be loaded' description={loadError ?? 'The guest-call list could not be loaded. Check the connection and try again.'} onRetry={() => void load()} retryLabel='Retry' />
-            ) : participants.length === 0 ? (
-              <Empty title='No assigned guest slots' description='Name a guest, then create a private link to reserve the first reusable slot.' action={createLink} />
+            ) : activeInvitations.length === 0 ? (
+              <Empty
+                title='No assigned guest slots'
+                description='To invite a guest: type their name, choose how long the link lasts, then press Create private link. The link is copied for you to send. The guest opens it on their phone and joins.'
+                action={createLink}
+              />
             ) : (
               slots.map(({ slot, invitation, participant }) => {
                 if (!participant || !invitation) {
                   return (
                     <div key={slot} className='guest-strip guest-strip-free' aria-label={`Slot ${slot}: free`}>
                       <span className='guest-strip-slot'>{String(slot).padStart(2, '0')}</span>
-                      <span className='text-xs text-text-secondary'>{invitation ? `${invitation.displayName} · not joined` : 'Free'}</span>
+                      <span className='text-xs text-text-secondary'>{invitation ? `${invitation.displayName} · ${emptySlotLabel(invitation.status)}` : 'Free'}</span>
                     </div>
                   );
                 }

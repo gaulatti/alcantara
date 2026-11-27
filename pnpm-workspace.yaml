@@ -2,6 +2,7 @@ packages:
   - 'frontend'
   - 'backend'
   - 'infra/aws'
+  - 'e2e'
 allowBuilds:
   '@nestjs/core': true
   '@prisma/engines': true

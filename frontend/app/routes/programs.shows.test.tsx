@@ -777,6 +777,30 @@ it("deletes a show after confirmation and moves the selection off it", async () 
   await confirmDelete();
   await waitFor(() => expect(selection.set).toHaveBeenCalledWith("main"));
 
+  // A show on air is not deleted, and the server says why.
+  const onAir = "This show is on air. Take it off air before deleting it.";
+  shows = [show("radio one", { type: "radio" })];
+  routes["DELETE /program/radio one"] = () =>
+    new Response(JSON.stringify({ message: onAir }), { status: 409, headers: { "Content-Type": "application/json" } });
+  cleanup();
+  open();
+  await loaded();
+  fireEvent.click(within(card("radio one")).getByRole("button", { name: "Actions for radio one" }));
+  fireEvent.click(within(card("radio one")).getByText("Delete show"));
+  await confirmDelete();
+  await toast(onAir);
+
+  const filler = "Its filler is on air. Stop it before deleting.";
+  routes["DELETE /program/radio one"] = () =>
+    new Response(JSON.stringify({ message: filler }), { status: 409, headers: { "Content-Type": "application/json" } });
+  cleanup();
+  open();
+  await loaded();
+  fireEvent.click(within(card("radio one")).getByRole("button", { name: "Actions for radio one" }));
+  fireEvent.click(within(card("radio one")).getByText("Delete show"));
+  await confirmDelete();
+  await toast(filler);
+
   shows = [show("radio one", { type: "radio" })];
   for (const response of [
     new Response("In use", { status: 409 }),
