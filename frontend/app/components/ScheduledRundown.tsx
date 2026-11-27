@@ -66,6 +66,19 @@ function formatClock(seconds: number): string {
   return `+${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
+/** A check result as the page stores it: its issue and warning lists are always arrays, so rendering never reads undefined. */
+function checkedResult<T extends { issues?: unknown; warnings?: unknown }>(
+  result: T,
+  forRevision: string,
+): T & { issues: string[]; warnings: string[]; forRevision: string } {
+  return {
+    ...result,
+    issues: Array.isArray(result.issues) ? (result.issues as string[]) : [],
+    warnings: Array.isArray(result.warnings) ? (result.warnings as string[]) : [],
+    forRevision,
+  };
+}
+
 function message(error: unknown): string {
   return error instanceof Error ? error.message : "Request failed";
 }
@@ -253,10 +266,7 @@ export default function ScheduledRundown({
     try {
       const updated = dirty ? await save() : selected;
       const result = await preflightFlightSequence(programId, updated.id);
-      setPreflight({
-        ...result,
-        forRevision: `${updated.id}:${updated.revision}`,
-      });
+      setPreflight(checkedResult(result, `${updated.id}:${updated.revision}`));
       if (result.ready) {
         const notSetUp =
           result.engine === "not-configured" || result.engine === "disabled";
@@ -305,7 +315,7 @@ export default function ScheduledRundown({
       }
       setPreflight(
         after
-          ? { ...after, forRevision: `${published.id}:${published.revision}` }
+          ? checkedResult(after, `${published.id}:${published.revision}`)
           : null,
       );
       if (after?.engine === "not-configured" || after?.engine === "disabled")
