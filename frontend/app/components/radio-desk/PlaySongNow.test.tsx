@@ -119,3 +119,9 @@ it("ignores other keys in the dialog", () => {
   expect(props.onTakeNow).not.toHaveBeenCalled();
   expect(props.onClose).not.toHaveBeenCalled();
 });
+
+it("closes from a button, for a screen with no Escape key", () => {
+  const props = open();
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  expect(props.onClose).toHaveBeenCalledOnce();
+});

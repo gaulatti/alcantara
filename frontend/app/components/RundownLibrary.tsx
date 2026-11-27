@@ -93,6 +93,8 @@ export function RundownLibrary({
         Math.min(Math.max(index + step, 0), Math.max(rows.length - 1, 0)),
       );
     } else if (event.key === "Enter" && !event.metaKey && !event.ctrlKey) {
+      // Enter on a row's Add button presses that button, not the highlighted row.
+      if (event.target instanceof HTMLButtonElement) return;
       event.preventDefault();
       add(current?.entry);
     }
@@ -201,6 +203,8 @@ export function RundownLibrary({
                   event.stopPropagation();
                   add(row.entry);
                 }}
+                // A double tap is two adds, not also the row's own double-click add.
+                onDoubleClick={(event) => event.stopPropagation()}
               >
                 Add
               </button>

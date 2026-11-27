@@ -92,3 +92,11 @@ describe("nextUp and the song the engine cued", () => {
     expect(nextUp({ sequence: gone, queue: [], playback: null })).toMatchObject({ itemId: "a" });
   });
 });
+
+describe("nextUp after a claim stops or fails", () => {
+  it("names the queue head again once nothing plays, though the report still names it", () => {
+    const queue = [{ id: "q1", itemId: "c", enqueuedAt: 1 }, { id: "q2", itemId: "b", enqueuedAt: 2 }];
+    const stopped = { ...airing("q1", "c:playback"), isPlaying: false } as ProgramSongPlaybackState;
+    expect(nextUp({ sequence, queue, playback: stopped })).toMatchObject({ itemId: "c", entryId: "q1" });
+  });
+});

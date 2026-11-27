@@ -126,3 +126,12 @@ it("clears an armed cue with a button, for a touch screen with no Esc", () => {
   expect(take).toBeDisabled();
 });
 
+it("does not take the cued song when Space is pressed on Clear cue", async () => {
+  const onTake = vi.fn(async () => undefined);
+  render(<RadioTransport next={next} onTake={onTake} onTakeOffAir={vi.fn()} />);
+  fireEvent.keyDown(window, { key: "n" });
+  await act(async () => {
+    fireEvent.keyDown(screen.getByRole("button", { name: "Clear cue" }), { key: " " });
+  });
+  expect(onTake).not.toHaveBeenCalled();
+});

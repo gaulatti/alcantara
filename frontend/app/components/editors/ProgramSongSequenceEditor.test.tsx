@@ -577,6 +577,23 @@ describe("ProgramSongSequenceEditor remove", () => {
     expect(shuffled.onChange.mock.lastCall![0]).toMatchObject({ activeItemId: "c" });
   });
 
+  // A Play Next or library song on air leaves the cursor on a row that has not aired: removing it moves forward.
+  it("moves a pending cursor forward and marks it cued when another song is on air", () => {
+    for (const playback of [
+      { isPlaying: true, token: "a:7", audioUrl: "https://example.test/a.mp3", queueEntryId: "q1" },
+      { isPlaying: true, token: "7:library", audioUrl: "https://example.test/library.mp3" },
+    ]) {
+      const view = editor({
+        sequence: { mode: "autoplay", activeItemId: "b", items: [preset("a"), preset("b"), preset("c")] },
+        view: "queue",
+        programSongPlayback: playback,
+      });
+      fireEvent.click(within(rows()[1]).getByLabelText(/^Remove /));
+      expect(view.onChange.mock.lastCall![0]).toMatchObject({ activeItemId: "c", cuedItemId: "c" });
+      cleanup();
+    }
+  });
+
   it("names the song each Remove button removes", () => {
     editor({
       sequence: { mode: "manual", activeItemId: "a", items: [preset("a"), preset("b")] },

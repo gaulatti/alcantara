@@ -2230,6 +2230,23 @@ describe('SongExecutionEngine Play Next after Take now', () => {
     expect(queueActions(ctx)).toContain('restart-duplicate-dropped');
   });
 
+  it('drops nothing when a Stop lands while Palazzo is being read', async () => {
+    const ctx = setup();
+    accepting(ctx, { duplicate: true });
+    await startQueued(ctx, restored);
+    await manual(ctx);
+    ctx.palazzo.state = idle(9);
+    await tick(ctx);
+    jest.advanceTimersByTime(NO_PLAYBACK_BOUND_MS);
+    ctx.currentState.mockImplementationOnce(() => {
+      ctx.engine.handleStopSong('radio-1');
+      return Promise.resolve(ctx.palazzo.state);
+    });
+    await expect(ctx.engine.checkPlayback()).resolves.toBeUndefined();
+    await flush(80);
+    expect(queueActions(ctx)).not.toContain('restart-duplicate-dropped');
+  });
+
   it('in manual mode, blocks the queue when the dropped entry cannot be saved', async () => {
     const ctx = setup();
     accepting(ctx, { duplicate: true });

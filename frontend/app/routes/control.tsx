@@ -235,6 +235,7 @@ export default function Control() {
   const consoleWorkspace = consolePreferences.profile.workspace;
   // The rotation did not load: its surfaces show the notice and every save is refused until a load succeeds.
   const [rotationLoadFailed, setRotationLoadFailed] = useState(false);
+  const rotationLoadFailedRef = useRef(false);
   const [programAudioBusSettings, setProgramAudioBusSettings] =
     useState<ProgramAudioBusSettings>({
       songSequence: createProgramSongSequence("manual"),
@@ -1690,7 +1691,8 @@ export default function Control() {
       if (targetProgramId !== activeProgramIdRef.current) {
         return;
       }
-      if (!shouldApplyControlUpdatePayload(payload, "audioBus")) {
+      // A failed load blanked the rotation, so the next answer is taken even at a version already seen.
+      if (!shouldApplyControlUpdatePayload(payload, "audioBus") && !rotationLoadFailedRef.current) {
         return;
       }
       const nextMixerLevels = normalizeBroadcastSettingsPayload(
@@ -1709,6 +1711,7 @@ export default function Control() {
         songSequence: normalizedSongSequence,
         songQueue: normalizeProgramSongQueue(payload?.songQueue),
       });
+      rotationLoadFailedRef.current = false;
       setRotationLoadFailed(false);
     } catch (err) {
       if (targetProgramId !== activeProgramIdRef.current) {
@@ -1719,6 +1722,7 @@ export default function Control() {
       const fallbackMixerLevels = normalizeBroadcastSettingsPayload(null);
       mixerLevelsRef.current = fallbackMixerLevels;
       setMixerLevels(fallbackMixerLevels);
+      rotationLoadFailedRef.current = true;
       setRotationLoadFailed(true);
       setProgramAudioBusSettings({
         songSequence: {

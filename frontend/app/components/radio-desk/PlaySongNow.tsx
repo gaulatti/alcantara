@@ -174,6 +174,10 @@ export function PlaySongNow({
         <KeyCap keys={["↑", "↓"]} /> select <KeyCap>Enter</KeyCap> cue next{" "}
         <KeyCap keys={["Shift", "Enter"]} /> take now (then confirm within 5 s){" "}
         <KeyCap>Esc</KeyCap> close
+        {/* A touch screen has no Escape. */}
+        <button type="button" onClick={onClose} className="ml-auto h-7 rounded-[6px] border border-sand/50 px-2 text-xs font-semibold">
+          Close
+        </button>
       </p>
       {armed ? (
         <p role="status" className="mt-1 text-xs text-accent-yellow">

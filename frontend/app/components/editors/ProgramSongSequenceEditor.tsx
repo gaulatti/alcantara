@@ -273,7 +273,9 @@ export function ProgramSongSequenceEditor({
       // Called only from the items map, so index always names an existing item.
       const removed = sequence.items[index];
       const nextItems = sequence.items.filter((_, i) => i !== index);
-      const current = editorActiveItemId ?? sequence.activeItemId;
+      // A Play Next song on air did not move the cursor: only the cursor says which row is current then.
+      const queued = !!programSongPlayback?.queueEntryId;
+      const current = queued ? sequence.activeItemId : (editorActiveItemId ?? sequence.activeItemId);
       const removedCurrent = current !== null && current === removed.id;
       let nextActive: string | null;
       // The engine reads the cursor as the song on air and arms the one after it. Removing the song on air from an
@@ -283,7 +285,9 @@ export function ProgramSongSequenceEditor({
       const place = order.findIndex((i) => i.id === removed.id);
       const predecessor =
         place > 0 ? order[place - 1] : sequence.loop !== false && order.length > 1 ? order[order.length - 1] : null;
-      const removedOnAir = removedCurrent && isAutomatic && programSongPlayback?.isPlaying === true;
+      // Only the rotation's own song on air has aired; a pending cursor row removed under another song moves forward.
+      const removedOnAir =
+        removedCurrent && isAutomatic && programSongPlayback?.isPlaying === true && !queued && editorActiveItemId === removed.id;
       if (nextItems.length === 0) nextActive = null;
       else if (removedOnAir && predecessor) nextActive = predecessor.id;
       // nextItems is non-empty past the first branch, and the index is clamped to it.
@@ -293,6 +297,8 @@ export function ProgramSongSequenceEditor({
         ...sequence,
         items: nextItems,
         activeItemId: nextActive,
+        // The cursor moved on to the row after the removed one, which has not aired: the engine and the desk are told.
+        ...(removedCurrent && !(removedOnAir && predecessor) && index < nextItems.length ? { cuedItemId: nextActive! } : {}),
         startedAt: isAutomatic && !removedCurrent ? resolveAutoplayStartedAt() : Date.now()
       });
       // The removal is saved at once. Undo puts the song back at its place for UNDO_MS, and survives a reload in that window.
@@ -300,7 +306,7 @@ export function ProgramSongSequenceEditor({
       setPendingUndo(undo);
       writePendingUndo(undoKey, undo);
     },
-    [applySequence, editorActiveItemId, isAutomatic, programSongPlayback?.isPlaying, resolveAutoplayStartedAt, sequence, undoKey]
+    [applySequence, editorActiveItemId, isAutomatic, programSongPlayback?.isPlaying, programSongPlayback?.queueEntryId, resolveAutoplayStartedAt, sequence, undoKey]
   );
 
   const undoRemove = useCallback(() => {

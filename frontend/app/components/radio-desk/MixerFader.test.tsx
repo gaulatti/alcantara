@@ -94,3 +94,15 @@ it("steps one decibel with the arrow keys, from silence too, and never jumps wit
   fireEvent.keyDown(silent.slider, { key: "ArrowUp" });
   expect(silent.onChange).toHaveBeenLastCalledWith(dbToFader(-79));
 });
+
+it("starts no drag from a right or control click, and ends one that loses the pointer", () => {
+  const { onChange, handle } = mount(0.5);
+  fireEvent.pointerDown(handle, { clientX: 300, pointerId: 1, button: 2 });
+  fireEvent.pointerMove(handle, { clientX: 320, pointerId: 1 });
+  fireEvent.pointerDown(handle, { clientX: 300, pointerId: 2, ctrlKey: true });
+  fireEvent.pointerMove(handle, { clientX: 320, pointerId: 2 });
+  fireEvent.pointerDown(handle, { clientX: 300, pointerId: 3 });
+  fireEvent.lostPointerCapture(handle, { pointerId: 3 });
+  fireEvent.pointerMove(handle, { clientX: 320, pointerId: 3 });
+  expect(onChange).not.toHaveBeenCalled();
+});

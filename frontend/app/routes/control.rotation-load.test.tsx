@@ -138,3 +138,26 @@ it("keeps retrying a failed rotation load past a failed retry", async () => {
   expect((await screen.findAllByText("Fictional opener", {}, { timeout: 12000 })).length).toBeGreaterThan(0);
   expect(attempts).toBeGreaterThanOrEqual(3);
 }, 20000);
+
+// The answer that follows a failed load carries a version already seen; dropped as stale, it left the notice for good.
+it("loads again from an answer at the version already seen", async () => {
+  const loaded = () =>
+    Response.json({
+      songSequence: { mode: "manual", items: [song("s1", "Fictional opener", 11)], activeItemId: "s1", intervalMs: 4000, loop: true, startedAt: 0 },
+      songQueue: [],
+      version: 3,
+    });
+  let attempts = 0;
+  server.answer("GET /program/main/audio-bus", () => {
+    attempts += 1;
+    return attempts === 1 ? loaded() : attempts === 2 ? new Response("down", { status: 500 }) : loaded();
+  });
+  server.answer("PUT /program/main/audio-bus", () => new Response("refused", { status: 409 }));
+  render(view());
+  expect((await screen.findAllByText("Fictional opener", {}, { timeout: 5000 })).length).toBeGreaterThan(0);
+  // A refused save reloads the rotation, and that load fails.
+  fireEvent.click(screen.getByRole("button", { name: "Autoplay" }));
+  expect(await screen.findByText("Couldn't load the rotation", {}, { timeout: 5000 })).toBeVisible();
+  await waitFor(() => expect(screen.queryByText("Couldn't load the rotation")).toBeNull(), { timeout: 10000 });
+  expect(screen.getAllByText("Fictional opener").length).toBeGreaterThan(0);
+}, 25000);

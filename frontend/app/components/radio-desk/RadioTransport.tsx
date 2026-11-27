@@ -121,6 +121,8 @@ export function RadioTransport({
         event.preventDefault();
         cue();
       } else if (event.key === " ") {
+        // Space on "Clear cue" clears it; taking the song there would do the opposite.
+        if (event.target instanceof HTMLElement && event.target.dataset.ownSpace) return;
         // Space also presses a focused button; the transport owns it only when a cue is armed.
         if (armed || !(event.target instanceof HTMLButtonElement)) {
           event.preventDefault();
@@ -164,6 +166,7 @@ export function RadioTransport({
         // Esc clears a cue on a keyboard; a touch screen has no Esc, so the clear is a button too.
         <button
           type="button"
+          data-own-space="true"
           onClick={() => {
             disarm();
             setNote(null);

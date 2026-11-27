@@ -77,8 +77,10 @@ export function nextUp({
   // The entry on air stays in the queue until it ends (PlayNextQueue marks it Playing): it is not next (walk part 4).
   // A playback that reports no queue entry at all (an older backend) is matched by position: the head is on air when
   // its song is. An explicit null says the song did not come from the queue, so a queued replay of it still shows.
-  const onAirEntryId =
-    playback?.queueEntryId !== undefined
+  // A report that nothing plays still names the entry that last played: a failed or stopped claim is next again.
+  const onAirEntryId = !playback?.isPlaying
+    ? null
+    : playback.queueEntryId !== undefined
       ? playback.queueEntryId
       : current && queue[0]?.itemId === current.id
         ? queue[0].id

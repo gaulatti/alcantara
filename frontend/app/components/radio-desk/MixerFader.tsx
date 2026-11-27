@@ -65,6 +65,8 @@ export function MixerFader({
         }}
         onPointerDown={(event) => {
           event.preventDefault();
+          // A right or control click opens a menu, whose release the handle may never see.
+          if (event.button > 0 || event.ctrlKey) return;
           event.currentTarget.setPointerCapture?.(event.pointerId);
           drag.current = { x: event.clientX, value, pointerId: event.pointerId };
         }}
@@ -78,6 +80,9 @@ export function MixerFader({
           if (drag.current?.pointerId === event.pointerId) drag.current = null;
         }}
         onPointerCancel={() => {
+          drag.current = null;
+        }}
+        onLostPointerCapture={() => {
           drag.current = null;
         }}
       />

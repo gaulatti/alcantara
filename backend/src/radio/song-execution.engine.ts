@@ -528,12 +528,14 @@ function moveCursorOffRemovedLeaves(
   sequence: ProgramSongSequence,
   wanted: ReadonlySet<string>,
   leafCount: number,
+  /** A Play Next or catalog song is on air: it never moved the cursor, which is on a song that has not aired. */
+  cursorPending: boolean,
 ): string | null {
   const active = activeProgramSongLeafId(sequence);
   const cued =
     sequence.cuedItemId !== undefined &&
     sequence.cuedItemId === sequence.activeItemId;
-  if (active && !cued) {
+  if (active && !cued && !cursorPending) {
     const order = leavesInPlayOrder(sequence);
     const place = order.indexOf(active);
     const candidates = [
@@ -1183,7 +1185,12 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
             throw new BadRequestException(
               `Leaf ${active} is the active leaf; set keep_rotation to move the rotation to the next leaf`,
             );
-          cursorMovedTo = moveCursorOffRemovedLeaves(base, wanted, known.size);
+          cursorMovedTo = moveCursorOffRemovedLeaves(
+            base,
+            wanted,
+            known.size,
+            this.cursorPendingBehindSong(programId),
+          );
         }
         const before = known.size;
         const removed = removeProgramSongLeavesInPlace(base, wanted);
@@ -1217,7 +1224,12 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           const liveActive = activeProgramSongLeafId(current);
           if (liveActive && wanted.has(liveActive)) {
             try {
-              moveCursorOffRemovedLeaves(current, wanted, known.size);
+              moveCursorOffRemovedLeaves(
+                current,
+                wanted,
+                known.size,
+                this.cursorPendingBehindSong(programId),
+              );
             } catch {
               // Nothing left to move to: the removal resets the cursor, as before.
             }
@@ -1233,6 +1245,15 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         'The playlist kept changing; nothing was removed, try again',
       );
     });
+  }
+
+  /** Whether the song on air is one that never moved the cursor (a Play Next entry or a catalog pick). */
+  private cursorPendingBehindSong(programId: string): boolean {
+    const song = this.states.get(programId)?.activeSong;
+    return (
+      !!song &&
+      (!!song.queueEntryId || song.itemId.startsWith(CATALOG_ITEM_PREFIX))
+    );
   }
 
   private async withQueueMutationLock<T>(
@@ -1953,7 +1974,13 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       if (now - state.noPlaybackSince < NO_PLAYBACK_BOUND_MS) continue;
       state.noPlaybackSince = null;
       if (!automatic) {
-        this.dropUnairedRestoredClaim(programId, state, state.activeSong!);
+        // Read again: a Stop or a take can land while Palazzo's state was being read.
+        const claim = state.activeSong;
+        if (
+          claim?.unconfirmedDuplicate &&
+          claim.authoritativeStartedAt === null
+        )
+          this.dropUnairedRestoredClaim(programId, state, claim);
         continue;
       }
       this.logger.warn(
@@ -3665,10 +3692,17 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   ): { next: ProgramSongSequence | null; hasSuccessor: boolean } {
     const next = sequence ? normalizeProgramSongSequence(sequence) : null;
     const isAutomatic = next?.mode === 'autoplay' || next?.mode === 'shuffle';
+    // The ended song was removed while on air and the cursor was cued on one that has not aired.
+    const removedWithCursorCued =
+      !!next?.cuedItemId &&
+      next.cuedItemId === next.activeItemId &&
+      !findUniqueProgramSongLeafById(next, endedSong.itemId);
     // Queue entries and songs picked from outside the playlist never moved
     // the cursor, which already points at the pending successor.
     const hasSuccessor =
-      endedSong.queueEntryId || endedSong.itemId.startsWith(CATALOG_ITEM_PREFIX)
+      endedSong.queueEntryId ||
+      endedSong.itemId.startsWith(CATALOG_ITEM_PREFIX) ||
+      removedWithCursorCued
         ? Boolean(isAutomatic && resolveProgramSongLeaf(next))
         : Boolean(
             isAutomatic &&

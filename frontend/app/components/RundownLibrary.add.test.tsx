@@ -49,3 +49,14 @@ it("adds only songs with a recipe selected, and disables the Add button on a cli
   fireEvent.click(screen.getByRole("button", { name: "Add Harbor Song to the rundown" }));
   expect(onAddRecipe).toHaveBeenCalledWith(3, 1);
 });
+
+it("adds once per tap, and leaves Enter on an Add button to that button", () => {
+  const onAdd = vi.fn();
+  render(<RundownLibrary songs={songs} clips={clips} disabled={false} onAdd={onAdd} />);
+  const button = screen.getByRole("button", { name: "Add Harbor Song to the rundown" });
+  fireEvent.doubleClick(button);
+  expect(onAdd).not.toHaveBeenCalled();
+  // Not cancelled: the browser then clicks the focused button, which adds its own row.
+  expect(fireEvent.keyDown(button, { key: "Enter" })).toBe(true);
+  expect(onAdd).not.toHaveBeenCalled();
+});

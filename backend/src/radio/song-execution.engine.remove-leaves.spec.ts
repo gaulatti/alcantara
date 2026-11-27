@@ -226,6 +226,33 @@ describe('SongExecutionEngine.removeSongLeaves (#327)', () => {
     expect(activeProgramSongLeafId(live)).toBe('d');
   });
 
+  // A Play Next or catalog song on air never moved the cursor: the cursor row has not aired.
+  it.each([
+    ['a Play Next song', { queueEntryId: 'q9', itemId: 'e' }],
+    ['a catalog pick', { queueEntryId: null, itemId: 'catalog:9' }],
+  ])('moves a pending cursor forward under %s, never back to an aired song', async (_name, song) => {
+    const h = harness();
+    h.engine.handleSequenceUpdated('radio-1', { ...stored(), activeItemId: 'b' });
+    (h.engine as any).states.get('radio-1').activeSong = song;
+    const result = await remove(h, ['b'], { keepRotation: true });
+    expect(result.cursorMovedTo).toBe('c');
+    expect(result.songSequence.cuedItemId).toBe(result.songSequence.activeItemId);
+  });
+
+  it('plays the cued song when the removed song on air ends, not the one after it', () => {
+    const h = harness();
+    const left = {
+      ...stored(),
+      loop: false,
+      items: stored().items.slice(1),
+      activeItemId: 'b',
+      cuedItemId: 'b',
+    };
+    const { next, hasSuccessor } = (h.engine as any).sequenceAfterEnd(left, { itemId: 'a', queueEntryId: null });
+    expect(hasSuccessor).toBe(true);
+    expect(activeProgramSongLeafId(next)).toBe('b');
+  });
+
   it('refuses when no leaf is left to move the rotation to', async () => {
     const row = {
       programId: 'radio-1',
