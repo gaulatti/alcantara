@@ -35,7 +35,7 @@ Chromium's Local Network Access check would hold a page's connection to LiveKit 
 | Variable | Meaning |
 | --- | --- |
 | `ALCANTARA_API_URL`, `ALCANTARA_APP_URL` | The backend and frontend origins. |
-| `ALCANTARA_PROGRAM_ID` | The program whose call room is used (default `main`). |
+| `ALCANTARA_PROGRAM_ID` | The program whose call room is used (default `main`). Run it once with a program id that has a dot too, such as `modoitaliano.fm` (create the program first): production's dotted programs once had every guest call refused. |
 | `ALCANTARA_OPERATOR_TOKEN` | Bearer of a principal with `alcantara:webrtc:operate` and `alcantara:webrtc:read`. Without it, the local test-auth session is used. |
 | `ALCANTARA_RENDERER_KEY` | Also check the program feed receives the guest. |
 | `WEBRTC_SYNTHETIC_FEED=0` | Skip the synthetic desktop feed. It uses the pilot's fixed identity, so it would push a real desktop Feed out of the room. |

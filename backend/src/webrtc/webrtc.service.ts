@@ -33,6 +33,7 @@ import {
   type WebrtcIcePath,
   type WebrtcJoinResult,
 } from '../observability/managed-metrics.service';
+import { validProgramId } from '../program/program-id';
 
 type ReturnVideo = 'program' | 'preview' | 'none';
 type ReturnAudioBus = 'master' | 'monitor' | `aux-${number}`;
@@ -1128,11 +1129,11 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
     throw new BadRequestException('Invalid acknowledgement status.');
   }
 
+  // The program module's rule (program/program-id.ts), not one of this module's own: a program named with a dot
+  // (a domain-style id such as station.fm) had every guest call refused, and ids keep their case as everywhere else.
   private normalizeProgramId(value: unknown) {
-    const normalized = this.requireString(value, 'programId')
-      .trim()
-      .toLowerCase();
-    if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(normalized))
+    const normalized = validProgramId(this.requireString(value, 'programId'));
+    if (normalized === null)
       throw new BadRequestException('Invalid programId.');
     return normalized;
   }

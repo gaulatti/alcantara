@@ -105,7 +105,7 @@ describe('WebrtcService', () => {
   it('persists a default 24-hour invitation in the first reusable slot', async () => {
     const { service, prisma, livekit } = setup();
     const created = await service.createInvitation(operator, {
-      programId: 'MAIN',
+      programId: ' main ',
       displayName: ' Fictional Guest ',
     });
     expect(created).toMatchObject({

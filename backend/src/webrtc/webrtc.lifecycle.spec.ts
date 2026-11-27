@@ -160,7 +160,7 @@ describe('WebrtcService invitation/session and LiveKit boundary', () => {
   it('creates a bounded explicit slot with normalized return routing and no plaintext secret in persistence', async () => {
     const f = fixture();
     const result = await f.service.createInvitation(operator, {
-      programId: ' NEWS ',
+      programId: ' news ',
       displayName: '  Fictional Guest  ',
       slotNumber: 2,
       expiresInHours: 168,
@@ -565,7 +565,7 @@ describe('WebrtcService invitation/session and LiveKit boundary', () => {
         ],
       },
     ]);
-    const result = await f.service.listParticipants(' NEWS ');
+    const result = await f.service.listParticipants(' news ');
     expect(result.roomName).toBe('alcantara-news');
     expect(result.participants.map((guest) => guest.connectionState)).toEqual([
       'connected',

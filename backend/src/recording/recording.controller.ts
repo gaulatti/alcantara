@@ -12,6 +12,7 @@ import {
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { RequirePermission } from '../auth/require-permission.decorator';
 import { AlanaRecordingClient } from './alana-recording.client';
+import { validProgramId } from '../program/program-id';
 
 const COMMAND_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/;
 
@@ -58,18 +59,9 @@ export class RecordingController {
 }
 
 export function normalizeProgramId(value: string): string {
-  const normalized = value.trim();
-  if (
-    !normalized ||
-    normalized.length > 200 ||
-    normalized.includes('/') ||
-    [...normalized].some((character) => {
-      const code = character.charCodeAt(0);
-      return code <= 0x1f || code === 0x7f;
-    })
-  ) {
+  const normalized = validProgramId(value);
+  if (normalized === null)
     throw new BadRequestException({ error: 'INVALID_PROGRAM_ID' });
-  }
   return normalized;
 }
 

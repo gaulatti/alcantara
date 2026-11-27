@@ -238,9 +238,12 @@ describe('WebrtcService coverage', () => {
   describe('createInvitation', () => {
     it('honours explicit values and skips room creation when it exists', async () => {
       const { service, prisma, livekit } = setup();
-      livekit.listRooms.mockResolvedValue([{ name: 'alcantara-show_1' }]);
+      // A program id with a dot, as production's modoitaliano.fm and modoitaliano.tv: kept, case and all.
+      livekit.listRooms.mockResolvedValue([
+        { name: 'alcantara-modoitaliano.fm' },
+      ]);
       const created = await service.createInvitation(operator, {
-        programId: ' Show_1 ',
+        programId: ' modoitaliano.fm ',
         displayName: 'x'.repeat(100),
         expiresInHours: 168,
         slotNumber: 3,
@@ -250,7 +253,7 @@ describe('WebrtcService coverage', () => {
         sourceMuted: true,
         sourceDelayMs: 2000,
       });
-      expect(created.programId).toBe('show_1');
+      expect(created.programId).toBe('modoitaliano.fm');
       expect(created.displayName).toHaveLength(80);
       expect(created.slotNumber).toBe(3);
       expect(created.returnVideo).toBe('none');
@@ -262,7 +265,9 @@ describe('WebrtcService coverage', () => {
         `/guest/${encodeURIComponent(created.invitation)}`,
       );
       expect(livekit.createRoom).not.toHaveBeenCalled();
-      expect(livekit.listRooms).toHaveBeenCalledWith(['alcantara-show_1']);
+      expect(livekit.listRooms).toHaveBeenCalledWith([
+        'alcantara-modoitaliano.fm',
+      ]);
       const data = prisma.guestInvitation.create.mock.calls[0][0].data;
       expect(data.events.create.details).toMatchObject({
         expiresInHours: 168,
@@ -360,7 +365,8 @@ describe('WebrtcService coverage', () => {
     it.each([
       [{ programId: undefined }, 'programId is required.'],
       [{ programId: '   ' }, 'programId is required.'],
-      [{ programId: '-bad' }, 'Invalid programId.'],
+      [{ programId: 'news/main' }, 'Invalid programId.'],
+      [{ programId: 'x'.repeat(201) }, 'Invalid programId.'],
       [{ displayName: 5 }, 'displayName is required.'],
       [
         { expiresInHours: '2' },
@@ -984,7 +990,7 @@ describe('WebrtcService coverage', () => {
           ],
         },
       ]);
-      const result = await service.listParticipants(' MAIN ');
+      const result = await service.listParticipants(' main ');
       expect(result.roomName).toBe('alcantara-main');
       expect(livekit.listParticipants).toHaveBeenCalledWith('alcantara-main');
       expect(result.participants.map((p) => p.connectionState)).toEqual([
@@ -1321,7 +1327,7 @@ describe('WebrtcService coverage', () => {
       const { service } = setup();
       const result = await service.createRendererToken(
         'renderer-secret',
-        'Main',
+        ' main ',
       );
       expect(result.serverUrl).toBe(baseConfig.LIVEKIT_WS_URL);
       expect(result.roomName).toBe('alcantara-main');
@@ -1422,6 +1428,30 @@ describe('WebrtcService coverage', () => {
         canPublishSources: ['microphone'],
       });
       expect(result.roomName).toBe('alcantara-main');
+    });
+
+    // Production's modoitaliano.fm and modoitaliano.tv: every program-scoped token takes a program id with a dot, and
+    // names the room and identities with it unchanged (LiveKit accepts dots).
+    it('mints every program-scoped token for a program id with a dot', async () => {
+      const { service } = setup();
+      const id = 'modoitaliano.fm';
+      const room = `alcantara-${id}`;
+      const renderer = await service.createRendererToken('renderer-secret', id);
+      expect(renderer.roomName).toBe(room);
+      expect(jwtGrant(renderer.token).sub).toMatch(
+        /^renderer-modoitaliano\.fm-[0-9a-f-]{36}$/,
+      );
+      const source = await service.createRendererSourceToken(
+        'renderer-secret',
+        id,
+      );
+      expect(jwtGrant(source.token).video).toMatchObject({ room });
+      const talkback = await service.createOperatorToken(operator, id);
+      expect(talkback.roomName).toBe(room);
+      expect(jwtGrant(talkback.token).video).toMatchObject({ room });
+      const feed = await service.createDesktopProgramFeedToken(operator, id);
+      expect(feed.identity).toBe('desktop-program-feed-modoitaliano.fm');
+      expect(jwtGrant(feed.token).video).toMatchObject({ room });
     });
 
     // gaulatti/alexandria#9: the desktop console publishes the program it renders.
