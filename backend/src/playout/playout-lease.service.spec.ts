@@ -105,7 +105,7 @@ describe('PlayoutLease', () => {
     await lease.whenActive(() => order.push('late'));
     expect(order).toEqual(['engine', 'telemetry', 'late']);
     expect(exit).not.toHaveBeenCalled();
-    await lease.onModuleDestroy();
+    await lease.beforeApplicationShutdown();
   });
 
   it('keeps going when a start-up step fails', async () => {
@@ -126,7 +126,7 @@ describe('PlayoutLease', () => {
     lease.start();
     await jest.advanceTimersByTimeAsync(0);
     expect(order).toEqual(['after']);
-    await lease.onModuleDestroy();
+    await lease.beforeApplicationShutdown();
   });
 
   it('never asks for the lock as a deploy candidate', async () => {
@@ -168,12 +168,12 @@ describe('PlayoutLease', () => {
     expect(first.ended).toBe(true);
     await jest.advanceTimersByTimeAsync(LEASE_ATTEMPT_MS * 2);
     expect(connect).toHaveBeenCalledTimes(3);
-    await lease.onModuleDestroy();
+    await lease.beforeApplicationShutdown();
     expect(second.ended).toBe(true);
     await jest.advanceTimersByTimeAsync(LEASE_ATTEMPT_MS * 3);
     expect(connect).toHaveBeenCalledTimes(3);
     // Destroyed before an attempt was due: nothing more happens.
-    await lease.onModuleDestroy();
+    await lease.beforeApplicationShutdown();
   });
 
   it('ends the process when the held lock connection fails, closes or stops answering', async () => {
@@ -198,7 +198,7 @@ describe('PlayoutLease', () => {
       expect(
         await metric(metrics, 'alcantara_playout_lease_lost_total'),
       ).toMatch(/ 1$/);
-      await lease.onModuleDestroy();
+      await lease.beforeApplicationShutdown();
     }
   });
 
@@ -214,7 +214,7 @@ describe('PlayoutLease', () => {
     lease.start();
     await jest.advanceTimersByTimeAsync(0);
     conn.emit('end');
-    await lease.onModuleDestroy();
+    await lease.beforeApplicationShutdown();
     conn.emit('error');
     expect(exit).not.toHaveBeenCalled();
   });
@@ -233,7 +233,7 @@ describe('PlayoutLease', () => {
     lease.start();
     await jest.advanceTimersByTimeAsync(LEASE_ATTEMPT_MS);
     await expect(late).resolves.toBe(true);
-    await lease.onModuleDestroy();
+    await lease.beforeApplicationShutdown();
   });
 
   it('defaults to the lock in production, the candidate flag from the environment, and its own pg connection', async () => {
@@ -283,7 +283,7 @@ describe('PlayoutLease edges', () => {
       connect,
       exit: jest.fn(),
     });
-    await destroyed.onModuleDestroy();
+    await destroyed.beforeApplicationShutdown();
     destroyed.start();
     await jest.advanceTimersByTimeAsync(LEASE_ATTEMPT_MS);
     expect(connect).not.toHaveBeenCalled();
@@ -301,7 +301,7 @@ describe('PlayoutLease edges', () => {
     });
     lease.start();
     await jest.advanceTimersByTimeAsync(0);
-    await lease.onModuleDestroy();
+    await lease.beforeApplicationShutdown();
     refuse(new Error('late'));
     await jest.advanceTimersByTimeAsync(LEASE_ATTEMPT_MS * 2);
     expect(slow).toHaveBeenCalledTimes(1);
@@ -334,7 +334,7 @@ describe('PlayoutLease closing a broken connection', () => {
     lease.start();
     await jest.advanceTimersByTimeAsync(LEASE_ATTEMPT_MS);
     expect(broken.end).toHaveBeenCalledTimes(1);
-    await expect(lease.onModuleDestroy()).resolves.toBeUndefined();
+    await expect(lease.beforeApplicationShutdown()).resolves.toBeUndefined();
     expect(broken.end).toHaveBeenCalledTimes(2);
   });
 });

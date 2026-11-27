@@ -19,10 +19,12 @@ function standby() {
     candidate: false,
     exit: jest.fn(),
     connect: async () => ({
-      query: () =>
-        new Promise((resolve) => {
-          activate = () => resolve({ rows: [{ held: true }] });
-        }),
+      query: (sql: string) =>
+        sql.includes('pg_advisory_unlock')
+          ? Promise.resolve({ rows: [{}] })
+          : new Promise((resolve) => {
+              activate = () => resolve({ rows: [{ held: true }] });
+            }),
       end: async () => undefined,
       on: () => undefined,
     }),
@@ -88,7 +90,7 @@ describe('PlayoutHold', () => {
         'alcantara_playout_held_requests_total{result="served"}',
       ),
     ).toMatch(/ 1$/);
-    await lease.onModuleDestroy();
+    await lease.beforeApplicationShutdown();
   });
 
   it('refuses a request held past the limit, and any beyond the cap', async () => {

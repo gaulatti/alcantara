@@ -88,7 +88,8 @@ a PostgreSQL advisory lock (`pg_try_advisory_lock(873001)`) on a connection of i
 PostgreSQL frees the lock if the process or that connection dies. Until it holds the lock the instance is a
 **standby**: it boots, listens and answers `GET /`, `/health/*` and `/metrics`, and holds every other request,
 including WebSocket upgrades, until it becomes **active**. A held request waits at most 20 s, and at most 200 are held
-at once; past either it gets `503` with `Retry-After: 2`. The standby asks for the lock once a second.
+at once; past either it gets `503` with `Retry-After: 2`. The standby asks for the lock every 200 ms, so it takes a
+freed lock within 0.2 s.
 
 On taking the lock, the instance runs every writer and scheduler, in the order they registered, and only then reports
 active and releases the held requests. The writers and schedulers are:
@@ -115,9 +116,22 @@ does not hold requests (it serves read-only, as above).
 `GET /health/ready` answers `{"state":"standby"|"active","build":"<sha>"}`. An image without it answers 404, which
 the deploy reads as "no lease".
 
-On SIGTERM (`enableShutdownHooks()`, with Node exec'd as the container's main process) the instance ends its program
-streams and WebSocket clients (they reconnect and resync), stops its schedulers, closes the lock connection (which frees
-the lock for the next instance at once) and exits.
+On SIGTERM (`enableShutdownHooks()`, with Node exec'd as the container's main process) the instance shuts down in this
+order:
+
+1. **Stop** (every module's `onModuleDestroy`): it ends its program streams and WebSocket clients (they reconnect and
+   resync) and stops the engine and every scheduler. The lease stops asking for the lock here but keeps it. The engine
+   and the schedulers live in global modules beside the lease, so Nest's module order alone would not put them first.
+2. **Release** (`beforeApplicationShutdown`, after every stop above has finished): the instance reports `standby`,
+   sends `pg_advisory_unlock(873001)` (waiting at most 2 s), and closes the lock connection. Closing the connection
+   frees the lock even if the unlock did not answer.
+3. **Close**: the HTTP server closes and the process exits.
+
+From the release on, the engine sends Palazzo nothing: before each song, announcement, withdrawal or spot it checks
+that the instance still holds the lease, so a command already in flight when the lock went is dropped. A standby that
+takes the lock while shutting down gives it straight back and starts nothing.
+`src/playout/playout-lease.shutdown.spec.ts` closes a Nest application with an engine module registered before and
+after the lease, and checks the order: engine stopped, unlock, connection closed.
 
 Metrics:
 

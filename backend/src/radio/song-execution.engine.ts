@@ -652,6 +652,15 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * True once this instance no longer holds the playout lease (alcantara#873). The lease is freed only after this
+   * engine stopped, but a command already in flight can still reach a send, so each send checks first: after the
+   * release another instance drives playout, and this one must command nothing.
+   */
+  private playoutReleased(): boolean {
+    return this.lease !== undefined && this.lease.current !== 'active';
+  }
+
   onModuleDestroy(): void {
     if (this.watchdog) clearInterval(this.watchdog);
     this.watchdog = null;
@@ -2378,6 +2387,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     programId: string,
     state: SongEngineState,
   ): Promise<void> {
+    if (this.playoutReleased()) return;
     const song = state.activeSong;
     // Only while a started song plays; never withdraw during a handoff.
     if (!song || song.authoritativeStartedAt === null || song.asRunClosed) {
@@ -2999,6 +3009,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
 
   /** At an end that commands nothing itself, keeps the announced song off air. */
   private releaseAnnouncementAtEnd(programId: string): void {
+    if (this.playoutReleased()) return;
     const state = this.states.get(programId);
     const announcement = state?.announcement;
     if (!state || !announcement) return;
@@ -4542,8 +4553,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       }
     }
     if (
+      this.playoutReleased() ||
       this.states.get(programId)?.activeSong?.playbackRequestId !==
-      playbackRequestId
+        playbackRequestId
     ) {
       return;
     }
@@ -4853,6 +4865,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       // any other failure, and an outcome with no answer, is final, so a spot
       // can never play twice.
       for (let attempt = 1; ; attempt += 1) {
+        if (this.playoutReleased()) return;
         try {
           await this.radioService.playInstant(
             programId,

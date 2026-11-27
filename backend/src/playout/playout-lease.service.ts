@@ -1,4 +1,5 @@
 import {
+  BeforeApplicationShutdown,
   Inject,
   Injectable,
   Logger,
@@ -11,8 +12,10 @@ import { ManagedMetricsService } from '../observability/managed-metrics.service'
 
 /** The advisory lock key of the playout lease (alcantara#873). One per database, so one engine per database. */
 export const PLAYOUT_LEASE_KEY = 873_001;
-/** How often a standby asks for the lock. */
-export const LEASE_ATTEMPT_MS = 1_000;
+/** How often a standby asks for the lock: the takeover after a release waits at most this long for the next ask. */
+export const LEASE_ATTEMPT_MS = 200;
+/** The longest a shutdown waits for the unlock to answer before it closes the lock connection instead. */
+export const LEASE_UNLOCK_MS = 2_000;
 /** How often the holder proves its lock connection is alive; a failed proof ends the process. */
 export const LEASE_LIVENESS_MS = 2_000;
 
@@ -83,7 +86,9 @@ export function defaultPlayoutLeaseOptions(): PlayoutLeaseOptions {
  * that may have lost the lock must not command Palazzo, and a restarted one waits for the lock again.
  */
 @Injectable()
-export class PlayoutLease implements OnModuleDestroy {
+export class PlayoutLease
+  implements OnModuleDestroy, BeforeApplicationShutdown
+{
   private readonly logger = new Logger(PlayoutLease.name);
   private readonly options: PlayoutLeaseOptions;
   private state: PlayoutState;
@@ -145,27 +150,65 @@ export class PlayoutLease implements OnModuleDestroy {
     void this.attempt();
   }
 
-  async onModuleDestroy(): Promise<void> {
+  /**
+   * Shutdown, first phase: stop asking for the lock, but keep it. Nest destroys modules in an order of its own, and
+   * the engine and the schedulers live in global modules beside this one, so some of them may still be stopping here.
+   */
+  onModuleDestroy(): void {
     this.stopping = true;
     if (this.attemptTimer) clearTimeout(this.attemptTimer);
-    if (this.livenessTimer) clearInterval(this.livenessTimer);
     this.attemptTimer = null;
+  }
+
+  /**
+   * Shutdown, second phase: every module's onModuleDestroy has finished, so every writer and scheduler has stopped.
+   * Only now is the lock freed, and freed explicitly so the standby can take it on its next ask, before this
+   * process closes its HTTP server.
+   */
+  async beforeApplicationShutdown(): Promise<void> {
+    this.onModuleDestroy();
+    if (this.livenessTimer) clearInterval(this.livenessTimer);
     this.livenessTimer = null;
     const connection = this.connection;
     this.connection = null;
-    // Closing the session frees the lock for the next instance at once.
+    // Active with a lock connection: this instance holds the lock (without the lock mode there is no connection).
+    if (this.state === 'active' && connection) {
+      // From here this instance commands nothing (the engine checks before each send).
+      this.state = 'standby';
+      this.metrics.setPlayoutLeaseState('standby');
+      await this.unlock(connection);
+      this.logger.log('Playout lease released at shutdown');
+    }
+    // Closing the session frees the lock too, if the unlock above could not run.
     await connection?.end().catch(() => undefined);
+  }
+
+  /** Frees the lock, waiting at most LEASE_UNLOCK_MS: closing the connection afterwards frees it in any case. */
+  private async unlock(connection: LeaseConnection): Promise<void> {
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      connection
+        .query('SELECT pg_advisory_unlock($1)', [PLAYOUT_LEASE_KEY])
+        .catch(() => undefined),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, LEASE_UNLOCK_MS);
+        timer.unref?.();
+      }),
+    ]);
+    clearTimeout(timer);
   }
 
   private async attempt(): Promise<void> {
     if (this.stopping) return;
     try {
-      this.connection ??= await this.openConnection();
-      const result = await this.connection.query(
+      const connection = (this.connection ??= await this.openConnection());
+      const result = await connection.query(
         'SELECT pg_try_advisory_lock($1) AS held',
         [PLAYOUT_LEASE_KEY],
       );
       if (result.rows[0]?.held === true) {
+        // Taken while shutting down: give it straight back, nothing starts.
+        if (this.stopping) return await this.unlock(connection);
         await this.activate();
         return;
       }

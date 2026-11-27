@@ -33,7 +33,7 @@ async function until(check: () => boolean, ms = 5_000) {
 describeWithDatabase('the playout lease on one database, two instances', () => {
   const leases: PlayoutLease[] = [];
   afterEach(async () => {
-    await Promise.all(leases.splice(0).map((lease) => lease.onModuleDestroy()));
+    await Promise.all(leases.splice(0).map((lease) => lease.beforeApplicationShutdown()));
   });
 
   function instance(
@@ -69,7 +69,7 @@ describeWithDatabase('the playout lease on one database, two instances', () => {
     expect([...engines]).toEqual(['blue']);
 
     // Blue shuts down (SIGTERM runs onModuleDestroy): its session closes and green takes the lock.
-    await blue.lease.onModuleDestroy();
+    await blue.lease.beforeApplicationShutdown();
     engines.delete('blue');
     expect(await until(() => green.lease.current === 'active')).toBe(true);
     expect(starts).toEqual(['blue', 'green']);

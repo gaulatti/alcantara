@@ -252,6 +252,7 @@ function harness(
     capabilities?: string[];
     mode?: 'autoplay' | 'shuffle';
     favoriteItemId?: string;
+    lease?: { current: string };
   } = {},
 ) {
   const items = options.items ?? SONGS;
@@ -327,6 +328,8 @@ function harness(
     } as unknown as NowPlayingPublisherService,
     metrics,
     options.similarity as never,
+    undefined,
+    options.lease as never,
   );
   palazzo.engine = engine;
   engine.setPalazzoTelemetry({ isReconciled: () => true });
@@ -3039,4 +3042,71 @@ describe('an announced song that never airs', () => {
     await settle();
     expect(await counted(released)).toEqual({ released: 1 });
   });
+});
+
+// alcantara#873: the old instance frees the playout lease at shutdown, after its engine stopped. A command already in
+// flight must not reach Palazzo after that: the new instance drives playout.
+describe('after the playout lease is released', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-11-17T12:00:00.000Z'));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  const BUMPER_EVERY_SONG = {
+    bumperEnabled: true,
+    bumperInterval: 1,
+    bumperInstantIds: [1],
+    bumperMode: 'sequential',
+  };
+
+  async function run(after: string, scenario: 'bumper' | 'clocked-log') {
+    const lease = { current: 'active' };
+    let clocked = false;
+    const h = harness({ lease, clockedLog: () => clocked });
+    if (scenario === 'clocked-log') {
+      await onAir(h);
+      expect(h.palazzo.announced).toHaveLength(1);
+    } else {
+      h.palazzo.settings = BUMPER_EVERY_SONG;
+      await onAir(h);
+    }
+    const sent = () => ({
+      songs: h.palazzo.radioService.playSong.mock.calls.length,
+      announcements: h.palazzo.radioService.announceNext.mock.calls.length,
+      withdrawals: h.palazzo.radioService.withdrawNext.mock.calls.length,
+      spots: h.palazzo.radioService.playInstant.mock.calls.length,
+    });
+    const before = sent();
+    lease.current = after;
+    if (scenario === 'clocked-log') {
+      // A clocked log takes over at the end: the engine withdraws the announced song.
+      clocked = true;
+    } else {
+      // The sequence changes, then the song ends with a bumper due.
+      h.engine.handleSequenceUpdated(PROGRAM, h.sequence());
+      await settle();
+    }
+    h.palazzo.endCurrent();
+    await settle();
+    await jest.advanceTimersByTimeAsync(30_000);
+    await settle();
+    return { before, after: sent() };
+  }
+
+  it.each(['bumper', 'clocked-log'] as const)(
+    'drives playout while the lease is held (%s)',
+    async (scenario) => {
+      const { before, after } = await run('active', scenario);
+      expect(after).not.toEqual(before);
+    },
+  );
+
+  it.each(['bumper', 'clocked-log'] as const)(
+    'commands nothing once the lease is released (%s)',
+    async (scenario) => {
+      const { before, after } = await run('standby', scenario);
+      expect(after).toEqual(before);
+    },
+  );
 });
