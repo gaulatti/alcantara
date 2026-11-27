@@ -9,6 +9,7 @@ One run proves the whole call path:
 1. An operator creates a guest invitation through the API.
 2. A synthetic **desktop program feed** joins as `desktop-program-feed-<program>` and publishes a moving test picture as a screen share, as the pilot's Feed does.
 3. A guest opens the real **guest page** (`/guest/<token>`) in Chromium with a fake camera and microphone (`--use-fake-device-for-media-stream`). It plays the speaker test, ticks "I am wearing headphones" and presses "Join studio". The guest runs **signed out**, as in production, where the sign-in library answers a session with no ID token; in its own browser context the local test-auth session is answered the same way. A fetch wrapper that needed a token once stopped every production guest's join (#847).
+   The guest then waits to be let in; the script admits it through the API (in a guest-only run, the operator presses **Admit** within `WEBRTC_TIMEOUT_MS`).
 4. The **operator side** (an operator token) receives the guest's audio and video, with bytes flowing. With a renderer key, so does the **program feed** (a renderer-source token).
 5. The guest **receives the program return**: the waiting notice goes and the return picture plays.
 6. The invitation is revoked and every participant leaves.
@@ -53,7 +54,7 @@ ALCANTARA_INVITATION_PATH=/guest/<token> WEBRTC_EXPECT_RETURN=0 \
 pnpm --filter @gaulatti/alcantara-e2e webrtc
 ```
 
-The operator watches the guest appear in `/calls` with picture and sound, then revokes the invitation. A full run (`ALCANTARA_OPERATOR_TOKEN`) would also check the operator side automatically. Never run it with the synthetic feed against a program whose pilot Feed is connected.
+The operator presses **Admit** on the waiting guest in `/calls`, watches them appear with picture and sound, then revokes the invitation. A full run (`ALCANTARA_OPERATOR_TOKEN`) would also check the operator side automatically. Never run it with the synthetic feed against a program whose pilot Feed is connected.
 
 ### From outside the studio's network, with Docker only
 

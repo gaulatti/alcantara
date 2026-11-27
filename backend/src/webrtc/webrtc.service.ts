@@ -206,10 +206,96 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       });
     }
     await this.disconnectIfPresent(
-      invitation.programId,
+      this.roomName(invitation.programId),
+      this.guestIdentity(id),
+    );
+    await this.disconnectIfPresent(
+      this.screeningRoomName(id),
       this.guestIdentity(id),
     );
     return { id, status: 'revoked' };
+  }
+
+  /** Lets a waiting guest onto their strip: their page then joins the program's room. */
+  async admitGuest(operator: CanonicalIdentity, id: string) {
+    const invitation = await this.requireInvitation(id);
+    if (invitation.revokedAt || invitation.expiresAt <= new Date())
+      throw new ConflictException('This invitation is closed.');
+    await this.prisma.guestInvitation.update({
+      where: { id },
+      data: {
+        admittedAt: new Date(),
+        events: {
+          create: { type: 'admitted', details: this.operatorAudit(operator) },
+        },
+      },
+    });
+    // Ends the screening connection, which tells the page at once that something changed.
+    await this.disconnectIfPresent(
+      this.screeningRoomName(id),
+      this.guestIdentity(id),
+    );
+    return { id, status: 'admitted' };
+  }
+
+  /** Turns a guest away: the invitation closes as a revoked one does, so its slot is free and the link opens nothing. */
+  async declineGuest(operator: CanonicalIdentity, id: string) {
+    const invitation = await this.requireInvitation(id);
+    await this.prisma.guestInvitation.update({
+      where: { id },
+      data: {
+        revokedAt: new Date(),
+        slotNumber: null,
+        admittedAt: null,
+        activeSessionId: null,
+        activeSessionUntil: null,
+        liveSince: null,
+        events: {
+          create: { type: 'declined', details: this.operatorAudit(operator) },
+        },
+      },
+    });
+    await this.disconnectIfPresent(
+      this.screeningRoomName(id),
+      this.guestIdentity(id),
+    );
+    await this.disconnectIfPresent(
+      this.roomName(invitation.programId),
+      this.guestIdentity(id),
+    );
+    return { id, status: 'declined' };
+  }
+
+  /** The operator's token for one waiting guest's screening room, to see, hear and talk to them off air. */
+  async createScreeningToken(operator: CanonicalIdentity, id: string) {
+    this.requireConfiguration();
+    const invitation = await this.requireInvitation(id);
+    const roomName = this.screeningRoomName(invitation.id);
+    await this.ensureScreeningRoom(roomName);
+    const token = new AccessToken(this.apiKey, this.apiSecret, {
+      identity: `operator-${createHash('sha256')
+        .update(operator.principalId ?? operator.subject)
+        .digest('hex')
+        .slice(0, 20)}-${randomUUID()}`,
+      name: 'Alcantara producer',
+      ttl: '5m',
+      metadata: JSON.stringify({ role: 'operator' }),
+    });
+    token.addGrant({
+      room: roomName,
+      roomJoin: true,
+      canPublish: true,
+      canPublishSources: [TrackSource.MICROPHONE],
+      canSubscribe: true,
+      canPublishData: false,
+      hidden: true,
+    });
+    return {
+      serverUrl: this.wsUrl,
+      token: await token.toJwt(),
+      roomName,
+      participantIdentity: this.guestIdentity(invitation.id),
+    };
   }
 
   async updateReturn(
@@ -302,6 +388,13 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
     }
 
     const identity = this.guestIdentity(invitation.id);
+    const admitted = Boolean(invitation.admittedAt);
+    // Until admitted, the guest's token opens only a room of their own: nothing of theirs can reach a strip, a return
+    // or air, and the program's consumers need no change.
+    const roomName = admitted
+      ? this.roomName(invitation.programId)
+      : this.screeningRoomName(invitation.id);
+    if (!admitted) await this.ensureScreeningRoom(roomName);
     const token = new AccessToken(this.apiKey, this.apiSecret, {
       identity,
       name: invitation.displayName,
@@ -313,13 +406,16 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       }),
     });
     token.addGrant({
-      room: this.roomName(invitation.programId),
+      room: roomName,
       roomJoin: true,
       canPublish: true,
       canPublishSources: [TrackSource.CAMERA, TrackSource.MICROPHONE],
+      // A waiting guest subscribes to hear the producer.
       canSubscribe:
-        invitation.returnVideo !== 'none' || Boolean(invitation.returnAudioBus),
-      canPublishData: true,
+        !admitted ||
+        invitation.returnVideo !== 'none' ||
+        Boolean(invitation.returnAudioBus),
+      canPublishData: admitted,
     });
     await this.prisma.guestEvent.create({
       data: { invitationId: invitation.id, type: 'token_issued' },
@@ -328,7 +424,8 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       serverUrl: this.wsUrl,
       token: await token.toJwt(),
       sessionToken: this.signSessionToken(invitation.id, sessionId),
-      roomName: this.roomName(invitation.programId),
+      roomName,
+      admission: admitted ? 'admitted' : 'waiting',
       participantIdentity: identity,
       displayName: invitation.displayName,
       programId: invitation.programId,
@@ -413,7 +510,10 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       const path = icePathFrom(reported.iceTransport);
       if (path) this.metrics.recordWebrtcIcePath('guest', path);
     }
-    return { activeSessionUntil: activeSessionUntil.toISOString() };
+    return {
+      activeSessionUntil: activeSessionUntil.toISOString(),
+      admission: session.invitation.admittedAt ? 'admitted' : 'waiting',
+    };
   }
 
   async acknowledgeCommand(
@@ -495,6 +595,12 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
               mimeType: track.mimeType,
             })) ?? [],
           commands: invitation.commands,
+          // Joined and not yet admitted: waiting in their screening room.
+          screening: Boolean(
+            !invitation.admittedAt &&
+            invitation.activeSessionUntil &&
+            invitation.activeSessionUntil > new Date(),
+          ),
           ...this.reportedCall(invitation.events[0]),
         };
       }),
@@ -573,10 +679,12 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
     const programId = this.normalizeProgramId(programIdValue);
     const identity = this.normalizeGuestIdentity(identityValue);
     const invitation = await this.invitationForIdentity(programId, identity);
-    await this.disconnectIfPresent(programId, identity);
+    await this.disconnectIfPresent(this.roomName(programId), identity);
     await this.prisma.guestInvitation.update({
       where: { id: invitation.id },
       data: {
+        // A removed guest who comes back is screened again.
+        admittedAt: null,
         activeSessionId: null,
         activeSessionUntil: null,
         liveSince: null,
@@ -1111,12 +1219,24 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  private async disconnectIfPresent(programId: string, identity: string) {
+  private async ensureScreeningRoom(roomName: string) {
     try {
-      await this.roomService.removeParticipant(
-        this.roomName(programId),
-        identity,
-      );
+      const rooms = await this.roomService.listRooms([roomName]);
+      if (!rooms.length)
+        await this.roomService.createRoom({
+          name: roomName,
+          maxParticipants: 4,
+          emptyTimeout: 300,
+          departureTimeout: 60,
+        });
+    } catch (error) {
+      throw this.livekitUnavailable(error);
+    }
+  }
+
+  private async disconnectIfPresent(roomName: string, identity: string) {
+    try {
+      await this.roomService.removeParticipant(roomName, identity);
     } catch (error) {
       if (
         !this.isRoomMissing(error) &&
@@ -1186,6 +1306,9 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private screeningRoomName(invitationId: string) {
+    return `alcantara-screening-${invitationId}`;
+  }
   private guestIdentity(invitationId: string) {
     return `guest-${invitationId}`;
   }

@@ -195,7 +195,9 @@ describe('appendix A rows of ticket #219', () => {
     // a destination's ingest key.
     expect(excludedRows.map((row) => row[4]).sort()).toEqual([
       'addDestination',
+      'admitGuest',
       'createInvitation',
+      'declineGuest',
       'desktopProgramFeedToken',
       'issue',
       'issue',
@@ -205,6 +207,7 @@ describe('appendix A rows of ticket #219', () => {
       'replaceInvitation',
       'replaceKey',
       'rotate',
+      'screeningToken',
     ]);
     for (const row of excludedRows) expect(row[5]).toBe('—');
     for (const spec of specs) {

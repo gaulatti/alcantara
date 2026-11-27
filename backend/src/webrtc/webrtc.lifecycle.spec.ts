@@ -52,6 +52,7 @@ function fixture(overrides: Record<string, unknown> = {}) {
     updatedAt: new Date(),
     commands: [],
     events: [],
+    admittedAt: new Date(),
   };
   const prisma = {
     guestInvitation: {

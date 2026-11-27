@@ -49,7 +49,7 @@ export interface StripParticipant {
  * One guest as a channel strip (alcantara#301): state, return, cue and talk in
  * one place. Talk is hold-to-talk (press and hold, or hold T while the strip
  * has focus) and always closes on release. The live cue is armed, then sent;
- * the wrap cue needs a hold. Mic meters and screening are not built yet and say
+ * the wrap cue needs a hold. Mic meters are not built yet and say
  * so.
  */
 export function GuestStrip({

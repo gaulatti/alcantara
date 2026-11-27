@@ -1,7 +1,7 @@
 /**
  * The caller desk (gaulatti/alcantara#301, #291 group 2), over today's guest
  * data only. A guest's connection and the last cue the console sent are real;
- * screening, a per-guest on-air state and mic meters are not modelled yet, so
+ * a per-guest on-air state and mic meters are not modelled yet, so
  * the desk never derives them.
  */
 export const DESK_SLOTS = 6;

@@ -1351,6 +1351,18 @@
   },
   {
     "method": "POST",
+    "path": "/webrtc/invitations/:id/admit",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/webrtc/invitations/:id/decline",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
+  },
+  {
+    "method": "POST",
     "path": "/webrtc/invitations/:id/replace",
     "public": false,
     "permission": "alcantara:webrtc:operate"
@@ -1358,6 +1370,12 @@
   {
     "method": "PATCH",
     "path": "/webrtc/invitations/:id/return",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/webrtc/invitations/:id/screening-token",
     "public": false,
     "permission": "alcantara:webrtc:operate"
   },

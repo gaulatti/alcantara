@@ -63,6 +63,24 @@ export class WebrtcController {
     return this.webrtc.revokeInvitation(identityFrom(request), id);
   }
 
+  @Post('invitations/:id/admit')
+  @RequirePermission(ALCANTARA_PERMISSIONS.webrtc.operate)
+  admitGuest(@Req() request: OperatorRequest, @Param('id') id: string) {
+    return this.webrtc.admitGuest(identityFrom(request), id);
+  }
+
+  @Post('invitations/:id/decline')
+  @RequirePermission(ALCANTARA_PERMISSIONS.webrtc.operate)
+  declineGuest(@Req() request: OperatorRequest, @Param('id') id: string) {
+    return this.webrtc.declineGuest(identityFrom(request), id);
+  }
+
+  @Post('invitations/:id/screening-token')
+  @RequirePermission(ALCANTARA_PERMISSIONS.webrtc.operate)
+  screeningToken(@Req() request: OperatorRequest, @Param('id') id: string) {
+    return this.webrtc.createScreeningToken(identityFrom(request), id);
+  }
+
   @Patch('invitations/:id/return')
   @RequirePermission(ALCANTARA_PERMISSIONS.webrtc.operate)
   updateReturn(

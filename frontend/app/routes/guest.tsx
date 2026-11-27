@@ -10,7 +10,7 @@ import { apiUrl } from '../utils/apiBaseUrl';
 import { mediaErrorHelp, type MediaHelp } from '../utils/guestMediaHelp';
 import type { Route } from './+types/guest';
 
-type GuestStatus = 'preflight' | 'ready' | 'joining' | 'live' | 'reconnecting' | 'left' | 'ended' | 'error';
+type GuestStatus = 'preflight' | 'ready' | 'joining' | 'waiting' | 'live' | 'reconnecting' | 'left' | 'ended' | 'error';
 type DirectorCommand = {
   id: string;
   type: 'media' | 'cue' | 'message' | 'return';
@@ -52,6 +52,10 @@ export default function GuestRoute() {
   const roomRef = useRef<Room | null>(null);
   const sessionTokenRef = useRef('');
   const heartbeatRef = useRef<number | null>(null);
+  // Set while the guest waits to be admitted: the heartbeat then watches for the answer.
+  const waitingRef = useRef(false);
+  // The heartbeat rejoins on admission through this, so it uses the camera and microphone choices as they are then.
+  const joinRef = useRef<() => Promise<void>>(async () => {});
   // Set at each join until a heartbeat has told the studio, so one join is counted once.
   const announceJoinRef = useRef(false);
   // A lost call is reported by the next heartbeat that gets through.
@@ -129,12 +133,27 @@ export default function GuestRoute() {
       })
     });
     if (response.ok && dropped) pendingDropRef.current = false;
+    if (response.ok && waitingRef.current) {
+      const answer = (await response.json().catch(() => null)) as { admission?: string } | null;
+      // Another heartbeat may have seen it first.
+      if (answer?.admission === 'admitted' && waitingRef.current) {
+        waitingRef.current = false;
+        stopHeartbeat();
+        intentionalEndRef.current = true;
+        roomRef.current?.disconnect();
+        roomRef.current = null;
+        void joinRef.current();
+      }
+      return;
+    }
     if (response.status === 401 || response.status === 403) {
+      const declined = waitingRef.current;
+      waitingRef.current = false;
       stopHeartbeat();
       intentionalEndRef.current = true;
       roomRef.current?.disconnect();
       setStatus('ended');
-      setError('The studio ended or revoked this guest session.');
+      setError(declined ? 'The studio did not let you in. Ask them for a new link if this was a mistake.' : 'The studio ended or revoked this guest session.');
     }
   };
 
@@ -294,6 +313,8 @@ export default function GuestRoute() {
         participantIdentity: string;
         returnVideo: string;
         returnAudioBus: string;
+        // Absent from a backend without screening: the guest goes straight in.
+        admission?: 'waiting' | 'admitted';
       };
       window.sessionStorage.setItem(storageKey, credentials.sessionToken);
       sessionTokenRef.current = credentials.sessionToken;
@@ -304,6 +325,11 @@ export default function GuestRoute() {
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
       localStreamRef.current = null;
 
+      if (credentials.admission === 'waiting') {
+        await waitForAdmission(credentials.serverUrl, credentials.token);
+        return;
+      }
+      waitingRef.current = false;
       const room = new Room({
         adaptiveStream: true,
         dynacast: true,
@@ -460,6 +486,34 @@ export default function GuestRoute() {
     }
   };
 
+  // Before admission: a room of the guest's own, where only the producer can see, hear and talk to them.
+  const waitForAdmission = async (serverUrl: string, token: string) => {
+    const room = new Room({ disconnectOnPageLeave: true });
+    roomRef.current = room;
+    intentionalEndRef.current = false;
+    room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {
+      if (track.kind !== Track.Kind.Audio || !returnAudioRef.current) return;
+      track.attach(returnAudioRef.current);
+      void returnAudioRef.current.play();
+    });
+    // Admitting or declining ends this connection: ask at once which it was.
+    room.on(RoomEvent.Disconnected, () => {
+      if (roomRef.current === room && !intentionalEndRef.current) void heartbeat().catch(() => undefined);
+    });
+    await room.connect(serverUrl, token);
+    await room.localParticipant.setCameraEnabled(cameraEnabled, cameraId ? { deviceId: cameraId } : undefined);
+    await room.localParticipant.setMicrophoneEnabled(microphoneEnabled, microphoneId ? { deviceId: microphoneId } : undefined);
+    const camera = room.localParticipant.getTrackPublication(Track.Source.Camera);
+    if (camera?.videoTrack && previewRef.current) camera.videoTrack.attach(previewRef.current);
+    waitingRef.current = true;
+    setStatus('waiting');
+    stopHeartbeat();
+    heartbeatRef.current = window.setInterval(() => void heartbeat().catch(() => undefined), 3_000);
+    void heartbeat().catch(() => undefined);
+  };
+
+  joinRef.current = join;
+
   const respondToEnable = async (accepted: boolean) => {
     if (!notice || notice.type !== 'media' || !notice.device) return;
     if (accepted && roomRef.current) {
@@ -491,6 +545,7 @@ export default function GuestRoute() {
   };
 
   const leave = () => {
+    waitingRef.current = false;
     sayLeft();
     stopHeartbeat();
     intentionalEndRef.current = true;
@@ -510,7 +565,7 @@ export default function GuestRoute() {
             <p className='text-xs font-semibold uppercase tracking-widest text-amber-300'>Remote contribution</p>
             <h1 className='mt-1 text-2xl font-semibold'>Alcántara guest call</h1>
             <p className='mt-1 text-sm text-white/50'>
-              {status === 'live' ? `${displayName} · ${programId} · ${returnVideo} video · ${returnAudioBus} mix-minus` : 'Complete every preflight check, then join explicitly.'}
+              {status === 'live' ? `${displayName} · ${programId} · ${returnVideo} video · ${returnAudioBus} mix-minus` : status === 'waiting' ? `${displayName} · ${programId} · not on air` : 'Complete every preflight check, then join explicitly.'}
             </p>
           </div>
           <StatusBadge className='ml-auto' label={status} variant={status === 'live' ? 'live' : status === 'reconnecting' ? 'offline' : 'default'} />
@@ -538,6 +593,12 @@ export default function GuestRoute() {
                   {returnVideo} video · {returnAudioBus} N-1 audio
                 </p>
               </div>
+            </div>
+          ) : null}
+          {status === 'waiting' ? (
+            <div role='status' className='absolute inset-x-0 bottom-0 bg-zinc-950/85 px-4 py-3 text-center'>
+              <p className='font-semibold'>Waiting for the producer to let you in</p>
+              <p className='mt-1 text-xs text-white/60'>You are not on air. The producer can see and hear you, and you will hear them here.</p>
             </div>
           ) : null}
           {status === 'ended' || status === 'left' ? (
@@ -604,7 +665,7 @@ export default function GuestRoute() {
             </Button>
           ) : null}
           {status === 'joining' ? <Button loading>Joining</Button> : null}
-          {status === 'live' || status === 'reconnecting' ? (
+          {status === 'waiting' || status === 'live' || status === 'reconnecting' ? (
             <Button className='col-span-2 sm:col-span-1' variant='destructive' onClick={leave}>
               <PhoneOff size={18} /> Leave
             </Button>

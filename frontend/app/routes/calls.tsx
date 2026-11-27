@@ -9,6 +9,7 @@ import { apiUrl } from '../utils/apiBaseUrl';
 import type { Route } from './+types/calls';
 import { AppPage } from '../components/AppPage';
 import { GuestStrip } from '../components/GuestStrip';
+import { WaitingGuest } from '../components/WaitingGuest';
 import { callFailureReason, roomIcePath, type CallFailure, type IcePath } from '../utils/callTelemetry';
 import { deskSlots, emptySlotLabel, latestCue, stripState } from '../utils/callerDesk';
 import '../components/CallerDesk.css';
@@ -47,6 +48,8 @@ type Participant = {
   sourceDelayMs: number;
   tracks: Array<{ sid: string; source: string; muted: boolean }>;
   commands: Command[];
+  // Joined and not admitted yet; absent from a backend without screening.
+  screening?: boolean;
   icePath?: IcePath | null;
   joinFailure?: CallFailure | null;
 };
@@ -207,6 +210,13 @@ export default function CallsRoute() {
     return { slotNumber: created.slotNumber, url: `${window.location.origin}${created.invitationPath}` };
   };
 
+  const screen = (id: string, answer: 'admit' | 'decline') =>
+    run(`${answer}-${id}`, async () => {
+      const response = await authFetch(`/webrtc/invitations/${id}/${answer}`, { method: 'POST' });
+      if (!response.ok) throw new Error(await readError(response));
+      if (answer === 'decline') setNotice('The guest was declined: their link no longer works and the slot is free.');
+    });
+
   const mutateInvitation = (id: string, action: 'replace' | 'revoke') =>
     run(`${action}-${id}`, async () => {
       const response = await authFetch(`/webrtc/invitations/${id}${action === 'replace' ? '/replace' : ''}`, {
@@ -333,7 +343,8 @@ export default function CallsRoute() {
     </Button>
   );
   const slots = deskSlots(activeInvitations, participants);
-  const waiting = slots.filter((slot) => slot.invitation && (!slot.participant || slot.participant.connectionState === 'offline'));
+  const toAdmit = slots.filter((slot) => slot.invitation && slot.participant?.screening);
+  const waiting = slots.filter((slot) => slot.invitation && !slot.participant?.screening && (!slot.participant || slot.participant.connectionState === 'offline'));
   const cuedLive = participants.filter((participant) => stripState(participant.connectionState, latestCue(participant.commands)) === 'cued-live').length;
   if (livekitEnabled === false) {
     return (
@@ -388,9 +399,21 @@ export default function CallsRoute() {
         <div className='caller-desk'>
           <aside className='caller-desk-queue' aria-label='Waiting and invitations'>
             <section aria-label='Waiting'>
-              <h2 className='text-sm font-semibold'>Waiting · {waiting.length}</h2>
-              {waiting.length ? (
+              <h2 className='text-sm font-semibold'>Waiting · {toAdmit.length + waiting.length}</h2>
+              {toAdmit.length + waiting.length ? (
                 <ul className='caller-desk-waiting'>
+                  {toAdmit.map(({ slot, invitation }) => (
+                    <WaitingGuest
+                      key={invitation!.id}
+                      invitationId={invitation!.id}
+                      name={invitation!.displayName}
+                      slot={slot}
+                      canOperate={canOperate}
+                      busy={busy !== null}
+                      onAdmit={() => void screen(invitation!.id, 'admit')}
+                      onDecline={() => void screen(invitation!.id, 'decline')}
+                    />
+                  ))}
                   {waiting.map(({ slot, invitation }) => (
                     <li key={slot}>
                       <strong>{invitation!.displayName}</strong>
@@ -403,7 +426,7 @@ export default function CallsRoute() {
               ) : (
                 <p className='text-xs text-text-secondary'>No one is waiting to join.</p>
               )}
-              <p className='caller-desk-gap'>Screening before air is not built yet: a guest who joins goes straight to their strip.</p>
+              <p className='caller-desk-gap'>A guest who joins waits here, off air, until you press Admit.</p>
             </section>
             <Card variant='outlined' className='p-5'>
               <h2 className='text-base font-medium'>Create invitation</h2>
@@ -449,6 +472,14 @@ export default function CallsRoute() {
               />
             ) : (
               slots.map(({ slot, invitation, participant }) => {
+                if (participant?.screening && invitation) {
+                  return (
+                    <div key={slot} className='guest-strip guest-strip-free' aria-label={`Slot ${slot}: waiting`}>
+                      <span className='guest-strip-slot'>{String(slot).padStart(2, '0')}</span>
+                      <span className='text-xs text-amber-300'>{invitation.displayName} · waiting to be let in</span>
+                    </div>
+                  );
+                }
                 if (!participant || !invitation) {
                   return (
                     <div key={slot} className='guest-strip guest-strip-free' aria-label={`Slot ${slot}: free`}>

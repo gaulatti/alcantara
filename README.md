@@ -104,6 +104,10 @@ not a person or invitation identifier. Assigning a replacement invitation to
 the same slot therefore preserves reusable layouts. The normal Preview, CUT,
 and TAKE workflow remains the only way a guest reaches air.
 
+#### Screening before air
+
+A guest who joins is not on their strip yet. Their token opens only a room of their own (`alcantara-screening-<invitation>`), so nothing of theirs reaches a strip, a return or the output. On `/calls` they are in **Waiting** with **Admit**, **Talk privately** (the operator sees and hears them, and the operator's microphone goes only to them; there is no producer video) and **Decline**. The guest page says it is waiting and not on air. Admit moves the page into the program's room by itself; Decline ends the session and revokes the invitation, which frees the slot (create a new link to invite them again). An admitted guest who reconnects goes straight back in; one the operator removes is screened again. Guests connected while screening was deployed stay admitted. Routes: `POST /webrtc/invitations/:id/{admit,decline,screening-token}` (`webrtc:operate`).
+
 #### Call telemetry
 
 Production shows whether calls work from what each call reports. The API counts, from 0:

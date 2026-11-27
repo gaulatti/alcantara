@@ -350,6 +350,17 @@ async function main() {
       .getByRole("button", { name: /Leave/ })
       .waitFor({ timeout: TIMEOUT });
     report("guest-joined", { ok: true });
+    // Screening before air: the guest waits until the operator admits them. A guest-only run leaves that to the
+    // operator in the console; a backend without screening has no such route and the guest is already in.
+    if (!GUEST_ONLY_PATH)
+      await api(`/webrtc/invitations/${encodeURIComponent(invitation.id)}/admit`, {
+        method: "POST",
+        token,
+      }).catch((error) => {
+        if (!/: 404 /.test(String(error.message))) throw error;
+      });
+    await guest.getByText(/mix-minus/).waitFor({ timeout: TIMEOUT });
+    report("guest-admitted", { ok: true });
     if (HOLD_SECONDS > 0) {
       let last = await guestSends(guest);
       for (let held = 15; held <= HOLD_SECONDS; held += 15) {

@@ -22,6 +22,7 @@ describe('WebrtcService', () => {
     programId: 'main',
     displayName: 'Fictional Guest',
     slotNumber: 1,
+    admittedAt: new Date(),
     returnVideo: 'program',
     returnAudioBus: 'master',
     expiresAt: new Date(Date.now() + 86_400_000),

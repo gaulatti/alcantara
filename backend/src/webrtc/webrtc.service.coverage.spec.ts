@@ -51,6 +51,8 @@ function makeInvitation(overrides: Record<string, unknown> = {}) {
     activeSessionId: null as string | null,
     activeSessionUntil: null as Date | null,
     events: [] as unknown[],
+    // Already admitted: screening has its own spec.
+    admittedAt: new Date() as Date | null,
     createdByIdentity: 'operator-1',
     createdByPrincipalId: 'principal-1',
     createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -1267,6 +1269,7 @@ describe('WebrtcService coverage', () => {
       expect(prisma.guestInvitation.update).toHaveBeenCalledWith({
         where: { id: ID },
         data: {
+          admittedAt: null,
           activeSessionId: null,
           activeSessionUntil: null,
           liveSince: null,

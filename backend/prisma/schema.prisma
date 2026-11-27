@@ -754,6 +754,8 @@ model GuestInvitation {
   activeSessionUntil DateTime?
   /// Set while the guest's call is live and neither left nor reported dropped.
   liveSince          DateTime?
+  /// Screening before air: set when the operator admits the guest; until then they wait in a room of their own.
+  admittedAt         DateTime?
   createdByIdentity  String
   /// Canonical Pompeii principal of the operator who created this invitation.
   /// Audit only. createdByIdentity is never rewritten, so historical actor
