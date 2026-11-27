@@ -46,6 +46,14 @@ it("shows the reason the radio needs attention, and nothing for an unknown or mi
   }
 });
 
+it("words a disabled radio as Radio disabled · Setup", async () => {
+  api(status({ reason: "disabled" }));
+  render(<SimulcastStatusRail programId="radio-1" />);
+  await settled();
+  expect(warning()).toHaveTextContent("Radio disabled · Setup");
+  expect(warning()).not.toHaveTextContent("in settings");
+});
+
 it("says nothing while the radio is healthy, including a live status from an older backend", async () => {
   for (const body of [{ connection: "connected", degraded: false, detail: null }, status({ connection: "polling", degraded: false })]) {
     api(body);

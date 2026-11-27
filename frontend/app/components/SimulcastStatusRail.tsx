@@ -46,7 +46,8 @@ export function SimulcastStatusRail({ programId }: SimulcastStatusRailProps) {
     return () => window.clearInterval(interval);
   }, [refresh]);
 
-  const reasonText = palazzoReasonText(palazzo?.reason);
+  // The approved copy for a disabled radio is "Radio disabled · Setup"; the other reasons keep their words.
+  const reasonText = palazzo?.reason === 'disabled' ? 'disabled' : palazzoReasonText(palazzo?.reason);
   const radioHealthy = stream?.running === true && (palazzo?.connection === 'connected' || palazzo?.connection === 'polling') && palazzo?.degraded !== true;
 
   // Healthy radio says nothing: the line exists only for a problem, with the one place to fix it.
