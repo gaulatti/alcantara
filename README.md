@@ -655,6 +655,7 @@ than the deadline is not redialled on every request. Each replacement logs
 ## Architecture
 
 - [Access](docs/access.md) is the page where a signed-in person manages their tokens and, with `alcantara:access:manage`, the token switch and grants; [Access: backend, configuration and metrics](docs/access-api.md) documents its `/access` routes, the optional `POMPEII_ACCESS_CREDENTIAL` secret and `alcantara_access_requests_total`.
+- [Production status check](docs/production-status.md) documents `scripts/production-status.mjs`, the read-only one-command check that prints 1 or 0, with evidence, for each production claim (radio, Palazzo, calls, live input, the contribution worker and return runner, the deployed commits, legacy host-mic identities).
 - [MCP endpoint](docs/mcp.md) documents `/mcp`, its OAuth discovery documents, who can reach it, and the registered tools.
 - [External source registry](docs/external-source-registry.md) documents stable source identity, encrypted transport configuration, SSRF controls, one-time credentials, quotas, lifecycle, and metrics.
 
