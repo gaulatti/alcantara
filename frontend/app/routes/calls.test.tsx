@@ -139,6 +139,7 @@ const participant = (overrides: Record<string, unknown> = {}) => ({
 let config: unknown;
 let invitations: unknown[];
 let participants: unknown[];
+let room: unknown;
 
 function serve(
   overrides: Partial<Record<string, (init?: RequestInit) => Response>> = {},
@@ -150,7 +151,7 @@ function serve(
     if (key === "GET /webrtc/config") return Response.json(config);
     if (key === "GET /webrtc/invitations") return Response.json(invitations);
     if (key === "GET /webrtc/rooms/main show/participants")
-      return Response.json({ participants });
+      return Response.json({ room, participants });
     if (key === "POST /webrtc/invitations")
       return Response.json({
         ...invitation({ id: "inv-2", slotNumber: 2 }),
@@ -205,6 +206,7 @@ beforeEach(() => {
     invitation({ id: "inv-x", programId: "other show" }),
   ];
   participants = [participant()];
+  room = { returnSending: false, returnParticipant: null };
   lk.state.rooms = [];
   lk.state.tracks = [];
 });
@@ -296,6 +298,38 @@ it("shows this program's slots and each guest's state", async () => {
   expect(button(/Request camera/)).toBeEnabled();
   expect(button(/Mute mic/)).toBeEnabled();
   expect(routing(/Routed to returns/)).toBeEnabled();
+});
+
+it("says whether the studio's return is sending to guests", async () => {
+  room = { returnSending: true, returnParticipant: "renderer-main-7f3a" };
+  serve();
+  render(<CallsRoute />);
+  expect(await screen.findByText("Return to guests: sending (program audio)")).toBeVisible();
+});
+
+it("says the return is not sending when no return router is in the room", async () => {
+  serve();
+  render(<CallsRoute />);
+  expect(await screen.findByText("Return to guests: not sending")).toBeVisible();
+});
+
+it("says the return is unknown when the studio reports no room state", async () => {
+  room = undefined;
+  serve();
+  render(<CallsRoute />);
+  expect(await screen.findByText("Return to guests: unknown")).toBeVisible();
+});
+
+it("shows, next to each live guest, whether their return reaches them", async () => {
+  invitations = [invitation(), invitation({ id: "inv-2", displayName: "Grace", slotNumber: 2 })];
+  participants = [
+    participant({ returnReaching: "healthy" }),
+    participant({ invitationId: "inv-2", identity: "guest-inv-2", name: "Grace", slotNumber: 2, returnReaching: "missing" }),
+  ];
+  serve();
+  render(<CallsRoute />);
+  expect(await screen.findByText("Return: reaching them")).toBeVisible();
+  expect(screen.getByText("Return: not reaching them")).toBeVisible();
 });
 
 it("shows an empty room with the create action inside it, and says why it is disabled", async () => {
