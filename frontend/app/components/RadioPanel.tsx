@@ -29,6 +29,7 @@ import {
 import { RadioOutputPlayer } from "./RadioOutputPlayer";
 import { usePreListen } from "./radio-desk/usePreListen";
 import { ChannelPreListen, type PreFadeSource } from "./radio-desk/ChannelPreListen";
+import { GuestPreListen } from "./radio-desk/GuestPreListen";
 import { PlaybackBar } from "./PlaybackBar";
 import { useRadioMonitor } from "./RadioMonitor";
 import { HoldButton } from "./radio-desk/HoldButton";
@@ -1311,6 +1312,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   onVolumeChange={onMainVolumeChange}
                 />
               </div>
+              <GuestPreListen programId={programId} onActive={onPreFade} />
               {(mixer.error || mixer.saving) && (
                 <p
                   role={mixer.error ? "alert" : "status"}
