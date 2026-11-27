@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Checkbox, Button, Input } from '@gaulatti/bleecker';
-import { GripVertical } from 'lucide-react';
+import { ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
 import {
   createProgramTextSequence,
   createProgramTextSequenceItem,
@@ -176,6 +176,24 @@ export function ProgramTextSequenceEditor({
                 <div className='min-w-0 flex-1 text-xs font-medium uppercase tracking-wide text-text-secondary'>
                   {displayItem.kind === 'sequence' ? 'Nested Sequence' : 'Sequence Item'}
                 </div>
+                <Button
+                  type='button'
+                  onClick={() => reorderItems(index, index - 1)}
+                  disabled={index === 0}
+                  aria-label={`Move item ${index + 1} up`}
+                  className='px-2 py-2 text-xs rounded border border-sand/40 text-text-primary disabled:opacity-30'
+                >
+                  <ChevronUp size={14} />
+                </Button>
+                <Button
+                  type='button'
+                  onClick={() => reorderItems(index, index + 1)}
+                  disabled={index === sequence.items.length - 1}
+                  aria-label={`Move item ${index + 1} down`}
+                  className='px-2 py-2 text-xs rounded border border-sand/40 text-text-primary disabled:opacity-30'
+                >
+                  <ChevronDown size={14} />
+                </Button>
                 <Button
                   type='button'
                   onClick={() => {
