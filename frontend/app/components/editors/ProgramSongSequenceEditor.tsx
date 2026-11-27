@@ -38,6 +38,7 @@ import {
   createProgramSongSequenceItem,
   getProgramSongSequenceSelectedItemId,
   normalizeProgramSongSequence,
+  programSongPlayOrder,
   songIdsInProgramSongSequence,
   type ProgramSongSequence,
   type ProgramSongSequenceItem,
@@ -275,7 +276,16 @@ export function ProgramSongSequenceEditor({
       const current = editorActiveItemId ?? sequence.activeItemId;
       const removedCurrent = current !== null && current === removed.id;
       let nextActive: string | null;
+      // The engine reads the cursor as the song on air and arms the one after it. Removing the song on air from an
+      // automatic rotation moved the cursor to its successor, so the successor was skipped (walk part 5): the cursor
+      // goes to its predecessor in the order that plays instead, and the successor is what follows.
+      const order = programSongPlayOrder(sequence);
+      const place = order.findIndex((i) => i.id === removed.id);
+      const predecessor =
+        place > 0 ? order[place - 1] : sequence.loop !== false && order.length > 1 ? order[order.length - 1] : null;
+      const removedOnAir = removedCurrent && isAutomatic && programSongPlayback?.isPlaying === true;
       if (nextItems.length === 0) nextActive = null;
+      else if (removedOnAir && predecessor) nextActive = predecessor.id;
       // nextItems is non-empty past the first branch, and the index is clamped to it.
       else if (removedCurrent) nextActive = nextItems[Math.min(index, nextItems.length - 1)].id;
       else nextActive = current && nextItems.some((i) => i.id === current) ? current : nextItems[0].id;
@@ -290,7 +300,7 @@ export function ProgramSongSequenceEditor({
       setPendingUndo(undo);
       writePendingUndo(undoKey, undo);
     },
-    [applySequence, editorActiveItemId, isAutomatic, resolveAutoplayStartedAt, sequence, undoKey]
+    [applySequence, editorActiveItemId, isAutomatic, programSongPlayback?.isPlaying, resolveAutoplayStartedAt, sequence, undoKey]
   );
 
   const undoRemove = useCallback(() => {
@@ -598,7 +608,7 @@ export function ProgramSongSequenceEditor({
                                 onClick={() => removeItem(index)}
                                 className='flex h-6 w-6 items-center justify-center rounded border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-terracotta'
                                 title='Remove'
-                                aria-label='Remove'
+                                aria-label={`Remove ${displayItem.title?.trim() || 'song'}`}
                               >
                                 <svg
                                   width='13'

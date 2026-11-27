@@ -532,11 +532,58 @@ describe("ProgramSongSequenceEditor remove", () => {
       },
       view: "queue",
     });
-    fireEvent.click(within(rows()[2]).getByLabelText("Remove"));
+    fireEvent.click(within(rows()[2]).getByLabelText(/^Remove /));
     const next = onChange.mock.lastCall![0];
     expect(ids(next)).toEqual(["a", "b"]);
     expect(next.activeItemId).toBe("b");
     expect(next.startedAt).toBe(5_000);
+  });
+
+  // Walk part 5: the engine reads the cursor as the song on air and arms the one after it. Removing the song on air
+  // moved the cursor to its successor, so the successor was skipped. The cursor goes to the predecessor instead.
+  it("moves the cursor to the song before the one on air when that row is removed, so its successor plays next", () => {
+    const onAir = (activeItemId: string, loop?: boolean) =>
+      editor({
+        sequence: {
+          mode: "autoplay",
+          activeItemId,
+          ...(loop === undefined ? {} : { loop }),
+          items: [preset("a"), preset("b"), preset("c")],
+        },
+        view: "queue",
+        programSongPlayback: { isPlaying: true, token: `${activeItemId}:7`, audioUrl: "" },
+      });
+    const middle = onAir("b");
+    fireEvent.click(within(rows()[1]).getByLabelText(/^Remove /));
+    expect(middle.onChange.mock.lastCall![0]).toMatchObject({ activeItemId: "a" });
+    cleanup();
+    // The first row on air in a loop: the predecessor is the last row, so the second row plays next.
+    const first = onAir("a");
+    fireEvent.click(within(rows()[0]).getByLabelText(/^Remove /));
+    expect(first.onChange.mock.lastCall![0]).toMatchObject({ activeItemId: "c" });
+    cleanup();
+    // In Shuffle the order that plays decides the predecessor.
+    const shuffled = editor({
+      sequence: {
+        mode: "shuffle",
+        activeItemId: "a",
+        shuffleOrder: ["c", "a", "b"],
+        items: [preset("a"), preset("b"), preset("c")],
+      },
+      view: "queue",
+      programSongPlayback: { isPlaying: true, token: "a:7", audioUrl: "" },
+    });
+    fireEvent.click(within(rows()[0]).getByLabelText(/^Remove /));
+    expect(shuffled.onChange.mock.lastCall![0]).toMatchObject({ activeItemId: "c" });
+  });
+
+  it("names the song each Remove button removes", () => {
+    editor({
+      sequence: { mode: "manual", activeItemId: "a", items: [preset("a"), preset("b")] },
+      view: "queue",
+    });
+    expect(within(rows()[0]).getByRole("button", { name: "Remove Title a" })).toBeInTheDocument();
+    expect(within(rows()[1]).getByRole("button", { name: "Remove Title b" })).toBeInTheDocument();
   });
 
   it("keeps the active song when another row is removed, and clears it with the last song", () => {
@@ -548,7 +595,7 @@ describe("ProgramSongSequenceEditor remove", () => {
       },
       view: "queue",
     });
-    fireEvent.click(within(rows()[0]).getByLabelText("Remove"));
+    fireEvent.click(within(rows()[0]).getByLabelText(/^Remove /));
     expect(onChange.mock.lastCall![0]).toMatchObject({ activeItemId: "b" });
     rerender(
       <ProgramSongSequenceEditor
@@ -560,7 +607,7 @@ describe("ProgramSongSequenceEditor remove", () => {
         onChange={onChange}
       />,
     );
-    fireEvent.click(screen.getByLabelText("Remove"));
+    fireEvent.click(screen.getByLabelText(/^Remove /));
     expect(onChange.mock.lastCall![0]).toMatchObject({
       items: [],
       activeItemId: null,
@@ -582,7 +629,7 @@ describe("ProgramSongSequenceEditor remove", () => {
         audioUrl: "https://elsewhere.test/x.mp3",
       },
     });
-    fireEvent.click(within(rows()[1]).getByLabelText("Remove"));
+    fireEvent.click(within(rows()[1]).getByLabelText(/^Remove /));
     expect(onChange.mock.lastCall![0]).toMatchObject({ activeItemId: "a" });
   });
 
@@ -599,7 +646,7 @@ describe("ProgramSongSequenceEditor remove", () => {
         view: "queue",
         programSongPlayback,
       });
-      fireEvent.click(within(rows()[0]).getByLabelText("Remove"));
+      fireEvent.click(within(rows()[0]).getByLabelText(/^Remove /));
       const next = onChange.mock.lastCall![0];
       cleanup();
       return next;
@@ -1022,7 +1069,7 @@ describe("ProgramSongSequenceEditor remove edge cases (gaulatti/alcantara#186)",
       },
       view: "queue",
     });
-    fireEvent.click(within(rows()[0]).getByLabelText("Remove"));
+    fireEvent.click(within(rows()[0]).getByLabelText(/^Remove /));
     expect(onChange.mock.lastCall![0]).toEqual(
       expect.objectContaining({ items: [], activeItemId: null }),
     );
@@ -1045,7 +1092,7 @@ describe("ProgramSongSequenceEditor remove edge cases (gaulatti/alcantara#186)",
       },
       view: "queue",
     });
-    fireEvent.click(within(rows()[1]).getByLabelText("Remove"));
+    fireEvent.click(within(rows()[1]).getByLabelText(/^Remove /));
     expect(onChange.mock.lastCall![0]).toEqual(
       expect.objectContaining({
         items: [expect.objectContaining({ id: "a" })],
@@ -1064,7 +1111,7 @@ it("keeps an automatic playlist's clock when its active id names no row and anot
     programSongPlayback: { isPlaying: true, token: "b:1", audioUrl: "" },
     view: "queue",
   });
-  fireEvent.click(within(rows()[0]).getByLabelText("Remove"));
+  fireEvent.click(within(rows()[0]).getByLabelText(/^Remove /));
   expect(onChange.mock.lastCall![0]).toMatchObject({
     mode: "autoplay",
     items: [expect.objectContaining({ id: "b" })],
@@ -1090,7 +1137,7 @@ describe("ProgramSongSequenceEditor remove undo", () => {
   });
 
   const removeRow = (index: number) =>
-    fireEvent.click(within(rows()[index]).getByRole("button", { name: "Remove" }));
+    fireEvent.click(within(rows()[index]).getByRole("button", { name: /^Remove / }));
 
   it("removes at once, then Undo puts the song back in its place", () => {
     const view = editor({ sequence: seq(), view: "queue" });
@@ -1165,7 +1212,7 @@ describe("ProgramSongSequenceEditor undo per program", () => {
     const aSeq = { mode: "manual", activeItemId: "a", items: [preset("a"), preset("b"), preset("c")] };
     const bSeq = { mode: "manual", activeItemId: "x", items: [preset("x"), preset("y")] };
     const view = editor({ sequence: aSeq, view: "queue", undoScope: "program-a" });
-    fireEvent.click(within(rows()[1]).getByRole("button", { name: "Remove" }));
+    fireEvent.click(within(rows()[1]).getByRole("button", { name: /^Remove / }));
     const aSaved = view.onChange.mock.lastCall![0];
     expect(aSaved.items.map((i: any) => i.id)).toEqual(["a", "c"]);
 

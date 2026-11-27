@@ -55,7 +55,7 @@ it("takes a song on air through the console, and queues it next", async () => {
   );
   fireEvent.click(screen.getByLabelText("Play Second next"));
   expect(onQueueItem).toHaveBeenCalledWith("b");
-  fireEvent.click(screen.getAllByLabelText("Remove")[0]);
+  fireEvent.click(screen.getAllByLabelText(/^Remove /)[0]);
   expect(onChange).toHaveBeenCalledWith(
     expect.objectContaining({ items: [expect.objectContaining({ id: "b" })] }),
   );

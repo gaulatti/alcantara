@@ -80,7 +80,7 @@ afterEach(() => {
 it("removes a song from the TV music list and saves the rotation without it", async () => {
   open("tv");
   const list = await screen.findByRole("list", { name: "Songs" }).catch(() => null);
-  const removers = await screen.findAllByRole("button", { name: "Remove" });
+  const removers = await screen.findAllByRole("button", { name: /^Remove / });
   const saves = server.requests("PUT /program/main/audio-bus").length;
   fireEvent.click(removers[0]);
   await waitFor(() => expect(server.requests("PUT /program/main/audio-bus").length).toBe(saves + 1));
