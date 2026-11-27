@@ -1,10 +1,11 @@
-// The program return proof in Chromium, WebKit and Firefox, one after another, then the return router's own lines.
+// The program return proof in Chromium, WebKit and Firefox, then as an iPhone and as an Android phone, one after
+// another, then the return router's own lines. RETURN_RUNS (a comma list of run names) runs only those.
 //
 //   ALCANTARA_INVITATION_PATH=/guest/<token> node return-proof-all.mjs
 //
 // With an invitation, an operator presses Admit in /calls each time "WAITING FOR ADMIT <browser>" is printed (180 s).
 // With ALCANTARA_OPERATOR_TOKEN instead, each run creates, admits and revokes its own invitation for
-// ALCANTARA_PROGRAM_ID. Defaults to production and modoitaliano.fm. Exits 0 only when all three heard something.
+// ALCANTARA_PROGRAM_ID. Defaults to production and modoitaliano.fm. Exits 0 only when every run heard something.
 // RETURN_RUNNER_SSH (default helix.gaulatti.com) is where the runner's log is read; empty skips it.
 import { execFile, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
@@ -12,7 +13,22 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
-export const BROWSERS = ["chromium", "webkit", "firefox"];
+export const RUNS = [
+  { name: "chromium", engine: "chromium" },
+  { name: "webkit", engine: "webkit" },
+  { name: "firefox", engine: "firefox" },
+  // Most guests join from a phone: its viewport, user agent and touch, on the engine that phone uses.
+  { name: "iphone", engine: "webkit", device: "iPhone 15" },
+  { name: "android", engine: "chromium", device: "Pixel 7" },
+];
+
+/** The runs asked for by name, or all of them. */
+export function selectRuns(names = "") {
+  const wanted = names.split(",").map((name) => name.trim()).filter(Boolean);
+  const unknown = wanted.filter((name) => !RUNS.some((run) => run.name === name));
+  if (unknown.length) throw new Error(`unknown runs: ${unknown.join(", ")}`);
+  return wanted.length ? RUNS.filter((run) => wanted.includes(run.name)) : RUNS;
+}
 /** A guest session keeps the invitation for 60 s after the guest leaves; the next browser waits it out. */
 const SESSION_PAUSE_SECONDS = 70;
 /** No engine may hold the run: one that hangs is stopped and reported. */
@@ -51,15 +67,15 @@ export function summaryLine({ browser, joined, admitted, track, copy = "none", c
   return `${browser}: joined ${yes(joined)}, admitted ${yes(admitted)}, return track ${yes(track)}, return peak ${peak}${quiet}${copyNote}${error ? `, error: ${error}` : ""}`;
 }
 
-export const passed = (results) => results.length === BROWSERS.length && results.every((r) => r.track && r.peak > 0 && r.copyOk);
+export const passed = (results, runs = RUNS.length) => results.length === runs && results.every((r) => r.track && r.peak > 0 && r.copyOk);
 
 /** The last 40 lines the router page wrote. */
 export const routerLines = (log) => log.split("\n").filter((line) => line.includes("[return-router] ")).slice(-40);
 
-function runBrowser(browser, env) {
+function runBrowser(run, env) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), "return-proof.mjs")], {
-      env: { ...env, WEBRTC_BROWSER: browser },
+      env: { ...env, WEBRTC_BROWSER: run.engine, RETURN_DEVICE: run.device ?? "", RETURN_LABEL: run.name },
       stdio: ["ignore", "pipe", "inherit"],
       timeout: BROWSER_LIMIT_MS,
       killSignal: "SIGKILL",
@@ -69,7 +85,7 @@ function runBrowser(browser, env) {
       lines.push(line);
       console.log(line);
     });
-    child.on("close", () => resolve(outcome(browser, lines)));
+    child.on("close", () => resolve(outcome(run.name, lines)));
   });
 }
 
@@ -92,13 +108,14 @@ async function main() {
   const pause = Number(process.env.RETURN_PAUSE_SECONDS ?? SESSION_PAUSE_SECONDS);
   const started = new Date().toISOString();
   const results = [];
-  for (const browser of BROWSERS) {
+  const runs = selectRuns(process.env.RETURN_RUNS);
+  for (const run of runs) {
     if (results.length && !token && pause > 0) {
       console.log(`Waiting ${pause} s for the previous guest session to expire`);
       await new Promise((resolve) => setTimeout(resolve, pause * 1000));
     }
-    console.log(`--- ${browser}`);
-    results.push(await runBrowser(browser, env));
+    console.log(`--- ${run.name}${run.device ? ` (${run.device}, ${run.engine})` : ""}`);
+    results.push(await runBrowser(run, env));
   }
   const host = process.env.RETURN_RUNNER_SSH ?? "helix.gaulatti.com";
   if (host) {
@@ -118,7 +135,7 @@ async function main() {
   }
   console.log("--- summary");
   for (const result of results) console.log(summaryLine(result));
-  process.exit(passed(results) ? 0 : 1);
+  process.exit(passed(results, runs.length) ? 0 : 1);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) await main();

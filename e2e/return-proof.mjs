@@ -5,11 +5,13 @@
 // ALCANTARA_API_URL with an operator token or local test auth (the script creates, admits and revokes).
 // WEBRTC_BROWSER=chromium|firefox|webkit, RETURN_SECONDS (how long to listen, default 20),
 // RETURN_EXPECT=sound|silence (silence: nothing else is in the room, so any sound would be the guest's own voice),
-// ADMIT_SECONDS (how long to wait for admission, default the timeout). return-proof-all.mjs runs the three engines.
+// ADMIT_SECONDS (how long to wait for admission, default the timeout), RETURN_DEVICE (a Playwright device name, such
+// as "iPhone 15" or "Pixel 7": its viewport, user agent and touch), RETURN_LABEL (the run's name in the output).
+// return-proof-all.mjs runs the engines and the phones.
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { chromium, firefox, webkit } from "playwright";
+import { chromium, devices, firefox, webkit } from "playwright";
 import { SYNTHETIC_MEDIA } from "./synthetic-media.mjs";
 import { PLAYING_COPY, waitForGuestCopy } from "./guest-copy.mjs";
 
@@ -18,6 +20,9 @@ const API = (process.env.ALCANTARA_API_URL || "http://localhost:3000").replace(/
 const PROGRAM = process.env.ALCANTARA_PROGRAM_ID || "main";
 const INVITATION = process.env.ALCANTARA_INVITATION_PATH || "";
 const ENGINE = process.env.WEBRTC_BROWSER || "chromium";
+const DEVICE = process.env.RETURN_DEVICE || "";
+if (DEVICE && !devices[DEVICE]) throw new Error(`RETURN_DEVICE is not a Playwright device: ${DEVICE}`);
+const LABEL = process.env.RETURN_LABEL || ENGINE;
 const SECONDS = Number(process.env.RETURN_SECONDS || 20);
 const EXPECT = process.env.RETURN_EXPECT || "sound";
 const TIMEOUT = Number(process.env.WEBRTC_TIMEOUT_MS || 60_000);
@@ -170,7 +175,11 @@ async function describeGuest(page) {
 }
 try {
   browser = await { chromium, firefox, webkit }[ENGINE].launch(options);
-  const context = await browser.newContext(ENGINE === "chromium" ? { permissions: ["camera", "microphone"] } : {});
+  // A phone run takes the device's viewport, user agent, pixel ratio and touch.
+  const { defaultBrowserType: _browserType, ...phone } = DEVICE ? devices[DEVICE] : {};
+  const context = await browser.newContext({ ...phone, ...(ENGINE === "chromium" ? { permissions: ["camera", "microphone"] } : {}) });
+  // A finger taps; a mouse clicks.
+  const press = (locator, options) => (DEVICE ? locator.tap(options) : locator.click(options));
   // WebKit has no fake camera or microphone switch.
   if (ENGINE === "webkit") await context.addInitScript(SYNTHETIC_MEDIA);
   // The guest is signed out, as in production: the local test session is answered empty.
@@ -193,13 +202,13 @@ try {
   const guest = await context.newPage();
   guestPage = guest;
   await guest.goto(`${APP}${invitation.invitationPath}`);
-  await guest.getByRole("button", { name: /Speaker test/ }).click({ timeout: TIMEOUT });
+  await press(guest.getByRole("button", { name: /Speaker test/ }), { timeout: TIMEOUT });
   await guest.getByLabel(/I am wearing headphones/).check({ timeout: TIMEOUT });
-  await guest.getByRole("button", { name: /Join studio/ }).click({ timeout: TIMEOUT });
+  await press(guest.getByRole("button", { name: /Join studio/ }), { timeout: TIMEOUT });
   await guest.getByRole("button", { name: /Leave/ }).waitFor({ timeout: TIMEOUT });
-  report("guest-joined", { ok: true, browser: ENGINE });
+  report("guest-joined", { ok: true, browser: LABEL, ...(DEVICE ? { device: DEVICE, viewport: guest.viewportSize() } : {}) });
   if (invitation.id) await api(`/webrtc/invitations/${encodeURIComponent(invitation.id)}/admit`, { method: "POST", token });
-  else console.log(`WAITING FOR ADMIT ${ENGINE}`);
+  else console.log(`WAITING FOR ADMIT ${LABEL}`);
   await guest.getByText(/mix-minus/).waitFor({ timeout: ADMIT_TIMEOUT });
   report("guest-admitted", { ok: true });
   // The return the page plays: the first audio element with a live track.
@@ -220,7 +229,7 @@ try {
   report("return-stats", { inbound: receive });
   ok = arrived && copyOk && (EXPECT === "silence" ? level.peak < AUDIBLE : level.peak >= AUDIBLE);
   report("return-level", { ok, expect: EXPECT, ...level });
-  await guest.getByRole("button", { name: /Leave/ }).click();
+  await press(guest.getByRole("button", { name: /Leave/ }));
   report("guest-left", { ok: true });
 } catch (error) {
   report("error", { ok: false, error: String(error?.message ?? error).split("\n")[0], page: await describeGuest(guestPage) });

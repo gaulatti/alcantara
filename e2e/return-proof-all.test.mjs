@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { outcome, passed, routerLines, summaryLine } from "./return-proof-all.mjs";
+import { RUNS, outcome, passed, routerLines, selectRuns, summaryLine } from "./return-proof-all.mjs";
 
 const run = (browser, peak, copy = "You're hearing the studio") =>
   outcome(browser, [
@@ -13,9 +13,9 @@ const run = (browser, peak, copy = "You're hearing the studio") =>
   ]);
 
 test("passes only when all three heard something", () => {
-  assert.equal(passed([run("chromium", 0.2), run("webkit", 0.1), run("firefox", 0.3)]), true);
-  assert.equal(passed([run("chromium", 0.2), run("webkit", 0), run("firefox", 0.3)]), false);
-  assert.equal(passed([run("chromium", 0.2)]), false);
+  assert.equal(passed([run("chromium", 0.2), run("webkit", 0.1), run("firefox", 0.3)], 3), true);
+  assert.equal(passed([run("chromium", 0.2), run("webkit", 0), run("firefox", 0.3)], 3), false);
+  assert.equal(passed([run("chromium", 0.2)], 3), false);
 });
 
 test("reports how far a browser got", () => {
@@ -27,9 +27,9 @@ test("reports how far a browser got", () => {
 test("fails a browser whose guest copy is not 'You're hearing the studio' while audio flows", () => {
   const connecting = run("webkit", 0.2, "Connecting you to the studio sound…");
   assert.equal(connecting.copyOk, false);
-  assert.equal(passed([run("chromium", 0.2), connecting, run("firefox", 0.3)]), false);
+  assert.equal(passed([run("chromium", 0.2), connecting, run("firefox", 0.3)], 3), false);
   const stalled = run("firefox", 0.3, "The studio sound isn't reaching you yet.");
-  assert.equal(passed([run("chromium", 0.2), run("webkit", 0.1), stalled]), false);
+  assert.equal(passed([run("chromium", 0.2), run("webkit", 0.1), stalled], 3), false);
 });
 
 test("prints the guest-facing copy per browser, and says when it is not playing", () => {
@@ -43,4 +43,16 @@ test("keeps the last 40 router lines", () => {
   const lines = routerLines(log);
   assert.equal(lines.length, 40);
   assert.equal(lines[0], "t [return-router] 5");
+});
+
+test("runs the three engines and the two phones, and can be told which", () => {
+  assert.deepEqual(
+    RUNS.map((r) => [r.name, r.engine, r.device ?? ""]),
+    [["chromium", "chromium", ""], ["webkit", "webkit", ""], ["firefox", "firefox", ""], ["iphone", "webkit", "iPhone 15"], ["android", "chromium", "Pixel 7"]],
+  );
+  assert.deepEqual(selectRuns("iphone, android").map((r) => r.name), ["iphone", "android"]);
+  assert.equal(selectRuns("").length, 5);
+  assert.throws(() => selectRuns("safari"), /unknown runs: safari/);
+  // All five by default: three good results are not a pass.
+  assert.equal(passed([run("chromium", 0.2), run("webkit", 0.1), run("firefox", 0.3)]), false);
 });
