@@ -30,6 +30,10 @@ function releaseInput(input: InputTrack) {
 }
 
 type PublishedMix = {
+  /** The published track's name, `mixminus:<guest>:<bus>`: a mix is kept while the guest stays on that bus. */
+  name: string;
+  /** Level and delay stages built for this mix at the last rebuild, let go at the next. */
+  stages: AudioNode[];
   track: LocalAudioTrack;
   destination: MediaStreamAudioDestinationNode;
   /** Listens to the published track itself, for the levels line. */
@@ -121,22 +125,33 @@ export default function ReturnRouterRoute() {
     const runner = new URLSearchParams(window.location.search).get('runner') === '1';
     reportState('starting', 0);
 
+    const releaseMix = async (key: string, mix: PublishedMix) => {
+      mixes.delete(key);
+      mix.stages.forEach((stage) => stage.disconnect());
+      await room.localParticipant.unpublishTrack(mix.track);
+      mix.track.stop();
+      mix.destination.disconnect();
+      mix.metered.disconnect();
+    };
+
     const unpublishMixes = async () => {
-      const pending = Array.from(mixes.values()).map(async (mix) => {
-        await room.localParticipant.unpublishTrack(mix.track);
-        mix.track.stop();
-        mix.destination.disconnect();
-        mix.metered.disconnect();
-      });
-      mixes.clear();
-      await Promise.all(pending);
+      await Promise.all(Array.from(mixes.entries()).map(([key, mix]) => releaseMix(key, mix)));
     };
 
     const rebuild = async () => {
       if (cancelled || room.state !== ConnectionState.Connected) return;
       keepContextRunning();
-      await unpublishMixes();
+      // Each guest keeps one published track for as long as they stay on the same bus: a rebuild rewires the audio
+      // graph behind it and never replaces the track, so the guest's return plays on without a gap.
       inputs.forEach((input) => input.source.disconnect());
+      if (programAudio) {
+        programAudio.source.disconnect();
+        programAudio.source.connect(programAudio.meter);
+      }
+      for (const mix of mixes.values()) {
+        mix.stages.forEach((stage) => stage.disconnect());
+        mix.stages = [];
+      }
       const connectedGuests = new Set(
         Array.from(room.remoteParticipants.values())
           .filter((participant) => participant.identity.startsWith('guest-'))
@@ -147,8 +162,36 @@ export default function ReturnRouterRoute() {
           .map((input) => input.participantIdentity)
           .filter((identity) => isProgramFeed(identity, programId))
       );
-      for (const route of routes.filter((item) => connectedGuests.has(item.participantIdentity))) {
-        const destination = context.createMediaStreamDestination();
+      const wanted = routes.filter((item) => connectedGuests.has(item.participantIdentity));
+      const wantedNames = new Map(wanted.map((route) => [route.participantIdentity, `mixminus:${route.participantIdentity}:${route.returnAudioBus}`]));
+      await Promise.all(
+        Array.from(mixes.entries())
+          .filter(([key, mix]) => wantedNames.get(key) !== mix.name)
+          .map(([key, mix]) => releaseMix(key, mix))
+      );
+      for (const route of wanted) {
+        const name = wantedNames.get(route.participantIdentity)!;
+        let mix = mixes.get(route.participantIdentity);
+        if (!mix) {
+          const created = context.createMediaStreamDestination();
+          const meter = context.createAnalyser();
+          meter.fftSize = 2048;
+          const metered = context.createMediaStreamSource(created.stream);
+          metered.connect(meter);
+          const track = new LocalAudioTrack(created.stream.getAudioTracks()[0]);
+          try {
+            await room.localParticipant.publishTrack(track, { name, source: Track.Source.Microphone });
+          } catch (error) {
+            // Not kept: the next rebuild publishes it again.
+            track.stop();
+            metered.disconnect();
+            created.disconnect();
+            throw error;
+          }
+          mix = { name, stages: [], track, destination: created, meter, metered };
+          mixes.set(route.participantIdentity, mix);
+        }
+        const { destination } = mix;
         for (const input of inputs.values()) {
           const isOwnGuest = input.participantIdentity === route.participantIdentity;
           const isOtherGuest = input.participantIdentity.startsWith('guest-') && !isOwnGuest;
@@ -171,27 +214,12 @@ export default function ReturnRouterRoute() {
             const delay = context.createDelay(2);
             delay.delayTime.value = (sourceRoute?.sourceDelayMs ?? 0) / 1000;
             input.source.connect(gain).connect(delay).connect(destination);
+            mix.stages.push(gain, delay);
           }
         }
         // No program feed carries audio: the program bus is the program's own audio, when the program has it.
         const programBus = route.returnAudioBus === 'master' || route.returnAudioBus === 'program';
         if (programBus && programFeedsWithAudio.size === 0 && programAudio) programAudio.source.connect(destination);
-        const meter = context.createAnalyser();
-        meter.fftSize = 2048;
-        const metered = context.createMediaStreamSource(destination.stream);
-        metered.connect(meter);
-        const mediaTrack = destination.stream.getAudioTracks()[0];
-        const localTrack = new LocalAudioTrack(mediaTrack);
-        await room.localParticipant.publishTrack(localTrack, {
-          name: `mixminus:${route.participantIdentity}:${route.returnAudioBus}`,
-          source: Track.Source.Microphone
-        });
-        mixes.set(route.participantIdentity, {
-          track: localTrack,
-          destination,
-          meter,
-          metered
-        });
       }
       if (!cancelled) {
         setMixCount(mixes.size);

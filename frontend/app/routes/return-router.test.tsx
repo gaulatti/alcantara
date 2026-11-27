@@ -97,6 +97,8 @@ function node(label: string, extra: Record<string, unknown> = {}): Node {
     },
     disconnect() {
       created.disconnected++;
+      // As Web Audio does: a node that disconnects feeds nothing until it connects again.
+      created.feeds = [];
     },
     ...extra,
   };
@@ -560,9 +562,18 @@ it("rebuilds the mixes as tracks, guests and routes change", async () => {
   emit("trackUnsubscribed", {}, { trackSid: "t2" });
   emit("trackUnsubscribed", {}, { trackSid: "missing" });
   await settle();
+  // A track that comes and goes rewires the mix behind the guest's return; the return itself is never replaced.
+  expect(room().unpublished).not.toContain(first);
+  expect(first.stopped).toBe(false);
+  expect(room().published).toHaveLength(1);
+  expect(sourceOf("anna-mic").disconnected).toBeGreaterThan(0);
+  // The guest leaves: their return goes with them.
+  room().remoteParticipants.delete("guest-anna");
+  emit("participantDisconnected");
+  await settle();
   expect(room().unpublished).toContain(first);
   expect(first.stopped).toBe(true);
-  expect(sourceOf("anna-mic").disconnected).toBeGreaterThan(0);
+  room().remoteParticipants.set("guest-anna", { identity: "guest-anna" });
 
   emit("reconnecting");
   expect(screen.getByText("Reconnecting return router…")).toBeVisible();
@@ -628,6 +639,36 @@ it("does not mix while the room is disconnected, and reports a failed rebuild", 
   emit("participantConnected");
   await settle();
   expect(screen.getByText("The mix could not be rebuilt. It retries when the room changes. (mix_rebuild)")).toBeVisible();
+  // A publish that failed is tried again at the next rebuild.
+  room().localParticipant.publishTrack = async (_track: unknown, options: { name: string }) => {
+    room().published.push({ name: options.name, track: _track });
+  };
+  emit("participantConnected");
+  await settle();
+  expect(room().published.map((p) => p.name)).toEqual(["mixminus:guest-anna:program"]);
+});
+
+it("keeps each guest's published return through rebuilds, and replaces it only when the guest changes bus", async () => {
+  routes = [guestRoute("guest-anna", { returnAudioBus: "program" })];
+  await openRouter();
+  room().remoteParticipants.set("guest-anna", { identity: "guest-anna" });
+  emit("participantConnected");
+  await settle();
+  emit("trackSubscribed", ...audioTrack("anna-mic", "t1", "mic", "guest-anna"));
+  emit("trackSubscribed", ...audioTrack("alana-feed", "t2", "program", "program-feed-main"));
+  emit("trackSubscribed", ...audioTrack("cy-mic", "t3", "mic", "guest-cy"));
+  room().remoteParticipants.set("guest-cy", { identity: "guest-cy" });
+  emit("participantConnected");
+  await settle();
+  expect(room().published.filter((p) => p.name === "mixminus:guest-anna:program")).toHaveLength(1);
+  expect(room().unpublished).toHaveLength(0);
+  routes = [guestRoute("guest-anna", { returnAudioBus: "monitor" })];
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(3_000);
+  });
+  await settle();
+  expect(room().unpublished).toHaveLength(1);
+  expect(room().published.at(-1)!.name).toBe("mixminus:guest-anna:monitor");
 });
 
 it("leaves the room and releases audio when the page closes", async () => {
