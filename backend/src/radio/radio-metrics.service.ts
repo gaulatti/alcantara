@@ -247,6 +247,31 @@ export const ANNOUNCEMENT_SKIP_REASONS: AnnouncementSkipReason[] = [
   'refused',
 ];
 /**
+ * Why an announcement Palazzo accepted never aired: a newer one replaced it,
+ * the engine withdrew it, Palazzo could not ready it, an operator command
+ * flushed it, the handoff selected another song, an end commanded nothing,
+ * Palazzo reported idle, or it was promoted and no start followed.
+ */
+export type AnnouncedNotAiredReason =
+  | 'superseded'
+  | 'withdrawn'
+  | 'not_ready'
+  | 'operator'
+  | 'preempted'
+  | 'released'
+  | 'palazzo_idle'
+  | 'no_start';
+export const ANNOUNCED_NOT_AIRED_REASONS: AnnouncedNotAiredReason[] = [
+  'superseded',
+  'withdrawn',
+  'not_ready',
+  'operator',
+  'preempted',
+  'released',
+  'palazzo_idle',
+  'no_start',
+];
+/**
  * A bumper spot by how it reached Palazzo: `announced` with the next song
  * (gaulatti/palazzo#50) or `command` (played after the end, then the song by
  * command); `sent` when Palazzo took it, `played` on Palazzo's
@@ -603,6 +628,7 @@ export class RadioMetricsService {
   private readonly nextAnnouncements = new Map<string, number>();
   private readonly handoffs = new Map<string, number>();
   private readonly announcementSkips = new Map<string, number>();
+  private readonly announcedNotAired = new Map<string, number>();
   private readonly bumpers = new Map<string, number>();
   private readonly cursorWrites = new Map<string, number>();
   private readonly inheritedAdoptions = new Map<string, number>();
@@ -816,6 +842,14 @@ export class RadioMetricsService {
     this.announcementSkips.set(
       reason,
       (this.announcementSkips.get(reason) ?? 0) + 1,
+    );
+  }
+
+  recordAnnouncedNotAired(reason: AnnouncedNotAiredReason): void {
+    if (!ANNOUNCED_NOT_AIRED_REASONS.includes(reason)) return;
+    this.announcedNotAired.set(
+      reason,
+      (this.announcedNotAired.get(reason) ?? 0) + 1,
     );
   }
 
@@ -1199,6 +1233,15 @@ export class RadioMetricsService {
     for (const reason of ANNOUNCEMENT_SKIP_REASONS) {
       lines.push(
         `alcantara_radio_announcement_skipped_total{reason="${reason}"} ${this.announcementSkips.get(reason) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_announced_not_aired_total Next-song announcements Palazzo accepted that never started, by bounded reason.',
+      '# TYPE alcantara_radio_announced_not_aired_total counter',
+    );
+    for (const reason of ANNOUNCED_NOT_AIRED_REASONS) {
+      lines.push(
+        `alcantara_radio_announced_not_aired_total{reason="${reason}"} ${this.announcedNotAired.get(reason) ?? 0}`,
       );
     }
     lines.push(

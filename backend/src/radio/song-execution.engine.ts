@@ -17,7 +17,10 @@ import {
   OnModuleDestroy,
 } from '@nestjs/common';
 import { PALAZZO_NEXT_BUMPER } from './palazzo-contract';
-import type { AnnouncementSkipReason } from './radio-metrics.service';
+import type {
+  AnnouncedNotAiredReason,
+  AnnouncementSkipReason,
+} from './radio-metrics.service';
 import { randomUUID } from 'node:crypto';
 import { Subject, type Observable } from 'rxjs';
 import type { Prisma } from '@prisma/client';
@@ -342,6 +345,8 @@ interface BumperChoice {
 }
 
 const MAX_PREEMPTED_REQUEST_IDS = 32;
+/** How long after an announcement is given up, or promoted, a start still counts as it airing. */
+export const ANNOUNCED_START_GRACE_MS = 30_000;
 /** How late after the expected end a successor must still be the same to be announced. */
 
 /**
@@ -423,6 +428,14 @@ interface SongEngineState {
   nextUnsupportedBootId?: string | null;
   /** Announced songs replaced at the handoff before their start arrived. */
   preemptedRequestIds: string[];
+  /**
+   * Announcements Palazzo accepted that have not started, by playback ID. Given a reason and a deadline when the
+   * engine gives one up or promotes it; one still here past its deadline never aired. In memory: a restart forgets.
+   */
+  awaitingAir: Map<
+    string,
+    { reason: AnnouncedNotAiredReason; deadline: number | null }
+  >;
   /** Capabilities from the latest Palazzo snapshot (gaulatti/palazzo#50). */
   palazzoCapabilities?: string[];
   /** The spot chosen for the active song's bumper slot, if any. */
@@ -891,6 +904,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         announcementChain: Promise.resolve(),
         palazzoBootId: null,
         preemptedRequestIds: [],
+        awaitingAir: new Map(),
       };
       this.states.set(programId, s);
     }
@@ -1855,7 +1869,35 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
    * The watchdog (#230). Runs every WATCHDOG_INTERVAL_MS; see
    * NO_PLAYBACK_BOUND_MS.
    */
+  /** Gives up on an accepted announcement: the first reason stands, and a start within the grace cancels it. */
+  private giveUpAnnouncement(
+    state: SongEngineState,
+    candidate: { playbackId: string } | null | undefined,
+    reason: AnnouncedNotAiredReason,
+  ): void {
+    const waiting = candidate && state.awaitingAir.get(candidate.playbackId);
+    if (!waiting || waiting.deadline !== null) return;
+    waiting.reason = reason;
+    waiting.deadline = Date.now() + ANNOUNCED_START_GRACE_MS;
+  }
+
+  /** Counts and logs, once each, the announcements past their grace with no start. */
+  private countUnaired(): void {
+    const now = Date.now();
+    for (const [programId, state] of this.states) {
+      for (const [playbackId, waiting] of state.awaitingAir) {
+        if (waiting.deadline === null || waiting.deadline > now) continue;
+        state.awaitingAir.delete(playbackId);
+        this.metrics.recordAnnouncedNotAired(waiting.reason);
+        this.logger.log(
+          `Announced song never aired on ${programId}: ${waiting.reason} (${playbackId})`,
+        );
+      }
+    }
+  }
+
   async checkPlayback(): Promise<void> {
+    this.countUnaired();
     for (const programId of [...this.radioProgramIds]) {
       const state = this.states.get(programId);
       if (!state) continue;
@@ -2102,6 +2144,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         : '';
 
     if (event.type === 'track.started') {
+      state.awaitingAir.delete(requestId);
       const activeSong = state.activeSong;
       if (activeSong?.playbackRequestId === requestId) {
         // The command is no longer pending once Palazzo confirms playback.
@@ -2349,6 +2392,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (!successor) {
       state.announcement = null;
       if (current && (current.status !== 'not-announced' || current.replaces)) {
+        this.giveUpAnnouncement(state, current, 'withdrawn');
+        this.giveUpAnnouncement(state, current.replaces, 'withdrawn');
         await this.radioService.withdrawNext(programId);
       }
       return;
@@ -2417,6 +2462,11 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     // Accepted: Palazzo replaced the previous announcement.
     if (result === 'accepted') {
       announcement.replaces = null;
+      this.giveUpAnnouncement(state, replaced, 'superseded');
+      state.awaitingAir.set(announcement.playbackId, {
+        reason: 'superseded',
+        deadline: null,
+      });
       if (bumper) {
         this.rememberBumperSpot(
           state,
@@ -2433,7 +2483,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     // stays known: its start is then recorded and the handoff preempts it.
     if (replaced?.startedAt === null) {
       const withdrawn = await this.radioService.withdrawNext(programId);
-      if (withdrawn === true) announcement.replaces = null;
+      if (withdrawn === true) {
+        this.giveUpAnnouncement(state, replaced, 'withdrawn');
+        announcement.replaces = null;
+      }
     }
   }
 
@@ -2771,6 +2824,11 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     data: { playbackId: string; reason: string },
   ): void {
     if (data.reason !== 'not_ready') return;
+    const waiting = state.awaitingAir.get(data.playbackId);
+    if (waiting) {
+      waiting.reason = 'not_ready';
+      waiting.deadline ??= Date.now() + ANNOUNCED_START_GRACE_MS;
+    }
     const announcement = state.announcement;
     if (
       announcement?.playbackId === data.playbackId &&
@@ -2823,6 +2881,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     const announcement = state.announcement;
     state.announcement = null;
     for (const candidate of [announcement, announcement?.replaces]) {
+      this.giveUpAnnouncement(state, candidate, 'operator');
       if (candidate?.startedAt == null) continue;
       this.emitTrackEvent(
         programId,
@@ -2883,6 +2942,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       );
       return;
     }
+    this.giveUpAnnouncement(state, announcement, 'preempted');
     state.preemptedRequestIds.push(announcement.playbackId);
     if (state.preemptedRequestIds.length > MAX_PREEMPTED_REQUEST_IDS) {
       state.preemptedRequestIds.shift();
@@ -2898,6 +2958,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (announcement.status === 'not-announced' && !announcement.replaces) {
       return;
     }
+    this.giveUpAnnouncement(state, announcement, 'released');
+    this.giveUpAnnouncement(state, announcement.replaces, 'released');
     this.preemptAnnouncedSongs(programId, state, announcement);
     void Promise.resolve()
       .then(() => this.radioService.withdrawNext(programId))
@@ -2954,6 +3016,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     snapshot: PalazzoPlaybackState,
   ): void {
     const requestId = snapshot.track?.playbackRequestId ?? '';
+    state.awaitingAir.delete(requestId);
     if (state.activeSong && state.activeSong.playbackRequestId === requestId) {
       const song = state.activeSong;
       this.reconcileIntroSnapshot(song, snapshot);
@@ -3447,7 +3510,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   ): void {
     const requestId = state.activeSong?.playbackRequestId ?? null;
     // Palazzo is idle: an announced song that has not started is not queued.
-    if (state.announcement?.startedAt === null) state.announcement = null;
+    if (state.announcement?.startedAt === null) {
+      this.giveUpAnnouncement(state, state.announcement, 'palazzo_idle');
+      state.announcement = null;
+    }
 
     if (
       requestId &&
@@ -4219,6 +4285,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (handoff) {
       state.announcement = null;
       if (promote) {
+        if (startedAt === null)
+          this.giveUpAnnouncement(state, announced, 'no_start');
         this.recordHandoff('preloaded');
       } else if (announced) {
         // Palazzo may already have started an announced song; the command

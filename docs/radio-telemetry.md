@@ -666,6 +666,18 @@ Contract: gaulatti/palazzo#40 §5.
   `command` (today's song command) and `race_replaced` (an accepted
   announcement was no longer the successor, so the selected song was commanded
   and the announced one preempted).
+- `alcantara_radio_announced_not_aired_total{reason}` counts each announcement
+  Palazzo accepted that never started, and the engine logs it once with the
+  playback ID (`Announced song never aired on <program>: <reason> (<id>)`). The
+  reason is the first thing that gave it up: `superseded` (a newer
+  announcement), `withdrawn` (no successor any more, or the replacement was
+  refused), `not_ready` (Palazzo could not ready it), `operator` (a take or a
+  Stop), `preempted` (the end selected another song), `released` (an end that
+  commands nothing), `palazzo_idle`, or `no_start` (promoted at the end, and no
+  start followed). It is counted 30 s later, at the watchdog's tick, so a late
+  start cancels it. `no_start` and `not_ready` mean a listener may have heard a
+  gap; `superseded` follows ordinary queue changes. Announcements are held in
+  memory: one outstanding at a backend restart is not counted.
 - `alcantara_radio_announcement_skipped_total{reason}` counts, once per song,
   why a started song was left without an announced successor:
   - `bumper_slot`: a slot while Palazzo does not list `next.bumper`;

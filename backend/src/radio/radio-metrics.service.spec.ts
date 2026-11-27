@@ -274,3 +274,14 @@ describe('RadioMetricsService engine degraded paths', () => {
     );
   });
 });
+
+describe('RadioMetricsService announcements that never aired', () => {
+  it('counts each by its bounded reason and ignores any other', () => {
+    const metrics = new RadioMetricsService();
+    metrics.recordAnnouncedNotAired('no_start');
+    metrics.recordAnnouncedNotAired('unbounded' as never);
+    const rendered = metrics.render();
+    expect(rendered).toContain('alcantara_radio_announced_not_aired_total{reason="no_start"} 1');
+    expect(rendered).not.toContain('unbounded');
+  });
+});

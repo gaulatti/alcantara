@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import {
   SIMILARITY_READY_WAIT_MS,
   SongExecutionEngine,
+  ANNOUNCED_START_GRACE_MS,
 } from './song-execution.engine';
 import { Logger } from '@nestjs/common';
 import { RadioMetricsService } from './radio-metrics.service';
@@ -2909,5 +2910,133 @@ describe('the successor chosen for the expected end, with production settings', 
       skip: 'no_successor',
       detail: 'nothing resolves at the end',
     });
+  });
+});
+
+// An accepted successor that never airs left no trace: the as-run only has songs that started.
+describe('an announced song that never airs', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-11-17T12:00:00.000Z'));
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  });
+
+  /** The reasons counted so far, after the watchdog's tick past the grace. */
+  async function counted(h: ReturnType<typeof harness>) {
+    jest.advanceTimersByTime(ANNOUNCED_START_GRACE_MS + 1);
+    await h.engine.checkPlayback();
+    await settle();
+    return Object.fromEntries(
+      [...h.metrics.render().matchAll(/^alcantara_radio_announced_not_aired_total\{reason="(\w+)"\} (\d+)$/gm)]
+        .filter(([, , value]) => value !== '0')
+        .map(([, reason, value]) => [reason, Number(value)]),
+    );
+  }
+  const logged = () =>
+    (Logger.prototype.log as jest.Mock).mock.calls
+      .map(([line]) => String(line))
+      .filter((line) => line.startsWith('Announced song never aired'));
+
+  it('counts nothing across ordinary handoffs, and renders every reason from zero', async () => {
+    const h = harness();
+    expect(h.metrics.render().match(/^alcantara_radio_announced_not_aired_total\{/gm)).toHaveLength(8);
+    await onAir(h);
+    for (let n = 0; n < 3; n += 1) {
+      h.palazzo.endCurrent({ overlap: n === 1 });
+      await settle();
+    }
+    expect(await counted(h)).toEqual({});
+    expect(logged()).toEqual([]);
+  });
+
+  it('counts a Stop as operator, logged once with the playback ID', async () => {
+    const h = harness();
+    await onAir(h);
+    const announced = h.palazzo.queued!;
+    h.palazzo.stop();
+    h.engine.handleStopSong(PROGRAM);
+    await settle();
+    // Within the grace a start could still arrive.
+    await h.engine.checkPlayback();
+    expect(logged()).toEqual([]);
+    expect(await counted(h)).toEqual({ operator: 1 });
+    expect(await counted(h)).toEqual({ operator: 1 });
+    expect(logged()).toEqual([`Announced song never aired on ${PROGRAM}: operator (${announced.id})`]);
+  });
+
+  it('counts a replaced announcement as superseded', async () => {
+    const h = harness();
+    await onAir(h);
+    const first = h.palazzo.queued!.id;
+    h.engine.handleQueueUpdated(PROGRAM, [{ id: 'q1', itemId: SONGS[3].itemId, enqueuedAt: 1 }]);
+    await settle();
+    expect(h.palazzo.queued!.id).not.toBe(first);
+    expect(await counted(h)).toEqual({ superseded: 1 });
+  });
+
+  it('counts a promoted song with no start as no_start, and a late start as aired', async () => {
+    const h = harness();
+    await onAir(h);
+    h.palazzo.queued = null;
+    h.palazzo.endCurrent();
+    await settle();
+    expect(await counted(h)).toEqual({ no_start: 1 });
+
+    const late = harness();
+    await onAir(late);
+    const announced = late.palazzo.queued!;
+    late.palazzo.queued = null;
+    late.palazzo.endCurrent();
+    await settle();
+    late.palazzo.start(announced);
+    await settle();
+    expect(await counted(late)).toEqual({});
+  });
+
+  it('counts a song Palazzo could not ready as not_ready, before the end or after promotion', async () => {
+    for (const afterPromotion of [false, true]) {
+      const h = harness();
+      await onAir(h);
+      const announced = h.palazzo.queued!;
+      h.palazzo.queued = null;
+      if (afterPromotion) {
+        h.palazzo.endCurrent();
+        await settle();
+      }
+      h.palazzo.event('playout.next_withdrawn', { playbackId: announced.id, reason: 'not_ready' });
+      await settle();
+      expect(await counted(h)).toEqual({ not_ready: 1 });
+    }
+  });
+
+  it('counts an announcement Palazzo dropped by going idle', async () => {
+    const h = harness();
+    await onAir(h);
+    h.palazzo.queued = null;
+    h.palazzo.current = null;
+    h.idle();
+    await settle();
+    expect(await counted(h)).toMatchObject({ palazzo_idle: 1 });
+  });
+
+  it('counts a successor the engine withdraws, and one an end releases', async () => {
+    const withdrawn = harness();
+    await onAir(withdrawn);
+    withdrawn.engine.handleQueueUpdated(PROGRAM, [{ id: 'entry-x', itemId: 'missing', enqueuedAt: 1 }]);
+    await settle();
+    expect(await counted(withdrawn)).toEqual({ withdrawn: 1 });
+
+    let clocked = false;
+    const released = harness({ clockedLog: () => clocked });
+    await onAir(released);
+    clocked = true;
+    released.palazzo.queued = null;
+    released.palazzo.endCurrent();
+    await settle();
+    expect(await counted(released)).toEqual({ released: 1 });
   });
 });
