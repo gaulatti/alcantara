@@ -369,6 +369,13 @@ a duplicate is judged by it until Palazzo confirms the song: after Palazzo has r
 watchdog's bound, the song is taken off air and its entry dropped, counted `restart-duplicate-dropped`. Nothing else is
 started. A duplicate answer for a song Palazzo reports playing changes nothing.
 
+## A take while Play Next is being claimed
+
+Before it commands the Play Next head, the engine saves a claim on it. If a Take now lands while that save is in
+flight, the taken song keeps the air: when the save completes, the claim is given back (counted `released`), as a
+Stop gives it back, and the entry stays at the head of the queue. Before, the claim's continuation commanded the
+queued song over the taken one (#814 review).
+
 ## Gapless handoff: announcing the next song
 
 Contract: gaulatti/palazzo#40. When Palazzo accepts the active song's start in
