@@ -97,7 +97,7 @@ export class WebrtcMcpTools {
         name: 'webrtc_list_participants',
         title: 'List the guests in a program room',
         description:
-          'Lists the guests invited to a program room: whether each is connected, reconnecting or offline; whether each is waiting to be admitted (screening); whether their return feed is reaching them (returnReaching: healthy, stalled or missing, null until their page reports); the cue that holds now (cueState: live, standby, wrap, rejoined for a guest cued live who came back off air and needs a new cue, or null when none was sent); and their tracks and recent commands. The operator\'s own "Mic on air" is not in this list and has no tool.',
+          'Lists the guests invited to a program room: whether each is connected, reconnecting or offline; whether each is waiting to be admitted (screening); whether their return feed is reaching them (returnReaching: healthy, stalled or missing, null until their page reports); the cue that holds now (cueState: live, standby, wrap, rejoined for a guest cued live who came back off air and needs a new cue, or null when none was sent); and their tracks and recent commands. The operator\'s own "Mic on air" is not in this list; webrtc_host_mic_off takes it off air.',
         permission: permissions.read,
         shape: { program_id: programIdArg },
         run: (args) => this.webrtc.listParticipants(args.program_id),
@@ -224,6 +224,31 @@ export class WebrtcMcpTools {
             : `guest ${args.invitation_id} is not waiting to be admitted`,
         run: (args, _loaded, ctx) =>
           this.webrtc.admitGuest(identityOf(ctx), args.invitation_id),
+      }),
+      actionSpec({
+        name: 'webrtc_host_mic_off',
+        title: 'Take the host microphone off air',
+        description:
+          'Takes the operator\'s own microphone off air in a program: every published host microphone track (the Mic on air track) is muted on the server, so it stops reaching air whatever the page does. When no host microphone is published it reports no-host-mic and mutes nothing. Reports muted only after LiveKit confirms each mute.',
+        permission: permissions.operate,
+        tier: 'A',
+        shape: { program_id: programIdArg },
+        load: (args) => this.webrtc.hostMicTracks(args.program_id),
+        id: (args) => args.program_id,
+        label: () => 'Host microphone',
+        plan: (args, tracks) => ({
+          summary:
+            tracks.length === 0
+              ? `No host microphone is published in program ${args.program_id}, so nothing is muted.`
+              : `Mutes ${tracks.length} host microphone track(s) on air in program ${args.program_id}. LiveKit confirms each mute before it is reported.`,
+          affects: tracks.map((track) => ({
+            kind: 'participant',
+            id: track.identity,
+            name: 'Host microphone',
+          })),
+          recoverable: true,
+        }),
+        run: (args) => this.webrtc.muteHostMic(args.program_id),
       }),
       actionSpec({
         name: 'webrtc_decline_guest',

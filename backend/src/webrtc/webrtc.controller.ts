@@ -63,6 +63,12 @@ export class WebrtcController {
     return this.webrtc.revokeInvitation(identityFrom(request), id);
   }
 
+  @Post('rooms/:programId/host-mic/mute')
+  @RequirePermission(ALCANTARA_PERMISSIONS.webrtc.operate)
+  muteHostMic(@Param('programId') programId: string) {
+    return this.webrtc.muteHostMic(programId);
+  }
+
   @Post('invitations/:id/admit')
   @RequirePermission(ALCANTARA_PERMISSIONS.webrtc.operate)
   admitGuest(@Req() request: OperatorRequest, @Param('id') id: string) {

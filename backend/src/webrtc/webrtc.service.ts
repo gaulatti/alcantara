@@ -1247,6 +1247,59 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /**
+   * The host's microphone on air in a program's room: the `onair:host` tracks that operators publish. Read from LiveKit,
+   * so a track the page no longer holds is still seen, and nothing is trusted from the request.
+   */
+  async hostMicTracks(programIdValue: unknown) {
+    this.requireConfiguration();
+    const programId = this.normalizeProgramId(programIdValue);
+    let participants: Awaited<
+      ReturnType<RoomServiceClient['listParticipants']>
+    > = [];
+    try {
+      participants = await this.roomService.listParticipants(
+        this.roomName(programId),
+      );
+    } catch (error) {
+      if (!this.isRoomMissing(error)) throw this.livekitUnavailable(error);
+    }
+    return participants.flatMap((participant) =>
+      participant.identity.startsWith('operator-')
+        ? participant.tracks
+            .filter((track) => track.name === 'onair:host')
+            .map((track) => ({
+              identity: participant.identity,
+              sid: track.sid,
+              muted: track.muted,
+            }))
+        : [],
+    );
+  }
+
+  /**
+   * Takes the host's microphone off air: LiveKit mutes each `onair:host` track on the server, so it stops reaching air
+   * whatever the page does. "muted" is reported only after LiveKit confirms each mute.
+   */
+  async muteHostMic(programIdValue: unknown) {
+    const programId = this.normalizeProgramId(programIdValue);
+    const tracks = await this.hostMicTracks(programId);
+    if (tracks.length === 0) return { status: 'no-host-mic' as const, muted: 0 };
+    for (const track of tracks) {
+      try {
+        await this.roomService.mutePublishedTrack(
+          this.roomName(programId),
+          track.identity,
+          track.sid,
+          true,
+        );
+      } catch (error) {
+        throw this.livekitUnavailable(error);
+      }
+    }
+    return { status: 'muted' as const, muted: tracks.length };
+  }
+
   async createOperatorToken(
     operator: CanonicalIdentity,
     programIdValue: unknown,

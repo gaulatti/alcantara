@@ -1452,6 +1452,12 @@
     "permission": "alcantara:webrtc:read"
   },
   {
+    "method": "POST",
+    "path": "/webrtc/rooms/:programId/host-mic/mute",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
+  },
+  {
     "method": "GET",
     "path": "/webrtc/rooms/:programId/participants",
     "public": false,

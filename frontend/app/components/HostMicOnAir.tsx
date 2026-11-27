@@ -1,6 +1,6 @@
 import { Button } from '@gaulatti/bleecker';
 import { Mic, MicOff } from 'lucide-react';
-import { createLocalAudioTrack, Room, RoomEvent } from 'livekit-client';
+import { createLocalAudioTrack, Room, RoomEvent, Track } from 'livekit-client';
 import { useEffect, useRef, useState } from 'react';
 import { authFetch } from '../services/api';
 
@@ -41,6 +41,15 @@ export function HostMicOnAir({ programId, canOperate }: { programId: string; can
       });
       if (!response.ok) throw new Error('The host microphone could not join the call room.');
       const credentials = (await response.json()) as { serverUrl: string; token: string };
+      // The studio can mute the published microphone on the server (the operator's Mic off action). That takes it off
+      // air whatever the page does, so the page follows: the track is stopped, the room left and the button shows off.
+      current.room.on(RoomEvent.TrackMuted, (publication: { source: Track.Source; isMuted: boolean }, participant: { isLocal: boolean }) => {
+        if (link.current !== current) return;
+        if (!participant.isLocal || publication.source !== Track.Source.Microphone || !publication.isMuted) return;
+        close();
+        setState('off');
+        setError('The studio muted the host microphone. It is off air.');
+      });
       current.room.on(RoomEvent.Disconnected, () => {
         if (link.current !== current) return;
         link.current = null;

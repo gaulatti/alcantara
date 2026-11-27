@@ -12,7 +12,7 @@ const lk = vi.hoisted(() => {
     connect: async () => undefined as unknown,
   };
   class FakeRoom {
-    handlers = new Map<string, () => void>();
+    handlers = new Map<string, (...args: any[]) => void>();
     published: string[] = [];
     allowed: Array<{ all: boolean; identities: string[] }> = [];
     disconnected = false;
@@ -28,7 +28,7 @@ const lk = vi.hoisted(() => {
     constructor() {
       state.rooms.push(this);
     }
-    on(event: string, handler: () => void) {
+    on(event: string, handler: (...args: any[]) => void) {
       this.handlers.set(event, handler);
       return this;
     }
@@ -51,7 +51,8 @@ const api = vi.hoisted(() => ({ authFetch: vi.fn() }));
 
 vi.mock("livekit-client", () => ({
   Room: lk.FakeRoom,
-  RoomEvent: { Disconnected: "disconnected" },
+  RoomEvent: { Disconnected: "disconnected", TrackMuted: "trackMuted" },
+  Track: { Source: { Microphone: "microphone", Camera: "camera" } },
   createLocalAudioTrack: lk.createLocalAudioTrack,
 }));
 vi.mock("../services/api", () => api);
@@ -150,3 +151,34 @@ it("stays quiet about a failure that arrives after the page moved on", async () 
   });
   expect(screen.queryByRole("alert")).toBeNull();
 });
+
+it("goes off air at once when the studio mutes the host microphone on the server", async () => {
+  render(<HostMicOnAir programId="main" canOperate />);
+  fireEvent.click(offButton());
+  await waitFor(() => onButton());
+  const room = lk.state.rooms[0];
+  // A mute of another source, or of a remote participant, changes nothing.
+  act(() => room.handlers.get("trackMuted")!({ source: "camera", isMuted: true }, { isLocal: true }));
+  act(() => room.handlers.get("trackMuted")!({ source: "microphone", isMuted: true }, { isLocal: false }));
+  expect(onButton()).toBeVisible();
+  expect(lk.state.tracks[0].stopped).toBe(false);
+  // The studio's mute of the host's own microphone takes it off air.
+  act(() => room.handlers.get("trackMuted")!({ source: "microphone", isMuted: true }, { isLocal: true }));
+  expect(lk.state.tracks[0].stopped).toBe(true);
+  expect(room.disconnected).toBe(true);
+  expect(offButton()).toBeVisible();
+  expect(screen.getByRole("alert")).toHaveTextContent("The studio muted the host microphone. It is off air.");
+});
+
+it("ignores a mute that arrives after the host has switched off", async () => {
+  render(<HostMicOnAir programId="main" canOperate />);
+  fireEvent.click(offButton());
+  await waitFor(() => onButton());
+  const room = lk.state.rooms[0];
+  fireEvent.click(onButton());
+  expect(room.disconnected).toBe(true);
+  act(() => room.handlers.get("trackMuted")?.({ source: "microphone", isMuted: true }, { isLocal: true }));
+  expect(offButton()).toBeVisible();
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
