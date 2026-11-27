@@ -16,6 +16,7 @@ import {
   summarizeChange,
 } from '../operator-change/operator-change-recorder';
 import { SONG_CHANGE_FIELDS } from '../operator-change/library-change-fields';
+import { splitArtistTitle } from './split-artist-title';
 
 /**
  * The media-analysis columns exposed to clients. Shared with the media-assets
@@ -228,8 +229,10 @@ export class SongsService {
   }
 
   async create(data: SongInput, teamId: number) {
-    const artist = this.toTrimmedString(data.artist);
-    const title = this.toTrimmedString(data.title);
+    const { artist, title } = splitArtistTitle(
+      this.toTrimmedString(data.artist),
+      this.toTrimmedString(data.title),
+    );
     const audioUrl = this.toRequiredTrimmedString(data.audioUrl, 'audioUrl');
 
     if (!artist && !title) {

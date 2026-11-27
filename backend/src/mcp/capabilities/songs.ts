@@ -169,7 +169,7 @@ export class SongsMcpTools {
         name: 'song_create',
         title: 'Create a song',
         description:
-          'Adds a song to the catalog (artist or title, and an audio address) and creates its media asset; an intro Instant may be set for a program (default main). The song is in no rotation until a sequence uses it.',
+          'Adds a song to the catalog (artist or title, and an audio address) and creates its media asset; an intro Instant may be set for a program (default main). With no title, an artist of the form "Artist - Title" (one " - ") is stored as both. The song is in no rotation until a sequence uses it.',
         permission: permissions.manage,
         tier: 'W',
         untrusted: SONG_UNTRUSTED,
