@@ -1272,3 +1272,30 @@ it("tells a visual library search that found nothing to clear its filters", asyn
     await screen.findByText("Clear the filters and try again."),
   ).toBeInTheDocument();
 });
+
+// A label the library does not know (a legacy media group) is shown as removable, never dropped silently: the save
+// refuses it while it is on the asset, so the operator removes it, and the known labels stay as they were.
+it("shows a label the library does not know as removable, and saves once it is removed", async () => {
+  assets = [
+    asset("img", {
+      image: { id: 11 },
+      labels: [
+        { id: "l1", name: "Headlines", description: null, position: 0 },
+        { id: "legacy-media-group:9001", name: "legacy-media-group:9001", description: null, position: 1 },
+      ],
+    }),
+  ];
+  labels = [label("l1", "Headlines")];
+  open();
+  await waitFor(() => expect(screen.queryByText("Asset img")).not.toBeNull());
+  fireEvent.click(screen.getByRole("button", { name: "Edit Asset img" }));
+  const dialog = await screen.findByRole("dialog", { name: "Edit image" });
+  expect(within(dialog).getByText("Not in the library: legacy-media-group:9001")).toBeInTheDocument();
+  expect(within(dialog).getByRole("checkbox", { name: "Headlines" })).toBeChecked();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Remove label" }));
+  expect(within(dialog).queryByText(/Not in the library/)).toBeNull();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save image" }));
+  await waitFor(() =>
+    expect(requests("PUT")).toContainEqual(["/media-assets/img/labels", { labelIds: ["l1"] }]),
+  );
+});
