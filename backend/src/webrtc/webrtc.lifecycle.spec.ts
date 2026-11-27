@@ -382,7 +382,7 @@ describe('WebrtcService invitation/session and LiveKit boundary', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('issues real signed five-minute guest credentials and reuses a correctly signed reconnect session', async () => {
+  it('issues real signed one-minute guest credentials and reuses a correctly signed reconnect session', async () => {
     const f = fixture();
     const joined = await f.service.redeemInvitation(invitationToken, undefined);
     const claims = await new TokenVerifier(
@@ -398,7 +398,8 @@ describe('WebrtcService invitation/session and LiveKit boundary', () => {
         canPublishSources: ['camera', 'microphone'],
       }),
     );
-    expect(claims.exp! - claims.nbf!).toBe(300);
+    // Only long enough to connect; LiveKit refreshes the token of a connected guest itself.
+    expect(claims.exp! - claims.nbf!).toBe(60);
     const next = await f.service.redeemInvitation(
       invitationToken,
       joined.sessionToken,

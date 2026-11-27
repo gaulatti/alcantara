@@ -41,7 +41,11 @@ type CommandStatus = 'accepted' | 'rejected' | 'read' | 'acknowledged';
 const MAX_GUESTS = 6;
 const SESSION_LEASE_MS = 60_000;
 const LOST_CALL_SWEEP_MS = 30_000;
-const JOIN_TOKEN_TTL = '5m';
+// Only long enough to connect: the guest page asks /webrtc/join again for every join, and once connected LiveKit
+// refreshes the token itself (exp is checked only at connect), so a token a guest holds stops opening a room soon.
+const JOIN_TOKEN_TTL = '60s';
+// How far back a closed invitation's guest is still looked for in its program room by the admission check.
+const ADMISSION_LOOKBACK_MS = 15 * 60_000;
 /** What a guest's browser may report; the API counts success and an expired invitation itself. */
 const GUEST_FAILURES: readonly WebrtcJoinResult[] = [
   'permission_denied',
@@ -69,6 +73,7 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
     this.lostCallSweep = setInterval(() => {
       // A database that is away is retried at the next sweep.
       void this.countLostCalls().catch(() => undefined);
+      void this.enforceProgramRoomAdmission().catch(() => undefined);
     }, LOST_CALL_SWEEP_MS);
     this.lostCallSweep.unref();
   }
@@ -91,6 +96,69 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       data: { liveSince: null },
     });
     this.metrics.recordWebrtcDrops(count);
+  }
+
+  /**
+   * Keeps each program room to guests with an open, admitted session. Removing a guest disconnects them at once, but
+   * LiveKit keeps honouring a token the guest already holds (it refreshes tokens for up to 10 minutes and has no
+   * revocation on a self-hosted server), so a guest in a program room whose invitation is revoked, expired, not
+   * admitted, or has no session is removed again. A lapsed lease is not a reason: during a backend restart heartbeats
+   * stop while the call itself is fine.
+   */
+  async enforceProgramRoomAdmission() {
+    if (!this.hasConfiguration()) return;
+    const now = new Date();
+    const since = new Date(now.getTime() - ADMISSION_LOOKBACK_MS);
+    const programs = await this.prisma.guestInvitation.findMany({
+      where: {
+        OR: [{ expiresAt: { gt: since } }, { revokedAt: { gt: since } }],
+      },
+      select: { programId: true },
+      distinct: ['programId'],
+    });
+    for (const { programId } of programs) {
+      const roomName = this.roomName(programId);
+      let present: Array<{ identity: string }> = [];
+      try {
+        present = await this.roomService.listParticipants(roomName);
+      } catch {
+        // A missing room has nobody in it; LiveKit away is retried at the next sweep.
+        continue;
+      }
+      const guests = present
+        .map((participant) => participant.identity)
+        .filter((identity) => /^guest-[0-9a-f-]{36}$/.test(identity));
+      if (!guests.length) continue;
+      const rows = await this.prisma.guestInvitation.findMany({
+        where: { id: { in: guests.map((identity) => identity.slice(6)) } },
+        select: {
+          id: true,
+          programId: true,
+          revokedAt: true,
+          expiresAt: true,
+          admittedAt: true,
+          activeSessionId: true,
+        },
+      });
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      for (const identity of guests) {
+        const row = byId.get(identity.slice(6));
+        const allowed =
+          row &&
+          row.programId === programId &&
+          !row.revokedAt &&
+          row.expiresAt > now &&
+          row.admittedAt &&
+          row.activeSessionId;
+        if (allowed) continue;
+        try {
+          await this.disconnectIfPresent(roomName, identity);
+          this.metrics.recordWebrtcRoomAdmissionRemoval();
+        } catch {
+          // LiveKit away: the next sweep tries again; the other guests are still checked.
+        }
+      }
+    }
   }
 
   getPublicConfig() {

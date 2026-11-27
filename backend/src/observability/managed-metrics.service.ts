@@ -403,6 +403,7 @@ export class ManagedMetricsService {
   private readonly webrtcJoins: Counter<'client' | 'result'>;
   private readonly webrtcIcePaths: Counter<'client' | 'path'>;
   private readonly webrtcDrops: Counter;
+  private readonly webrtcRoomAdmissionRemovals: Counter;
   private readonly mcpAuth: Counter<string>;
   private readonly mcpOAuth: Counter<string>;
   private readonly mcpRequests: Counter<string>;
@@ -638,6 +639,11 @@ export class ManagedMetricsService {
     this.webrtcDrops = new Counter({
       name: 'alcantara_webrtc_drops_total',
       help: 'Guest calls lost after connecting, not ended by the guest or the studio.',
+      registers: [this.registry],
+    });
+    this.webrtcRoomAdmissionRemovals = new Counter({
+      name: 'alcantara_webrtc_room_admission_removals_total',
+      help: 'Guests the admission check removed from a program room: no open, admitted session for them.',
       registers: [this.registry],
     });
     for (const client of WEBRTC_CLIENTS) {
@@ -1037,6 +1043,10 @@ export class ManagedMetricsService {
 
   recordWebrtcDrops(count: number): void {
     this.webrtcDrops.inc(count);
+  }
+
+  recordWebrtcRoomAdmissionRemoval(): void {
+    this.webrtcRoomAdmissionRemovals.inc();
   }
 
   recordProgramSseConnection(delta: 1 | -1): void {

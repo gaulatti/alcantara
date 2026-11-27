@@ -124,6 +124,10 @@ elsewhere: `other`). `alcantara_webrtc_drops_total` counts guest calls lost afte
 guest, removed by the studio or taken over by a second window): from the guest's next heartbeat that gets through, or,
 for a guest who never comes back, from a 30-second sweep that finds a live session whose lease ran out without a leave. The console reports its talkback to `POST /webrtc/operator-report`. On `/calls`, each guest
 shows the path of their call, or why their last join failed. Operator talkback drops are not counted.
+`alcantara_webrtc_room_admission_removals_total` counts guests the same 30-second sweep removed from a program room
+because no open, admitted session is theirs (revoked, expired, not admitted, or no session). A guest's join token
+lasts 60 seconds: their page asks `/webrtc/join` for every join, and LiveKit refreshes a connected guest's token
+itself. A lapsed lease is never a reason to remove anyone, so a backend restart leaves live calls alone.
 
 #### Return routing
 
