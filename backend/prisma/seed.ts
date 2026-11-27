@@ -654,6 +654,45 @@ export async function seedLocalDatabase(
     }
   }
 
+  // A timed block on the radio show: a scheduled rundown with song events, so the timeline, inspector and Check
+  // have something to drive on a fresh stack. Create-only (its name is the key); a fixed date keeps reseeds equal.
+  await prisma.flightSequence.upsert({
+    where: {
+      programStateId_name: {
+        programStateId: radioProgram.id,
+        name: 'Local radio timed block',
+      },
+    },
+    update: {},
+    create: {
+      programStateId: radioProgram.id,
+      name: 'Local radio timed block',
+      scheduledAt: new Date('2030-01-01T12:00:00.000Z'),
+      items: [
+        { id: 'timed-song-1', kind: 'playSong', songId: DEMO_SONG_IDS[0], clockOffsetSeconds: 0 },
+        { id: 'timed-song-2', kind: 'playSong', songId: DEMO_SONG_IDS[1] },
+        { id: 'timed-wait', kind: 'waitForSongEnd' },
+        { id: 'timed-song-3', kind: 'playSong', songId: DEMO_SONG_IDS[2] },
+      ] as any,
+      loop: false,
+    },
+  });
+
+  // Program branding on the radio show, so Radio settings has a Branding section with values to walk.
+  await prisma.programBranding.upsert({
+    where: { programId: 'radio-demo' },
+    update: {},
+    create: {
+      programId: 'radio-demo',
+      displayName: 'Local Radio Demo',
+      callsign: 'LRD',
+      subtitle: 'Fictional demo station',
+      hashtag: '#localdemo',
+      siteUrl: 'https://example.test',
+      defaultChyron: 'Local demo chyron',
+    },
+  });
+
   const seededProfiles = [
     ['test:alcantara:operator-a', 'desktop', 'director', false, true, 340],
     ['test:alcantara:operator-a', 'tablet', 'compact', true, false, 300],

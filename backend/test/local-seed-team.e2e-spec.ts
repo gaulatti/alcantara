@@ -57,6 +57,19 @@ describeWithDatabase('the local seed and team-scoped reads (PostgreSQL e2e)', ()
     await prisma?.$disconnect();
   });
 
+  it('seeds a scheduled radio timed block with song events, and program branding on the radio show', async () => {
+    const radio = await prisma.programState.findUniqueOrThrow({ where: { programId: 'radio-demo' }, select: { id: true } });
+    const block = await prisma.flightSequence.findUniqueOrThrow({
+      where: { programStateId_name: { programStateId: radio.id, name: 'Local radio timed block' } },
+    });
+    expect(block.scheduledAt?.toISOString()).toBe('2030-01-01T12:00:00.000Z');
+    const items = block.items as Array<{ kind: string }>;
+    expect(items.filter((item) => item.kind === 'playSong')).toHaveLength(3);
+    expect(items.some((item) => item.kind === 'waitForSongEnd')).toBe(true);
+    const branding = await prisma.programBranding.findUniqueOrThrow({ where: { programId: 'radio-demo' } });
+    expect(branding).toMatchObject({ displayName: 'Local Radio Demo', callsign: 'LRD' });
+  });
+
   it('gives every seeded show and library row the local team', async () => {
     expect(uploads).toHaveLength(DEMO_SONG_IDS.length);
     const shows = await prisma.program.findMany({
