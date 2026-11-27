@@ -277,8 +277,8 @@ optional on `update` (a clocked log needs it).
 
 | Capability | Plan (dry run) |
 |---|---|
-| `program_create_flight_sequence_by_id` | Creates a draft; it is not active and does not air until activated and started (or published and its start arrives). Recoverable: delete it. |
-| `program_update_flight_sequence_by_id` | Lists what changes, from the sequence as it is now. On a running sequence the dry run reports `onAir: true` (later cues change at once; the console refuses schedule and loop changes and edits of the cue on air or already played). The previous values are not kept. |
+| `program_create_flight_sequence_by_id` | Creates a draft; it is not active and does not air until activated and started (or published and its start arrives). Recoverable: delete it. A clocked log with a fixed start outside its window is refused, and the dry run says `REFUSED (invalid)` (#788). |
+| `program_update_flight_sequence_by_id` | Lists what changes, from the sequence as it is now. On a running sequence the dry run reports `onAir: true` (later cues change at once; the console refuses schedule and loop changes and edits of the cue on air or already played). The previous values are not kept. A clocked log with a fixed start outside its window is refused, and the dry run says `REFUSED (invalid)` (#788). |
 | `program_generate_tagged_log` | A proposal: returns the cues and saves nothing (save them with update). Refused by the console unless the log is an unaired, unpublished draft of a program with a radio leg. |
 | `program_fill_rundown` | The same for the gaps of a rundown; answers cues and warnings. |
 | `program_create_recipe_by_id` | Creates a rundown recipe on a program with a television leg. Nothing airs until a use of it is added to a rundown that runs. Recoverable: change it. |

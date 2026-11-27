@@ -153,4 +153,44 @@ describe('the fixed-start window on the flight save path, against Postgres', () 
       }),
     ).rejects.toThrow(/is more than 6 hours after this block starts/);
   });
+
+  it('says before a save why it would be refused, and nothing for one it would take', async () => {
+    const older = (await service.listFlightSequences(programId)).find(
+      (one) => one.name === 'Older, renamed',
+    )!;
+    const items = [song('a', 0), song('b', 30_000)];
+    const tooFar = /is more than 6 hours after this block starts/;
+    expect(
+      await service.fixedStartWindowProblem(programId, null, {
+        scheduledAt: at('15:00'),
+        items,
+      }),
+    ).toMatch(tooFar);
+    // Its stored cues are judged against a new start, and its stored start against new cues.
+    expect(
+      await service.fixedStartWindowProblem(programId, older.id, {
+        scheduledAt: at('13:00'),
+      }),
+    ).toMatch(tooFar);
+    expect(
+      await service.fixedStartWindowProblem(programId, older.id, { items }),
+    ).toMatch(tooFar);
+    for (const data of [
+      {},
+      { items: [song('a', 0)] },
+      { scheduledAt: null, items },
+    ])
+      expect(
+        await service.fixedStartWindowProblem(programId, older.id, data),
+      ).toBeNull();
+    // A new unscheduled sequence, and an edit of one that is not there, have no window.
+    expect(
+      await service.fixedStartWindowProblem(programId, null, { items }),
+    ).toBeNull();
+    expect(
+      await service.fixedStartWindowProblem(programId, 2_000_000_000, {
+        items,
+      }),
+    ).toBeNull();
+  });
 });

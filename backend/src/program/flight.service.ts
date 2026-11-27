@@ -626,6 +626,35 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * #788 (MCP parity, item 4): why saving these cues or this start would be refused by the fixed-start window, or null.
+   * For an MCP dry run, which saves nothing; the save itself refuses the same way.
+   */
+  async fixedStartWindowProblem(
+    programId: string,
+    sequenceId: number | null,
+    data: { items?: unknown; scheduledAt?: string | null },
+  ): Promise<string | null> {
+    if (data.items === undefined && data.scheduledAt === undefined) return null;
+    const state = await this.getProgramStateRecord(
+      this.normalizeProgramId(programId),
+    );
+    const existing =
+      sequenceId === null
+        ? null
+        : await this.prisma.flightSequence.findFirst({
+            where: { id: sequenceId, programStateId: state.id },
+            select: { items: true, scheduledAt: true },
+          });
+    const scheduledAt =
+      data.scheduledAt === undefined
+        ? (existing?.scheduledAt ?? null)
+        : this.parseScheduledAt(data.scheduledAt);
+    if (!scheduledAt) return null;
+    const items = normalizeFlightItems(data.items ?? existing?.items);
+    return this.fixedStartWindowWhy(state.id, sequenceId, scheduledAt, items);
+  }
+
+  /**
    * #788 (MCP parity, item 4): the desk's fixed-start window (D3), enforced on the save path the console and MCP
    * share: within FIXED_START_MAX_HOURS of the block start and before the next scheduled block of the program.
    */
@@ -635,6 +664,21 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     scheduledAt: Date,
     items: FlightCue[],
   ): Promise<void> {
+    const why = await this.fixedStartWindowWhy(
+      programStateId,
+      sequenceId,
+      scheduledAt,
+      items,
+    );
+    if (why) throw new BadRequestException(why);
+  }
+
+  private async fixedStartWindowWhy(
+    programStateId: number,
+    sequenceId: number | null,
+    scheduledAt: Date,
+    items: FlightCue[],
+  ): Promise<string | null> {
     const later = await this.prisma.flightSequence.findMany({
       where: {
         programStateId,
@@ -646,8 +690,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       take: 1,
     });
     const next = later?.[0]?.scheduledAt ?? null;
-    const why = fixedStartWindowRefusal(items, scheduledAt, next);
-    if (why) throw new BadRequestException(why);
+    return fixedStartWindowRefusal(items, scheduledAt, next);
   }
 
   private validateClockItems(items: FlightCue[]): void {

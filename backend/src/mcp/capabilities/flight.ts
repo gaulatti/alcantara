@@ -210,26 +210,36 @@ export class FlightMcpTools {
     recoverable: boolean;
     /** The change shows on air at once. */
     onAir?: (args: Args<S>, loaded: FlightLive) => boolean;
+    /** Why the service will refuse the save, so the dry run says so; the save itself refuses. */
+    problem?: (args: Args<S>) => Promise<string | null>;
     call: (args: Args<S>) => Promise<unknown>;
   }): McpToolSpec {
     const program = (args: Args<S>) =>
       (args as { program_id: string }).program_id;
     const sequenceOf = (args: Args<S>) =>
       (args as { sequence_id?: number }).sequence_id;
-    return actionSpec<S, FlightLive>({
+    return actionSpec<S, FlightLive & { problem: string | null }>({
       name: row.name,
       title: row.title,
       description: row.description,
       permission: permissions.manage,
       tier: 'W',
       shape: row.shape,
-      load: (args) => this.load(program(args), sequenceOf(args)),
+      load: async (args) => {
+        const loaded = await this.load(program(args), sequenceOf(args));
+        return {
+          ...loaded,
+          problem: row.problem ? await row.problem(args) : null,
+        };
+      },
       id: (args) =>
         sequenceOf(args) === undefined
           ? program(args)
           : `${program(args)}/${sequenceOf(args)}`,
       plan: (args, loaded) => ({
-        summary: row.summary(args, loaded),
+        summary: loaded.problem
+          ? `REFUSED (invalid): ${loaded.problem} ${row.summary(args, loaded)}`
+          : row.summary(args, loaded),
         affects: this.affects(program(args), loaded.sequence),
         recoverable: row.recoverable,
       }),
@@ -308,7 +318,7 @@ export class FlightMcpTools {
         name: 'program_create_flight_sequence_by_id',
         title: 'Create a flight sequence',
         description:
-          'Creates a flight sequence (rundown) on a program from a name and optional cues, loop flag and scheduled start (`scheduled_at` makes it a clocked radio log, which needs a program with a radio leg and cannot loop). Nothing goes on air: activate and start it separately.',
+          'Creates a flight sequence (rundown) on a program from a name and optional cues, loop flag and scheduled start (`scheduled_at` makes it a clocked radio log, which needs a program with a radio leg and cannot loop). Nothing goes on air: activate and start it separately. A clocked log refuses a fixed start 6 hours or more after its own, or at or after the next block; the dry run says so.',
         shape: {
           program_id: programIdArg,
           name: sequenceNameArg,
@@ -319,6 +329,11 @@ export class FlightMcpTools {
         summary: (args, { live }) =>
           `Creates a ${args.scheduled_at ? 'clocked radio log draft' : 'flight sequence'} with ${args.items?.length ?? 0} cue(s) on program ${args.program_id} (${live.flightSequences} sequence(s) there now). It is not active and does not air until it is activated and started${args.scheduled_at ? ', or published and its start arrives' : ''}. Delete it with program_delete_flight_sequence_by_id.`,
         recoverable: true,
+        problem: (args) =>
+          this.flights.fixedStartWindowProblem(args.program_id, null, {
+            items: args.items,
+            scheduledAt: args.scheduled_at,
+          }),
         call: (args) =>
           this.flights.createFlightSequence(args.program_id, {
             name: args.name,
@@ -331,7 +346,7 @@ export class FlightMcpTools {
         name: 'program_update_flight_sequence_by_id',
         title: 'Update a flight sequence',
         description:
-          'Changes the name, cues, loop flag or scheduled start of a flight sequence; only the fields given change. A clocked log needs the `revision` you read, and a stale one is refused as conflict. A running log can only change cues after the one on air.',
+          'Changes the name, cues, loop flag or scheduled start of a flight sequence; only the fields given change. A clocked log needs the `revision` you read, and a stale one is refused as conflict. A running log can only change cues after the one on air. A clocked log refuses a fixed start 6 hours or more after its own, or at or after the next block; the dry run says so.',
         shape: {
           program_id: programIdArg,
           sequence_id: rowIdArg,
@@ -358,6 +373,12 @@ export class FlightMcpTools {
           } The previous values are not kept: read the sequence first to restore them.`,
         recoverable: true,
         onAir: (_args, { sequence }) => sequence!.isRunning,
+        problem: (args) =>
+          this.flights.fixedStartWindowProblem(
+            args.program_id,
+            args.sequence_id,
+            { items: args.items, scheduledAt: args.scheduled_at },
+          ),
         call: (args) =>
           this.flights.updateFlightSequence(args.program_id, args.sequence_id, {
             name: args.name,
