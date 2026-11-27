@@ -1257,7 +1257,8 @@ function SceneUpdateFields({
                 !newComponentType.trim() ||
                 Boolean(effectiveMetadata[newComponentType.trim()])
               }
-              className="flex items-center gap-1 rounded bg-sea px-3 py-1.5 text-xs font-semibold text-zinc-950 hover:bg-sea/90 disabled:opacity-50"
+              size="sm"
+              variant="secondary"
             >
               <Plus size={12} />
               Add
@@ -1382,7 +1383,8 @@ function ComponentPropsCard({
             disabled={
               !newPropKey.trim() || props[newPropKey.trim()] !== undefined
             }
-            className="rounded bg-zinc-800 px-2 py-1 text-xs font-medium text-zinc-300 hover:bg-zinc-700 disabled:opacity-50"
+            size="sm"
+            variant="secondary"
           >
             Add
           </Button>
@@ -1645,12 +1647,10 @@ function RuntimePanel({
           <div className="mt-6 grid grid-cols-2 gap-2">
             <Button
               type="button"
+              // Variants, not className: Bleecker's variant classes win (Start and Stop both rendered blue).
+              // Stopped, Start is the action to take; running, Stop is destructive and GO leads.
+              variant={isRunning ? "destructive" : "primary"}
               onClick={isRunning ? onStop : onStart}
-              className={`flex items-center justify-center gap-2 rounded px-4 py-2 text-sm font-bold ${
-                isRunning
-                  ? "bg-red-600 text-white hover:bg-red-500"
-                  : "bg-green-600 text-white hover:bg-green-500"
-              }`}
             >
               {isRunning ? <Pause size={16} /> : <Play size={16} />}
               {isRunning ? "Stop" : "Start"}
@@ -1660,7 +1660,7 @@ function RuntimePanel({
               type="button"
               onClick={onGo}
               disabled={!activeSequence.items.length}
-              className="flex items-center justify-center gap-2 rounded bg-sea px-4 py-2 text-sm font-bold text-zinc-950 hover:bg-sea/90 disabled:opacity-50"
+              variant={isRunning ? "primary" : "secondary"}
             >
               <SkipForward size={16} />
               GO
@@ -1669,7 +1669,8 @@ function RuntimePanel({
             <Button
               type="button"
               onClick={onReset}
-              className="col-span-2 flex items-center justify-center gap-2 rounded border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800"
+              variant="secondary"
+              className="col-span-2"
             >
               <RefreshCcw size={16} />
               Reset

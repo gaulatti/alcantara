@@ -145,6 +145,9 @@ it("loads the unscheduled rundowns and follows the one already running", async (
   expect(screen.getByText("Active")).toBeVisible();
   expect(screen.getByText("Loop on")).toBeVisible();
   expect(screen.getByRole("button", { name: "Stop" })).toBeVisible();
+  // Running: Stop reads as destructive and GO leads (they rendered the same blue before).
+  expect(screen.getByRole("button", { name: "Stop" })).toHaveClass("bg-terracotta");
+  expect(screen.getByRole("button", { name: /GO/ })).toHaveClass("bg-sea");
   // Active and next cue use the cue labels.
   expect(screen.getAllByText("Theme").length).toBeGreaterThan(0);
   expect(screen.getAllByText("Close").length).toBeGreaterThan(0);
@@ -155,6 +158,9 @@ it("opens an active rundown that is not running with no runtime yet", async () =
   await openRundown();
   expect(await screen.findByText("Cue 0 of 3")).toBeVisible();
   expect(screen.getByText("Loop off")).toBeVisible();
+  // Stopped: Start is the action to take, GO waits.
+  expect(screen.getByRole("button", { name: "Start" })).toHaveClass("bg-sea");
+  expect(screen.getByRole("button", { name: /GO/ })).not.toHaveClass("bg-sea");
   expect(screen.getAllByText("—")).toHaveLength(2);
   expect(screen.queryByText("Active")).not.toBeInTheDocument();
 });
