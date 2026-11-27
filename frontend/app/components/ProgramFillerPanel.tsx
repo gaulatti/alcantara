@@ -7,6 +7,7 @@ import type {
   FillerVersionSummary,
   ProgramFillerState,
 } from '../models/filler';
+import { DisclosureRow } from './DisclosureRow';
 
 /** The fields of a media library row this panel reads. */
 interface MediaAssetOption {
@@ -236,28 +237,26 @@ export function ProgramFillerPanel({
   );
 
   return (
-    <section
-      className="space-y-4 rounded-[var(--radius-ui)] border border-sand/25 p-4 dark:border-white/10"
-      aria-label="Program filler"
-    >
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-text-secondary">
-          Continuity
-        </p>
-        <h3 className="mt-1 text-lg font-semibold">Program filler</h3>
-        <p className="mt-1 text-sm text-text-secondary">
-          What each leg plays when nothing is live. A session keeps its active
-          version; a newly prepared version applies from the next Start.
-        </p>
-      </div>
+    <section className="space-y-3" aria-label="Program filler">
       {error ? (
         <p role="alert" className="text-sm text-red-300">
           {error}
         </p>
       ) : null}
       {legs.map((leg) => (
-        <div key={leg} className="space-y-3" aria-label={LEG_TITLES[leg]}>
-          <h4 className="text-sm font-semibold">{LEG_TITLES[leg]}</h4>
+        <DisclosureRow
+          key={leg}
+          title={LEG_TITLES[leg]}
+          warn={state!.legs[leg]!.needsPreparing}
+          summary={[
+            state!.legs[leg]!.needsPreparing ? 'needs preparing' : null,
+            state!.legs[leg]!.active ? 'one active' : 'none active',
+            state!.legs[leg]!.pending ? 'one pending' : 'none pending',
+            leg === 'radio' && canManage ? `${radioAssets.length} of ${audioAssets.length} songs` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        >
           <FillerLegSummary leg={leg} state={state!} names={names} />
           {canManage && leg === 'television' ? (
             <div className="flex flex-wrap items-end gap-2">
@@ -378,7 +377,7 @@ export function ProgramFillerPanel({
               </div>
             </div>
           ) : null}
-        </div>
+        </DisclosureRow>
       ))}
     </section>
   );

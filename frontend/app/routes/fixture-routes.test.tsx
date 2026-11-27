@@ -288,7 +288,7 @@ it.each([
   ["empty", "No external sources assigned"],
   ["error", "External sources could not be loaded"],
   ["preview-failed", "Live preview could not connect."],
-  ["preview-unconfigured", "Preview unavailable"],
+  ["preview-unconfigured", "Preview off · no media service"],
   ["nonsense", "Preview ready"],
 ])("opens the sources fixture in its %s state", (state, text) => {
   render(

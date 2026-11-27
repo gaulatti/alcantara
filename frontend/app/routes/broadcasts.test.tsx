@@ -188,7 +188,7 @@ afterEach(() => {
 
 const page = async () => {
   render(<Broadcasts />);
-  return screen.findByText("Executor state");
+  return screen.findByText("Executor");
 };
 const checkbox = (name: string) =>
   screen
@@ -209,16 +209,26 @@ it("names the page for the browser", () => {
   ]);
 });
 
-it("presents the destinations as the desktop studio's, and Alana's playout as inactive", async () => {
+it("keeps the page to its controls: no prose, and the inactive sections closed", async () => {
   await page();
-  expect(
-    screen.getByText(/The desktop studio's Go live streams to the ones chosen there; Alcántara stores each stream key/),
-  ).toBeInTheDocument();
-  expect(screen.queryByText(/Secrets Manager and Croccante/)).toBeNull();
-  const playout = screen.getByRole("region", { name: "Server playout (v2, not active)" });
-  expect(playout).toHaveTextContent("Confirm Start below does not put the desktop studio on air.");
-  expect(within(playout).getByText("Executor state")).toBeInTheDocument();
-  expect(within(playout).getByRole("button", { name: /Confirm Start/ })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "TV destinations" })).toBeInTheDocument();
+  expect(screen.queryByText(/stores each stream key/)).toBeNull();
+  expect(screen.queryByText(/Only catalog managers/)).toBeNull();
+  const playout = screen.getByRole("group", { name: "Server playout" });
+  expect(playout).not.toHaveAttribute("open");
+  expect(playout).toHaveTextContent("Confirm Start does not put the desktop studio on air.");
+  expect(screen.getByRole("group", { name: "Executor" })).not.toHaveAttribute("open");
+  expect(screen.getByRole("group", { name: "Executor" })).toHaveTextContent(
+    "Requested stopped · Actual stopped · Alana reachable · pipeline ready",
+  );
+  // The destinations to start with are behind the row; the three commands are always on it.
+  const toggle = screen.getByRole("button", { name: /Confirmed destinations/ });
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(document.getElementById("confirmed-destinations")).not.toBeVisible();
+  fireEvent.click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(document.getElementById("confirmed-destinations")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Confirm Start" })).toBeInTheDocument();
   // The catalog the desktop uses comes first; the inactive server playout follows it.
   const catalog = screen.getByRole("heading", { name: "Destination catalog" });
   expect(catalog.compareDocumentPosition(playout) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -228,7 +238,7 @@ it("waits for permissions, and refuses an operator without broadcast.view", asyn
   features.loading = true;
   const { rerender } = render(<Broadcasts />);
   expect(api.get).not.toHaveBeenCalled();
-  expect(screen.queryByText("Executor state")).toBeNull();
+  expect(screen.queryByText("Executor")).toBeNull();
   features.loading = false;
   features.granted = new Set();
   rerender(<Broadcasts />);
@@ -269,8 +279,7 @@ it("shows the executor and the relays to a viewer who cannot change them", async
   expect(screen.getByText("Requested running")).toBeInTheDocument(); // StatePill tone, not colour alone (#349)
   expect(screen.getByText("Actual starting")).toBeInTheDocument(); // StatePill tone, not colour alone (#349)
   expect(screen.getByText("starting")).toBeInTheDocument();
-  expect(screen.getByText("Alana unavailable")).toBeInTheDocument();
-  expect(screen.getByText("Pipeline not ready")).toBeInTheDocument();
+  expect(screen.getByRole("group", { name: "Executor" })).toHaveTextContent("starting · Alana unavailable · pipeline not ready");
   expect(
     screen.getByText("relay · supervisor healthy · publisher unhealthy"),
   ).toBeInTheDocument();
@@ -280,9 +289,10 @@ it("shows the executor and the relays to a viewer who cannot change them", async
   expect(screen.queryByText("Old platform")).toBeNull();
   expect(checkbox("Primary platform").checked).toBe(true);
   expect(checkbox("Primary platform")).toBeDisabled();
-  expect(
-    screen.getByText(/broadcast.operate is required to change it/),
-  ).toBeInTheDocument();
+  // A viewer sees the commands disabled, each saying what it needs.
+  for (const name of ["Reload while stopped", "Confirm Start", "Confirm Stop"]) {
+    expect(screen.getByRole("button", { name })).toBeDisabled();
+  }
   expect(screen.queryByText("Destination catalog")).toBeNull();
   expect(screen.queryByRole("button", { name: /Add destination/ })).toBeNull();
   expect(screen.getByText("Fillers for news tv")).toBeInTheDocument();
@@ -321,8 +331,7 @@ it("validates a stopped selection, then starts with that validated version", asy
   await page();
   expect(screen.getByText("Requested stopped")).toBeInTheDocument(); // StatePill tone, not colour alone (#349)
   expect(screen.getByText("Actual stopped")).toBeInTheDocument(); // StatePill tone, not colour alone (#349)
-  expect(screen.getByText("Alana reachable")).toBeInTheDocument();
-  expect(screen.getByText("Pipeline ready")).toBeInTheDocument();
+  expect(screen.getByRole("group", { name: "Executor" })).toHaveTextContent("Alana reachable · pipeline ready");
   const reload = screen.getByRole("button", { name: /Reload while stopped/ });
   expect(reload).toBeDisabled();
   fireEvent.click(checkbox("Primary platform"));
@@ -500,15 +509,13 @@ it("refreshes every five seconds while the tab is visible, after a failed first 
 
 it("adds, renames, replaces keys, reorders, retires and restores catalog destinations", async () => {
   await page();
-  const catalogCard = screen
-    .getByText("Destination catalog")
-    .closest("div")!.parentElement!;
+  const catalogCard = screen.getByRole("list");
   expect(
-    within(catalogCard).getAllByText("Secret reference (added by hand)").length,
+    within(catalogCard).getAllByText("Set by hand").length,
   ).toBe(2);
   expect(within(catalogCard).getByText("YouTube")).toBeInTheDocument();
   expect(within(catalogCard).getByText(/Key ••••7d6c/)).toBeInTheDocument();
-  expect(within(catalogCard).getByText("(retired)")).toBeInTheDocument();
+  expect(within(catalogCard).getByText("Retired")).toBeInTheDocument();
   expect(
     screen.getByRole("button", { name: "Move Primary platform up" }),
   ).toBeDisabled();
@@ -516,6 +523,11 @@ it("adds, renames, replaces keys, reorders, retires and restores catalog destina
     screen.getByRole("button", { name: "Move Old platform down" }),
   ).toBeDisabled();
   expect(screen.getByText("Fillers for news tv (manage)")).toBeInTheDocument();
+  expect(screen.getByText("3 destinations")).toBeInTheDocument();
+  // A retired destination keeps only Restore.
+  const retired = within(screen.getByRole("listitem", { name: "Old platform" }));
+  expect(retired.getByRole("button", { name: "Rename" })).toBeDisabled();
+  expect(retired.queryByRole("button", { name: "Retire" })).toBeNull();
 
   fireEvent.click(
     screen.getByRole("button", { name: "Move Primary platform down" }),
@@ -617,7 +629,7 @@ it("adds, renames, replaces keys, reorders, retires and restores catalog destina
   });
 
   // Replace key on a YouTube destination: only the key is sent; the old one is never shown.
-  fireEvent.click(screen.getByRole("button", { name: /Replace key/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Replace key for Backup platform" }));
   dialog = await screen.findByRole("dialog", { name: "Replace key" });
   expect(within(dialog).getByText(/ends in ••••7d6c/)).toBeInTheDocument();
   fireEvent.change(key(), { target: { value: "live_Replaced-0000aaaa" } });
@@ -628,7 +640,7 @@ it("adds, renames, replaces keys, reorders, retires and restores catalog destina
   });
 
   // A destination added by hand names its service when it gets a key.
-  fireEvent.click(screen.getAllByRole("button", { name: /Set key/ })[0]);
+  fireEvent.click(screen.getByRole("button", { name: "Set key for Primary platform" }));
   dialog = await screen.findByRole("dialog", { name: "Set key" });
   fireEvent.change(key(), { target: { value: "live_Hand-1234abcd" } });
   fireEvent.click(within(dialog).getByRole("button", { name: "Save key" }));
@@ -638,15 +650,16 @@ it("adds, renames, replaces keys, reorders, retires and restores catalog destina
     service: "youtube",
   });
 
-  // Retire is confirmed by name before it is sent; a Cancel sends nothing.
-  fireEvent.click(screen.getAllByRole("button", { name: /^Retire$/ })[0]);
-  const retireDialog = await screen.findByRole("dialog", { name: "Confirm retire" });
+  // Retire takes two presses: the first only arms it, and Escape disarms.
+  const retire = () => within(screen.getByRole("listitem", { name: "Primary platform" })).getByRole("button", { name: /^Retire/ });
+  fireEvent.click(retire());
+  expect(retire()).toHaveTextContent("Press again");
   expect(api.post).not.toHaveBeenCalledWith("/broadcast/destinations/primary/retire");
-  fireEvent.click(within(retireDialog).getByRole("button", { name: "Cancel" }));
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Confirm retire" })).toBeNull());
-  expect(api.post).not.toHaveBeenCalledWith("/broadcast/destinations/primary/retire");
-  fireEvent.click(screen.getAllByRole("button", { name: /^Retire$/ })[0]);
-  fireEvent.click(within(await screen.findByRole("dialog", { name: "Confirm retire" })).getByRole("button", { name: "Retire destination" }));
+  fireEvent.keyDown(retire(), { key: "Escape" });
+  expect(retire()).toHaveTextContent("Retire");
+  expect(retire()).toHaveAttribute("data-armed", "false");
+  fireEvent.click(retire());
+  fireEvent.click(retire());
   await toast("Destination retired. Active sessions are unchanged.");
   expect(api.post).toHaveBeenLastCalledWith(
     "/broadcast/destinations/primary/retire",
@@ -657,8 +670,9 @@ it("adds, renames, replaces keys, reorders, retires and restores catalog destina
     "/broadcast/destinations/old/restore",
   );
   api.post.mockRejectedValueOnce(refusal(404));
-  fireEvent.click(screen.getAllByRole("button", { name: /^Retire$/ })[0]);
-  fireEvent.click(within(await screen.findByRole("dialog", { name: "Confirm retire" })).getByRole("button", { name: "Retire destination" }));
+  await waitFor(() => expect(retire()).toBeEnabled());
+  fireEvent.click(retire());
+  fireEvent.click(retire());
   await toast("Resource not found");
 });
 
@@ -667,7 +681,7 @@ it("retries a failed first load from the error state, and recovers", async () =>
   render(<Broadcasts />);
   expect(await screen.findByText("Broadcasts could not be loaded")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-  expect(await screen.findByText("Executor state")).toBeInTheDocument();
+  expect(await screen.findByText("Executor")).toBeInTheDocument();
   expect(screen.queryByText("Broadcasts could not be loaded")).toBeNull();
 });
 
@@ -684,7 +698,7 @@ it("shows a skeleton while the first load is pending, not an empty page", async 
   render(<Broadcasts />);
   expect(screen.getByLabelText("Loading broadcasts")).toHaveAttribute("aria-busy", "true");
   release();
-  expect(await screen.findByText("Executor state")).toBeInTheDocument();
+  expect(await screen.findByText("Executor")).toBeInTheDocument();
 });
 
 it("says so when the catalog is empty, with the next step", async () => {
@@ -692,9 +706,9 @@ it("says so when the catalog is empty, with the next step", async () => {
   catalog = [];
   try {
     render(<Broadcasts />);
-    await screen.findByText("Executor state");
+    await screen.findByText("Executor");
     expect(await screen.findByText("No destinations yet")).toBeInTheDocument();
-    expect(screen.getByText("Add a destination with its stream key. A Start needs at least one current destination.")).toBeInTheDocument();
+    expect(screen.getByText("0 destinations")).toBeInTheDocument();
   } finally {
     catalog = saved;
   }
@@ -729,7 +743,7 @@ it("keeps the error state when a retry also fails", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
   await waitFor(() => expect(api.get.mock.calls.length).toBeGreaterThan(calls));
   expect(await screen.findByText("Broadcasts could not be loaded")).toBeInTheDocument();
-  expect(screen.queryByText("Executor state")).toBeNull();
+  expect(screen.queryByText("Executor")).toBeNull();
 });
 
 it("shows a custom RTMP destination's ingest address in the catalog", async () => {
@@ -780,7 +794,7 @@ it("labels a custom RTMP destination with no ingest address without inventing on
 // first key, and a rename is refused over 100 characters.
 it("sends the custom address with a hand-added destination's first key, and refuses a rename over 100 characters", async () => {
   await page();
-  fireEvent.click(screen.getAllByRole("button", { name: /Set key/ })[0]);
+  fireEvent.click(screen.getByRole("button", { name: "Set key for Primary platform" }));
   const keyDialog = await screen.findByRole("dialog", { name: "Set key" });
   fireEvent.click(within(keyDialog).getByRole("button", { name: "Custom RTMP(S)" }));
   fireEvent.change(within(keyDialog).getByRole("textbox", { name: /^Ingest URL/ }), {
@@ -850,17 +864,12 @@ it("closes the start confirmation with Escape and starts nothing", async () => {
   expect(api.post).toHaveBeenCalledTimes(1);
 });
 
-it("closes the retire confirmation and the add dialog with Escape, sending nothing", async () => {
+it("closes the add dialog with Escape, sending nothing", async () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   await page();
-  fireEvent.click(screen.getAllByRole("button", { name: /^Retire$/ })[0]);
-  const retireDialog = await screen.findByRole("dialog", { name: "Confirm retire" });
-  fireEvent.keyDown(retireDialog, { key: "Escape" });
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Confirm retire" })).toBeNull());
-  expect(api.post).not.toHaveBeenCalledWith("/broadcast/destinations/primary/retire");
-
   fireEvent.click(screen.getByRole("button", { name: /Add destination/ }));
   const addDialog = await screen.findByRole("dialog", { name: "Add destination" });
   fireEvent.keyDown(addDialog, { key: "Escape" });
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add destination" })).toBeNull());
+  expect(api.post).not.toHaveBeenCalled();
 });

@@ -1,5 +1,6 @@
 import {
   AlertContainer,
+  ArmTake,
   Button,
   Card,
   Checkbox,
@@ -8,22 +9,11 @@ import {
   ErrorState,
   SkeletonCard,
   Modal,
-  SectionHeader,
+  PageHeader,
   StatePill,
   showAlert,
 } from "@gaulatti/bleecker";
-import {
-  ArrowDown,
-  ArrowUp,
-  KeyRound,
-  Pencil,
-  PlugZap,
-  Plus,
-  RadioTower,
-  RotateCw,
-  Square,
-  Trash2,
-} from "lucide-react";
+import { ArrowDown, ArrowUp, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, handleApiError } from "../services/api";
 import { useFeatures } from "../hooks/useFeatures";
@@ -31,10 +21,14 @@ import { useGlobalProgramId } from "../utils/globalProgram";
 import type { Route } from "./+types/broadcasts";
 import { AppPage } from "../components/AppPage";
 import { ProgramFillerPanel } from "../components/ProgramFillerPanel";
+import { DisclosureRow } from "../components/DisclosureRow";
+import { QUIET_ARM } from "../utils/quietArm";
 
 const VIEW_PERMISSION = "broadcast.view";
 const OPERATE_PERMISSION = "broadcast.operate";
 const MANAGE_PERMISSION = "broadcast.manage";
+/** How long Retire stays armed for its second press; the same window as Fade to black. */
+const RETIRE_ARM_MS = 3_000;
 
 interface DestinationSummary {
   id: string;
@@ -150,8 +144,7 @@ export default function Broadcasts() {
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [confirmedAction, setConfirmedAction] = useState<ConfirmedAction>(null);
-  // Retire is confirmed by name before it is sent (gaulatti/alcantara#349); Restore is direct.
-  const [retireTarget, setRetireTarget] = useState<CatalogDestination | null>(null);
+  const [selectionOpen, setSelectionOpen] = useState(false);
   const [dialog, setDialog] = useState<DestinationDialog | null>(null);
   const [form, setForm] = useState({
     service: "youtube" as DestinationService,
@@ -450,49 +443,51 @@ export default function Broadcasts() {
     );
   }
 
+  const requested = state?.downstream.requestedState ?? "unknown";
+  const actual = state?.downstream.actualState ?? "unknown";
+  const executorWarns =
+    !state?.available || requested !== actual || Boolean(state?.downstream.transition);
+  const operateHint = canOperate ? undefined : `Needs ${OPERATE_PERMISSION}`;
+
   return (
-    <AppPage width="wide" className="space-y-6">
+    <AppPage width="wide" className="space-y-3">
       <AlertContainer />
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <SectionHeader
-          title="Broadcast destinations"
-          description={`Destinations for the television leg of ${programId}. The desktop studio's Go live streams to the ones chosen there; Alcántara stores each stream key and never shows it again.`}
-        />
-        {canManage ? (
-          <Button onClick={() => openDialog({ kind: "add" })}>
-            <Plus size={15} /> Add destination
-          </Button>
-        ) : null}
-      </div>
+      <PageHeader title="TV destinations" />
 
       {canManage ? (
-        <Card>
-          <h2 className="text-lg font-semibold text-text-primary">
-            Destination catalog
-          </h2>
-          <p className="mt-1 text-sm text-text-secondary">
-            Only catalog managers can add destinations and replace their keys.
-            A key is written once and never shown again.
-          </p>
-          <div className="mt-4 space-y-3">
-            {catalog.length === 0 ? (
-              <Empty
-                title="No destinations yet"
-                description="Add a destination with its stream key. A Start needs at least one current destination."
-                /* v8 ignore next -- this block renders only inside the canManage card, so canManage is always true here; the false arm cannot run. */
-                action={canManage ? <Button onClick={() => openDialog({ kind: "add" })}>Add destination</Button> : undefined}
-              />
-            ) : null}
+        <Card padding="none" className="overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand/20 px-3 py-2 dark:border-white/10">
+            <h2 className="text-sm font-semibold text-text-primary">
+              Destination catalog
+            </h2>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-text-secondary">
+                {catalog.length} {catalog.length === 1 ? "destination" : "destinations"}
+              </span>
+              <Button size="sm" onClick={() => openDialog({ kind: "add" })}>
+                <Plus size={15} /> Add destination
+              </Button>
+            </div>
+          </div>
+          {catalog.length === 0 ? (
+            <div className="p-4">
+              <Empty title="No destinations yet" />
+            </div>
+          ) : null}
+          <ul className="divide-y divide-sand/20 dark:divide-white/10">
             {catalog.map((destination, index) => (
-              <div
+              <li
                 key={destination.id}
-                className="flex flex-wrap items-center gap-3 rounded-xl border border-sand/20 p-4 dark:border-sand/40"
+                aria-label={destination.displayName}
+                className="flex flex-wrap items-center gap-2 px-3 py-2"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium text-text-primary">
-                    {destination.displayName}{" "}
+                  <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-text-primary">
+                    {destination.displayName}
                     {destination.retiredAt ? (
-                      <span className="text-xs text-red-500">(retired)</span>
+                      <span className="rounded border border-red-500/60 px-1.5 text-[11px] font-medium uppercase tracking-wide text-red-400">
+                        Retired
+                      </span>
                     ) : null}
                   </p>
                   <p className="text-xs text-text-secondary">
@@ -500,9 +495,9 @@ export default function Broadcasts() {
                       ? "YouTube"
                       : destination.service === "custom"
                         ? `Custom RTMP(S) · ${destination.ingestUrl ?? ""}`
-                        : "Secret reference (added by hand)"}
+                        : "Set by hand"}
                   </p>
-                  <p className="text-xs text-text-secondary">
+                  <p className="font-mono text-xs text-text-secondary">
                     Key {"••••"}
                     {destination.keyLast4 ?? ""}
                     {destination.keySetAt
@@ -531,18 +526,19 @@ export default function Broadcasts() {
                 <Button
                   size="sm"
                   variant="ghost"
+                  disabled={Boolean(destination.retiredAt)}
                   onClick={() => openDialog({ kind: "rename", destination })}
                 >
-                  <Pencil size={14} /> Rename
+                  Rename
                 </Button>
                 <Button
                   size="sm"
                   variant="ghost"
+                  aria-label={`${destination.service === null ? "Set" : "Replace"} key for ${destination.displayName}`}
                   disabled={Boolean(destination.retiredAt)}
                   onClick={() => openDialog({ kind: "key", destination })}
                 >
-                  <KeyRound size={14} />{" "}
-                  {destination.service === null ? "Set key" : "Replace key"}
+                  Key
                 </Button>
                 <Button
                   size="sm"
@@ -551,92 +547,138 @@ export default function Broadcasts() {
                   disabled={Boolean(destination.retiredAt) || busyAction !== null}
                   onClick={() => void testDestination(destination)}
                 >
-                  <PlugZap size={14} />{" "}
                   {busyAction === `test-${destination.id}` ? "Testing…" : "Test"}
                 </Button>
-                <Button
-                  size="sm"
-                  variant={destination.retiredAt ? "ghost" : "destructive"}
-                  onClick={() =>
-                    destination.retiredAt
-                      ? void setRetired(destination, false)
-                      : setRetireTarget(destination)
-                  }
-                  disabled={busyAction !== null}
-                >
-                  <Trash2 size={14} />{" "}
-                  {destination.retiredAt ? "Restore" : "Retire"}
-                </Button>
-              </div>
+                {destination.retiredAt ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => void setRetired(destination, false)}
+                    disabled={busyAction !== null}
+                  >
+                    Restore
+                  </Button>
+                ) : (
+                  // Neutral until armed; one stray click never retires (gaulatti/alcantara#349).
+                  <ArmTake
+                    label="Retire"
+                    armedLabel="Press again"
+                    armTimeoutMs={RETIRE_ARM_MS}
+                    className={QUIET_ARM}
+                    disabled={busyAction !== null}
+                    onTake={() => void setRetired(destination, true)}
+                  />
+                )}
+              </li>
             ))}
-          </div>
+          </ul>
         </Card>
       ) : null}
 
-      <section aria-labelledby="server-playout-title" className="space-y-4">
-        <div>
-          <h2 id="server-playout-title" className="text-lg font-semibold text-text-primary">
-            Server playout (v2, not active)
-          </h2>
-          <p className="mt-1 text-sm text-text-secondary">
-            Alana&apos;s server-side playout is not in use yet. Going live happens from the desktop
-            studio&apos;s Go live; Confirm Start below does not put the desktop studio on air.
-          </p>
-        </div>
-        <Card>
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-secondary">
-                Executor state
-              </p>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <StatePill
-                  label={`Requested ${state?.downstream.requestedState ?? "unknown"}`}
-                  tone={executorTone(state?.downstream.requestedState)}
-                />
-                <StatePill
-                  label={`Actual ${state?.downstream.actualState ?? "unknown"}`}
-                  tone={
-                    state?.downstream.requestedState === state?.downstream.actualState
-                      ? executorTone(state?.downstream.actualState)
-                      : "warn"
-                  }
-                  pulse={isRunning}
-                />
-                {state?.downstream.transition ? (
-                  <StatePill label={state.downstream.transition} tone="warn" pulse />
-                ) : null}
-              </div>
-            </div>
-            <div className="text-right text-sm text-text-secondary">
-              <p>{state?.available ? "Alana reachable" : "Alana unavailable"}</p>
-              <p>
-                {state?.downstream.readiness
-                  ? "Pipeline ready"
-                  : "Pipeline not ready"}
-              </p>
-            </div>
-          </div>
-        </Card>
+      <DisclosureRow title="Server playout" summary="v2 · not active">
+        <p className="text-sm text-text-secondary">
+          Going live happens from the desktop studio&apos;s Go live. Confirm Start does not put the
+          desktop studio on air.
+        </p>
+      </DisclosureRow>
 
-        <Card>
-          <div className="mb-4 flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-semibold text-text-primary">
-                Confirmed destination selection
-              </h2>
-              <p className="mt-1 text-sm text-text-secondary">
-                A Start requires at least one current destination. Reload is
-                available only while stopped.
-              </p>
-            </div>
+      <DisclosureRow
+        title="Executor"
+        warn={executorWarns}
+        summary={[
+          `Requested ${requested}`,
+          `Actual ${actual}`,
+          state?.downstream.transition,
+          state?.available ? "Alana reachable" : "Alana unavailable",
+          state?.downstream.readiness ? "pipeline ready" : "pipeline not ready",
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <StatePill label={`Requested ${requested}`} tone={executorTone(state?.downstream.requestedState)} />
+          <StatePill
+            label={`Actual ${actual}`}
+            tone={
+              state?.downstream.requestedState === state?.downstream.actualState
+                ? executorTone(state?.downstream.actualState)
+                : "warn"
+            }
+            pulse={isRunning}
+          />
+          {state?.downstream.transition ? (
+            <StatePill label={state.downstream.transition} tone="warn" pulse />
+          ) : null}
+        </div>
+      </DisclosureRow>
+
+      <section
+        aria-labelledby="confirmed-destinations-title"
+        className="rounded-[var(--radius-ui)] border border-sand/20 dark:border-white/10"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5">
+          <button
+            type="button"
+            aria-expanded={selectionOpen}
+            aria-controls="confirmed-destinations"
+            onClick={() => setSelectionOpen((open) => !open)}
+            className="flex items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue"
+          >
+            <span aria-hidden="true" className={`text-xs text-text-secondary transition-transform motion-reduce:transition-none ${selectionOpen ? "rotate-90" : ""}`}>▸</span>
+            <h2 id="confirmed-destinations-title" className="text-sm font-semibold text-text-primary">
+              Confirmed destinations
+            </h2>
+            <span className="text-xs text-text-secondary">{selectedIds.length} confirmed</span>
+          </button>
+          <div className="flex flex-wrap items-center gap-2">
             {validatedSelectionVersion ? (
               <span className="rounded-full border border-sea/30 bg-sea/10 px-3 py-1 text-xs text-sea">
                 Validated {validatedSelectionVersion}
               </span>
             ) : null}
+            <Button
+              size="sm"
+              variant="ghost"
+              title={operateHint}
+              onClick={() => void command("reload")}
+              disabled={
+                !canOperate ||
+                !isStopped ||
+                selectedIds.length === 0 ||
+                busyAction !== null ||
+                !state?.available
+              }
+            >
+              {busyAction === "reload" ? "Validating…" : "Reload while stopped"}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              title={operateHint}
+              onClick={() => setConfirmedAction("start")}
+              disabled={
+                !canOperate ||
+                isRunning ||
+                selectedIds.length === 0 ||
+                busyAction !== null ||
+                !state?.available
+              }
+            >
+              Confirm Start
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              title={operateHint}
+              onClick={() => setConfirmedAction("stop")}
+              disabled={!canOperate || !isRunning || busyAction !== null || !state?.available}
+            >
+              Confirm Stop
+            </Button>
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
+        </div>
+        <div id="confirmed-destinations" hidden={!selectionOpen} className="border-t border-sand/20 p-3 dark:border-white/10">
+          <div className="grid gap-2 md:grid-cols-2">
             {selectableDestinations.map((destination) => {
               const relay = state?.downstream.destinations.find(
                 (item) => item.id === destination.id,
@@ -644,7 +686,7 @@ export default function Broadcasts() {
               return (
                 <label
                   key={destination.id}
-                  className="flex cursor-pointer items-start gap-3 rounded-xl border border-sand/20 bg-white/70 p-4 dark:border-sand/40 dark:bg-dark-sand/50"
+                  className="flex cursor-pointer items-start gap-3 rounded-lg border border-sand/20 p-3 dark:border-white/10"
                 >
                   <Checkbox
                     checked={selectedIds.includes(destination.id)}
@@ -652,14 +694,11 @@ export default function Broadcasts() {
                     disabled={!canOperate || isRunning || busyAction !== null}
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="block font-medium text-text-primary">
+                    <span className="block text-sm font-medium text-text-primary">
                       {destination.displayName}
                     </span>
-                    <span className="block text-xs text-text-secondary">
-                      {destination.id}
-                    </span>
                     {relay ? (
-                      <span className="mt-2 block text-xs text-text-secondary">
+                      <span className="mt-1 block text-xs text-text-secondary">
                         {relay.mode} · supervisor{" "}
                         {relay.supervisorHealthy ? "healthy" : "unhealthy"} ·
                         publisher{" "}
@@ -676,77 +715,10 @@ export default function Broadcasts() {
               </p>
             ) : null}
           </div>
-          {canOperate ? (
-            <div className="mt-5 flex flex-wrap justify-end gap-2">
-              <Button
-                variant="ghost"
-                onClick={() => void command("reload")}
-                disabled={
-                  !isStopped ||
-                  selectedIds.length === 0 ||
-                  busyAction !== null ||
-                  !state?.available
-                }
-              >
-                <RotateCw size={15} />{" "}
-                {busyAction === "reload" ? "Validating…" : "Reload while stopped"}
-              </Button>
-              <Button
-                onClick={() => setConfirmedAction("start")}
-                disabled={
-                  isRunning ||
-                  selectedIds.length === 0 ||
-                  busyAction !== null ||
-                  !state?.available
-                }
-              >
-                <RadioTower size={15} /> Confirm Start
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => setConfirmedAction("stop")}
-                disabled={!isRunning || busyAction !== null || !state?.available}
-              >
-                <Square size={15} /> Confirm Stop
-              </Button>
-            </div>
-          ) : (
-            <p className="mt-5 text-sm text-text-secondary">
-              You can inspect state, but broadcast.operate is required to change
-              it.
-            </p>
-          )}
-        </Card>
+        </div>
       </section>
 
-      <Modal
-        isOpen={retireTarget !== null}
-        onClose={() => setRetireTarget(null)}
-        title="Confirm retire"
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-text-secondary">
-            Retire {retireTarget?.displayName ?? "this destination"}? It leaves
-            the catalog for new broadcasts. Active sessions are unchanged.
-          </p>
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setRetireTarget(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={busyAction !== null}
-              onClick={() => {
-                const target = retireTarget;
-                setRetireTarget(null);
-                if (target) void setRetired(target, true);
-              }}
-            >
-              Retire destination
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      <ProgramFillerPanel programId={programId} canManage={canManage} />
 
       <Modal
         isOpen={confirmedAction !== null}
@@ -760,7 +732,7 @@ export default function Broadcasts() {
         <div className="space-y-4">
           <p className="text-sm text-text-secondary">
             {confirmedAction === "start"
-              ? `Start ${programId}'s television leg with ${selectedIds.length} immutable destination${selectedIds.length === 1 ? "" : "s"}? Running will appear only after Alana and Croccante acknowledge this exact selection.`
+              ? `Start ${programId}'s television leg with ${selectedIds.length} immutable destination${selectedIds.length === 1 ? "" : "s"}? Running will appear only after Alana and Croccante acknowledge this exact selection. This does not put the desktop studio on air.`
               : `Stop ${programId}'s television leg? Destination changes remain unavailable until Alana acknowledges Stopped.`}
           </p>
           <div className="flex justify-end gap-2">
@@ -913,7 +885,6 @@ export default function Broadcasts() {
           </div>
         </div>
       </Modal>
-      <ProgramFillerPanel programId={programId} canManage={canManage} />
     </AppPage>
   );
 }

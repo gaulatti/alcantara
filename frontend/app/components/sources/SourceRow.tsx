@@ -132,7 +132,7 @@ export function SourceRow({
             {source.name}
           </span>
           <span className="text-xs text-zinc-400 font-mono">
-            {source.participantIdentity ?? 'no participant'}
+            {source.participantIdentity ?? 'No participant'}
           </span>
         </div>
       </td>

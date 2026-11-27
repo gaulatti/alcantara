@@ -30,9 +30,9 @@ export const PREVIEW_UNAVAILABLE_MESSAGES: Record<Exclude<PreviewAvailability, '
 const PREVIEW_STATUS: Record<PreviewAvailability, { tone: StatePillTone; label: string }> = {
   connecting: { tone: 'info', label: 'Preview connecting' },
   ready: { tone: 'ok', label: 'Preview ready' },
-  unconfigured: { tone: 'warn', label: 'Preview unavailable' },
-  denied: { tone: 'bad', label: 'Preview not permitted' },
-  failed: { tone: 'bad', label: 'Preview failed' },
+  unconfigured: { tone: 'warn', label: 'Preview off · no media service' },
+  denied: { tone: 'bad', label: 'Preview off · not permitted' },
+  failed: { tone: 'bad', label: 'Preview off · connection failed' },
 };
 
 export function meta() {
@@ -91,14 +91,9 @@ function SourcesManagerContent({
       {/* Active Preview Area */}
       {selectedSources.length > 0 && (
         <section aria-labelledby="sources-preview-heading" className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <h2 id="sources-preview-heading" className="text-sm font-semibold text-zinc-200">
-              Active Source Previews ({selectedSources.length})
-            </h2>
-            <span className="text-xs text-zinc-400">
-              Only selected sources are subscribed. No output is routed to Program.
-            </span>
-          </div>
+          <h2 id="sources-preview-heading" className="text-sm font-semibold text-zinc-200">
+            Active previews ({selectedSources.length})
+          </h2>
           <div
             data-testid="preview-tiles-grid"
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
@@ -253,10 +248,7 @@ export default function SourcesRoute({ initialSources, room: testRoom }: Sources
   return (
     <AppPage width="wide">
       <div className="flex flex-col gap-6">
-        <PageHeader
-          title="External Sources"
-          description="Monitor and preview managed external video and audio sources assigned to the active program."
-        />
+        <PageHeader title="External sources" />
 
         <SourcesSubscriptionProvider room={activeRoom}>
           <SourcesManagerContent

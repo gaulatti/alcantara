@@ -13,8 +13,8 @@ type State = (typeof states)[number];
 
 const previews: Partial<Record<State, SourcePreviewStatus>> = {
   ready: { tone: 'ok', label: 'Preview ready', reason: null },
-  'preview-failed': { tone: 'bad', label: 'Preview failed', reason: 'Live preview could not connect.', onRetry: () => undefined },
-  'preview-unconfigured': { tone: 'warn', label: 'Preview unavailable', reason: 'Live preview is not available: the media service is not configured on this server.' }
+  'preview-failed': { tone: 'bad', label: 'Preview off · connection failed', reason: 'Live preview could not connect.', onRetry: () => undefined },
+  'preview-unconfigured': { tone: 'warn', label: 'Preview off · no media service', reason: 'Live preview is not available: the media service is not configured on this server.' }
 };
 
 // The external sources list with fictional sources, one state per ?state=:

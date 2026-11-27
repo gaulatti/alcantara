@@ -147,7 +147,7 @@ describe('SourcesRoute (/sources)', () => {
     render(<SourcesRoute />);
 
     await waitFor(() => {
-      expect(screen.getByText('External Sources')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'External sources' })).toBeInTheDocument();
     });
 
     // Check all eight lifecycles are rendered

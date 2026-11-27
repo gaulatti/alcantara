@@ -72,13 +72,23 @@ export function SourceList({
       {/* List Header */}
       <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/40 px-4 py-3">
         <div className="flex items-center gap-3">
-          <h3 className="font-semibold text-sm text-zinc-100">Managed External Sources</h3>
-          {preview ? <StatePill tone={preview.tone} label={preview.label} title={preview.reason ?? undefined} /> : null}
-          <span className="text-xs text-zinc-400 font-mono">
-            Program: <span className="text-zinc-200">{currentProgramId}</span> (
-            {programSources.length})
-          </span>
+          <h2 className="font-semibold text-sm text-zinc-100">Managed external sources</h2>
+          {preview ? (
+            <span role={preview.reason ? 'status' : undefined} data-testid={preview.reason ? 'preview-availability' : undefined}>
+              <StatePill tone={preview.tone} label={preview.label} title={preview.reason ?? undefined} />
+              {preview.reason ? <span className="sr-only">{preview.reason}</span> : null}
+            </span>
+          ) : null}
+          {preview?.onRetry ? (
+            <Button type="button" variant="secondary" size="sm" onClick={preview.onRetry}>
+              Retry
+            </Button>
+          ) : null}
         </div>
+        <div className="flex items-center gap-3">
+        <span className="text-xs text-zinc-400" data-testid="source-count">
+          {programSources.length} {programSources.length === 1 ? 'source' : 'sources'}
+        </span>
         <Button
           variant="secondary"
           size="sm"
@@ -92,18 +102,8 @@ export function SourceList({
           />
           <span>Refresh</span>
         </Button>
-      </div>
-
-      {preview?.reason ? (
-        <div role="status" data-testid="preview-availability" className="flex items-center gap-3 border-b border-zinc-800 px-4 py-2 text-xs text-zinc-200">
-          <span>{preview.reason}</span>
-          {preview.onRetry ? (
-            <Button type="button" variant="secondary" size="sm" onClick={preview.onRetry}>
-              Retry
-            </Button>
-          ) : null}
         </div>
-      ) : null}
+      </div>
 
       {/* Non-destructive Error Banner (kept while previous list is visible) */}
       {error && hasLoaded && (
@@ -128,10 +128,7 @@ export function SourceList({
         </div>
       ) : programSources.length === 0 ? (
         <div className="p-8">
-          <Empty
-            title="No external sources assigned"
-            description={`No external video or audio sources are assigned to program "${currentProgramId}".`}
-          />
+          <Empty title="No external sources assigned" />
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -142,7 +139,7 @@ export function SourceList({
                   Preview
                 </th>
                 <th scope="col" className="px-3 py-2">
-                  Source & Participant
+                  Source
                 </th>
                 <th scope="col" className="px-3 py-2">
                   Transport
