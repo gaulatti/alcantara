@@ -6,7 +6,47 @@ const migration = require('../../scripts/migrate-bracket-component.cjs');
 const layout = { id: 2236, name: 'MI-Mundial', componentType: 'modoitaliano-bracket' };
 const scene = (id: number, metadata: Record<string, unknown>) => ({ id, metadata: JSON.stringify(metadata) });
 
+// The real value of layout 2236 on production (dry run, 23:50 UTC): componentType is a comma-separated list.
+const REAL_LIST = 'modoitaliano-giorgia-clock,tournament-bracket,modoitaliano-bracket,slideshow';
+const REAL_LIST_MIGRATED = 'modoitaliano-giorgia-clock,tournament-bracket,modoitaliano-giorgia-bracket,slideshow';
+
 describe('bracket component migration', () => {
+  it('replaces only the exact bracket element of the real comma-separated list, keeping order and the other elements', () => {
+    const plan = migration.planBracketMigration({
+      direction: 'apply',
+      layout: { id: 2236, name: 'MI-Mundial', componentType: REAL_LIST },
+      scenes: [scene(74, { 'modoitaliano-bracket': { matches: [] } })],
+    });
+    expect(plan.refused).toBeUndefined();
+    expect(plan.layoutChange).toEqual({ componentTypeBefore: REAL_LIST, componentTypeAfter: REAL_LIST_MIGRATED });
+  });
+
+  it('reverts the real list back to the legacy element at the same position', () => {
+    const plan = migration.planBracketMigration({
+      direction: 'revert',
+      layout: { id: 2236, name: 'MI-Mundial', componentType: REAL_LIST_MIGRATED },
+      scenes: [scene(74, { 'modoitaliano-giorgia-bracket': { matches: [] } })],
+    });
+    expect(plan.layoutChange).toEqual({ componentTypeBefore: REAL_LIST_MIGRATED, componentTypeAfter: REAL_LIST });
+  });
+
+  it('refuses a list with no bracket element, one with the bracket twice, and a lookalike that is only a substring', () => {
+    const absent = migration.planBracketMigration({ direction: 'apply', layout: { id: 2236, name: 'MI-Mundial', componentType: 'modoitaliano-giorgia-clock,slideshow' }, scenes: [] });
+    expect(absent.refused).toMatch(/no modoitaliano-bracket element/);
+    const twice = migration.planBracketMigration({ direction: 'apply', layout: { id: 2236, name: 'MI-Mundial', componentType: 'modoitaliano-bracket,x,modoitaliano-bracket' }, scenes: [] });
+    expect(twice.refused).toMatch(/appears 2 times/);
+    const lookalike = migration.planBracketMigration({ direction: 'apply', layout: { id: 2236, name: 'MI-Mundial', componentType: 'my-modoitaliano-bracket-v2,slideshow' }, scenes: [] });
+    expect(lookalike.refused).toMatch(/no modoitaliano-bracket element/);
+  });
+
+  it('treats a list already on the Giorgia element as applied', () => {
+    const plan = migration.planBracketMigration({ direction: 'apply', layout: { id: 2236, name: 'MI-Mundial', componentType: REAL_LIST_MIGRATED }, scenes: [] });
+    expect(plan.alreadyApplied).toBe(true);
+  });
+
+  it('refuses to move the legacy element onto a list that already has the Giorgia element', () => {
+    expect(migration.replaceListElement('a,modoitaliano-giorgia-bracket,modoitaliano-bracket', 'modoitaliano-bracket', 'modoitaliano-giorgia-bracket').refused).toMatch(/already in the list/);
+  });
   it('moves the layout and the scene key to the Giorgia id, keeping the other keys in order', () => {
     const plan = migration.planBracketMigration({
       direction: 'apply',
@@ -50,7 +90,7 @@ describe('bracket component migration', () => {
 
   it('refuses a layout it does not name, a componentType it does not expect, and a scene that already has the target key', () => {
     expect(migration.planBracketMigration({ direction: 'apply', layout: { ...layout, name: 'Other' }, scenes: [] }).refused).toMatch(/not MI-Mundial/);
-    expect(migration.planBracketMigration({ direction: 'apply', layout: { ...layout, componentType: 'modoitaliano-chyron' }, scenes: [] }).refused).toMatch(/expected modoitaliano-bracket/);
+    expect(migration.planBracketMigration({ direction: 'apply', layout: { ...layout, componentType: 'modoitaliano-chyron' }, scenes: [] }).refused).toMatch(/no modoitaliano-bracket element/);
     const clash = migration.planBracketMigration({
       direction: 'apply',
       layout,

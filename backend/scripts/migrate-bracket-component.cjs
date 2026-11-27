@@ -30,6 +30,22 @@ function renameKey(object, from, to) {
 }
 
 /**
+ * A layout's componentType is a comma-separated list of component ids, in play order (for example
+ * `modoitaliano-giorgia-clock,tournament-bracket,modoitaliano-bracket,slideshow`). Only an element that equals the id
+ * exactly is replaced; a substring match never is, so `tournament-bracket` is left alone.
+ */
+function replaceListElement(list, from, to) {
+  const elements = list.split(',');
+  const fromCount = elements.filter((element) => element === from).length;
+  const toCount = elements.filter((element) => element === to).length;
+  if (fromCount === 0 && toCount === 1) return { alreadyApplied: true };
+  if (fromCount === 0) return { refused: `no ${from} element in the list` };
+  if (fromCount > 1) return { refused: `${from} appears ${fromCount} times in the list` };
+  if (toCount > 0) return { refused: `${to} is already in the list next to ${from}` };
+  return { value: elements.map((element) => (element === from ? to : element)).join(',') };
+}
+
+/**
  * Plans one direction for one layout. Pure: it reads the rows it is given and writes nothing. A plan that cannot be
  * applied safely comes back with `refused` set and no changes.
  */
@@ -40,11 +56,12 @@ function planBracketMigration({ direction, layout, scenes }) {
   if (!expected || layout.name !== expected.name) {
     return { layoutId: layout.id, refused: `layout ${layout.id} is not ${expected ? expected.name : 'a bracket layout'}` };
   }
-  if (layout.componentType === to) {
+  const listChange = replaceListElement(layout.componentType, from, to);
+  if (listChange.alreadyApplied) {
     return { layoutId: layout.id, alreadyApplied: true, layoutChange: null, sceneChanges: [] };
   }
-  if (layout.componentType !== from) {
-    return { layoutId: layout.id, refused: `layout componentType is ${layout.componentType}, expected ${from}` };
+  if (listChange.refused) {
+    return { layoutId: layout.id, refused: `layout componentType ${listChange.refused}` };
   }
   const sceneChanges = [];
   for (const scene of scenes) {
@@ -68,7 +85,7 @@ function planBracketMigration({ direction, layout, scenes }) {
   }
   return {
     layoutId: layout.id,
-    layoutChange: { componentTypeBefore: from, componentTypeAfter: to },
+    layoutChange: { componentTypeBefore: layout.componentType, componentTypeAfter: listChange.value },
     sceneChanges,
   };
 }
@@ -142,7 +159,7 @@ async function main(argv = process.argv.slice(2)) {
   }
 }
 
-module.exports = { planBracketMigration, renameKey, describePlan, hostAllowed, LEGACY, GIORGIA, MIGRATED_LAYOUTS };
+module.exports = { planBracketMigration, replaceListElement, renameKey, describePlan, hostAllowed, LEGACY, GIORGIA, MIGRATED_LAYOUTS };
 
 if (require.main === module) {
   main().catch((error) => {
