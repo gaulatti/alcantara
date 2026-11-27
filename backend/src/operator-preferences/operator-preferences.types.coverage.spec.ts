@@ -23,9 +23,9 @@ describe('operator preference types coverage', () => {
   });
 
   describe('defaultProfile', () => {
-    it('gives tablet a compact touch layout with a 300px dock', () => {
+    it('gives tablet a director touch layout with a 300px dock', () => {
       expect(defaultProfile('tablet')).toEqual({
-        workspace: 'compact',
+        workspace: 'director',
         dockWidth: 300,
         touchMode: true,
         shortcutsEnabled: false,
@@ -95,7 +95,7 @@ describe('operator preference types coverage', () => {
       expect(
         parseProfile({ ...base, workspace: 'nope' }, 'desktop').workspace,
       ).toBe('director');
-      expect(parseProfile({ ...base }, 'tablet').workspace).toBe('compact');
+      expect(parseProfile({ ...base }, 'tablet').workspace).toBe('director');
     });
 
     it('defaults touchMode off and shortcuts on when unspecified on non-phone classes', () => {

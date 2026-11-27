@@ -564,7 +564,7 @@ export default function Broadcasts() {
                     label="Retire"
                     armedLabel="Press again"
                     armTimeoutMs={RETIRE_ARM_MS}
-                    className={QUIET_ARM}
+                    className={`${QUIET_ARM} font-medium normal-case tracking-normal`}
                     disabled={busyAction !== null}
                     onTake={() => void setRetired(destination, true)}
                   />

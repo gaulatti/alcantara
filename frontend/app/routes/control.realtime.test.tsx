@@ -131,7 +131,8 @@ it("leaves the WebSocket alone while the event stream is up", async () => {
   await screen.findAllByText("Fictional headlines");
   expect(server.requests("POST /auth/realtime-ticket")).toEqual([]);
   expect(FakeSocket.instances).toHaveLength(0);
-  expect(screen.getByTitle("Live updates disconnected")).toBeInTheDocument();
+  // The event stream carries the updates, so nothing is reported.
+  expect(screen.queryByTitle("Live updates disconnected")).toBeNull();
 });
 
 const statusOf = (name: string) =>
@@ -446,7 +447,7 @@ it("closes the link once the event stream is back", async () => {
   const { socket } = await openLink();
   act(() => sse.report!("connected"));
   expect(socket.closed).toBe(true);
-  expect(screen.getByTitle("Live updates disconnected")).toBeInTheDocument();
+  expect(screen.queryByTitle("Live updates disconnected")).toBeNull();
 });
 
 it("tolerates a link that cannot be closed, and an old link closing late", async () => {

@@ -3523,7 +3523,8 @@ export default function Control() {
         stagedScene={stagedSceneData}
         scenes={assignedScenes}
         transitionId={selectedTransitionId}
-        realtimeConnected={isProgramRealtimeConnected}
+        // Updates arrive on the event stream, or on the WebSocket that stands in while the stream is down.
+        realtimeConnected={programSseConnectionState === "connected" || isProgramRealtimeConnected}
         fadeToBlack={programState?.fadeToBlack === true}
         workspace={consoleWorkspace}
         onWorkspaceChange={(workspace) =>

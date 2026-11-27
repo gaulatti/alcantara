@@ -23,7 +23,8 @@ The properties workspace retains at least 420 px of height; smaller windows can
 scroll the console instead of clipping the editor. Switching workspaces does not
 change the staged scene or take anything on air.
 
-Remote is the compact switcher workspace used by phone and tablet defaults. The
+Remote is the compact switcher workspace used by the phone default; desktop and
+tablet default to Director. The
 legacy `graphics` value is still accepted when reading an older profile and is
 rendered as Director; new UI and seed data no longer create it.
 

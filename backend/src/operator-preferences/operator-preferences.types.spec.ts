@@ -54,9 +54,9 @@ describe('operator preference schema', () => {
     ).toThrow();
   });
 
-  it('defaults tablet profiles to the compact workspace with a 300px dock', () => {
+  it('defaults tablet profiles to the director workspace with a 300px dock', () => {
     expect(defaultProfile('tablet')).toEqual({
-      workspace: 'compact',
+      workspace: 'director',
       dockWidth: 300,
       touchMode: true,
       shortcutsEnabled: false,

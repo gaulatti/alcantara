@@ -326,7 +326,7 @@ describe('OperatorPreferencesService coverage', () => {
         deviceClass: 'tablet',
         version: 0,
         profile: expect.objectContaining({
-          workspace: 'compact',
+          workspace: 'director',
           dockWidth: 300,
         }),
       });

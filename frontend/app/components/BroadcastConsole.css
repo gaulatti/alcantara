@@ -1884,9 +1884,13 @@
   padding: 8px 12px;
 }
 
-/* The clock on the Simulcast tab row reads as one line. */
-.switcher-tabs .console-clock {
+/* The Simulcast page's own title, and its clock on one line at the end of the tab row. */
+.switcher-console .console-toolbar-title {
+  font-size: 18px;
+}
+.switcher-console .switcher-tabs .console-clock {
   display: flex;
+  flex-direction: row;
   align-items: baseline;
   gap: 6px;
   font-size: 12px;
