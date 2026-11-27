@@ -83,6 +83,10 @@ vi.mock("../components", async () => {
   for (const name of hoisted.NAMES) stubs[name] = await hoisted.standIn(name);
   return stubs;
 });
+vi.mock("@gaulatti/bleecker", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@gaulatti/bleecker")>();
+  return { ...actual, PodcastPlayer: await hoisted.standIn("PodcastPlayer") };
+});
 vi.mock("../components/RelojClone", async () => ({
   default: await hoisted.standIn("RelojClone"),
 }));
@@ -960,7 +964,7 @@ describe("the Modo Italiano components", () => {
         },
       ),
     );
-    expect(stub("ModoItalianoPodcastPlayer")).toMatchObject({
+    expect(stub("PodcastPlayer")).toMatchObject({
       show: false,
       coverUrl: "https://x.example/c.jpg",
       episodeTitle: "Fictional episode",
