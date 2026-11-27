@@ -586,18 +586,23 @@ test('a song already on air at the restart extends the wait to its end, within 1
   assert.ok(result.served > 40);
 });
 
-test('the candidate does not migrate again; the live backend still migrates at start', () => {
+test('the deployed containers do not migrate again; the one migration runs before the swap', () => {
   const dockerfile = readFileSync('./Dockerfile', 'utf8');
   const start = dockerfile.split('\n').find((line) => line.startsWith('CMD '));
   assert.ok(start);
   // Candidate branch: starts the server with no migration.
   assert.match(start, /if \[ -n \\"\$ALCANTARA_DEPLOY_CANDIDATE\\" \]; then pnpm start:prod;/);
-  // Live branch: migrate, then start.
+  // Anywhere else the image still migrates, then starts.
   assert.match(start, /else pnpm run db:migrate:deploy && pnpm start:prod; fi/);
   // The deploy step that proves the image can migrate stays.
   const migrate = deployScript.indexOf('pnpm run db:migrate:deploy');
   const candidate = deployScript.indexOf('docker run -d --name alcantara-backend-candidate');
   assert.ok(migrate >= 0 && migrate < candidate);
+  assert.equal(deployScript.match(/db:migrate:deploy/g).length, 1);
+  // The live container is told to start the server only.
+  const { log } = runDeploy({ candidateHealthy: true });
+  const live = log.find((line) => line.startsWith('docker run -d --name alcantara-backend '));
+  assert.match(live, /ghcr\.io\/example\/alcantara:fictional pnpm start:prod$/);
 });
 
 test('a candidate that stayed up but did not answer says so instead of claiming an exit', () => {

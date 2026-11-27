@@ -155,6 +155,8 @@ rollback_backend() {
   fi
 }
 
+# The live container starts the server only (gaulatti/alcantara#873): the migrations ran above, from this same image,
+# before the running backend was touched, and a second run here only lengthened the time with no backend.
 # The radio check below waits for a song that started after this moment.
 radio_since="$(date +%s)"
 
@@ -178,7 +180,8 @@ if ! docker run -d --name alcantara-backend \
   --log-driver=local \
   --log-opt max-size=10m \
   --log-opt max-file=3 \
-  "$image"; then
+  "$image" \
+  pnpm start:prod; then
   rollback_backend
   exit 1
 fi
