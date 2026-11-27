@@ -429,11 +429,12 @@ from `appendix-a.tsv` and asserts, for each, the capability's name, permission
 (and that it is the controller handler's own), tier, a dry run for every W, A
 and D, and a confirm target for every A and D.
 
-**Not capabilities.** Appendix A marks twelve rows excluded (capability
+**Not capabilities.** Appendix A marks thirteen rows excluded (capability
 column `—`) because they return or produce a credential:
 `POST /auth/realtime-ticket`, `POST /radio/:programId/monitor-ticket`,
 `POST /program/:programId/recording/download-ticket`,
 `POST /external-sources/:id/credentials/rotate`, `POST /webrtc/operator-token`,
+`POST /webrtc/host-mic-token`,
 `POST /webrtc/desktop-program-feed-token`,
 `POST /webrtc/invitations/:id/screening-token`,
 `POST /broadcast/destinations/:destinationId/ingest` (a destination's ingest key),

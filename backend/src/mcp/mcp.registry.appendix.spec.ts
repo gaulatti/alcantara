@@ -145,10 +145,10 @@ describe('MCP registry against appendix A', () => {
   // The three bracket rows keep their capability names; their path and
   // handler columns are written neutrally, so this file carries no brand
   // literal (the brand-literal ratchet). Only name, permission and tier are read.
-  it('reads all of appendix A: capabilities, covered rows and the 14 exclusions', () => {
+  it('reads all of appendix A: capabilities, covered rows and the 15 exclusions', () => {
     const { rows, excluded, covered } = appendix();
     expect(rows.size + covered.size).toBe(182);
-    expect(excluded).toBe(14);
+    expect(excluded).toBe(15);
     // auth_get_me is whoami (same permission, same tier, the caller's own
     // identity), as is access_my_permissions (the caller's own keys); the
     // five uploads are import_media_from_url's kinds.
