@@ -65,7 +65,8 @@ it('renders nothing against a backend without the filler API', async () => {
   vi.mocked(api.get).mockRejectedValue(httpError(404));
   const view = render(<ProgramFillerPanel programId="both-1" canManage />);
   await waitFor(() => expect(api.get).toHaveBeenCalledWith('/broadcast/programs/both-1/fillers'));
-  expect(view.container).toBeEmptyDOMElement();
+  // The panel still shows its loading state until the refusal is handled, which a busy runner can reach later.
+  await waitFor(() => expect(view.container).toBeEmptyDOMElement());
 });
 
 it('shows the active and pending version of each leg without controls for a viewer', async () => {
