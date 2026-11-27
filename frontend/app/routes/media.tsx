@@ -1059,6 +1059,29 @@ export default function MediaRoute() {
               }
             />
             <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
+            {[...imageLabelIds]
+              .filter((id) => !labels.some((known) => known.id === id))
+              .map((id) => (
+                <div
+                  key={id}
+                  className="flex items-center justify-between gap-2 rounded border border-amber-300/40 px-2 py-1 text-xs"
+                >
+                  <span className="min-w-0 truncate">Not in the library: {id}</span>
+                  <Button
+                    size="xs"
+                    variant="secondary"
+                    onClick={() =>
+                      setImageLabelIds((current) => {
+                        const next = new Set(current);
+                        next.delete(id);
+                        return next;
+                      })
+                    }
+                  >
+                    Remove label
+                  </Button>
+                </div>
+              ))}
               {labels.length === 0 ? (
                 <p className="text-xs text-text-secondary">
                   No labels yet. Create one above and it will be selected.
@@ -1211,6 +1234,29 @@ export default function MediaRoute() {
               }
             />
             <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
+            {[...backgroundLabelIds]
+              .filter((id) => !labels.some((known) => known.id === id))
+              .map((id) => (
+                <div
+                  key={id}
+                  className="flex items-center justify-between gap-2 rounded border border-amber-300/40 px-2 py-1 text-xs"
+                >
+                  <span className="min-w-0 truncate">Not in the library: {id}</span>
+                  <Button
+                    size="xs"
+                    variant="secondary"
+                    onClick={() =>
+                      setBackgroundLabelIds((current) => {
+                        const next = new Set(current);
+                        next.delete(id);
+                        return next;
+                      })
+                    }
+                  >
+                    Remove label
+                  </Button>
+                </div>
+              ))}
               {labels.length === 0 ? (
                 <p className="text-xs text-text-secondary">
                   No labels yet. Create one above and it will be selected.
