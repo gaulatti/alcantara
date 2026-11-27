@@ -11,9 +11,13 @@ const lastRule = (selector: string) => {
 };
 
 it('keeps the cartwall at its own height beside the desk, up to a bound where it scrolls itself', () => {
-  const rule = lastRule('.radio-tools .radio-cartwall');
-  expect(rule).toMatch(/flex:\s*1 0 auto/);
-  expect(rule).toMatch(/max-height:\s*320px/);
+  expect(css).toMatch(/\.radio-tools \.radio-cartwall \{\s*flex: 1 0 auto;[^}]*max-height: 320px;/);
+});
+
+it('caps the cartwall shorter at 1440 px only, so the guest list fits above the fold', () => {
+  expect(css).toMatch(
+    /@media \(min-width: 1440px\) and \(max-width: 1535px\) \{\s*\.radio-tools \.radio-cartwall \{\s*max-height: 190px;/,
+  );
 });
 
 it('puts two pads across in a tablet column, so a sounder name can be read', () => {

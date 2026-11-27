@@ -52,7 +52,7 @@ import {
 } from "./radio-desk/songs";
 import { InstantsPanel } from "./panels";
 import { faderToDb } from "../utils/audioTaper";
-import { engineUnavailableLabel } from "../utils/palazzoReason";
+import { engineStatusLabel } from "../utils/palazzoReason";
 import {
   fetchFlightSequences,
   updateFlightSequence,
@@ -239,7 +239,6 @@ export function deadAirLine(deadAir: DeadAirStatus | null | undefined): string |
 const PLAYOUT_DOWN_REASON = "Playout down: nothing can air";
 
 /** The engine chip when the console cannot reach the Alcántara server at all (Dot's recovery walk). */
-const SERVER_UNREACHABLE_LABEL = "Can't reach the Alcántara server";
 
 /** The Recovery & session headline for a recovery status the console has read. */
 function recoveryHeadline(recovery: RecoveryStatus | null): string {
@@ -251,6 +250,9 @@ function recoveryHeadline(recovery: RecoveryStatus | null): string {
         ? "Prepared for next session"
         : "No prepared recovery playlist";
 }
+
+/** How long the desk waits for the playout status before it says the playout is unreachable. */
+const PALAZZO_STATUS_TIMEOUT_MS = 8_000;
 
 export const RadioPanel: React.FC<RadioPanelProps> = ({
   fixtureData,
@@ -314,6 +316,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   const [palazzoAnswered, setPalazzoAnswered] = useState(!!fixtureData);
   // The console cannot reach the Alcántara server at all, as opposed to the server answering that the engine is down.
   const [serverUnreachable, setServerUnreachable] = useState(false);
+  const [playoutUnreachable, setPlayoutUnreachable] = useState(false);
   const [addSongId, setAddSongId] = useState("");
   const [logBusy, setLogBusy] = useState(false);
   const [logLoadError, setLogLoadError] = useState<string | null>(null);
@@ -371,19 +374,25 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   const fetchPalazzoStatus = useCallback(async () => {
     let next: PalazzoStatus | null = null;
     let unreachable = false;
+    // A 5xx or a timeout means the playout could not be asked: the desk says so, instead of "not configured".
+    let playout = false;
     try {
       const res = await fetch(
         apiUrl(`/radio/${encodeURIComponent(programId)}/palazzo-status`),
+        { signal: AbortSignal.timeout(PALAZZO_STATUS_TIMEOUT_MS) },
       );
-      if (res.ok) next = (await res.json()) || null;
-    } catch {
+      if (res.status >= 500) playout = true;
+      else if (res.ok) next = (await res.json()) || null;
+    } catch (error) {
       next = null;
-      unreachable = true;
+      if (error instanceof DOMException && error.name === "TimeoutError") playout = true;
+      else unreachable = true;
     }
     if (currentProgramId.current !== programId) return;
     setPalazzo(next);
     setPalazzoAnswered(true);
     setServerUnreachable(unreachable);
+    setPlayoutUnreachable(playout);
   }, [programId]);
 
   const fetchAirPlan = useCallback(async () => {
@@ -662,9 +671,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   });
   // Palazzo answers but its playout is down: automation still follows the connection, but the desk refuses
   // what would be accepted and not air (Take, Take now, Start with fallback). Stop stays available.
-  const engineLabel = serverUnreachable
-    ? SERVER_UNREACHABLE_LABEL
-    : engineUnavailableLabel(palazzo);
+  const engineLabel = engineStatusLabel({ serverUnreachable, playoutUnreachable, status: palazzo });
   const playoutDown = engineReady && palazzo?.playout === "down";
   const onAirInput: Omit<OnAirInput, "outputUnverified"> = {
     playback: programSongPlayback,

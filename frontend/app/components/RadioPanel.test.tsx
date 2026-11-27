@@ -721,6 +721,21 @@ it("drops an engine status that answers for the program before a switch", async 
   expect(await within(strip).findByText(/Engine unavailable/)).toBeVisible();
 });
 
+// A playout status that fails with a 5xx says the playout is unreachable; the real "not configured" answer keeps its words.
+it("says Playout unreachable when the playout status fails, and not configured only for the real answer", async () => {
+  radioApi({ "/palazzo-status": new Response("bad gateway", { status: 502 }) });
+  vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+  const failed = mount(liveProps());
+  expect(await screen.findByText("Playout unreachable")).toBeVisible();
+  expect(screen.queryByText("Engine unavailable: not configured")).toBeNull();
+  failed.unmount();
+
+  radioApi({ "/palazzo-status": json({ reason: "not-configured" }) });
+  mount(liveProps());
+  expect(await screen.findByText("Engine unavailable: not configured")).toBeVisible();
+  expect(screen.queryByText("Playout unreachable")).toBeNull();
+});
+
 it("reads Checking engine, never Engine unavailable, until the first engine status answers", async () => {
   let answer: (response: Response) => void = () => undefined;
   radioApi({

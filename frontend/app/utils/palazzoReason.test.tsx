@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { engineUnavailableLabel, palazzoReasonText } from "./palazzoReason";
+import { engineStatusLabel, engineUnavailableLabel, palazzoReasonText } from "./palazzoReason";
 
 it("words each known reason and ignores everything else", () => {
   expect(palazzoReasonText("not-configured")).toBe("not configured");
@@ -22,3 +22,13 @@ it("keeps today's text without a known reason", () => {
     "Engine unavailable: disabled in settings",
   );
 });
+
+it("says a playout that cannot be asked is unreachable, and keeps not configured for the real answer", () => {
+  const notConfigured = { reason: "not-configured" };
+  expect(engineStatusLabel({ serverUnreachable: false, playoutUnreachable: true, status: null })).toBe("Playout unreachable");
+  // A 5xx or a timeout is not the answer "not configured", even when a reason was held before.
+  expect(engineStatusLabel({ serverUnreachable: false, playoutUnreachable: true, status: notConfigured })).toBe("Playout unreachable");
+  expect(engineStatusLabel({ serverUnreachable: false, playoutUnreachable: false, status: notConfigured })).toBe("Engine unavailable: not configured");
+  expect(engineStatusLabel({ serverUnreachable: true, playoutUnreachable: true, status: null })).toBe("Can't reach the Alcántara server");
+});
+

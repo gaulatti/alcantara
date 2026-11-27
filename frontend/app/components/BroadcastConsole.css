@@ -1388,3 +1388,12 @@
     order: -1;
   }
 }
+
+/* gaulatti/alcantara#879 item 7, at 1440: the guest list (the last panel of the tools column) sat 13 px below the fold.
+   The cartwall keeps its pads and scrolls inside a shorter box, so the guests, mixer and cartwall all fit above the fold. */
+@media (min-width: 1440px) and (max-width: 1535px) {
+  .radio-tools .radio-cartwall {
+    max-height: 190px;
+  }
+}
+

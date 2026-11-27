@@ -25,3 +25,19 @@ export function engineUnavailableLabel(
   const text = palazzoReasonText(status?.reason);
   return text ? `Engine unavailable: ${text}` : "Engine unavailable";
 }
+
+/** The label for an engine the desk cannot read: a failed or timed-out playout status is "unreachable", not "not configured". */
+export function engineStatusLabel({
+  serverUnreachable,
+  playoutUnreachable,
+  status,
+}: {
+  serverUnreachable: boolean;
+  playoutUnreachable: boolean;
+  status: { reason?: unknown } | null | undefined;
+}): string {
+  if (serverUnreachable) return "Can't reach the Alcántara server";
+  if (playoutUnreachable) return "Playout unreachable";
+  return engineUnavailableLabel(status);
+}
+
