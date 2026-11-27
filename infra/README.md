@@ -67,6 +67,12 @@ Deploy or update, from a machine that can read the runtime secret:
 AWS_REGION=… ALCANTARA_CONFIG_SECRET_ID=… infra/helix/return-runner-up.sh <ssh-target>
 ```
 
+From a machine that cannot pull the backend image, render the key in the running backend container instead:
+
+```bash
+infra/helix/return-runner-up.sh --from-container <backend-ssh-target> <ssh-target>
+```
+
 `WEBRTC_BROWSER=firefox` or `webkit` on that command changes the engine. Stop it with `docker compose -f compose.return-runner.yml down` in `~/.alcantara-return-runner` on Helix. The backend image must already contain `scripts/print-return-runner-env.mjs`.
 
 `e2e/return-proof.mjs` proves the return from the guest's side alone: a guest joins the real page and the level of what it plays is measured (`RETURN_EXPECT=sound`, or `silence` when nothing but the guest is in the room, so its own voice would be the only thing to hear).

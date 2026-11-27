@@ -12,7 +12,7 @@ const compose = fs.readFileSync(path.join(repo, 'infra/helix/compose.return-runn
 const script = path.join(repo, 'infra/helix/return-runner-up.sh');
 const SECRET = 'fictional-renderer-key-for-the-test';
 
-function runUp({ render = 0, healthy = true } = {}) {
+function runUp({ render = 0, healthy = true, fromContainer = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'return-runner-up-'));
   const bin = path.join(dir, 'bin');
   fs.mkdirSync(bin);
@@ -20,11 +20,16 @@ function runUp({ render = 0, healthy = true } = {}) {
   const stdin = path.join(dir, 'ssh-stdin');
   const stub = (name, body) => fs.writeFileSync(path.join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
   stub('docker', `printf 'docker %s\\n' "$*" >> "${log}"\n[ "${render}" -eq 0 ] && printf 'WEBRTC_RENDERER_KEY=${SECRET}\\n'\nexit ${render}`);
-  stub('ssh', `printf 'ssh %s\\n' "$*" >> "${log}"\ncase "$*" in\n  *"cat >"*) cat >> "${stdin}" ;;\n  *"docker inspect"*) exit ${healthy ? 0 : 1} ;;\nesac\nexit 0`);
+  stub('ssh', `printf 'ssh %s\\n' "$*" >> "${log}"\ncase "$*" in\n  *print-return-runner-env*) [ "${render}" -eq 0 ] && printf 'motd line\\nWEBRTC_RENDERER_KEY=${SECRET}\\n'; exit ${render} ;;\n  *"cat >"*) cat >> "${stdin}" ;;\n  *"docker inspect"*) exit ${healthy ? 0 : 1} ;;\nesac\nexit 0`);
   stub('scp', `printf 'scp %s\\n' "$*" >> "${log}"`);
-  const result = spawnSync('sh', [script, 'operator@helix.example.test'], {
+  const args = [...(fromContainer ? ['--from-container', 'operator@backend.example.test'] : []), 'operator@helix.example.test'];
+  const result = spawnSync('sh', [script, ...args], {
     encoding: 'utf8',
-    env: { PATH: `${bin}:/usr/bin:/bin`, HOME: dir, AWS_REGION: 'us-east-1', ALCANTARA_CONFIG_SECRET_ID: 'fictional/secret-id' },
+    env: {
+      PATH: `${bin}:/usr/bin:/bin`,
+      HOME: dir,
+      ...(fromContainer ? {} : { AWS_REGION: 'us-east-1', ALCANTARA_CONFIG_SECRET_ID: 'fictional/secret-id' }),
+    },
   });
   const calls = fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '';
   const sent = fs.existsSync(stdin) ? fs.readFileSync(stdin, 'utf8') : '';
@@ -64,4 +69,20 @@ test('return-runner-up.sh leaves Helix untouched without a key, and fails when t
   const unhealthy = runUp({ healthy: false });
   assert.equal(unhealthy.status, 1);
   assert.match(unhealthy.stderr, /did not report healthy/);
+});
+
+test('return-runner-up.sh --from-container renders in the running backend, with no image pull or cloud access here', () => {
+  const run = runUp({ fromContainer: true });
+  assert.equal(run.status, 0, run.stderr);
+  assert.match(run.calls, /ssh .*operator@backend\.example\.test sh -c 'docker exec alcantara-backend node scripts\/print-return-runner-env\.mjs'/);
+  assert.doesNotMatch(run.calls, /^docker /m);
+  // Only the key line reaches the file, whatever else the host's shell printed.
+  assert.equal(
+    run.sent,
+    `ALCANTARA_API_URL=https://api.alcantara.gaulatti.com\nALCANTARA_APP_URL=https://alcantara.gaulatti.com\nWEBRTC_BROWSER=chromium\nWEBRTC_RENDERER_KEY=${SECRET}\n`,
+  );
+  for (const text of [run.calls, run.stdout, run.stderr]) assert.ok(!text.includes(SECRET));
+  const missing = runUp({ fromContainer: true, render: 3 });
+  assert.equal(missing.status, 3);
+  assert.doesNotMatch(missing.calls, /^scp /m);
 });
