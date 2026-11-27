@@ -160,6 +160,19 @@ export function RadioTransport({
       >
         Take <KeyCap>Space</KeyCap>
       </button>
+      {armed ? (
+        // Esc clears a cue on a keyboard; a touch screen has no Esc, so the clear is a button too.
+        <button
+          type="button"
+          onClick={() => {
+            disarm();
+            setNote(null);
+          }}
+          className="inline-flex h-9 items-center rounded-[7px] border border-sand/50 px-3 text-xs font-semibold uppercase tracking-wide"
+        >
+          Clear cue
+        </button>
+      ) : null}
       <HoldButton
         label="Stop the song on air"
         hint="Hold to stop the song on air (0.6 s)."

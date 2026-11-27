@@ -114,3 +114,15 @@ it("stops naming the taken song once the engine confirms another item or nothing
     view.unmount();
   }
 });
+
+it("clears an armed cue with a button, for a touch screen with no Esc", () => {
+  render(<RadioTransport next={next} onTake={vi.fn()} onTakeOffAir={vi.fn()} />);
+  expect(screen.queryByRole("button", { name: "Clear cue" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /Cue next/ }));
+  const take = screen.getByRole("button", { name: /Take/ });
+  expect(take).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Clear cue" }));
+  expect(screen.queryByRole("button", { name: "Clear cue" })).toBeNull();
+  expect(take).toBeDisabled();
+});
+
