@@ -1,0 +1,119 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createRunner, readConfig, wantedPrograms, BACKOFF_MS, GONE_MS, STUCK_MS } from "./runner.mjs";
+
+const env = { ALCANTARA_API_URL: "https://api.example/", ALCANTARA_APP_URL: "https://app.example", WEBRTC_RENDERER_KEY: "secret-key" };
+const config = readConfig(env);
+const answer = (programs, status = 200) => async () => new Response(JSON.stringify({ programs }), { status });
+
+function harness() {
+  let time = 0;
+  const lines = [];
+  const opened = [];
+  const closed = [];
+  const states = new Map();
+  const runner = createRunner({
+    config: { ...config, maxRooms: 2 },
+    now: () => time,
+    log: (line) => lines.push(line),
+    openPage: async (id) => {
+      if (id === "broken") throw new TypeError("https://app.example/return-router/broken secret-key");
+      opened.push(id);
+      return { page: { evaluate: async () => states.get(id) ?? "connected" }, close: async () => void closed.push(id) };
+    },
+  });
+  return { runner, opened, closed, states, lines, advance: (ms) => (time += ms) };
+}
+
+test("requires its settings and a browser it knows", () => {
+  assert.equal(config.api, "https://api.example");
+  assert.throws(() => readConfig({ ...env, WEBRTC_RENDERER_KEY: " " }), /WEBRTC_RENDERER_KEY/);
+  assert.throws(() => readConfig({ ...env, WEBRTC_BROWSER: "ie" }), /chromium, webkit or firefox/);
+});
+
+test("sends the key in a header, never in the address, and keeps only program ids", async () => {
+  const seen = [];
+  const result = await wantedPrograms(config, ["modoitaliano.fm"], async (url, init) => {
+    seen.push([url, init.headers["X-Renderer-Key"]]);
+    return new Response(JSON.stringify({ programs: ["modoitaliano.fm", "../x", 4, "modoitaliano.fm"] }));
+  });
+  assert.deepEqual(result.programs, ["modoitaliano.fm"]);
+  assert.deepEqual(seen, [["https://api.example/webrtc/return-routers?running=modoitaliano.fm", "secret-key"]]);
+});
+
+test("opens what is wanted, and keeps pages when the backend says nothing", async () => {
+  const h = harness();
+  await h.runner.tick(answer(["a", "b", "c"]));
+  assert.deepEqual(h.opened, ["a", "b"]);
+  await h.runner.tick(answer(null, 404));
+  await h.runner.tick(async () => {
+    throw new Error("offline");
+  });
+  assert.deepEqual(h.closed, []);
+  assert.deepEqual(h.runner.status(), [{ programId: "a", state: "connected" }, { programId: "b", state: "connected" }]);
+});
+
+test("closes a page only after its program has been gone a while, so a restarted backend cuts nothing", async () => {
+  const h = harness();
+  await h.runner.tick(answer(["a"]));
+  await h.runner.tick(answer([]));
+  h.advance(GONE_MS - 1);
+  await h.runner.tick(answer([]));
+  assert.deepEqual(h.closed, []);
+  // Back in the list: the count starts again.
+  await h.runner.tick(answer(["a"]));
+  h.advance(GONE_MS);
+  await h.runner.tick(answer([]));
+  assert.deepEqual(h.closed, []);
+  // While the backend cannot be asked, absence does not accumulate.
+  h.advance(GONE_MS * 3);
+  await h.runner.tick(async () => {
+    throw new Error("deploying");
+  });
+  await h.runner.tick(answer([]));
+  assert.deepEqual(h.closed, []);
+  h.advance(GONE_MS);
+  await h.runner.tick(answer([]));
+  assert.deepEqual(h.closed, ["a"]);
+});
+
+test("asks with the last ETag and treats 304 as the same list", async () => {
+  const h = harness();
+  const sent = [];
+  const backend = async (url, init) => {
+    sent.push(init.headers["If-None-Match"] ?? null);
+    return init.headers["If-None-Match"] === "v1"
+      ? new Response(null, { status: 304 })
+      : new Response(JSON.stringify({ programs: ["a"] }), { headers: { etag: "v1" } });
+  };
+  await h.runner.tick(backend);
+  await h.runner.tick(backend);
+  await h.runner.tick(backend);
+  // The address changes once a page is running, so the first repeat asks again in full.
+  assert.deepEqual(sent, [null, null, "v1"]);
+  assert.deepEqual(h.closed, []);
+  assert.match(h.runner.metrics(), /return_runner_polls_total\{result="unchanged"\} 1/);
+});
+
+test("opens a failed or stuck page again after a growing wait, and logs no key or address", async () => {
+  const h = harness();
+  h.states.set("a", "failed");
+  h.states.set("b", "starting");
+  await h.runner.tick(answer(["a", "b"]));
+  h.advance(6_000);
+  await h.runner.tick(answer(["a", "b"]));
+  assert.deepEqual(h.closed, ["a"]);
+  assert.deepEqual(h.opened, ["a", "b"]);
+  h.advance(BACKOFF_MS[0]);
+  await h.runner.tick(answer(["a", "b"]));
+  assert.deepEqual(h.opened, ["a", "b", "a"]);
+  h.states.set("a", "connected");
+  h.advance(STUCK_MS);
+  await h.runner.tick(answer(["a", "b"]));
+  assert.deepEqual(h.closed, ["a", "b"]);
+  await h.runner.tick(answer(["broken"]));
+  assert.ok(h.lines.some((line) => line === "return router failed to open for broken: TypeError"));
+  assert.ok(!h.lines.join("\n").includes("secret-key"));
+  assert.match(h.runner.metrics(), /return_runner_opens_total\{result="failed"\} 1/);
+  assert.ok(!h.runner.metrics().includes("broken"));
+});

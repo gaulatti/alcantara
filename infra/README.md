@@ -50,6 +50,27 @@ One-time host setup, which needs root on Helix and the router's port forward:
 sudo firewall-cmd --permanent --zone=FedoraServer --add-port=7881/tcp --add-port=7882/udp --add-port=3478/udp && sudo firewall-cmd --reload && sudo cp ~/.alcantara-livekit/nginx-livekit.conf /etc/nginx/sites-available/livekit-alcantara && sudo nginx -t && sudo systemctl reload nginx && sudo certbot --nginx -d livekit.alcantara.gaulatti.com
 ```
 
+## Return runner
+
+Guests hear their return from the return router, a console page (`/return-router/<program>`). `helix/compose.return-runner.yml` runs it with nobody opening anything: one container with Playwright's browsers keeps one headless page open per program that needs it.
+
+- **It only dials out.** Every 3 s it asks the backend `GET /webrtc/return-routers` (the renderer key in `X-Renderer-Key`, the programs with its open pages in `?running=`) for `{"programs": [...]}`. An unchanged list is a 304. Nothing is published and no port is opened.
+- **It never cuts a live return for a missing answer.** A backend that is restarting, unreachable or without the list leaves the open pages as they are. A program must be absent from the list for 10 s before its page closes.
+- **The key** is rendered from the runtime secret into a 0600 `return-runner.env` on Helix, and reaches the page in its session storage, never in a URL or a log.
+- **A page that fails**, or is not connected for 45 s, is opened again after 5 s, 15 s, then every 60 s.
+- **Health and metrics** are on `127.0.0.1:8090` inside the container (`/` and `/metrics`: `return_runner_routers{state}`, `return_runner_polls_total{result}`, `return_runner_opens_total{result}`), not published.
+- **Browser flags.** The page holds no microphone permission, so Chromium would hide its address and LiveKit would get no media path; the runner turns that off, and the local network checks, for its own browser only.
+
+Deploy or update, from a machine that can read the runtime secret:
+
+```bash
+AWS_REGION=… ALCANTARA_CONFIG_SECRET_ID=… infra/helix/return-runner-up.sh <ssh-target>
+```
+
+`WEBRTC_BROWSER=firefox` or `webkit` on that command changes the engine. Stop it with `docker compose -f compose.return-runner.yml down` in `~/.alcantara-return-runner` on Helix. The backend image must already contain `scripts/print-return-runner-env.mjs`.
+
+`e2e/return-proof.mjs` proves the return from the guest's side alone: a guest joins the real page and the level of what it plays is measured (`RETURN_EXPECT=sound`, or `silence` when nothing but the guest is in the room, so its own voice would be the only thing to hear).
+
 ## Network Ports: Public vs. Private
 
 ### Public Ports (forwarded by the router to Helix)

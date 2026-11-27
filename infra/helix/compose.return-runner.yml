@@ -1,0 +1,29 @@
+# The return runner on Helix (gaulatti/alcantara calls): a headless return router per program with guests. It only
+# dials out, so nothing is published. infra/helix/return-runner-up.sh writes return-runner.env and starts it.
+name: alcantara-return-runner
+
+services:
+  return-runner:
+    build:
+      context: ./return-runner
+    image: alcantara-return-runner:local
+    container_name: alcantara-return-runner
+    # The renderer key and the two origins, in a 0600 file the deploy writes.
+    env_file:
+      - ${ALCANTARA_SERVICE_DIR:-/services/alcantara}/return-runner.env
+    init: true
+    shm_size: 1g
+    cpus: 4
+    mem_limit: 4g
+    restart: always
+    logging:
+      driver: local
+      options:
+        max-size: '10m'
+        max-file: '3'
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:8090/').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s

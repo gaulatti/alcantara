@@ -1,0 +1,67 @@
+// The return runner on Helix, started by infra/helix/return-runner-up.sh: it publishes nothing, and the renderer key
+// travels only on ssh input.
+const assert = require('node:assert/strict');
+const { spawnSync } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const test = require('node:test');
+
+const repo = path.resolve(__dirname, '../..');
+const compose = fs.readFileSync(path.join(repo, 'infra/helix/compose.return-runner.yml'), 'utf8');
+const script = path.join(repo, 'infra/helix/return-runner-up.sh');
+const SECRET = 'fictional-renderer-key-for-the-test';
+
+function runUp({ render = 0, healthy = true } = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'return-runner-up-'));
+  const bin = path.join(dir, 'bin');
+  fs.mkdirSync(bin);
+  const log = path.join(dir, 'calls.log');
+  const stdin = path.join(dir, 'ssh-stdin');
+  const stub = (name, body) => fs.writeFileSync(path.join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+  stub('docker', `printf 'docker %s\\n' "$*" >> "${log}"\n[ "${render}" -eq 0 ] && printf 'WEBRTC_RENDERER_KEY=${SECRET}\\n'\nexit ${render}`);
+  stub('ssh', `printf 'ssh %s\\n' "$*" >> "${log}"\ncase "$*" in\n  *"cat >"*) cat >> "${stdin}" ;;\n  *"docker inspect"*) exit ${healthy ? 0 : 1} ;;\nesac\nexit 0`);
+  stub('scp', `printf 'scp %s\\n' "$*" >> "${log}"`);
+  const result = spawnSync('sh', [script, 'operator@helix.example.test'], {
+    encoding: 'utf8',
+    env: { PATH: `${bin}:/usr/bin:/bin`, HOME: dir, AWS_REGION: 'us-east-1', ALCANTARA_CONFIG_SECRET_ID: 'fictional/secret-id' },
+  });
+  const calls = fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '';
+  const sent = fs.existsSync(stdin) ? fs.readFileSync(stdin, 'utf8') : '';
+  fs.rmSync(dir, { recursive: true, force: true });
+  return { ...result, calls, sent };
+}
+
+test('the runner compose publishes no port', () => {
+  assert.match(compose, /^name: alcantara-return-runner$/m);
+  assert.doesNotMatch(compose, /ports:|expose:|network_mode: *host|privileged/);
+});
+
+test('return-runner-up.sh writes the key only through ssh input, then builds, starts and waits', () => {
+  const run = runUp();
+  assert.equal(run.status, 0, run.stderr);
+  assert.equal(
+    run.sent,
+    `ALCANTARA_API_URL=https://api.alcantara.gaulatti.com\nALCANTARA_APP_URL=https://alcantara.gaulatti.com\nWEBRTC_BROWSER=chromium\nWEBRTC_RENDERER_KEY=${SECRET}\n`,
+  );
+  for (const text of [run.calls, run.stdout, run.stderr]) assert.ok(!text.includes(SECRET));
+  assert.match(run.calls, /node scripts\/print-return-runner-env\.mjs/);
+  assert.match(run.calls, /umask 077 && cat > \$HOME\/\.alcantara-return-runner\/return-runner\.env\.new && mv -f/);
+  assert.match(run.calls, /docker compose -f compose\.return-runner\.yml up -d --build/);
+  assert.match(run.stdout, /healthy on operator@helix\.example\.test/);
+});
+
+test('return-runner-up.sh leaves Helix untouched without a key, and fails when the runner is not healthy', () => {
+  for (const [render, status] of [
+    [3, 3],
+    [1, 1],
+  ]) {
+    const run = runUp({ render });
+    assert.equal(run.status, status);
+    assert.doesNotMatch(run.calls, /^(ssh|scp) /m);
+    assert.match(run.stderr, /Helix is unchanged/);
+  }
+  const unhealthy = runUp({ healthy: false });
+  assert.equal(unhealthy.status, 1);
+  assert.match(unhealthy.stderr, /did not report healthy/);
+});

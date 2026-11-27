@@ -53,6 +53,8 @@ test('the Helix compose publishes signalling on loopback and exactly three media
     '7881:7881/tcp',
     '7882:7882/udp',
     '3478:3478/udp',
+    // TURN over TLS, behind nginx on 443.
+    '127.0.0.1:5349:5349/tcp',
   ]);
   assert.doesNotMatch(service('redis'), /ports:/);
   assert.match(compose, /^name: alcantara-livekit$/m);
@@ -136,7 +138,7 @@ test('livekit-up.sh streams the rendered config only on ssh input, then starts a
   assert.ok(!run.stderr.includes('fictional-secret-for-the-test'));
   assert.match(run.calls, /docker run --rm .* node scripts\/print-livekit-config\.mjs/);
   assert.match(run.calls, /umask 077 && cat > \$HOME\/\.alcantara-livekit\/livekit\.yaml\.new && mv -f/);
-  assert.match(run.calls, /scp .*compose\.livekit\.yml .*nginx-livekit\.conf operator@helix\.example\.test:\.alcantara-livekit\//);
+  assert.match(run.calls, /scp .*compose\.livekit\.yml .*nginx-livekit\.conf .*nginx-turn-stream\.conf .*operator@helix\.example\.test:\.alcantara-livekit\//);
   assert.match(run.calls, /docker compose -f compose\.livekit\.yml up -d/);
   assert.match(run.calls, /docker inspect -f \{\{\.State\.Health\.Status\}\} alcantara-livekit/);
   assert.match(run.stdout, /LiveKit is healthy on operator@helix\.example\.test/);

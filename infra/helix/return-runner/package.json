@@ -1,0 +1,12 @@
+{
+  "name": "alcantara-return-runner",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node runner.mjs",
+    "test": "node --test runner.test.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.65.0"
+  }
+}
