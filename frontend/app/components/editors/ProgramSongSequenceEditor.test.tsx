@@ -1316,3 +1316,35 @@ it("lays the row actions out so the five buttons fit the column without wrapping
   expect(document.querySelector(".playlist-row")!.className).toContain("minmax(0,1fr)_52px_auto");
 });
 
+
+describe("ProgramSongSequenceEditor remove with unusable input", () => {
+  const items = () => [preset("a"), preset("b", { title: "  " }), preset("c")];
+  const removeRow = (index: number) =>
+    fireEvent.click(within(rows()[index]).getByRole("button", { name: /^Remove / }));
+  beforeEach(() => window.sessionStorage.clear());
+  afterEach(() => window.sessionStorage.clear());
+
+  it("offers no Undo when the stored one cannot be read", () => {
+    window.sessionStorage.setItem("alcantara.rotationUndo.test-program.Playlist", "{not json");
+    editor({ sequence: { mode: "manual", activeItemId: "a", items: items() }, view: "queue" });
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    expect(rows()).toHaveLength(3);
+  });
+
+  it("calls an untitled song 'song' in the Undo offer", () => {
+    editor({ sequence: { mode: "manual", activeItemId: "a", items: items() }, view: "queue" });
+    removeRow(1);
+    expect(screen.getByRole("status")).toHaveTextContent("Removed song from playlist.");
+  });
+
+  it("leaves the playlist alone when the song is already back before Undo is pressed", () => {
+    const sequence = { mode: "manual", activeItemId: "a", items: items() };
+    const view = editor({ sequence, view: "queue" });
+    removeRow(2);
+    // The parent never applied the removal, so c is still in the playlist.
+    view.onChange.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(view.onChange).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  });
+});

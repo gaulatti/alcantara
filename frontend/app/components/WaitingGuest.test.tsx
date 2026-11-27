@@ -136,3 +136,30 @@ it('plays the waiting guest aloud only with the mic off, or on headphones, and s
   act(() => setHostMicLive(false));
   expect(audio.muted).toBe(false);
 });
+
+it('ignores a track that arrives after the card is gone', async () => {
+  const view = mount();
+  fireEvent.click(talk());
+  await waitFor(() => expect(lk.state.rooms[0].published).toEqual(['talkback:inv-1']));
+  view.unmount();
+  const attach = vi.fn();
+  act(() => lk.state.rooms[0].subscribed!({ kind: 'audio', attach }));
+  expect(attach).not.toHaveBeenCalled();
+});
+
+it('stays quiet when a link the operator already ended then fails', async () => {
+  let fail!: (reason: unknown) => void;
+  api.fetch.mockImplementation(() => new Promise<Response>((_resolve, reject) => (fail = reject)));
+  mount();
+  fireEvent.click(talk());
+  fireEvent.click(talk());
+  await act(async () => fail(new Error('late failure')));
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it('says the link could not be opened when the failure is not an error', async () => {
+  api.fetch.mockRejectedValue('offline');
+  mount();
+  fireEvent.click(talk());
+  expect(await screen.findByRole('alert')).toHaveTextContent('The private link could not be opened.');
+});

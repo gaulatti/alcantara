@@ -1106,3 +1106,72 @@ it("does not open the microphone for a talkback still connecting when the show c
   expect(lk.state.rooms.flatMap((made) => made.published)).toEqual([]);
   expect(lk.state.rooms.every((made) => made.disconnected)).toBe(true);
 });
+
+const typeGuest = async () => {
+  render(<CallsRoute />);
+  await screen.findByText("Ada", { selector: "h3" });
+  fireEvent.change(screen.getByPlaceholderText("Fictional guest"), {
+    target: { value: "Grace" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /Create private link/ }));
+};
+const stubClipboard = (write: () => Promise<void>) => {
+  vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText: vi.fn(), write } });
+  vi.stubGlobal(
+    "ClipboardItem",
+    class {
+      constructor(readonly items: Record<string, unknown>) {}
+    },
+  );
+};
+
+it("keeps the new link on screen when the clipboard write is rejected", async () => {
+  serve();
+  stubClipboard(() => Promise.reject(new Error("NotAllowedError")));
+  await typeGuest();
+  expect(
+    await screen.findByText(
+      "Guest slot 2 is ready. Copy the private link below and send it to the guest.",
+    ),
+  ).toBeVisible();
+});
+
+it("reports only the failed create when the link being copied never arrives", async () => {
+  serve({
+    "POST /webrtc/invitations": () =>
+      Response.json({ message: "No free slot" }, { status: 409 }),
+  });
+  const write = vi.fn(() => Promise.resolve());
+  stubClipboard(write);
+  await typeGuest();
+  expect(await screen.findByText("No free slot")).toBeVisible();
+  expect(write).toHaveBeenCalledTimes(1);
+});
+
+it("lists a guest who is waiting to be let in, off their strip, and admits or declines them", async () => {
+  participants = [participant({ screening: true })];
+  const calls = serve();
+  render(<CallsRoute />);
+  expect(await screen.findByText("Ada · waiting to be let in")).toBeVisible();
+  expect(screen.getByText("Waiting · 1")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Admit Ada" }));
+  await waitFor(() =>
+    expect(calls.some((call) => call.url.endsWith("/webrtc/invitations/inv-1/admit"))).toBe(true),
+  );
+  await waitFor(() => expect(screen.getByRole("button", { name: "Decline Ada" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Decline Ada" }));
+  expect(
+    await screen.findByText("The guest was declined: their link no longer works and the slot is free."),
+  ).toBeVisible();
+});
+
+it("says why a guest could not be admitted", async () => {
+  participants = [participant({ screening: true })];
+  serve({
+    "POST /webrtc/invitations/inv-1/admit": () =>
+      Response.json({ message: "The guest has left" }, { status: 409 }),
+  });
+  render(<CallsRoute />);
+  fireEvent.click(await screen.findByRole("button", { name: "Admit Ada" }));
+  expect(await screen.findByText("The guest has left")).toBeVisible();
+});
