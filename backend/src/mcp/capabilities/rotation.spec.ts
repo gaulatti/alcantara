@@ -1,3 +1,4 @@
+import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
 import { McpToolError, type McpContext } from '../contract';
 import {
   normalizeProgramSongSequence,
@@ -90,10 +91,17 @@ function setup(sequence: Record<string, unknown> | null = {}, playing = false) {
     { teamId: 7 } as never,
   ).specs();
   const tool = (name: string) => tools.find((spec) => spec.name === name)!;
+  // Every write names the version it was read at; the stored rotation is at v1.
   const run = (name: string, args: Record<string, unknown>) =>
-    tool(name).run({ program_id: 'radio-1', ...args } as never, ctx);
+    tool(name).run(
+      { program_id: 'radio-1', sequence_version: 'v1', ...args } as never,
+      ctx,
+    );
   const dry = (name: string, args: Record<string, unknown>) =>
-    tool(name).dryRun!({ program_id: 'radio-1', ...args } as never, ctx);
+    tool(name).dryRun!(
+      { program_id: 'radio-1', sequence_version: 'v1', ...args } as never,
+      ctx,
+    );
   const saved = () =>
     programs.updateProgramAudioBus.mock.calls.at(-1) as unknown as [
       {
@@ -333,24 +341,26 @@ describe('rotation capabilities', () => {
     ).toContain('row 3');
   });
 
-  it('names a confirm target from the live stamp for every change', async () => {
+  it('names a confirm target from the live stamp and the rotation version for every change', async () => {
     const t = setup();
     for (const spec of t.tools.filter((candidate) => candidate.tier === 'A')) {
       await expect(
         spec.confirmTarget!(
           {
             program_id: 'radio-1',
+            sequence_version: 'v1',
             item_id: 'row-1',
             position: 1,
             song_id: 7,
           } as never,
           ctx,
         ),
-      ).resolves.toEqual({ id: 'radio-1', name: 'radio-1' });
+      ).resolves.toEqual({ id: 'radio-1', name: 'radio-1 · rotation v1' });
       await expect(
         spec.dryRun!(
           {
             program_id: 'radio-1',
+            sequence_version: 'v1',
             item_id: 'row-1',
             position: 1,
             song_id: 7,
@@ -379,5 +389,33 @@ describe('rotation capabilities', () => {
         (limit) => limit - 1,
       ),
     ).toEqual(['row-2', 'row-3', 'row-1']);
+  });
+
+  // Review of #788: a write made from an old read was checked against a fresh one, so it always passed.
+  it('refuses every write made from a rotation version that is no longer the stored one', async () => {
+    const t = setup();
+    const writes: Array<[string, Record<string, unknown>]> = [
+      ['radio_set_rotation_mode', { mode: 'autoplay' }],
+      ['radio_take_rotation_song', { item_id: 'row-1' }],
+      ['radio_move_rotation_song', { item_id: 'row-1', position: 2 }],
+      ['radio_add_rotation_song', { song_id: 5 }],
+    ];
+    for (const [name, args] of writes) {
+      await expect(
+        t.run(name, { ...args, sequence_version: 'v0' }),
+      ).rejects.toThrow('The rotation changed since that sequence_version');
+    }
+    expect(t.programs.updateProgramAudioBus).not.toHaveBeenCalled();
+    expect(t.engine.handleManualSong).not.toHaveBeenCalled();
+    // The version the client read is the one the save sends.
+    await t.run('radio_move_rotation_song', { item_id: 'row-1', position: 2 });
+    expect(t.saved()[0].sequenceVersion).toBe('v1');
+  });
+
+  it('asks for the same permission as the console to take a song on air', () => {
+    const t = setup();
+    expect(t.tool('radio_take_rotation_song').permission).toBe(
+      ALCANTARA_PERMISSIONS.radio.operate,
+    );
   });
 });

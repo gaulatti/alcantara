@@ -19,6 +19,8 @@ import { actionSpec, programIdArg, readSpec } from './support';
 
 const itemIdArg = z.string().trim().min(1).max(200);
 const positionArg = z.number().int().min(1).max(5000);
+/** The sequence_version radio_get_rotation gave: a write made from it is refused once the rotation has changed. */
+const versionArg = z.string().trim().min(1).max(200);
 
 /** The rotation as stored, to change and save back, and as the engine reads it. */
 interface Loaded {
@@ -92,43 +94,56 @@ export class RotationMcpTools {
         tier: 'A',
         shape: {
           program_id: programIdArg,
+          sequence_version: versionArg,
           mode: z.enum(['manual', 'autoplay', 'shuffle']).optional(),
           loop: z.boolean().optional(),
         },
         load: (args) => this.load(args.program_id),
         id: (args) => args.program_id,
-        label: (_args, loaded) => loaded.live.stamp,
+        label: (args, loaded) => this.stamp(args, loaded),
         plan: (args, { live, sequence, playing }) => ({
           summary: `Sets the rotation of program ${args.program_id} to ${[args.mode && `mode ${args.mode}`, args.loop !== undefined && `loop ${args.loop ? 'on' : 'off'}`].filter(Boolean).join(' and ') || 'nothing new'} (now ${sequence.mode}, loop ${sequence.loop ? 'on' : 'off'}).${args.mode && args.mode !== 'manual' && !playing ? ' Nothing is on air, so the rotation starts now.' : ''} Live now: ${live.liveText}.`,
           affects: this.affects(args.program_id),
           recoverable: true,
         }),
-        refuse: (args, { sequence }) =>
-          args.mode === undefined && args.loop === undefined
+        refuse: (args, loaded) =>
+          this.stale(args, loaded) ??
+          (args.mode === undefined && args.loop === undefined
             ? 'Give mode, loop or both. Nothing was changed.'
-            : args.mode === 'shuffle' && sequence.items.length < 2
+            : args.mode === 'shuffle' && loaded.sequence.items.length < 2
               ? 'Shuffle needs at least two songs. Nothing was changed.'
-              : null,
+              : null),
         run: (args, loaded) =>
-          this.save(args.program_id, loaded, this.withMode(args, loaded)),
+          this.save(
+            args.program_id,
+            args.sequence_version,
+            this.withMode(args, loaded),
+          ),
       }),
       actionSpec({
         name: 'radio_take_rotation_song',
         title: 'Take a rotation song on air',
         description:
           'The desk’s Take on a rotation row: puts that song on air now and moves the rotation’s cursor to it. item_id from radio_get_rotation. Refused while the engine is off or playout is down.',
-        permission: ALCANTARA_PERMISSIONS.program.operate,
+        // It puts a song on air, as the console's POST /radio/:programId/song does: the same permission.
+        permission: ALCANTARA_PERMISSIONS.radio.operate,
         tier: 'A',
-        shape: { program_id: programIdArg, item_id: itemIdArg },
+        shape: {
+          program_id: programIdArg,
+          sequence_version: versionArg,
+          item_id: itemIdArg,
+        },
         load: (args) => this.load(args.program_id),
         id: (args) => args.program_id,
-        label: (_args, loaded) => loaded.live.stamp,
+        label: (args, loaded) => this.stamp(args, loaded),
         plan: (args, loaded) => ({
           summary: `Takes ${this.nameOf(loaded, args.item_id)} on air on program ${args.program_id} now, replacing whatever plays. Live now: ${loaded.live.liveText}.`,
           affects: this.affects(args.program_id),
           recoverable: false,
         }),
         refuse: (args, loaded) => {
+          const stale = this.stale(args, loaded);
+          if (stale) return stale;
           const item = loaded.sequence.items.find(
             (candidate) => candidate.id === args.item_id,
           );
@@ -141,7 +156,7 @@ export class RotationMcpTools {
           const item = loaded.sequence.items.find(
             (candidate) => candidate.id === args.item_id,
           )!;
-          await this.save(args.program_id, loaded, {
+          await this.save(args.program_id, args.sequence_version, {
             ...loaded.stored,
             activeItemId: args.item_id,
             startedAt: Date.now(),
@@ -172,21 +187,23 @@ export class RotationMcpTools {
         tier: 'A',
         shape: {
           program_id: programIdArg,
+          sequence_version: versionArg,
           item_id: itemIdArg,
           position: positionArg,
         },
         load: (args) => this.load(args.program_id),
         id: (args) => args.program_id,
-        label: (_args, loaded) => loaded.live.stamp,
+        label: (args, loaded) => this.stamp(args, loaded),
         plan: (args, loaded) => ({
           summary: `Moves ${this.nameOf(loaded, args.item_id)} to row ${Math.min(args.position, loaded.stored.items.length)} of ${loaded.stored.items.length} on program ${args.program_id}. Live now: ${loaded.live.liveText}.`,
           affects: this.affects(args.program_id),
           recoverable: true,
         }),
         refuse: (args, loaded) =>
-          loaded.stored.items.some((item) => item.id === args.item_id)
+          this.stale(args, loaded) ??
+          (loaded.stored.items.some((item) => item.id === args.item_id)
             ? null
-            : 'No rotation row has that item_id. Nothing was moved.',
+            : 'No rotation row has that item_id. Nothing was moved.'),
         run: (args, loaded) => {
           const items = loaded.stored.items.filter(
             (item) => item.id !== args.item_id,
@@ -196,7 +213,7 @@ export class RotationMcpTools {
             0,
             loaded.stored.items.find((item) => item.id === args.item_id)!,
           );
-          return this.save(args.program_id, loaded, {
+          return this.save(args.program_id, args.sequence_version, {
             ...loaded.stored,
             items,
           });
@@ -211,6 +228,7 @@ export class RotationMcpTools {
         tier: 'A',
         shape: {
           program_id: programIdArg,
+          sequence_version: versionArg,
           song_id: z.number().int().positive(),
           position: positionArg.optional(),
         },
@@ -224,16 +242,17 @@ export class RotationMcpTools {
           ),
         }),
         id: (args) => args.program_id,
-        label: (_args, loaded) => loaded.live.stamp,
+        label: (args, loaded) => this.stamp(args, loaded),
         plan: (args, loaded) => ({
           summary: `Adds song ${args.song_id} to the rotation of program ${args.program_id} at ${args.position ? `row ${args.position}` : 'the end'}. Live now: ${loaded.live.liveText}.`,
           affects: this.affects(args.program_id),
           recoverable: true,
         }),
-        refuse: (_args, { song }) =>
-          song.enabled && song.audioUrl?.trim()
+        refuse: (args, loaded) =>
+          this.stale(args, loaded) ??
+          (loaded.song.enabled && loaded.song.audioUrl?.trim()
             ? null
-            : 'The song is disabled or has no audio. Nothing was added.',
+            : 'The song is disabled or has no audio. Nothing was added.'),
         run: (args, loaded) => {
           const { song } = loaded;
           const items = [...loaded.stored.items];
@@ -248,7 +267,7 @@ export class RotationMcpTools {
             ...(song.durationMs ? { durationMs: song.durationMs } : {}),
             highRotation: false,
           });
-          return this.save(args.program_id, loaded, {
+          return this.save(args.program_id, args.sequence_version, {
             ...loaded.stored,
             items,
           });
@@ -312,7 +331,7 @@ export class RotationMcpTools {
 
   private async save(
     programId: string,
-    { version }: Loaded,
+    version: string,
     songSequence: Record<string, unknown>,
   ) {
     const data = { songSequence };
@@ -327,6 +346,24 @@ export class RotationMcpTools {
       'mcp',
     );
     return { ok: true, sequence_version: saved.sequenceVersion };
+  }
+
+  /** The confirm target: what is live, and the rotation version the write is made from. */
+  private stamp(args: { sequence_version: string }, { live }: Loaded): string {
+    return `${live.stamp} · rotation ${args.sequence_version}`;
+  }
+
+  /**
+   * A write is made from the rotation the client read: refused once it has changed, so rows chosen from an old read
+   * are never applied to a different list. The save checks the same version again under the store's own comparison.
+   */
+  private stale(
+    args: { sequence_version: string },
+    { version }: Loaded,
+  ): string | null {
+    return args.sequence_version === version
+      ? null
+      : 'The rotation changed since that sequence_version. Read it again with radio_get_rotation; nothing was changed.';
   }
 
   private nameOf({ sequence }: Loaded, itemId: string): string {

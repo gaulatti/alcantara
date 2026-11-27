@@ -64,7 +64,7 @@ const EXTRA_CAPABILITIES: Record<string, [string, McpTier]> = {
   // gaulatti/alcantara#788: the radio desk's rotation actions, which share the audio-bus save route.
   radio_get_rotation: ['radio.read', 'R'],
   radio_set_rotation_mode: ['program.operate', 'A'],
-  radio_take_rotation_song: ['program.operate', 'A'],
+  radio_take_rotation_song: ['radio.operate', 'A'],
   radio_move_rotation_song: ['program.operate', 'A'],
   radio_add_rotation_song: ['program.operate', 'A'],
   radio_get_playback_state: ['radio.read', 'R'],
