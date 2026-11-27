@@ -13,6 +13,7 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
   Optional,
+  Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { GuestCommand, GuestInvitation, Prisma } from '@prisma/client';
@@ -141,6 +142,7 @@ export function hostMicIdentity(programId: string): string {
 
 @Injectable()
 export class WebrtcService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(WebrtcService.name);
   private lostCallSweep: ReturnType<typeof setInterval> | null = null;
   /** A program whose on-air list may have changed: a cue, an admission, a new session, a removal or a revoke. */
   private readonly onAirChanges = new Subject<string>();
@@ -1364,7 +1366,10 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
    * worker and the return router take `onair:host` only from this identity. It publishes a microphone only, sees
    * no one and sends no data.
    */
-  async createHostMicToken(programIdValue: unknown) {
+  async createHostMicToken(
+    programIdValue: unknown,
+    principalId: string | null = null,
+  ) {
     this.requireConfiguration();
     const programId = this.normalizeProgramId(programIdValue);
     const token = new AccessToken(this.apiKey, this.apiSecret, {
@@ -1382,11 +1387,16 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       canPublishData: false,
       hidden: false,
     });
-    return {
+    const answer = {
       serverUrl: this.wsUrl,
       token: await token.toJwt(),
       roomName: this.roomName(programId),
     };
+    // Who may open air, on record: the program and the operator's principal, never the token.
+    this.logger.log(
+      `Host microphone token issued for ${programId} to principal ${principalId ?? 'unknown'}`,
+    );
+    return answer;
   }
 
   /**

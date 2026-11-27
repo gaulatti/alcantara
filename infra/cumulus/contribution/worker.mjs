@@ -14,6 +14,11 @@ export const MAX_QUEUE_SAMPLES = SAMPLE_RATE / 4;
 /** Nobody on air for this long before the RTMP connection closes, so a quick cue change does not drop it. */
 export const OFF_AIR_HOLD_MS = 1_500;
 /**
+ * A push younger than this may not have reached air yet (ffmpeg's start, the RTMP connection and Palazzo's switch took
+ * 1 to 2.3 s on air). If every source leaves within it, the push is killed at once: nothing of it may air after them.
+ */
+export const PUSH_CONNECT_MS = 3_000;
+/**
  * A source that sent nothing but digital silence (or nothing at all) for this long is off air. A publisher that dies
  * without leaving stays in the room until LiveKit notices (about 20 s), and its subscription keeps delivering exact
  * zeros; that silence must not keep Palazzo's live input, and so the filler hold, on. A live microphone always carries
@@ -130,7 +135,7 @@ export function createMetrics() {
   const counts = {
     polls: { ok: 0, failure: 0, skipped: 0 },
     stream: { connected: 0, lists: 0, ended: 0, failed: 0 },
-    pushes: { started: 0, stopped: 0, failed: 0 },
+    pushes: { started: 0, stopped: 0, failed: 0, aborted: 0 },
     room: { connected: 0, failed: 0 },
   };
   const state = { sources: 0, pushing: 0, roomConnected: 0, streaming: 0 };
@@ -171,13 +176,16 @@ export function createMetrics() {
 
 /**
  * The worker, with every outside effect injected: `fetch` for the backend, `connectRoom` for LiveKit and `spawn`
- * for ffmpeg. `step()` runs one pass; `start()` runs passes on a timer and writes audio while pushing.
+ * for ffmpeg. `step()` runs one pass; `start()` runs passes on a timer and writes audio while pushing. `log` takes a
+ * message and the track facts that explain it: identity, track name and milliseconds, never a key or a token.
  */
 export function createWorker({ config, fetch, connectRoom, spawn, now = Date.now, log = () => {} }) {
   const metrics = createMetrics();
   const mixer = new Mixer();
   const tracks = new Map();
   const lastFrameAt = new Map();
+  const subscribedAt = new Map();
+  const firstAudioAt = new Map();
   let onAirGuests = new Set();
   let listAt = null;
   let room = null;
@@ -196,6 +204,27 @@ export function createWorker({ config, fetch, connectRoom, spawn, now = Date.now
   const backoff = (failures) => BACKOFF_MS[Math.min(failures - 1, BACKOFF_MS.length - 1)];
   /** Whether the program's host mic is in the room: while it is, no older console's onair:host goes on air. */
   const hostMicPresent = () => [...tracks.values()].some((track) => isHostMicTrack(track, config.programId));
+
+  /** The tracks that may reach air: the host's microphone and guests, as LiveKit and the on-air list name them now. */
+  const eligible = () => {
+    const present = hostMicPresent();
+    return [...tracks.values()].filter((track) => isOnAirTrack(track, onAirGuests, config.programId, present));
+  };
+  /** Only the tracks that could ever air are logged: talkback and other operator audio are not. */
+  const worthLogging = (track) => track.kind === "audio" && (track.name === "onair:host" || track.identity.startsWith("guest-"));
+  const facts = (track) => ({
+    identity: track.identity,
+    track: track.name,
+    msSinceSubscribed: now() - subscribedAt.get(track.key),
+    msSinceFirstAudio: firstAudioAt.has(track.key) ? now() - firstAudioAt.get(track.key) : null,
+  });
+  const forget = (key) => {
+    tracks.delete(key);
+    lastFrameAt.delete(key);
+    subscribedAt.delete(key);
+    firstAudioAt.delete(key);
+    mixer.remove(key);
+  };
 
   const query = `programId=${encodeURIComponent(config.programId)}`;
   const guestsOf = (body) => {
@@ -235,21 +264,38 @@ export function createWorker({ config, fetch, connectRoom, spawn, now = Date.now
       if (!response.ok) throw new Error(`token ${response.status}`);
       const { serverUrl, token } = await response.json();
       room = await connectRoom(serverUrl, token, {
-        track: (track) => tracks.set(track.key, track),
+        track: (track) => {
+          tracks.set(track.key, track);
+          subscribedAt.set(track.key, now());
+          if (worthLogging(track)) log("track subscribed", { identity: track.identity, track: track.name });
+        },
         untrack: (key) => {
-          tracks.delete(key);
-          lastFrameAt.delete(key);
-          mixer.remove(key);
+          const track = tracks.get(key);
+          if (track && worthLogging(track)) log("track removed", facts(track));
+          forget(key);
+          // A source that left takes a push that has not reached air with it, without waiting for the next pass.
+          evaluate();
         },
         frame: (key, samples) => {
           const track = tracks.get(key);
-          if (track && samples.some((sample) => sample !== 0)) lastFrameAt.set(key, now());
-          if (push && track && isOnAirTrack(track, onAirGuests, config.programId, hostMicPresent())) mixer.push(key, samples);
+          if (!track) return;
+          if (samples.some((sample) => sample !== 0)) {
+            lastFrameAt.set(key, now());
+            if (!firstAudioAt.has(key)) {
+              firstAudioAt.set(key, now());
+              if (worthLogging(track)) log("track audio", facts(track));
+            }
+            // The push opens on the first audio, not on the next pass up to a poll interval later.
+            if (!push) evaluate();
+          }
+          if (push && isOnAirTrack(track, onAirGuests, config.programId, hostMicPresent())) mixer.push(key, samples);
         },
         disconnected: () => {
           room = null;
           tracks.clear();
           lastFrameAt.clear();
+          subscribedAt.clear();
+          firstAudioAt.clear();
           metrics.state.roomConnected = 0;
         },
       });
@@ -266,7 +312,7 @@ export function createWorker({ config, fetch, connectRoom, spawn, now = Date.now
     }
   }
 
-  function startPush() {
+  function startPush(sources) {
     const child = spawn("ffmpeg", ffmpegArgs(config.target));
     const session = { child, startedAt: now(), written: 0, closing: false };
     child.stdin.on("error", () => {});
@@ -283,17 +329,25 @@ export function createWorker({ config, fetch, connectRoom, spawn, now = Date.now
     push = session;
     metrics.counts.pushes.started += 1;
     metrics.state.pushing = 1;
+    log("push started", { sources: sources.map(facts) });
   }
 
-  function stopPush() {
+  /** Closes the push: by ending ffmpeg's input, or at once (`abort`), so what it still holds never reaches air. */
+  function stopPush({ abort = false, reason = "off air" } = {}) {
     if (!push) return;
     const session = push;
     session.closing = true;
     push = null;
     metrics.state.pushing = 0;
-    metrics.counts.pushes.stopped += 1;
-    session.child.stdin.end();
+    if (abort) {
+      metrics.counts.pushes.aborted += 1;
+      session.child.kill("SIGKILL");
+    } else {
+      metrics.counts.pushes.stopped += 1;
+      session.child.stdin.end();
+    }
     for (const key of tracks.keys()) mixer.remove(key);
+    log("push stopped", { reason, ms: now() - session.startedAt });
   }
 
   /** Writes the mix due since the push started, in real time, so ffmpeg is fed at the rate air plays it. */
@@ -363,14 +417,15 @@ export function createWorker({ config, fetch, connectRoom, spawn, now = Date.now
 
   function evaluate() {
     const time = now();
-    const present = hostMicPresent();
-    const sources = [...tracks.values()].filter(
-      (track) => isOnAirTrack(track, onAirGuests, config.programId, present) && time - (lastFrameAt.get(track.key) ?? -Infinity) < FRAME_STALE_MS,
-    );
+    const present = eligible();
+    const sources = present.filter((track) => time - (lastFrameAt.get(track.key) ?? -Infinity) < FRAME_STALE_MS);
     metrics.state.sources = sources.length;
     if (sources.length) {
       lastOnAirAt = time;
-      if (!push && time >= pushRetryAt) startPush();
+      if (!push && time >= pushRetryAt) startPush(sources);
+    } else if (push && !present.length && time - push.startedAt < PUSH_CONNECT_MS) {
+      stopPush({ abort: true, reason: "source left before the push reached air" });
+      pushFailures = 0;
     } else if (push && (lastOnAirAt === null || time - lastOnAirAt >= OFF_AIR_HOLD_MS)) {
       stopPush();
       pushFailures = 0;
@@ -432,7 +487,7 @@ async function main() {
     fetch: globalThis.fetch,
     connectRoom: connectLiveKitRoom,
     spawn: (command, args) => spawnProcess(command, args, { stdio: ["pipe", "ignore", "inherit"] }),
-    log: (message) => console.log(JSON.stringify({ event: "contribution", message })),
+    log: (message, details = {}) => console.log(JSON.stringify({ event: "contribution", message, ...details })),
   });
   createServer((request, response) => {
     if (request.url === "/metrics") {

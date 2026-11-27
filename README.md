@@ -194,6 +194,13 @@ broadcast-control network. It connects to Palazzo only while someone is on air: 
 live even when it is silent, and a live input holds the filler off. Talkback (`talkback:*`) never reaches air. It is
 capped at 256 MB and half a core; if it stops, Palazzo loses only the live input and music and filler carry on.
 
+The push opens on a source's first audio. If every source leaves (unpublishes, leaves the room or is wrapped) within
+3 s of that, before the push can have reached air, the worker kills ffmpeg instead of closing it after the hold, so a
+microphone pressed and released at once is not aired after it is off. The worker logs one JSON line per track
+subscribed, first heard and removed (host microphone and guests only) and per push started and stopped, with the
+participant identity, the track name and milliseconds. The backend logs each host microphone token it issues, with
+the program and the operator's principal id. Neither line carries a key or a token.
+
 The cue is stored on the invitation (`cue`, `cueSessionId`). Live reaches air only for the session it was given
 to, so a guest who rejoins in a new session starts off air, as they start unadmitted. Standby and wrap are stored
 before the guest's page is told, so a delivery that fails still takes the guest off air; live is stored only once
@@ -232,7 +239,8 @@ Metrics: `alcantara_webrtc_guest_cues_total{cue}`, `alcantara_webrtc_on_air_gues
 worker (`:8091/metrics`, internal): `alcantara_contribution_polls_total{result}` (`ok`, `failure`, `skipped` while
 the stream is live), `alcantara_contribution_stream_total{result}` (`connected`, `lists`, `ended`, `failed`),
 `alcantara_contribution_streaming`,
-`alcantara_contribution_pushes_total{result}` (`started`, `stopped`, `failed`),
+`alcantara_contribution_pushes_total{result}` (`started`, `stopped`, `failed`, and `aborted` for a push killed
+before it reached air),
 `alcantara_contribution_room_connections_total{result}`, `alcantara_contribution_on_air_sources`,
 `alcantara_contribution_pushing` and `alcantara_contribution_room_connected`. None carries a program or guest label.
 

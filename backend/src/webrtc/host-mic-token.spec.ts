@@ -1,7 +1,4 @@
-import {
-  BadRequestException,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { BadRequestException, ServiceUnavailableException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { WebrtcController } from './webrtc.controller';
@@ -64,6 +61,18 @@ describe('the host microphone token', () => {
     expect(name).toBe('Alcantara host microphone');
   });
 
+  it('records who was given one, with no token in the line', async () => {
+    const log = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+    const { token } = await service().createHostMicToken('main', 'prn_one');
+    await service().createHostMicToken('main');
+    expect(log.mock.calls.map(([line]) => line as string)).toEqual([
+      'Host microphone token issued for main to principal prn_one',
+      'Host microphone token issued for main to principal unknown',
+    ]);
+    expect(String(log.mock.calls)).not.toContain(token);
+    log.mockRestore();
+  });
+
   it('refuses a bad program id, and answers 503 without LiveKit', async () => {
     await expect(
       service().createHostMicToken('news/main'),
@@ -79,10 +88,13 @@ describe('the host microphone token', () => {
     const createHostMicToken = jest.fn().mockResolvedValue({ token: 't' });
     const controller = new WebrtcController({ createHostMicToken } as never);
     await expect(
-      controller.hostMicToken({ programId: 'main' }),
+      controller.hostMicToken(
+        { user: { sub: 'fictional-sub', principalId: 'prn_fictional' } },
+        { programId: 'main' },
+      ),
     ).resolves.toEqual({
       token: 't',
     });
-    expect(createHostMicToken).toHaveBeenCalledWith('main');
+    expect(createHostMicToken).toHaveBeenCalledWith('main', 'prn_fictional');
   });
 });

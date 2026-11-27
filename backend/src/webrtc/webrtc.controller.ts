@@ -142,8 +142,14 @@ export class WebrtcController {
   /** The host's microphone on air, one per program (alcantara#879): see createHostMicToken. */
   @Post('host-mic-token')
   @RequirePermission(ALCANTARA_PERMISSIONS.webrtc.operate)
-  hostMicToken(@Body() body: Record<string, unknown>) {
-    return this.webrtc.createHostMicToken(body.programId);
+  hostMicToken(
+    @Req() request: OperatorRequest,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.webrtc.createHostMicToken(
+      body.programId,
+      request.user.principalId,
+    );
   }
 
   @Post('operator-token')

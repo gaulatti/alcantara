@@ -8,6 +8,7 @@ import {
   MAX_QUEUE_SAMPLES,
   Mixer,
   OFF_AIR_HOLD_MS,
+  PUSH_CONNECT_MS,
   STALE_LIST_MS,
   STREAM_STALE_MS,
   createWorker,
@@ -65,16 +66,26 @@ function harness({ guests = [], listStatus = 200, tokenStatus = 200, connectFail
       child.ended = true;
       child.emit("exit", 0);
     };
+    child.kill = (signal) => {
+      child.killed = signal;
+      child.emit("exit", null);
+    };
     children.push(child);
     return child;
   };
   const logs = [];
-  const worker = createWorker({ config: readConfig(env), fetch, connectRoom, spawn, now: () => clock, log: (m) => logs.push(m) });
+  const details = [];
+  const log = (message, facts) => {
+    logs.push(message);
+    details.push({ message, ...facts });
+  };
+  const worker = createWorker({ config: readConfig(env), fetch, connectRoom, spawn, now: () => clock, log });
   return {
     worker,
     calls,
     children,
     logs,
+    details,
     state,
     handlers: () => handlers,
     advance: (ms) => (clock += ms),
@@ -202,7 +213,9 @@ test("opens the push only while someone is on air, mixes what they say in real t
   h.worker.writeAudio();
   const written = h.children[0].written.at(-1);
   assert.equal(written.length, 960);
-  assert.ok(written.every((sample) => sample === 100), "only the on-air guest reaches air");
+  // The first sample is the one that opened the push: it is no longer dropped.
+  assert.equal(written[0], 1);
+  assert.ok(written.slice(1).every((sample) => sample === 100), "only the on-air guest reaches air");
   h.worker.writeAudio();
   assert.equal(h.children[0].written.length, 1, "nothing more is due yet");
 
@@ -212,6 +225,8 @@ test("opens the push only while someone is on air, mixes what they say in real t
   await h.worker.step();
   assert.equal(h.worker.metrics.state.sources, 2);
   h.state.guests = [];
+  h.advance(PUSH_CONNECT_MS);
+  h.handlers().frame("anna", Int16Array.from([1]));
   h.handlers().untrack("host");
   await h.worker.step();
   assert.equal(h.worker.isPushing(), true, "held through a quick change");
@@ -234,7 +249,7 @@ test("reopens a push that dropped, waiting longer after each failure", async () 
   h.children[0].emit("exit", 1);
   assert.equal(h.worker.isPushing(), false);
   assert.equal(h.worker.metrics.counts.pushes.failed, 1);
-  assert.deepEqual(h.logs, ["rtmp push ended unexpectedly"]);
+  assert.equal(h.logs.filter((line) => line === "rtmp push ended unexpectedly").length, 1);
   await h.worker.step();
   assert.equal(h.children.length, 1, "waits before trying again");
   h.advance(BACKOFF_MS[0]);
@@ -372,6 +387,8 @@ test("puts a cued guest on air the moment the stream says so, and takes them off
   assert.equal(h.worker.mixer.queues.has("anna"), true);
 
   // Wrap: the guest's audio stops reaching the mix at once; the push closes after the same short hold as before.
+  h.advance(PUSH_CONNECT_MS);
+  h.handlers().frame("anna", Int16Array.from([1]));
   stream.send([]);
   await drain();
   h.worker.mixer.remove("anna");
@@ -503,4 +520,57 @@ test("keeps an older console's host mic on air alone, and only the program's hos
   h.handlers().untrack("new");
   await h.worker.step();
   assert.equal(h.worker.metrics.state.sources, 1);
+});
+
+// The studio's first live use: the mic was pressed and released within seconds, and its push reached air after it.
+const HOST = "operator-host-mic-modoitaliano.fm";
+
+test("opens the push on the first audio, without waiting for the next pass", async () => {
+  const h = harness();
+  await h.worker.step();
+  h.handlers().track(track("host", HOST, "onair:host"));
+  assert.equal(h.children.length, 0);
+  h.advance(400);
+  h.handlers().frame("host", new Int16Array(10));
+  assert.equal(h.children.length, 0, "silence alone opens nothing");
+  h.advance(100);
+  h.handlers().frame("host", new Int16Array(960).fill(100));
+  assert.equal(h.children.length, 1);
+  assert.deepEqual(h.details.at(-1), {
+    message: "push started",
+    sources: [{ identity: HOST, track: "onair:host", msSinceSubscribed: 500, msSinceFirstAudio: 0 }],
+  });
+});
+
+test("kills a push whose source left before it could have reached air, and starts none after", async () => {
+  const h = harness();
+  await h.worker.step();
+  sending(h, "host", HOST, "onair:host");
+  assert.equal(h.children.length, 1);
+  h.advance(170);
+  h.handlers().untrack("host");
+  assert.equal(h.children[0].killed, "SIGKILL");
+  assert.equal(h.children[0].ended, false, "its input is not drained to Palazzo");
+  assert.equal(h.worker.isPushing(), false);
+  assert.equal(h.worker.metrics.counts.pushes.aborted, 1);
+  assert.equal(h.worker.metrics.counts.pushes.failed, 0);
+  assert.deepEqual(h.details.at(-1), { message: "push stopped", reason: "source left before the push reached air", ms: 170 });
+  h.advance(PUSH_CONNECT_MS);
+  await h.worker.step();
+  h.handlers().frame("host", new Int16Array(960).fill(100));
+  assert.equal(h.children.length, 1);
+});
+
+test("kills a young push for a guest wrapped at once, and logs only tracks that could air", async () => {
+  const h = harness({ guests: ["guest-anna"] });
+  await h.worker.step();
+  h.handlers().track(track("talk", "operator-1", "talkback:all"));
+  h.handlers().frame("talk", Int16Array.from([5]));
+  h.handlers().untrack("talk");
+  assert.deepEqual(h.logs, []);
+  sending(h, "anna", "guest-anna");
+  h.state.guests = [];
+  await h.worker.step();
+  assert.equal(h.children[0].killed, "SIGKILL");
+  assert.equal(JSON.stringify(h.details).includes(KEY), false);
 });
