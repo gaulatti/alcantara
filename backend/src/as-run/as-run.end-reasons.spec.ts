@@ -413,6 +413,39 @@ describe('as-run records for plays the engine ends itself', () => {
     ]);
   });
 
+  it('stores a song a playout restart cut with end reason playout_restart, once', async () => {
+    const s = session();
+    const command = await onAir(s);
+    const cutAt = new Date(Date.now() - 4_000);
+
+    // As the engine emits it when Palazzo comes back under a new boot ID.
+    s.engine['emitTrackEvent'](
+      'radio-1',
+      'track.ended',
+      command.requestId,
+      { title: 'Track', artist: 'Artist', url: command.url },
+      true,
+      'playout_restart',
+      cutAt,
+    );
+    await settle();
+    s.ended(command);
+    await settle();
+
+    expect(
+      s.store.rows.filter(
+        (row) =>
+          row.state === 'ended' && row.playbackRequestId === command.requestId,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        at: cutAt,
+        endReason: 'playout_restart',
+        inferred: true,
+      }),
+    ]);
+  });
+
   it('closes a song a manual pick cuts with end reason replaced, and the manual song gets its own record', async () => {
     const s = session();
     const cut = await onAir(s);

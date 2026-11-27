@@ -4233,6 +4233,15 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         });
         break;
       }
+      case 'playout_restart_cut': {
+        // For the operator's view: which song the restart cut, and where.
+        const normalizedProgramId = this.normalizeProgramId(programId);
+        this.broadcastUpdate(normalizedProgramId, {
+          ...event,
+          programId: normalizedProgramId,
+        });
+        break;
+      }
       case 'song_request_failed': {
         // A song Palazzo could not load (#175), for the operator's view.
         const normalizedProgramId = this.normalizeProgramId(programId);

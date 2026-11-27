@@ -435,7 +435,7 @@ export class McpRadioReadTools implements McpToolProviderShape {
     return tool({
       name: 'get_as_run',
       title: 'As-run log',
-      description: `Lists as-run log rows between from and to (at most ${MCP_READ_LIMITS.asRunWindowDays} days apart), oldest first, at most limit rows (${MCP_READ_LIMITS.asRunLimitMax} at most). Each row is a song start or end with its time, whether the end was inferred, its review flag and the reason the engine itself ended the play (stopped, replaced, superseded or preempted). truncated is true when the window holds more rows. Each row says who acted: actor_principal_id and actor_via (console or mcp), and the MCP client name as untrusted.actor_client; all are null for an automatic end. ${UNTRUSTED_NOTE}`,
+      description: `Lists as-run log rows between from and to (at most ${MCP_READ_LIMITS.asRunWindowDays} days apart), oldest first, at most limit rows (${MCP_READ_LIMITS.asRunLimitMax} at most). Each row is a song start or end with its time, whether the end was inferred, its review flag and the reason the engine itself ended the play (stopped, replaced, superseded, preempted, fixed_start, or playout_restart for a song cut when the playout engine restarted). truncated is true when the window holds more rows. Each row says who acted: actor_principal_id and actor_via (console or mcp), and the MCP client name as untrusted.actor_client; all are null for an automatic end. ${UNTRUSTED_NOTE}`,
       permission: ALCANTARA_PERMISSIONS.radio.read,
       tier: 'R',
       firstClass: true,

@@ -1467,6 +1467,22 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
       expect(events[1].playback).not.toHaveProperty('jingle');
     });
 
+    it('tells the console which song a playout restart cut', () => {
+      const { service } = build();
+      const events: any[] = [];
+      service.addEventListener((e) => events.push(e.data));
+      const cut = {
+        type: 'playout_restart_cut',
+        programId: ' main ',
+        title: 'Fictional song',
+        artist: 'Fictional artist',
+        cutAtMs: 214_000,
+        at: '2026-11-17T12:00:00.000Z',
+      };
+      (service as any).handleEngineEvent(cut);
+      expect(events[0]).toEqual({ ...cut, programId: 'main' });
+    });
+
     it('keeps the acting identity off the public program stream', () => {
       const { service } = build();
       const events: any[] = [];

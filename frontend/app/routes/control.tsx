@@ -80,7 +80,7 @@ import type {
   PaginatedResponse,
   SongCatalogItem,
 } from "../models/broadcast";
-import { songRequestFailureNotice } from "../utils/songRequestFailure";
+import { playoutCutNotice, songRequestFailureNotice } from "../utils/songRequestFailure";
 import { failureMessage, responseFailure } from "../utils/responseFailure";
 import { createRotationVersion } from "../utils/rotationVersion";
 import {
@@ -2997,6 +2997,10 @@ export default function Control() {
         return;
       }
 
+      if (data.type === "playout_restart_cut") {
+        setRadioSongFailure(playoutCutNotice(data));
+        return;
+      }
       if (data.type === "song_request_failed") {
         setRadioSongFailure(songRequestFailureNotice(data));
         return;

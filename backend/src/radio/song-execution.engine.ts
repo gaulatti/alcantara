@@ -150,6 +150,15 @@ export type SongEngineEvent =
       at: string;
     }
   | {
+      /** Palazzo restarted while this song was on air: it was cut at `cutAtMs` and is not resumed. */
+      type: 'playout_restart_cut';
+      programId: string;
+      title: string;
+      artist: string;
+      cutAtMs: number;
+      at: string;
+    }
+  | {
       /** Palazzo could not load the song (#175); the engine moved on. */
       type: 'song_request_failed';
       programId: string;
@@ -243,6 +252,8 @@ export const NO_PLAYBACK_BOUND_MS = 45_000;
  * spot's end was never received.
  */
 export const ANNOUNCED_SPOT_PLAYBACK_MS = 75_000;
+/** A song with no more than this left when Palazzo restarted is taken as having ended. */
+export const PLAYOUT_CUT_MARGIN_MS = 10_000;
 
 /**
  * What a watchdog read of Palazzo shows (#230). Anything on the air (a song,
@@ -522,7 +533,9 @@ export type SongEngineEndReason =
   | 'replaced'
   | 'superseded'
   | 'preempted'
-  | 'fixed_start';
+  | 'fixed_start'
+  /** Palazzo restarted under the song: it was heard only up to the cut (gaulatti/palazzo#74). */
+  | 'playout_restart';
 
 /**
  * Drives radio automation from authoritative Palazzo playback state.
@@ -2084,8 +2097,11 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     const state = this.ensureState(programId);
     state.reconciled = true;
     state.frozen = false;
+    const restarted =
+      Boolean(state.palazzoBootId) && state.palazzoBootId !== snapshot.bootId;
     state.palazzoBootId = snapshot.bootId;
     state.palazzoCapabilities = snapshot.capabilities ?? [];
+    if (restarted) this.recordCutByRestart(programId, state, snapshot);
 
     if (snapshot.status === 'playing' && snapshot.track) {
       // Palazzo plays: a run of failed commands is over (#230).
@@ -2094,6 +2110,52 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     } else {
       this.reconcileIdleSnapshot(programId, state, snapshot);
     }
+  }
+
+  /**
+   * A new Palazzo process no longer plays what the old one was playing. A song that still had more than the margin to
+   * go was cut: the as-run log closes it as cut by the restart, never as a natural end, at the last moment Palazzo
+   * reported it, and the desk is told where. Palazzo cannot start a file part-way (it ignores a head trim over 10 s),
+   * so the song is not resumed; the reconciliation that follows moves the rotation on as before.
+   */
+  private recordCutByRestart(
+    programId: string,
+    state: SongEngineState,
+    snapshot: PalazzoPlaybackState,
+  ): void {
+    const song = state.activeSong;
+    if (!song || song.asRunClosed) return;
+    if (snapshot.track?.playbackRequestId === song.playbackRequestId) return;
+    // Never reported by Palazzo: nothing says it was heard at all, so there is no cut to time.
+    if (
+      song.authoritativePositionMs === null ||
+      song.authoritativeUpdatedAt === null
+    )
+      return;
+    const cutAtMs = song.authoritativePositionMs;
+    if (song.durationMs - cutAtMs <= PLAYOUT_CUT_MARGIN_MS) return;
+    song.asRunClosed = true;
+    const at = new Date(song.authoritativeUpdatedAt);
+    this.logger.warn(
+      `Palazzo restarted on ${programId}: ${song.playbackRequestId} cut at ${Math.round(cutAtMs / 1000)} s of ${Math.round(song.durationMs / 1000)} s`,
+    );
+    this.emitTrackEvent(
+      programId,
+      'track.ended',
+      song.playbackRequestId,
+      { title: song.title, artist: song.artist, url: song.audioUrl },
+      true,
+      'playout_restart',
+      at,
+    );
+    this.emit({
+      type: 'playout_restart_cut',
+      programId,
+      title: song.title,
+      artist: song.artist,
+      cutAtMs,
+      at: at.toISOString(),
+    });
   }
 
   /**

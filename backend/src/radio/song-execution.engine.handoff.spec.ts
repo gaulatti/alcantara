@@ -480,6 +480,104 @@ describe('next-song announcement and handoff', () => {
     },
   );
 
+  // gaulatti/alcantara#879 air audit: a Palazzo restart cut "mid-song" and the as-run log read like a natural end.
+  describe('a Palazzo restart under a song', () => {
+    const watch = (h: ReturnType<typeof harness>) => {
+      const ends: { reason?: string; inferred?: true; at: Date }[] = [];
+      const cuts: { title: string; cutAtMs: number }[] = [];
+      h.engine.trackEvents$.subscribe((event) => {
+        if (event.type === 'track.ended')
+          ends.push({
+            reason: event.endReason,
+            inferred: event.inferred,
+            at: event.at,
+          });
+      });
+      h.engine.setBroadcastHandler((event) => {
+        if (event.type === 'playout_restart_cut') cuts.push(event);
+      });
+      return { ends, cuts };
+    };
+    const heard = (h: ReturnType<typeof harness>, seconds: number) =>
+      h.palazzo.event('playback.position', {
+        playbackRequestId: h.palazzo.current!.id,
+        positionSeconds: seconds,
+        remainingSeconds: 180 - seconds,
+      });
+
+    it('closes the song as cut where it was last heard, tells the desk, and moves on', async () => {
+      const h = harness();
+      const seen = watch(h);
+      await onAir(h);
+      heard(h, 115);
+      const lastHeard = Date.now();
+      jest.advanceTimersByTime(8_000);
+      h.palazzo.stop();
+      h.idle('boot-2');
+      await settle();
+
+      expect(seen.cuts).toMatchObject([
+        { title: SONGS[0].title, cutAtMs: 115_000 },
+      ]);
+      expect(seen.ends).toEqual([
+        {
+          reason: 'playout_restart',
+          inferred: true,
+          at: new Date(lastHeard),
+        },
+      ]);
+      // Not sent again from the start: the rotation goes on with the next song.
+      expect(urls(h.palazzo.commands)).toEqual([SONGS[0].url, SONGS[1].url]);
+    });
+
+    it('takes a song with only seconds left, or an idle read of the same process, as an ordinary end', async () => {
+      for (const [seconds, boot] of [
+        [172, 'boot-2'],
+        [115, 'boot-1'],
+      ] as const) {
+        const h = harness();
+        const seen = watch(h);
+        await onAir(h);
+        heard(h, seconds);
+        h.palazzo.stop();
+        h.idle(boot);
+        await settle();
+        expect(seen.cuts).toEqual([]);
+        expect(seen.ends.map((end) => end.reason)).toEqual([undefined]);
+      }
+    });
+
+    it('claims no cut for a song Palazzo never reported a position for, or still plays', async () => {
+      // Nothing on air when Palazzo restarted.
+      const quiet = harness();
+      const nothing = watch(quiet);
+      quiet.idle();
+      quiet.engine['states'].get(PROGRAM)!.activeSong = null;
+      quiet.idle('boot-2');
+      await settle();
+      expect(nothing.cuts).toEqual([]);
+
+      // Commanded, and the restart came before Palazzo reported it at all.
+      const silent = harness();
+      const seen = watch(silent);
+      silent.idle();
+      await settle();
+      silent.palazzo.stop();
+      silent.idle('boot-2');
+      await settle();
+      expect(seen.cuts).toEqual([]);
+
+      const kept = harness();
+      const still = watch(kept);
+      await onAir(kept);
+      heard(kept, 60);
+      kept.playing(kept.palazzo.current!, 'boot-2');
+      await settle();
+      expect(still.cuts).toEqual([]);
+      expect(still.ends).toEqual([]);
+    });
+  });
+
   it('accepts the announced start under overlap and records one start and one end per song', async () => {
     const h = harness();
     const store = asRunStore();
