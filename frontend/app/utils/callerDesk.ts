@@ -61,7 +61,7 @@ export function stripState(
 /** The owner's four states, in plain words: connecting, live, dropped, left (with the live cue shown as "Live · cued"). */
 export const STRIP_LABEL: Record<StripState, string> = {
   "cued-live": "Live · cued",
-  connected: "Live",
+  connected: "Connected",
   reconnecting: "Connecting",
   offline: "Dropped",
 };
