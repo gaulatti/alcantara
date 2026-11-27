@@ -26,7 +26,7 @@ export function RundownLibrary({
   onAdd,
   recipes,
   onAddRecipe,
-  footnote = "Drag onto the timeline, tap Add, or select and press Enter to add at the end.",
+  footnote = "",
   initialFilter = "all",
 }: {
   songs: SongCatalogItem[];
@@ -227,12 +227,14 @@ export function RundownLibrary({
           </li>
         )}
       </ul>
-      <p className="rundown-library-foot">
-        {recipeMode
-          /* v8 ignore next -- recipeMode implies a non-empty recipes list, so chosenRecipe is never null and the "the recipe" fallback cannot run; defensive. */
-          ? `Select a song and press Enter to add it with ${chosenRecipe?.name ?? "the recipe"}.`
-          : footnote}
-      </p>
+      {(recipeMode || footnote) && (
+        <p className="rundown-library-foot">
+          {recipeMode
+            /* v8 ignore next -- recipeMode implies a non-empty recipes list, so chosenRecipe is never null and the "the recipe" fallback cannot run; defensive. */
+            ? `Select a song and press Enter to add it with ${chosenRecipe?.name ?? "the recipe"}.`
+            : footnote}
+        </p>
+      )}
     </section>
   );
 }

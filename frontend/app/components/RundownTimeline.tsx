@@ -263,12 +263,6 @@ export function RundownTimeline({
           );
         })}
       </div>
-      <p className="rundown-timeline-legend">
-        <span>◆ Gold pin: fixed start (drag it, or ←/→ in 5 s)</span>
-        <span>Hatched: gap, filled by the continuous fillers</span>
-        <span data-tone="cut">Red: overrun, cut at the next fixed start</span>
-        <span>Dashed: no stored length</span>
-      </p>
     </section>
   );
 }

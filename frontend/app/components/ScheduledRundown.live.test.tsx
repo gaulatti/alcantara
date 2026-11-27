@@ -312,9 +312,8 @@ it("shows how to start when the program has no scheduled block", async () => {
   vi.mocked(fetchFlightSequences).mockResolvedValue([]);
   renderRundown();
   expect(await screen.findByText("No timed block selected")).toBeVisible();
-  expect(
-    screen.queryByRole("listbox", { name: "Library items" }),
-  ).not.toBeInTheDocument();
+  // The library is always beside the block; with no block it cannot be added to.
+  expect(screen.getByRole("listbox", { name: "Library items" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Check" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
 });
@@ -325,7 +324,7 @@ it("creates a draft block only for a future start", async () => {
   vi.mocked(createFlightSequence).mockResolvedValue(created);
   renderRundown();
   await openBlock();
-  fireEvent.click(screen.getByRole("button", { name: /New timed block/ }));
+  fireEvent.click(screen.getByRole("button", { name: /New block/ }));
   const start = await screen.findByLabelText("Scheduled start");
 
   fireEvent.change(start, { target: { value: "2000-01-01T10:00" } });
@@ -361,7 +360,7 @@ it("reports a block that could not be created", async () => {
   vi.mocked(createFlightSequence).mockRejectedValue(new Error("Overlaps"));
   renderRundown();
   await openBlock();
-  fireEvent.click(screen.getByRole("button", { name: /New timed block/ }));
+  fireEvent.click(screen.getByRole("button", { name: /New block/ }));
   fireEvent.change(await screen.findByLabelText("Scheduled start"), {
     target: { value: "2099-01-01T10:00" },
   });
@@ -1014,7 +1013,7 @@ it("closes the record and new-block dialogs with Escape", async () => {
   const recording = await screen.findByText("Recording over Harbor Light");
   fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   await waitFor(() => expect(recording).not.toBeInTheDocument());
-  fireEvent.click(screen.getByRole("button", { name: /New timed block/ }));
+  fireEvent.click(screen.getByRole("button", { name: /New block/ }));
   const start = await screen.findByLabelText("Scheduled start");
   fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   await waitFor(() => expect(start).not.toBeInTheDocument());
@@ -1054,7 +1053,7 @@ it("says the block returns to what was playing before, not to continuous fillers
   stubLibrary();
   renderRundown();
   await openBlock();
-  fireEvent.click(screen.getByRole("button", { name: /New timed block/ }));
+  fireEvent.click(screen.getByRole("button", { name: /New block/ }));
   expect(await screen.findByText(/returns to what was playing before/)).toBeVisible();
   expect(screen.queryByText(/returns to continuous fillers/)).toBeNull();
 });

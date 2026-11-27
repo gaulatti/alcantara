@@ -1,3 +1,4 @@
+import type React from "react";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
@@ -8,11 +9,14 @@ vi.mock("../utils/globalProgram", () => ({
 vi.mock("./ScheduledRundown", () => ({
   default: ({
     onDirtyChange,
+    viewSwitch,
   }: {
     onDirtyChange?: (dirty: boolean) => void;
+    viewSwitch?: React.ReactNode;
   }) => (
     <>
       <h1>Scheduled rundown</h1>
+      {viewSwitch}
       <button onClick={() => onDirtyChange?.(true)}>Edit draft</button>
       <button onClick={() => onDirtyChange?.(false)}>Save draft</button>
     </>
@@ -58,7 +62,7 @@ it("keeps unsaved filler previews in the scheduled view until saved", async () =
     </MemoryRouter>,
   );
   fireEvent.click(await screen.findByRole("button", { name: "Edit draft" }));
-  expect(screen.getByRole("button", { name: "Operator cues" })).toBeDisabled();
+  expect(await screen.findByRole("button", { name: "Operator cues" })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Operator cues" }));
   expect(screen.getByText("Scheduled rundown")).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
@@ -72,7 +76,7 @@ it("gives simulcast timing views within one Rundown", async () => {
     </MemoryRouter>,
   );
   expect(await screen.findByText("Scheduled rundown")).toBeVisible();
-  fireEvent.click(screen.getByRole("button", { name: "Operator cues" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Operator cues" }));
   expect(await screen.findByText("Operator rundown")).toBeVisible();
   expect(screen.getByRole("button", { name: "Operator cues" })).toHaveAttribute(
     "aria-pressed",

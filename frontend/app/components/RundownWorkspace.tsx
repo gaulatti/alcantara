@@ -26,35 +26,36 @@ export function RundownWorkspace({
   const canReadRecipes = hasPermission("alcantara:flight:read");
   const canManageRecipes = hasPermission("alcantara:flight:manage");
   const showRecipes = !scheduled && canReadRecipes && search.get("tab") === "recipes";
+  const timingNav = programType === "both" ? (
+    <nav
+      aria-label="Rundown timing"
+      className="flex gap-2 border-b border-border-subtle bg-dark-sand px-6 py-3"
+    >
+      {[
+        { view: "scheduled", label: "Timed blocks" },
+        { view: "operator", label: "Operator cues" },
+      ].map(({ view, label }) => (
+        <TooltipButton
+          key={view}
+          type="button"
+          disabled={dirty}
+          title={
+            dirty
+              ? "Save or discard changes before switching views"
+              : undefined
+          }
+          aria-pressed={scheduled === (view === "scheduled")}
+          className="rounded-lg border border-border-subtle px-4 py-2 text-sm text-text-primary aria-pressed:border-accent-blue aria-pressed:bg-accent-blue/15 disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={() => setSearch({ view })}
+        >
+          {label}
+        </TooltipButton>
+      ))}
+    </nav>
+  ) : null;
   return (
     <>
-      {programType === "both" && (
-        <nav
-          aria-label="Rundown timing"
-          className="flex gap-2 border-b border-border-subtle bg-dark-sand px-6 py-3"
-        >
-          {[
-            { view: "scheduled", label: "Timed blocks" },
-            { view: "operator", label: "Operator cues" },
-          ].map(({ view, label }) => (
-            <TooltipButton
-              key={view}
-              type="button"
-              disabled={dirty}
-              title={
-                dirty
-                  ? "Save or discard changes before switching views"
-                  : undefined
-              }
-              aria-pressed={scheduled === (view === "scheduled")}
-              className="rounded-lg border border-border-subtle px-4 py-2 text-sm text-text-primary aria-pressed:border-accent-blue aria-pressed:bg-accent-blue/15 disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={() => setSearch({ view })}
-            >
-              {label}
-            </TooltipButton>
-          ))}
-        </nav>
-      )}
+      {!scheduled && timingNav}
       {!scheduled && canReadRecipes && (
         <nav
           aria-label="Operator rundown tabs"
@@ -85,7 +86,7 @@ export function RundownWorkspace({
         {showRecipes ? (
           <RecipeEditor key={programId} programId={programId} canManage={canManageRecipes} />
         ) : scheduled ? (
-          <ScheduledRundown key={programId} onDirtyChange={setDirty} />
+          <ScheduledRundown key={programId} onDirtyChange={setDirty} viewSwitch={timingNav} />
         ) : (
           <ManualRundown key={programId} />
         )}

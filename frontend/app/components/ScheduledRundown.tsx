@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 // Button from BleeckerButtons directly: the same control the Bleecker alias resolves to, typed with tooltipSide.
 import { Button, TooltipButton } from "./BleeckerButtons";
 import {
@@ -72,8 +73,10 @@ function message(error: unknown): string {
 export default function ScheduledRundown({
   onDirtyChange,
   fixtureData,
+  viewSwitch,
 }: {
   onDirtyChange?: (dirty: boolean) => void;
+  viewSwitch?: ReactNode;
   fixtureData?: {
     logs: FlightSequence[];
     songs: SongCatalogItem[];
@@ -421,8 +424,9 @@ export default function ScheduledRundown({
     <main className="broadcast-console rundown-workspace">
       <AlertContainer />
       <header className="rundown-toolbar">
-        <div>
+        <div className="rundown-toolbar-title">
           <h1>Rundown</h1>
+          {viewSwitch}
         </div>
         <div className="rundown-hour-select">
           <div>
@@ -447,7 +451,7 @@ export default function ScheduledRundown({
             disabled={busy || dirty || !!fixtureData}
             onClick={() => setCreating(true)}
           >
-            <Plus size={14} /> New timed block
+            <Plus size={14} /> New block
           </Button>
         </div>
       </header>
@@ -460,14 +464,22 @@ export default function ScheduledRundown({
         className="rundown-continuous"
         aria-label="Continuous filler rotation"
       >
-        <div>
-          <span className="console-eyebrow">24/7</span>
-          <strong>Continuous fillers</strong>
-          {rotationCount !== null && <p>{rotationCount} saved songs</p>}
-        </div>
-        <Link to="/control" className="max-sm:inline-flex max-sm:min-h-11 max-sm:items-center max-sm:-my-[13px]">Manage rotation & live controls</Link>
+        <span className="console-eyebrow">Fillers</span>
+        <span className="rundown-continuous-count">
+          {rotationCount === null ? "" : `${rotationCount} saved songs`}
+        </span>
+        <span className="console-eyebrow">24/7</span>
+        <Link to="/control" className="rundown-continuous-link max-sm:inline-flex max-sm:min-h-11 max-sm:items-center max-sm:-my-[13px]">Rotation ▸</Link>
       </section>
       <div className="rundown-desk">
+        <aside className="rundown-library-column" aria-label="Song and clip library">
+          <RundownLibrary
+            songs={songs}
+            clips={clips}
+            disabled={busy || !editable || !selected}
+            onAdd={(entry) => add(entry)}
+          />
+        </aside>
         <section className="rundown-sequence" aria-label="Timed block rundown">
           <div className="rundown-sequence-heading">
             <div>
@@ -518,6 +530,14 @@ export default function ScheduledRundown({
                 onClick={() => void check()}
               >
                 Check
+              </Button>
+              <Button
+                size="xs"
+                variant="secondary"
+                disabled={!selected}
+                onClick={() => setInspector("fillers")}
+              >
+                Fill gaps
               </Button>
               <Button
                 size="xs"
@@ -578,12 +598,6 @@ export default function ScheduledRundown({
           )}
           {selected && (
             <div className="rundown-builder">
-              <RundownLibrary
-                songs={songs}
-                clips={clips}
-                disabled={busy || !editable}
-                onAdd={(entry) => add(entry)}
-              />
               <RundownTimeline
                 items={items}
                 songs={songs}
@@ -603,6 +617,12 @@ export default function ScheduledRundown({
                   setItems((current) => moveAnchor(current, index, seconds));
                 }}
               />
+              <div className="rundown-key" aria-label="Timeline key">
+                <span><i className="rundown-key-event" />event</span>
+                <span><i className="rundown-key-fixed" />fixed start</span>
+                <span><i className="rundown-key-overrun" />overrun</span>
+                <span><i className="rundown-key-gap" />gap</span>
+              </div>
             </div>
           )}
           {selected ? (
@@ -625,16 +645,6 @@ export default function ScheduledRundown({
               <strong>No timed block selected</strong>
             </div>
           )}
-          <div className="rundown-insert">
-            <Button
-              size="xs"
-              variant="ghost"
-              disabled={!selected}
-              onClick={() => setInspector("fillers")}
-            >
-              Fill gaps
-            </Button>
-          </div>
         </section>
         <aside
           ref={inspectorRef}

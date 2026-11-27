@@ -32,11 +32,66 @@
   min-width: 0;
   flex: 1;
 }
+.rundown-toolbar-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+/* The Timed blocks / Operator cues switch sits in the toolbar beside the title, not as a bar above it. */
+.rundown-toolbar-title nav {
+  border: 0;
+  background: none;
+  padding: 0;
+}
 .rundown-desk {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
+  /* Library | block | editor: the three columns hold at 1024 (the v2 layout). */
+  grid-template-columns: 220px minmax(0, 1fr) 300px;
   gap: 14px;
   align-items: start;
+}
+.rundown-library-column {
+  min-width: 0;
+  position: sticky;
+  top: 12px;
+  background: var(--console-panel);
+  border: 1px solid var(--console-border);
+  border-radius: var(--radius-ui);
+  overflow: hidden;
+}
+.rundown-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 6px 14px;
+  border-top: 1px solid var(--console-border);
+  color: var(--console-muted);
+  font-size: 11px;
+}
+.rundown-key span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.rundown-key i {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+.rundown-key-event {
+  background: var(--console-preview);
+}
+.rundown-key-fixed {
+  background: var(--console-ready);
+}
+.rundown-key-overrun {
+  background: #e0655b;
+}
+.rundown-key-gap {
+  border: 1px dashed var(--console-muted);
 }
 .rundown-sequence {
   min-width: 0;
@@ -277,7 +332,7 @@
 }
 @media (max-width: 1100px) {
   .rundown-desk {
-    grid-template-columns: minmax(0, 1fr) 270px;
+    grid-template-columns: 200px minmax(0, 1fr) 250px;
   }
   .rundown-kind-column {
     display: none;
@@ -359,9 +414,7 @@
 /* Direct-manipulation builder (gaulatti/alcantara#299): library + timeline. */
 .rundown-builder {
   display: grid;
-  /* The picker grows with the editor so a title is readable beside its length and Add (about 76px of title at a
-     fixed 220px on a 1280 screen); the timeline keeps the larger share. */
-  grid-template-columns: clamp(220px, 38%, 280px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   border-bottom: 1px solid var(--console-border);
 }
 .rundown-kbd {
@@ -742,26 +795,4 @@
   font: 500 11px/1.5 var(--font-mono, ui-monospace, monospace);
   white-space: pre-wrap;
   word-break: break-word;
-}
-@media (max-width: 1100px) {
-  .rundown-builder {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  /* Stacked, the block's own events come first; the add-audio catalog follows them and is reached by scrolling, so it
-     cannot push the events off the screen on a tablet (#875). */
-  .rundown-builder > .rundown-timeline {
-    order: 0;
-  }
-  .rundown-builder > .rundown-library {
-    order: 1;
-    border-right: 0;
-    border-top: 1px solid var(--console-border);
-  }
-  .rundown-library {
-    border-right: 0;
-    border-bottom: 1px solid var(--console-border);
-  }
-  .rundown-library-list {
-    max-height: 200px;
-  }
 }
