@@ -12,6 +12,8 @@ The migrations run once, as their own step before the running backend is touched
 
 The installed nginx site is written, and `certbot --nginx` run, only while the host has no certificate or the installed site does not use one. A site that serves TLS is never overwritten (`NGINX_SITE_KEPT`), so a change to `deploy/cumulus.nginx.conf` is **not** applied by a deploy: the deploy prints `NGINX_SITE_DRIFT: ...` for each setting the installed site lacks, and it has to be added on the host.
 
+A migration runs while the previous release still serves, so it must work with that release: add first, and drop or tighten in a later release. `backend/src/config/migration-safety.spec.ts` (part of the unit tests, so it gates Backend Deploy) fails on a new migration that drops a table, column or type, renames, makes a column required, changes a column type, or adds a required column with no default, unless the file says why that is safe on a line `-- reviewed-breaking: <reason>`. Create large indexes concurrently; the check does not see lock time.
+
 ## What the deploy does (`deploy/cumulus.sh`)
 
 After the restore check, the runtime preflight and the migrations, and before `docker stop alcantara-backend`:
