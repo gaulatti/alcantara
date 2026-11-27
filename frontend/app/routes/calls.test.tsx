@@ -1033,3 +1033,12 @@ it("changes the cue line from the command's own answer, before the room is read 
   await waitFor(() => expect(card()).toHaveTextContent("Cue · standby"));
   expect(within(card()).getByText("Latest cue:")).toBeVisible();
 });
+
+// gaulatti/alcantara#875: a broken call chain is said on the desk, before a guest has to say it.
+it("says in one line that part of the call chain is down", async () => {
+  serve({
+    "GET /webrtc/health": () => Response.json({ returnRunner: "down", contribution: "ok", livekit: "ok", checkedAt: "" }),
+  });
+  render(<CallsRoute />);
+  expect(await screen.findByTestId("call-health")).toHaveTextContent("Guests can't hear the studio right now.");
+});

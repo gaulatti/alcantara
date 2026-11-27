@@ -8,6 +8,7 @@ import { useGlobalProgramId } from '../utils/globalProgram';
 import { apiUrl } from '../utils/apiBaseUrl';
 import type { Route } from './+types/calls';
 import { AppPage } from '../components/AppPage';
+import { CallHealthBanner } from '../components/CallHealthBanner';
 import { GuestStrip } from '../components/GuestStrip';
 import { WaitingGuest } from '../components/WaitingGuest';
 import { HostMicOnAir } from '../components/HostMicOnAir';
@@ -446,6 +447,7 @@ export default function CallsRoute() {
           {updatedAt ? <span>Updated {updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span> : null}
           <HostMicOnAir programId={programId} canOperate={canOperate} />
         </section>
+        <CallHealthBanner programId={programId} className='mb-5' />
         {failedPolls >= 2 ? (
           <div role='alert' className='mb-5 rounded-[var(--radius-ui)] border border-terracotta/30 bg-terracotta/[0.08] px-4 py-3 text-sm'>
             The desk is not updating: the last {failedPolls} refreshes failed. Guests who join now may not appear until it

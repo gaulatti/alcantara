@@ -169,6 +169,13 @@ with a timer) or Signal lost (filling the tile, with the time since the last
 frame). These thresholds are the proposal's, for the owner to set, and are not
 stored. TAKE and CUT never wait on the return.
 
+While part of the call chain is down, the radio desk (under the on-air strip)
+and Guest calls say so in one line with what to do: **Guests can't hear the
+studio right now**, **Guests can't reach air right now** (or both), or **Calls
+server unreachable**. They read `GET /webrtc/health?programId=` every 10 s and
+say nothing when all is well, when a part is unknown, or when the endpoint cannot
+be read (#875).
+
 Guest calls is a caller desk. A strip cued live says where the guest goes out:
 on a radio show, on the air until wrapped or stood by; on television, only through
 a scene that carries them (#875). A status strip counts the guests sent the live cue

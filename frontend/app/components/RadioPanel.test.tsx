@@ -2594,3 +2594,14 @@ describe("a live voice over the music", () => {
     expect(banner()).toBeNull();
   });
 });
+
+// gaulatti/alcantara#875: the line sits under the strip that never scrolls away.
+it("says a broken call chain under the on-air strip", async () => {
+  radioApi({
+    "/webrtc/health": json({ returnRunner: "ok", contribution: "down", livekit: "ok", checkedAt: "" }),
+  });
+  mount();
+  const line = await screen.findByTestId("call-health");
+  expect(line).toHaveTextContent("Guests can't reach air right now.");
+  expect(line.previousElementSibling).toBe(screen.getByRole("region", { name: "On air" }));
+});

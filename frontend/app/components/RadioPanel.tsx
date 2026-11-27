@@ -36,6 +36,7 @@ import { HoldButton } from "./radio-desk/HoldButton";
 import { OutputReading } from "./radio-desk/OutputReading";
 import type { OnAirInput } from "./radio-desk/onAir";
 import { LiveOnAirStrip } from "./radio-desk/OnAirStrip";
+import { CallHealthBanner } from "./CallHealthBanner";
 import type { DeskGuest } from "./radio-desk/guestChip";
 import { PlaySongNow } from "./radio-desk/PlaySongNow";
 import { PlayoutMode } from "./radio-desk/PlayoutMode";
@@ -694,6 +695,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   return (
     <div className="broadcast-console radio-console" data-console="radio">
       <LiveOnAirStrip input={onAirInput} output={output} programId={programId} guests={callGuests} />
+      <CallHealthBanner programId={programId} />
       <div className="radio-console-scroll">
         <div className="radio-workspace">
           <ConsolePanel
