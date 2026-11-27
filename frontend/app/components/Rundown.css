@@ -292,9 +292,18 @@
     flex-direction: column;
     gap: 10px;
   }
+  /* The picker gets its own line on a phone so the block's state (Draft, On air) is never cut off. */
   .rundown-hour-select {
     width: 100%;
     max-width: none;
+    flex-wrap: wrap;
+  }
+  .rundown-hour-select > div {
+    flex-basis: 100%;
+  }
+  /* No keyboard shortcut to show on a phone. */
+  .rundown-actions .rundown-kbd {
+    display: none;
   }
   .rundown-desk {
     grid-template-columns: minmax(0, 1fr);
