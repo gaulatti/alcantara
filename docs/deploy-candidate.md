@@ -2,6 +2,10 @@
 
 A new backend image is started once as a throwaway **candidate** and must answer before the running backend is stopped (gaulatti/alcantara#223). An image that cannot start no longer costs API downtime: before this check, the Cumulus deploy stopped the running container first, so a broken image took the API down for about two minutes until the rollback (2026-11-19, 04:02 to 04:04 UTC).
 
+## Start-up after the swap
+
+The port opens once every start-up hook has returned, and the API is down until then. The media asset reconciliation and team fill therefore run in the background after start-up (gaulatti/alcantara#873): the API serves while they run, a failure is logged and counted as `media-asset-reconciliation` `failure` without stopping the backend, and a row saved while the pass reads it makes the pass run again (three attempts), so the pass never overwrites that save. The rotation engine starts where it did before.
+
 ## What the deploy does (`deploy/cumulus.sh`)
 
 After the restore check, the runtime preflight and the migrations, and before `docker stop alcantara-backend`:

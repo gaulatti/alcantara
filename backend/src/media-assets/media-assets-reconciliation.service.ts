@@ -1,5 +1,10 @@
 import { isDeployCandidate } from '../config/deploy-candidate';
-import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnApplicationBootstrap,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { MediaAssetKind, Prisma } from '@prisma/client';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { PrismaService } from '../prisma.service';
@@ -28,7 +33,14 @@ export interface MediaAssetReconciliationResult {
 const RECONCILIATION_TRANSACTION_OPTIONS = {
   maxWait: 10_000,
   timeout: 60_000,
+  // The API is serving while this runs (alcantara#873): a row an operator changes meanwhile must fail the pass,
+  // not be overwritten with what the pass read before the change.
+  isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
 } as const;
+
+/** A write conflict with the running API: the pass is read and applied again. */
+const CONCURRENT_WRITE_CODES = new Set(['P2002', 'P2034']);
+export const RECONCILIATION_ATTEMPTS = 3;
 
 function parseBackgroundInstantId(metadata: string | null): number | null {
   if (!metadata?.trim()) return null;
@@ -44,7 +56,9 @@ function parseBackgroundInstantId(metadata: string | null): number | null {
 }
 
 @Injectable()
-export class MediaAssetsReconciliationService implements OnApplicationBootstrap {
+export class MediaAssetsReconciliationService
+  implements OnApplicationBootstrap, OnModuleDestroy
+{
   private readonly logger = new Logger(MediaAssetsReconciliationService.name);
 
   constructor(
@@ -52,13 +66,27 @@ export class MediaAssetsReconciliationService implements OnApplicationBootstrap 
     private readonly metrics: ManagedMetricsService,
   ) {}
 
-  async onApplicationBootstrap(): Promise<void> {
+  private running: Promise<void> = Promise.resolve();
+
+  /**
+   * Starts the pass without waiting for it: it takes tens of seconds on production, and the port does not open until
+   * every start-up hook returns (alcantara#873). A failure is logged and counted; the API keeps serving.
+   */
+  onApplicationBootstrap(): void {
     if (isDeployCandidate()) {
       this.logger.log('Deploy candidate: media assets are not reconciled');
       return;
     }
+    this.running = this.reconcileAndFill();
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.running;
+  }
+
+  private async reconcileAndFill(): Promise<void> {
     try {
-      const result = await this.reconcile();
+      const result = await this.reconcileDespiteWrites();
       // Outside the reconciliation transaction, so each batch commits on its own.
       const filled = await fillMediaAssetTeams(this.prisma);
       this.logger.log(`Media asset teams filled: ${filled}`);
@@ -68,8 +96,30 @@ export class MediaAssetsReconciliationService implements OnApplicationBootstrap 
       );
     } catch (error) {
       this.metrics.recordJob('media-asset-reconciliation', 'failure');
-      this.logger.error('Media asset reconciliation failed');
-      throw error;
+      this.logger.error(
+        'Media asset reconciliation failed',
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+  }
+
+  private async reconcileDespiteWrites(
+    attempt = 1,
+  ): Promise<MediaAssetReconciliationResult> {
+    try {
+      return await this.reconcile();
+    } catch (error) {
+      const code = (error as { code?: unknown } | null)?.code;
+      if (
+        attempt >= RECONCILIATION_ATTEMPTS ||
+        typeof code !== 'string' ||
+        !CONCURRENT_WRITE_CODES.has(code)
+      )
+        throw error;
+      this.logger.warn(
+        `Media asset reconciliation met a concurrent write (${code}); running it again`,
+      );
+      return this.reconcileDespiteWrites(attempt + 1);
     }
   }
 

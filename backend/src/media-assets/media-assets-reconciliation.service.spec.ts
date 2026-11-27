@@ -125,6 +125,7 @@ describe('MediaAssetsReconciliationService', () => {
     expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
       maxWait: 10_000,
       timeout: 60_000,
+      isolationLevel: 'RepeatableRead',
     });
 
     expect(tx.mediaAsset.upsert).toHaveBeenCalledTimes(4);
@@ -200,28 +201,102 @@ describe('MediaAssetsReconciliationService', () => {
     });
   });
 
-  it('records bounded startup success and failure without serving stale data', async () => {
-    const success = buildService();
+  // The port opens only once every start-up hook has returned (alcantara#873).
+  it('returns from start-up before the pass finishes, and counts its success', async () => {
+    const { service, prisma, metrics } = buildService();
     const logged = jest.spyOn(Logger.prototype, 'log').mockImplementation();
-    await success.service.onApplicationBootstrap();
+    let release = () => {};
+    const transaction = prisma.$transaction.getMockImplementation()!;
+    prisma.$transaction.mockImplementationOnce(async (operation) => {
+      await new Promise<void>((resolve) => (release = resolve));
+      return transaction(operation);
+    });
+
+    expect(service.onApplicationBootstrap()).toBeUndefined();
+    expect(metrics.recordJob).not.toHaveBeenCalled();
+    release();
+    await service.onModuleDestroy();
+
     expect(logged).toHaveBeenCalledWith('Media asset teams filled: 0');
+    expect(metrics.recordJob).toHaveBeenCalledWith(
+      'media-asset-reconciliation',
+      'success',
+    );
     logged.mockRestore();
-    expect(success.metrics.recordJob).toHaveBeenCalledWith(
+  });
+
+  it('logs and counts a failed pass without failing start-up', async () => {
+    const { service, prisma, metrics } = buildService();
+    const failed = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    prisma.$transaction.mockImplementationOnce(() => {
+      throw new Error('database unavailable');
+    });
+
+    service.onApplicationBootstrap();
+    await service.onModuleDestroy();
+
+    expect(failed).toHaveBeenCalledWith(
+      'Media asset reconciliation failed',
+      expect.stringContaining('database unavailable'),
+    );
+    expect(metrics.recordJob).toHaveBeenCalledWith(
+      'media-asset-reconciliation',
+      'failure',
+    );
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    failed.mockRestore();
+  });
+
+  it('logs a failure that is not an Error as text', async () => {
+    const { service, prisma } = buildService();
+    const failed = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    prisma.$transaction.mockImplementationOnce(() => {
+      // eslint-disable-next-line @typescript-eslint/only-throw-error
+      throw 'connection reset';
+    });
+
+    service.onApplicationBootstrap();
+    await service.onModuleDestroy();
+
+    expect(failed).toHaveBeenCalledWith(
+      'Media asset reconciliation failed',
+      'connection reset',
+    );
+    failed.mockRestore();
+  });
+
+  it('runs the pass again after a concurrent write, at most three times', async () => {
+    const conflict = Object.assign(new Error('write conflict'), {
+      code: 'P2034',
+    });
+    const warned = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const failed = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+
+    const once = buildService();
+    once.prisma.$transaction.mockImplementationOnce(() => {
+      throw conflict;
+    });
+    once.service.onApplicationBootstrap();
+    await once.service.onModuleDestroy();
+    expect(once.prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(once.metrics.recordJob).toHaveBeenCalledWith(
       'media-asset-reconciliation',
       'success',
     );
 
-    const failure = buildService();
-    failure.prisma.$transaction.mockImplementationOnce(() => {
-      throw new Error('database unavailable');
+    const always = buildService();
+    always.prisma.$transaction.mockImplementation(() => {
+      throw conflict;
     });
-    await expect(failure.service.onApplicationBootstrap()).rejects.toThrow(
-      'database unavailable',
-    );
-    expect(failure.metrics.recordJob).toHaveBeenCalledWith(
+    always.service.onApplicationBootstrap();
+    await always.service.onModuleDestroy();
+    expect(always.prisma.$transaction).toHaveBeenCalledTimes(3);
+    expect(always.metrics.recordJob).toHaveBeenCalledWith(
       'media-asset-reconciliation',
       'failure',
     );
+    warned.mockRestore();
+    failed.mockRestore();
   });
 
   it('grants no background audio capability for blank, invalid or unresolvable scene references', async () => {
