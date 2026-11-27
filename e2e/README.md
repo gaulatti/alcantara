@@ -93,6 +93,16 @@ Make the invitation in `/calls`. Each time `WAITING FOR ADMIT <browser>` is prin
 
 Install the three engines once with `browsers:all`. `return-proof.mjs` runs a single engine (`WEBRTC_BROWSER`).
 
+## On-air proof (`onair-proof.mjs`)
+
+**This puts a tone on the real radio.** Run it only in an agreed window.
+
+```bash
+ALCANTARA_INVITATION_PATH=/guest/<token> pnpm --filter @gaulatti/alcantara-e2e onair-proof
+```
+
+A guest joins publishing a steady 1 kHz tone (`TONE_HZ`, `TONE_GAIN` 0.2). It prints `WAITING FOR ADMIT`, `WAITING FOR CUE LIVE` and `WAITING FOR WRAP`; an operator does each on `/calls`. It listens to `https://radio.modoitaliano.fm/stream` itself (`ONAIR_STREAM_URL`), discards Icecast's burst of past audio, and measures the tone against the frequencies 40 to 80 Hz beside it in half-second windows. It passes only if the stream did not carry the tone before, carried it in at least 80% of windows while live, and in at most 10% after the wrap, with the guest still connected. It prints the delay from cue to stream, the tone's level and how far it stands above its neighbours.
+
 ## Touch regressions (`touch-regressions.mjs`)
 
 Browser checks at 375 × 812 with touch emulation, for the touch fixes that shipped on the frontend (#851, #853, #854, #856, #826). Each check prints one JSON line, and the last line is a summary.
