@@ -359,6 +359,8 @@ function restampSequence(
 }
 
 interface SongEngineState {
+  /** The song the as-run log last saw start, read at boot, until the first start or adoption (#849). */
+  airedAtBoot?: number;
   /** When the first announcement began waiting for the similarity index (#277). */
   similarityWaitSince?: number;
   similarityWaitWarned?: boolean;
@@ -551,6 +553,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       if (!s.palazzoUrl) continue;
       if (!RADIO_PROGRAM_TYPES.has(s.programState.type)) continue;
       this.hydrate(pid, s.programState);
+      await this.recallLastStartedSong(pid);
     }
     this.updateHighRotationFavoriteMetric();
     // A deploy candidate (#223) starts no telemetry and no watchdog.
@@ -597,6 +600,51 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     this.logger.log(
       `Booting ${pid}, mode=${seq.mode}, awaiting Palazzo snapshot`,
     );
+  }
+
+  /**
+   * What last started on this program, from the as-run log: after a restart, a cursor still on that song has aired it
+   * (gaulatti/alcantara#849). Unread, the cursor song is sent as before.
+   */
+  private async recallLastStartedSong(programId: string): Promise<void> {
+    try {
+      const record = await this.prisma.asRunRecord.findFirst({
+        where: { programId, state: 'started' },
+        orderBy: [{ at: 'desc' }, { id: 'desc' }],
+        select: { songId: true },
+      });
+      this.ensureState(programId).airedAtBoot = record?.songId ?? undefined;
+    } catch (error) {
+      this.logger.warn(
+        `Could not read what last aired on ${programId}; the cursor song may air again: ${errorClass(error)}`,
+      );
+    }
+  }
+
+  /**
+   * The first start after a boot, with Palazzo idle: a cursor song that already started is not sent again. The
+   * outage outlasted it, so the rotation takes its successor; a rotation that does not loop and has none ends.
+   * False when nothing is left to start.
+   */
+  private passAiredCursorSong(
+    programId: string,
+    state: SongEngineState,
+  ): boolean {
+    const aired = state.airedAtBoot;
+    state.airedAtBoot = undefined;
+    if (aired === undefined) return true;
+    // maybeStartSequence has already required a rotation; no cursor names no song.
+    const sequence = state.sequence!;
+    const cursor = activeProgramSongLeafId(sequence) ?? '';
+    if (findUniqueProgramSongLeafById(sequence, cursor)?.songId !== aired)
+      return true;
+    this.metrics.recordTrackTransition('aired-cursor-passed');
+    this.logger.log(
+      `The cursor song on ${programId} already started before the restart; taking its successor`,
+    );
+    if (advanceProgramSongSequence(sequence, cursor)) return true;
+    this.endRotation(programId, state);
+    return false;
   }
 
   /** Stops a program's timers; its state stays. */
@@ -3219,6 +3267,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       highRotation: source.highRotation,
     };
     state.busyWithForeignTrack = false;
+    // The song is still on: its end advances the rotation as usual.
+    state.airedAtBoot = undefined;
     this.logger.log(
       `Adopted inherited Palazzo playback ${requestId} on ${programId} (${detail})`,
     );
@@ -3673,6 +3723,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       if (!this.telemetry?.isReconciled(programId)) return false;
     }
     if (state.busyWithForeignTrack) return false;
+    if (!this.passAiredCursorSong(programId, state)) return false;
     return this.playNext(programId);
   }
 

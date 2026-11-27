@@ -111,7 +111,8 @@ export type TrackTransitionResult =
   | 'unidentified'
   | 'command-failed'
   | 'published-stopped'
-  | 'rotation-ended';
+  | 'rotation-ended'
+  | 'aired-cursor-passed';
 
 export type SongRequestFailureReason = 'timeout' | 'other';
 
@@ -414,6 +415,7 @@ const TRANSITION_RESULTS: TrackTransitionResult[] = [
   'command-failed',
   'published-stopped',
   'rotation-ended',
+  'aired-cursor-passed',
 ];
 
 const SONG_REQUEST_FAILURE_REASONS: SongRequestFailureReason[] = [

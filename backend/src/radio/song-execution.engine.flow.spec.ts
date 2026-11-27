@@ -119,6 +119,10 @@ function setup(
     radioSettings: { findMany: jest.fn().mockResolvedValue([]) },
     songIntro: { findUnique: jest.fn().mockResolvedValue(null) },
     instant: { findUnique: jest.fn().mockResolvedValue(null) },
+    // What the as-run log last saw start; none unless a test says so.
+    asRunRecord: {
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
     programState: {
       findUnique: jest
         .fn()
@@ -1606,16 +1610,82 @@ describe('SongExecutionEngine after a restart mid-song', () => {
     });
   }
 
-  // gaulatti/alcantara#849: a restart that outlasts both the playing song and the announced one. The cursor song
-  // (song A) was on air when the backend went down, and it has already ended: its start is in the as-run log, and
-  // song B was announced after it. Palazzo is idle at boot, so the engine must play B, not A again.
-  it('a restart that outlasts the cursor song and its announced successor plays the successor, never the cursor song again', async () => {
+  // gaulatti/alcantara#849: a restart that outlasts both the playing song and the announced one. The cursor song was
+  // on air when the backend went down and has already ended: its start is in the as-run log, and Palazzo is idle.
+  const restarted = async (
+    sequence: unknown,
+    lastStarted: { songId: number | null } | null | Error,
+  ) => {
     const ctx = setup();
-    ctx.engine.handleSequenceUpdated('radio-1', { ...AUTO, activeItemId: 'song-a' });
+    ctx.prisma.radioSettings.findMany.mockResolvedValue([
+      {
+        palazzoUrl: 'http://palazzo:3100',
+        programState: {
+          programId: 'radio-1',
+          type: 'radio',
+          songSequence: sequence,
+          songQueue: [],
+          songRotation: null,
+        },
+      },
+    ]);
+    if (lastStarted instanceof Error)
+      ctx.prisma.asRunRecord.findFirst.mockRejectedValue(lastStarted);
+    else ctx.prisma.asRunRecord.findFirst.mockResolvedValue(lastStarted);
+    await ctx.engine.onModuleInit();
     ctx.engine.handlePalazzoSnapshot('radio-1', idle(4));
     await flush(80);
-    expect(playedUrls(ctx)).not.toContain('https://example.test/a.mp3');
+    ctx.engine.onModuleDestroy();
+    return ctx;
+  };
+  const SONGS = sequenceOf([
+    { ...SONG_A, songId: 1 },
+    { ...SONG_B, songId: 2 },
+  ]);
+
+  it('plays the successor after a restart that outlasts the cursor song, never the cursor song again', async () => {
+    const ctx = await restarted(
+      { ...SONGS, activeItemId: 'song-a' },
+      { songId: 1 },
+    );
     expect(playedUrls(ctx)).toEqual(['https://example.test/b.mp3']);
+    expect(ctx.metrics.recordTrackTransition).toHaveBeenCalledWith(
+      'aired-cursor-passed',
+    );
+  });
+
+  it.each([
+    ['another song started last', { songId: 2 }],
+    ['nothing has aired', null],
+    ['the last start has no song', { songId: null }],
+    ['the log cannot be read', new Error('down')],
+  ])('still sends the cursor song once when %s', async (_name, lastStarted) => {
+    const ctx = await restarted(
+      { ...SONGS, activeItemId: 'song-a' },
+      lastStarted,
+    );
+    expect(playedUrls(ctx)).toEqual(['https://example.test/a.mp3']);
+  });
+
+  it('passes nothing when the rotation has no cursor', async () => {
+    const ctx = await restarted(
+      { ...SONGS, activeItemId: null },
+      { songId: 1 },
+    );
+    expect(ctx.metrics.recordTrackTransition).not.toHaveBeenCalledWith(
+      'aired-cursor-passed',
+    );
+  });
+
+  it('ends a rotation that does not loop when the aired cursor song was its last', async () => {
+    const ctx = await restarted(
+      { ...SONGS, loop: false, activeItemId: 'song-b' },
+      { songId: 2 },
+    );
+    expect(playedUrls(ctx)).toEqual([]);
+    expect(ctx.metrics.recordTrackTransition).toHaveBeenCalledWith(
+      'rotation-ended',
+    );
   });
 });
 
