@@ -37,18 +37,21 @@ export function outcome(browser, lines) {
     joined: steps["guest-joined"]?.ok === true,
     admitted: steps["guest-admitted"]?.ok === true,
     track: steps["return-track"]?.ok === true,
+    copy: steps["guest-copy"]?.copy ?? "none",
+    copyOk: steps["guest-copy"]?.ok === true,
     peak: steps["return-level"]?.peak ?? 0,
     error,
   };
 }
 
-export function summaryLine({ browser, joined, admitted, track, peak, error }) {
+export function summaryLine({ browser, joined, admitted, track, copy = "none", copyOk = false, peak, error }) {
   const yes = (value) => (value ? "yes" : "NO");
   const quiet = peak > 0 && peak < 0.01 ? " (below the 0.01 audible level)" : "";
-  return `${browser}: joined ${yes(joined)}, admitted ${yes(admitted)}, return track ${yes(track)}, return peak ${peak}${quiet}${error ? `, error: ${error}` : ""}`;
+  const copyNote = track ? `, guest copy "${copy}"${copyOk ? "" : " (NOT playing while audio flows)"}` : "";
+  return `${browser}: joined ${yes(joined)}, admitted ${yes(admitted)}, return track ${yes(track)}, return peak ${peak}${quiet}${copyNote}${error ? `, error: ${error}` : ""}`;
 }
 
-export const passed = (results) => results.length === BROWSERS.length && results.every((r) => r.track && r.peak > 0);
+export const passed = (results) => results.length === BROWSERS.length && results.every((r) => r.track && r.peak > 0 && r.copyOk);
 
 /** The last 40 lines the router page wrote. */
 export const routerLines = (log) => log.split("\n").filter((line) => line.includes("[return-router] ")).slice(-40);

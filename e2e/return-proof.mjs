@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium, firefox, webkit } from "playwright";
 import { SYNTHETIC_MEDIA } from "./synthetic-media.mjs";
+import { PLAYING_COPY, waitForGuestCopy } from "./guest-copy.mjs";
 
 const APP = (process.env.ALCANTARA_APP_URL || "http://localhost:5173").replace(/\/$/, "");
 const API = (process.env.ALCANTARA_API_URL || "http://localhost:3000").replace(/\/$/, "");
@@ -100,6 +101,7 @@ async function measureReturn(seconds) {
 }
 
 const report = (step, details = {}) => console.log(JSON.stringify({ step, at: new Date().toISOString(), ...details }));
+
 
 async function api(path, { method = "GET", body, token } = {}) {
   const response = await fetch(`${API}${path}`, {
@@ -209,10 +211,14 @@ try {
   while (!(await track()) && Date.now() < deadline) await guest.waitForTimeout(500);
   const arrived = await track();
   report("return-track", { ok: arrived });
+  // What the guest is told while the audio flows: the copy must say so, not "Connecting…" or the stall text.
+  const copy = arrived ? await waitForGuestCopy(guest, PLAYING_COPY, 10_000) : null;
+  const copyOk = arrived && copy === PLAYING_COPY;
+  report("guest-copy", { ok: copyOk, expected: PLAYING_COPY, copy: copy ?? "none" });
   const { level, receive } = arrived ? await guest.evaluate(measureReturn, SECONDS) : { level: { peak: 0, webAudioPeak: 0, statsPeak: 0 }, receive: [] };
   // What arrived over the wire, whatever the page's audio graph can read.
   report("return-stats", { inbound: receive });
-  ok = arrived && (EXPECT === "silence" ? level.peak < AUDIBLE : level.peak >= AUDIBLE);
+  ok = arrived && copyOk && (EXPECT === "silence" ? level.peak < AUDIBLE : level.peak >= AUDIBLE);
   report("return-level", { ok, expect: EXPECT, ...level });
   await guest.getByRole("button", { name: /Leave/ }).click();
   report("guest-left", { ok: true });
