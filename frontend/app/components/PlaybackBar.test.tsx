@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { PlaybackBar } from "./PlaybackBar";
 import type {
@@ -47,6 +47,46 @@ const sequence: ProgramSongSequence = {
 const songs = sequence.items as ProgramSongSequenceLeafItem[];
 
 afterEach(() => cleanup());
+
+// It runs first: every test after it opens its own surface on a page that has shown a tooltip (#722, #723).
+// gaulatti/alcantara#189: control-room help is Bleecker's tooltip, not a native
+// title (BleeckerButtons moves `title` into the tooltip). Keyboard focus opens
+// it at once, as hover does after its delay. The tooltip carries the loop
+// state, and its text uses the readable dark-console colour that Bleecker
+// 0.1.42 and later give it (gaulatti/alcantara#191 removed #189's local class).
+it("shows the loop help in a readable tooltip when the loop toggle is focused", () => {
+  // jsdom has no ResizeObserver; Radix measures the open tooltip with one.
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const view = render(
+    <PlaybackBar sequence={sequence} programSongPlayback={null} onChange={vi.fn()} />,
+  );
+  const loop = screen.getByLabelText("Loop playlist: off");
+  expect(loop).not.toHaveAttribute("title");
+  expect(document.querySelector("[role=tooltip]")).toBeNull();
+
+  act(() => {
+    fireEvent.focus(loop);
+  });
+  const tooltip = document.querySelector("[role=tooltip]")!;
+  expect(tooltip.textContent).toBe("Loop is off");
+  expect(loop).toHaveAttribute("aria-describedby", tooltip.id);
+  const content = document.querySelector("[data-radix-popper-content-wrapper] [data-state]")!;
+  expect(content).toHaveClass("dark:text-text-primary");
+  expect(content).not.toHaveClass("dark:text-deep-sea");
+
+  act(() => {
+    fireEvent.blur(loop);
+  });
+  view.unmount();
+  vi.unstubAllGlobals();
+});
 
 it("exposes mutually exclusive playback modes and independent loop state", () => {
   const onChange = vi.fn();

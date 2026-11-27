@@ -4,8 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { renderRailLink } from "./layout";
 
 // gaulatti/alcantara#688, item 1: the collapsed rail shows icons only, so each link's label opens as a
-// tooltip on keyboard focus (and hover). Its own file: an opened Radix tooltip slows later tests in a
-// shared jsdom file (#722). Fictional labels only.
+// tooltip on keyboard focus (and hover); a link with no label gets no tooltip trigger. Fictional labels only.
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -48,4 +47,18 @@ it("shows the label beside an icon-only rail link on keyboard focus, keeping its
     fireEvent.blur(link);
   });
   view.unmount();
+});
+
+it("adds no tooltip to a link without a label", () => {
+  render(
+    <MemoryRouter>
+      {renderRailLink({
+        item: { href: "/radio", active: false },
+        className: "rail-link",
+        children: <svg aria-hidden="true" />,
+      })}
+    </MemoryRouter>,
+  );
+  const link = screen.getByRole("link");
+  expect(link).not.toHaveAttribute("data-state");
 });
