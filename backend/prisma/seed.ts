@@ -358,7 +358,9 @@ export async function seedLocalDatabase(
     })),
     activeItemId: `seed-song-${DEMO_SONG_IDS[0]}`,
     intervalMs: 0,
-    loop: false,
+    // The radio show's 24/7 rotation loops. Written only when the show is created (see isNewShow), so an existing
+    // local database keeps whatever Loop its operator set.
+    loop: true,
     startedAt: 0,
   };
   if (isNewShow('main')) {
