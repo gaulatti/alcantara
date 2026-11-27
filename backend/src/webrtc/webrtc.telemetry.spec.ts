@@ -213,7 +213,10 @@ describe('guest call reports', () => {
       'This invitation was revoked.',
     );
     invitation.revokedAt = null;
-    prisma.guestInvitation.updateMany.mockResolvedValueOnce({ count: 0 });
+    // Neither the same session nor a free or lapsed lease: another session holds it.
+    prisma.guestInvitation.updateMany
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 0 });
     await expect(service.redeemInvitation(token, undefined)).rejects.toThrow(
       'already active',
     );

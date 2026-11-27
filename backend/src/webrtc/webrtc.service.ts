@@ -365,23 +365,31 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
     }
     if (!sessionId) sessionId = randomUUID();
 
-    const claimed = await this.prisma.guestInvitation.updateMany({
-      where: {
-        id: invitation.id,
-        revokedAt: null,
-        expiresAt: { gt: now },
-        OR: [
-          { activeSessionId: null },
-          { activeSessionUntil: { lt: now } },
-          { activeSessionId: sessionId },
-        ],
-      },
-      data: {
-        activeSessionId: sessionId,
-        activeSessionUntil: new Date(now.getTime() + SESSION_LEASE_MS),
-      },
+    const open = { id: invitation.id, revokedAt: null, expiresAt: { gt: now } };
+    const lease = {
+      activeSessionId: sessionId,
+      activeSessionUntil: new Date(now.getTime() + SESSION_LEASE_MS),
+    };
+    // Screening applies to each new session: the session that was admitted keeps its admission when it reconnects;
+    // any other session starts waiting again, cleared in the same write that claims the invitation.
+    const sameSession = await this.prisma.guestInvitation.updateMany({
+      where: { ...open, activeSessionId: sessionId },
+      data: lease,
     });
-    if (claimed.count !== 1) {
+    const newSession =
+      sameSession.count === 1
+        ? null
+        : await this.prisma.guestInvitation.updateMany({
+            where: {
+              ...open,
+              OR: [
+                { activeSessionId: null },
+                { activeSessionUntil: { lt: now } },
+              ],
+            },
+            data: { ...lease, admittedAt: null },
+          });
+    if (sameSession.count !== 1 && newSession?.count !== 1) {
       this.metrics.recordWebrtcJoin('guest', 'other');
       throw new ConflictException(
         'This invitation is already active in another session.',
@@ -389,7 +397,7 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
     }
 
     const identity = this.guestIdentity(invitation.id);
-    const admitted = Boolean(invitation.admittedAt);
+    const admitted = sameSession.count === 1 && Boolean(invitation.admittedAt);
     // Until admitted, the guest's token opens only a room of their own: nothing of theirs can reach a strip, a return
     // or air, and the program's consumers need no change.
     const roomName = admitted

@@ -98,7 +98,8 @@ describe('screening before air', () => {
     ).resolves.toMatchObject({ admission: 'waiting' });
   });
 
-  it('gives an admitted guest the program room', async () => {
+  it('gives an admitted guest the program room when their own session reconnects', async () => {
+    // The first claim, for the session already holding the invitation, matches.
     const { service, createRoom } = setup({ admittedAt: new Date() });
     const joined = await service.redeemInvitation(token, undefined);
     expect(joined).toMatchObject({
@@ -109,6 +110,25 @@ describe('screening before air', () => {
     await expect(
       service.heartbeat(joined.sessionToken, undefined),
     ).resolves.toMatchObject({ admission: 'admitted' });
+  });
+
+  it('screens each new session again: another session starts waiting and the admission is cleared as it claims', async () => {
+    const { service, prisma } = setup({ admittedAt: new Date() });
+    // Not the session that holds the invitation; the lease is free or lapsed, so a new session claims it.
+    prisma.guestInvitation.updateMany
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 1 });
+    const joined = await service.redeemInvitation(token, undefined);
+    expect(joined).toMatchObject({ admission: 'waiting', roomName: screening });
+    expect(claims(joined.token).video.room).toBe(screening);
+    const [sameSession, newSession] =
+      prisma.guestInvitation.updateMany.mock.calls.map(([call]) => call);
+    expect(sameSession.data).not.toHaveProperty('admittedAt');
+    expect(newSession.where.OR).toEqual([
+      { activeSessionId: null },
+      { activeSessionUntil: { lt: expect.any(Date) } },
+    ]);
+    expect(newSession.data).toMatchObject({ admittedAt: null });
   });
 
   it('keeps an existing screening room and says when LiveKit cannot make one', async () => {

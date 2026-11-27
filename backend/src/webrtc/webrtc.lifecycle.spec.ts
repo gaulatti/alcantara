@@ -404,9 +404,10 @@ describe('WebrtcService invitation/session and LiveKit boundary', () => {
       joined.sessionToken,
     );
     expect(next.sessionToken).toBe(joined.sessionToken);
+    // The reconnect claims the invitation as the same session first.
     expect(
-      f.prisma.guestInvitation.updateMany.mock.calls[1][0].where.OR[2],
-    ).toEqual({ activeSessionId: joined.sessionToken.split('.')[1] });
+      f.prisma.guestInvitation.updateMany.mock.calls[1][0].where,
+    ).toMatchObject({ activeSessionId: joined.sessionToken.split('.')[1] });
   });
 
   it.each([
