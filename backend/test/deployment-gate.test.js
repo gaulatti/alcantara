@@ -236,6 +236,8 @@ function runDeploy({
   // A handover container left running without a live backend, and a host with no live backend.
   leftoverNext = false,
   noLiveBackend = false,
+  // How many checks after the reload still find a worker from before it accepting (Infinity: it never stops).
+  nginxWorkersLinger = 0,
 }) {
   const {
     mkdtempSync,
@@ -327,7 +329,17 @@ exit 0`,
   for (const name of ['install', 'sleep', 'certbot'])
     stub(name, 'exit 0');
   stub('nginx', `case "$*" in -t) exit ${nginxValid ? 0 : 1} ;; esac\nexit 0`);
-  stub('systemctl', `case "$*" in "reload nginx") ${reloadFails ? 'exit 1' : `exit 0`} ;; esac\nexit 0`);
+  stub('systemctl', `case "$*" in "reload nginx") ${reloadFails ? 'exit 1' : `touch "${bin}/reloaded"; exit 0`} ;; esac\nexit 0`);
+  // nginx's accepting workers: 101 before the reload; after it, 101 lingers for nginxWorkersLinger checks beside the
+  // new 202, then only 202 accepts.
+  const linger = Number.isFinite(nginxWorkersLinger) ? nginxWorkersLinger : 1_000_000;
+  stub(
+    'pgrep',
+    `[ -f "${bin}/reloaded" ] || { echo 101; exit 0; }
+n=$(( $(cat "${bin}/pgrep-count" 2>/dev/null || echo 0) + 1 )); echo "$n" > "${bin}/pgrep-count"
+if [ "$n" -le ${linger} ]; then printf '101\\n202\\n'; else echo 202; fi
+exit 0`,
+  );
   // mv restores the site when nginx refuses the switch: a real move inside the sandbox, recorded otherwise.
   stub('mv', `case "$*" in *"${bin}"*) command -p mv "$@" ;; esac\nexit 0`);
   const result = spawnSync(
@@ -923,6 +935,48 @@ test('a handover container left running with no live backend stops the deploy fo
   assert.match(run.stdout, /alcantara-backend-next\) is running with no alcantara-backend: requires operator review/);
   // The throwaway candidate may have run; nothing touches a live container.
   for (const line of run.log) assert.doesNotMatch(line, /^docker (run -d --name alcantara-backend(-next)? |stop|rename|start) /);
+});
+
+// The 503 at the second handover's switch (gaulatti/alcantara#873): `systemctl reload` returns before the old nginx
+// workers stop accepting, and the previous backend answered a new request with 503 once it began closing.
+test('the previous backend is stopped only after the nginx workers from before the reload stop accepting', () => {
+  const run = runDeploy({
+    candidateHealthy: true,
+    leaseImage: true,
+    certificate: true,
+    installedSite: site3006,
+    repositorySite: repositoryHalf,
+    nginxWorkersLinger: 3,
+  });
+  assert.equal(run.status, 0, run.stdout + run.stderr);
+  const reload = run.log.indexOf('systemctl reload nginx');
+  const stop = run.log.findIndex((line) => line.startsWith('docker stop -t 15 alcantara-backend'));
+  const checks = run.log
+    .map((line, index) => (line.startsWith('pgrep') ? index : -1))
+    .filter((index) => index > reload);
+  // Three checks still find the old worker accepting, the fourth does not; only then the stop.
+  assert.equal(checks.length, 4, run.log.join('\n'));
+  assert.ok(checks.every((index) => index < stop));
+  assert.ok(run.log.slice(reload, stop).filter((line) => line === 'sleep 0.1').length === 3);
+  assert.match(run.stdout, /^NGINX_SETTLED \S+$/m);
+  assert.ok(run.stdout.indexOf('NGINX_SETTLED') < run.stdout.indexOf('OWNER_RELEASED'));
+});
+
+test('a worker that never stops accepting holds the stop for 5 s at most, and says so', () => {
+  const run = runDeploy({
+    candidateHealthy: true,
+    leaseImage: true,
+    certificate: true,
+    installedSite: site3006,
+    repositorySite: repositoryHalf,
+    nginxWorkersLinger: Infinity,
+  });
+  assert.equal(run.status, 0, run.stdout + run.stderr);
+  assert.match(run.stdout, /^NGINX_SETTLE_TIMEOUT \S+: workers from before the reload still accept$/m);
+  const reload = run.log.indexOf('systemctl reload nginx');
+  const stop = run.log.findIndex((line) => line.startsWith('docker stop -t 15 alcantara-backend'));
+  assert.equal(run.log.slice(reload, stop).filter((line) => line.startsWith('pgrep')).length, 50);
+  assert.match(run.stdout, /OWNER_ACQUIRED/);
 });
 
 test("a handover prints both sides' own times: the previous backend's shutdown and the new one's grant", () => {

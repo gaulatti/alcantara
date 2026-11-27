@@ -187,6 +187,37 @@ playout_granted() {
   curl --fail --silent --max-time 2 "http://127.0.0.1:$1/health/ready" | sed -n 's/.*"grantedAt":"\([^"]*\)".*/\1/p'
 }
 
+# The nginx workers that accept new connections. A worker retitles itself "worker process is shutting down" once a
+# reload tells it to stop accepting, so it no longer matches.
+nginx_accepting_workers() {
+  pgrep -f '^nginx: worker process$' 2>/dev/null || true
+}
+
+# After a reload, waits until none of the workers that accepted before it (BEFORE, their pids) still accepts, at
+# most 5 s: only then can no new request reach the previous backend once it is told to stop. A worker kept by a
+# long-lived stream stops accepting at once, so it does not hold this up. Without pgrep, a fixed 1 s settle.
+wait_nginx_workers() {
+  local before="$1" now pid lingering
+  if ! command -v pgrep >/dev/null 2>&1; then
+    sleep 1
+    echo "NGINX_SETTLED $(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) fixed"
+    return 0
+  fi
+  for _ in $(seq 1 50); do
+    now="$(nginx_accepting_workers)"
+    lingering=false
+    for pid in $before; do
+      if printf '%s\n' "$now" | grep -qx "$pid"; then lingering=true; fi
+    done
+    if [ "$lingering" = false ]; then
+      echo "NGINX_SETTLED $(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "NGINX_SETTLE_TIMEOUT $(date -u +%Y-%m-%dT%H:%M:%S.%3NZ): workers from before the reload still accept"
+}
+
 # Points the installed nginx site at loopback PORT, changing only its proxy_pass port (certbot's TLS half stays). The
 # new site is written beside it, checked complete (non-empty, the new proxy_pass in it) and moved into place in one
 # step; a full disk or any failure leaves the site as it was. If nginx refuses it or the reload fails, the previous
@@ -308,6 +339,7 @@ if [ "$handover" = true ]; then
     docker rm -f alcantara-backend-next >/dev/null 2>&1 || true
     exit 1
   fi
+  nginx_workers_before="$(nginx_accepting_workers)"
   if ! point_nginx_at "$new_port"; then
     echo 'nginx would not take the new port; the running backend is untouched'
     docker rm -f alcantara-backend-next >/dev/null 2>&1 || true
@@ -318,6 +350,9 @@ if [ "$handover" = true ]; then
   # previous backend back first.
   trap 'status=$?; trap - EXIT; rm -rf "$docker_config_dir"; if [ "$status" -ne 0 ]; then restore_previous || true; fi; exit "$status"' EXIT
   trap 'exit 130' INT TERM
+  # `systemctl reload` returns before the old workers stop accepting: until they do, a new request can still reach the
+  # previous backend, which answers 503 once it starts closing. It is told to stop only after they stopped.
+  wait_nginx_workers "$nginx_workers_before"
   # The radio check below waits for a song that started after this moment.
   radio_since="$(date +%s)"
   echo "OWNER_RELEASED $(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
