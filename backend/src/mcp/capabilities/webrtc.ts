@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
 import { WebrtcService } from '../../webrtc/webrtc.service';
+import { ReturnRouterService } from '../../webrtc/return-router.service';
 import { McpToolProvider, type McpToolSpec } from '../contract';
 import { ProgramService } from '../../program/program.service';
 import { z } from 'zod';
@@ -78,6 +79,7 @@ export class WebrtcMcpTools {
   constructor(
     private readonly webrtc: WebrtcService,
     private readonly programs: ProgramService,
+    private readonly returns: ReturnRouterService,
   ) {}
 
   specs(): McpToolSpec[] {
@@ -99,6 +101,15 @@ export class WebrtcMcpTools {
         permission: permissions.read,
         shape: { program_id: programIdArg },
         run: (args) => this.webrtc.listParticipants(args.program_id),
+      }),
+      readSpec({
+        name: 'webrtc_health',
+        title: 'Check that calls work',
+        description:
+          'Says whether the call chain of a program works now, as the calls desk reads it: returnRunner (whether guests are sent the studio sound), contribution (whether a cued guest can reach air) and livekit (whether the calls server answers), each ok, down or unknown (livekit is only ok or down), with checkedAt. unknown means nothing has been heard either way, for example for a few seconds after a backend restart; it is not ok.',
+        permission: permissions.read,
+        shape: { program_id: programIdArg },
+        run: (args) => this.returns.health(args.program_id),
       }),
       actionSpec({
         name: 'webrtc_update_return',

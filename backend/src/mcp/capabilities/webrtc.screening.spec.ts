@@ -23,7 +23,11 @@ function setup(screening: boolean, slotNumber: number | null = 2) {
     admitGuest: jest.fn().mockResolvedValue({ status: 'admitted' }),
     declineGuest: jest.fn().mockResolvedValue({ status: 'declined' }),
   };
-  const specs = new WebrtcMcpTools(webrtc as never, {} as never).specs();
+  const specs = new WebrtcMcpTools(
+    webrtc as never,
+    {} as never,
+    {} as never,
+  ).specs();
   const tool = (name: string) => specs.find((spec) => spec.name === name)!;
   return { webrtc, tool };
 }

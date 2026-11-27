@@ -10,6 +10,7 @@ import { RadioController } from '../../radio/radio.controller';
 import { RadioMonitorController } from '../../radio/radio-monitor.controller';
 import { RecordingController } from '../../recording/recording.controller';
 import { TapeController } from '../../recording/tape.controller';
+import { ReturnRouterController } from '../../webrtc/return-router.controller';
 import { WebrtcController } from '../../webrtc/webrtc.controller';
 import { UNTRUSTED_NOTE } from '../contract';
 import { BroadcastDestinationsMcpTools } from './destinations';
@@ -101,7 +102,7 @@ const specs = [
     {} as never,
   ).specs(),
   ...new ExternalSourcesMcpTools({} as never, {} as never, {} as never).specs(),
-  ...new WebrtcMcpTools({} as never, {} as never).specs(),
+  ...new WebrtcMcpTools({} as never, {} as never, {} as never).specs(),
 ].filter((spec) => !EXTRA_RADIO_READS.has(spec.name));
 
 const controllerOf = (area: string, path: string) =>
@@ -112,12 +113,13 @@ const controllerOf = (area: string, path: string) =>
     radio: RadioController,
     'operator-preferences': OperatorPreferencesController,
     'external-sources': ExternalSourcesController,
-    webrtc: WebrtcController,
+    webrtc:
+      path === '/webrtc/health' ? ReturnRouterController : WebrtcController,
   })[area] as unknown as { prototype: Record<string, unknown> };
 
 describe('appendix A rows of ticket #219', () => {
   it('has a row for every route of its areas that is not excluded', () => {
-    expect(ROWS).toHaveLength(59);
+    expect(ROWS).toHaveLength(60);
     const count = (area: string) =>
       ROWS.filter((row) => row[0] === area).length;
     expect([...AREAS].map((area) => [area, count(area)])).toEqual([
@@ -127,7 +129,7 @@ describe('appendix A rows of ticket #219', () => {
       ['radio', 16],
       ['operator-preferences', 8],
       ['external-sources', 7],
-      ['webrtc', 8],
+      ['webrtc', 9],
     ]);
   });
 
@@ -167,7 +169,7 @@ describe('appendix A rows of ticket #219', () => {
   it('has the counted rows per tier', () => {
     const tiers = ROWS.map((row) => row[6]);
     for (const [tier, n] of [
-      ['R', 19],
+      ['R', 20],
       ['W', 12],
       ['A', 21],
       ['D', 7],

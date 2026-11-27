@@ -45,6 +45,7 @@ describe('capability provider decorator metadata under unresolved circular impor
         '../../prisma.service',
         '../../external-sources/external-sources.service',
         '../../webrtc/webrtc.service',
+        '../../webrtc/return-router.service',
       ])
         jest.doMock(path, () => ({}));
       const providers = [
@@ -54,7 +55,7 @@ describe('capability provider decorator metadata under unresolved circular impor
         ['./radio', 'RadioMcpTools', 7],
         ['./preferences', 'OperatorPreferencesMcpTools', 3],
         ['./external-sources', 'ExternalSourcesMcpTools', 3],
-        ['./webrtc', 'WebrtcMcpTools', 2],
+        ['./webrtc', 'WebrtcMcpTools', 3],
       ] as const;
       for (const [file, name, count] of providers) {
         const provider = require(file)[name];

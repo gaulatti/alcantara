@@ -218,7 +218,11 @@ function build() {
       s.pompeii as never,
       s.programs as never,
     ).specs(),
-    ...new WebrtcMcpTools(s.webrtc as never, s.programs as never).specs(),
+    ...new WebrtcMcpTools(
+      s.webrtc as never,
+      s.programs as never,
+      {} as never,
+    ).specs(),
   ];
   const spec = (name: string) => specNamed(specs, name);
   const run = async (name: string, args: Record<string, unknown>) =>

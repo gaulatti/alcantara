@@ -59,7 +59,11 @@ function build() {
       { teamId: 7 } as never,
       programs as never,
     ).specs(),
-    ...new WebrtcMcpTools(webrtc as never, programs as never).specs(),
+    ...new WebrtcMcpTools(
+      webrtc as never,
+      programs as never,
+      {} as never,
+    ).specs(),
     ...new OperatorPreferencesMcpTools(
       preferences as never,
       { teamId: 7 } as never,

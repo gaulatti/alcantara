@@ -6,6 +6,7 @@ import { OperatorPreferencesController } from '../../operator-preferences/operat
 import { RadioController } from '../../radio/radio.controller';
 import { RecordingController } from '../../recording/recording.controller';
 import { TapeController } from '../../recording/tape.controller';
+import { ReturnRouterController } from '../../webrtc/return-router.controller';
 import { WebrtcController } from '../../webrtc/webrtc.controller';
 import { McpToolError } from '../contract';
 import { asRest, rebuilt, specNamed } from './capabilities.testing';
@@ -65,6 +66,7 @@ const s = {
   pompeii: { teamId: 7 },
   sources: { list: jest.fn(), get: jest.fn() },
   webrtc: { listInvitations: jest.fn(), listParticipants: jest.fn() },
+  returns: { health: jest.fn() },
   programs: { listPrograms: jest.fn() },
 };
 
@@ -89,6 +91,7 @@ const controllers = {
   preferences: new OperatorPreferencesController(s.preferences as never),
   sources: new ExternalSourcesController(s.sources as never),
   webrtc: new WebrtcController(s.webrtc as never),
+  returns: new ReturnRouterController(s.returns as never, s.webrtc as never),
 };
 
 const specs = [
@@ -118,7 +121,11 @@ const specs = [
     s.pompeii as never,
     s.programs as never,
   ).specs(),
-  ...new WebrtcMcpTools(s.webrtc as never, s.programs as never).specs(),
+  ...new WebrtcMcpTools(
+    s.webrtc as never,
+    s.programs as never,
+    s.returns as never,
+  ).specs(),
 ];
 
 const run = async (name: string, args: Record<string, unknown> = {}) =>
@@ -311,6 +318,22 @@ describe('read capabilities return what the controller returns', () => {
       controllers.webrtc.listInvitations(),
     );
     expect(JSON.stringify(result)).toContain('"untrusted"');
+  });
+
+  it('webrtc_health answers what the desk reads, for the program asked about', async () => {
+    const health = {
+      programId: 'main',
+      returnRunner: 'down',
+      contribution: 'unknown',
+      livekit: 'ok',
+      checkedAt: '2026-11-27T09:00:00.000Z',
+    };
+    s.returns.health.mockResolvedValue(health);
+    const result = await same('webrtc_health', { program_id: 'main' }, () =>
+      controllers.returns.health('main'),
+    );
+    expect(JSON.stringify(result)).toContain('"returnRunner":"down"');
+    expect(JSON.stringify(result)).toContain('"contribution":"unknown"');
   });
 
   it('webrtc_list_participants', () =>
