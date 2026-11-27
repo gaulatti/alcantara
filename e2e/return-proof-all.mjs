@@ -2,7 +2,7 @@
 //
 //   ALCANTARA_INVITATION_PATH=/guest/<token> node return-proof-all.mjs
 //
-// With an invitation, an operator presses Admit in /calls each time "WAITING FOR ADMIT <browser>" is printed (120 s).
+// With an invitation, an operator presses Admit in /calls each time "WAITING FOR ADMIT <browser>" is printed (180 s).
 // With ALCANTARA_OPERATOR_TOKEN instead, each run creates, admits and revokes its own invitation for
 // ALCANTARA_PROGRAM_ID. Defaults to production and modoitaliano.fm. Exits 0 only when all three heard something.
 // RETURN_RUNNER_SSH (default helix.gaulatti.com) is where the runner's log is read; empty skips it.
@@ -81,7 +81,7 @@ async function main() {
     ALCANTARA_API_URL: "https://api.alcantara.gaulatti.com",
     ALCANTARA_PROGRAM_ID: "modoitaliano.fm",
     RETURN_SECONDS: "30",
-    ADMIT_SECONDS: "120",
+    ADMIT_SECONDS: "180",
     ...process.env,
   };
   // With a token each run makes its own invitation.

@@ -1,9 +1,11 @@
 // A generated camera and microphone for an engine with no fake-device switch (WebKit). A moving canvas and a steady
 // tone reach the guest's peer connection as real tracks, so the bytes-flowing checks measure the same path.
 export const SYNTHETIC_MEDIA = `(() => {
-  const md = navigator.mediaDevices;
-  if (!md || !md.getUserMedia) return;
-  md.getUserMedia = async (constraints = {}) => {
+  // Patched on the prototype: WebKit does not expose navigator.mediaDevices yet when an init script runs, so patching the
+  // instance did nothing and the page's own request was refused (NotAllowedError, "camera or microphone blocked").
+  const md = window.MediaDevices && window.MediaDevices.prototype;
+  if (!md) return;
+  md.getUserMedia = async function (constraints = {}) {
     const tracks = [];
     if (constraints.video) {
       const canvas = document.createElement("canvas");
@@ -29,8 +31,10 @@ export const SYNTHETIC_MEDIA = `(() => {
     }
     return new MediaStream(tracks);
   };
-  md.enumerateDevices = async () => [
+  md.enumerateDevices = async function () {
+    return [
     { deviceId: "synthetic-camera", kind: "videoinput", label: "Synthetic camera", groupId: "g" },
     { deviceId: "synthetic-mic", kind: "audioinput", label: "Synthetic microphone", groupId: "g" },
-  ];
+    ];
+  };
 })();`;

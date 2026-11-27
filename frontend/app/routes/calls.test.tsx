@@ -921,3 +921,51 @@ it("refreshes the guest list every 3 seconds, and a failed background refresh st
     vi.useRealTimers();
   }
 });
+
+// A waiting guest must never sit unseen behind a desk that stopped updating: a hidden tab's timers run about once a
+// minute, so the desk catches up when it is looked at, says when it last heard from the API, and says when it can't.
+it("catches up when the tab is shown or focused, and says when it last updated", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    const calls = serve();
+    render(<CallsRoute />);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await screen.findByText("Ada", { selector: "h3" })).toBeVisible();
+    expect(screen.getByText(/^Updated \d/)).toBeVisible();
+    const participantsAsked = () => calls.filter((call) => call.url.includes("/participants")).length;
+    const before = participantsAsked();
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(participantsAsked()).toBe(before);
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(participantsAsked()).toBe(before + 1);
+    window.dispatchEvent(new Event("focus"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(participantsAsked()).toBe(before + 2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("says the desk is not updating after two failed refreshes in a row, and clears it when one succeeds", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    serve();
+    render(<CallsRoute />);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await screen.findByText("Ada", { selector: "h3" })).toBeVisible();
+    serve({ "GET /webrtc/config": () => new Response("down", { status: 500 }) });
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(screen.queryByText(/The desk is not updating/)).toBeNull();
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(screen.getByRole("alert")).toHaveTextContent("The desk is not updating: the last 2 refreshes failed.");
+    serve();
+    await vi.advanceTimersByTimeAsync(3_000);
+    await vi.waitFor(() => expect(screen.queryByText(/The desk is not updating/)).toBeNull());
+  } finally {
+    vi.useRealTimers();
+  }
+});

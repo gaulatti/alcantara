@@ -100,6 +100,10 @@ export default function CallsRoute() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [roomReturn, setRoomReturn] = useState<RoomReturn | null>(null);
+  // When the desk last heard from the API, and how many polls in a row have failed since: a waiting guest must never
+  // sit unseen behind a desk that silently stopped updating.
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [failedPolls, setFailedPolls] = useState(0);
   const [displayName, setDisplayName] = useState('');
   const [expiresInHours, setExpiresInHours] = useState('24');
   const [createdUrl, setCreatedUrl] = useState('');
@@ -143,6 +147,8 @@ export default function CallsRoute() {
     setInvitations(allInvitations.filter((item) => item.programId === programId));
     setParticipants(room.participants);
     setRoomReturn(room.room ?? null);
+    setUpdatedAt(new Date());
+    setFailedPolls(0);
   }, [programId]);
 
   const load = useCallback(() => {
@@ -162,9 +168,18 @@ export default function CallsRoute() {
 
   useEffect(() => {
     void load();
-    const timer = window.setInterval(() => void refresh().catch(() => undefined), 3000);
+    const poll = () => void refresh().catch(() => setFailedPolls((count) => count + 1));
+    const timer = window.setInterval(poll, 3000);
+    // A browser slows timers in a hidden tab to about once a minute, so the desk catches up the moment it is looked at.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') poll();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', poll);
     return () => {
       window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', poll);
       const talkback = talkbackRef.current;
       if (talkback) {
         talkback.track.stop();
@@ -398,8 +413,15 @@ export default function CallsRoute() {
           <span>Room {programId}</span>
           <span>{activeInvitations.length} of 6 slots in use</span>
           <span>{livekitEnabled ? 'LiveKit connected' : 'Checking LiveKit…'}</span>
+          {updatedAt ? <span>Updated {updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span> : null}
           <HostMicOnAir programId={programId} canOperate={canOperate} />
         </section>
+        {failedPolls >= 2 ? (
+          <div role='alert' className='mb-5 rounded-[var(--radius-ui)] border border-terracotta/30 bg-terracotta/[0.08] px-4 py-3 text-sm'>
+            The desk is not updating: the last {failedPolls} refreshes failed. Guests who join now may not appear until it
+            recovers. Press Refresh, or reload the page.
+          </div>
+        ) : null}
         {notice ? (
           <div role='status' aria-live='polite' className='mb-5 rounded-[var(--radius-ui)] border border-sea/20 bg-sea/[0.06] px-4 py-3 text-sm'>
             {notice}

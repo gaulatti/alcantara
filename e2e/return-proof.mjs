@@ -20,7 +20,8 @@ const ENGINE = process.env.WEBRTC_BROWSER || "chromium";
 const SECONDS = Number(process.env.RETURN_SECONDS || 20);
 const EXPECT = process.env.RETURN_EXPECT || "sound";
 const TIMEOUT = Number(process.env.WEBRTC_TIMEOUT_MS || 60_000);
-const ADMIT_TIMEOUT = process.env.ADMIT_SECONDS ? Number(process.env.ADMIT_SECONDS) * 1000 : TIMEOUT;
+// With a production invitation an operator admits the guest by hand on /calls, which takes longer than a step.
+const ADMIT_TIMEOUT = process.env.ADMIT_SECONDS ? Number(process.env.ADMIT_SECONDS) * 1000 : INVITATION ? Math.max(TIMEOUT, 180_000) : TIMEOUT;
 /** Peak level, 0 to 1, above which the return is not silence. */
 const AUDIBLE = 0.01;
 
@@ -140,7 +141,31 @@ const options = {
     webkit: {},
 }[ENGINE];
 let browser;
+let guestPage = null;
 let ok = false;
+/** What the guest page shows when a step fails: its status text, the join controls and any help or error it gives. */
+async function describeGuest(page) {
+  if (!page) return {};
+  return page
+    .evaluate(() => {
+      const buttonState = (pattern) => {
+        const button = [...document.querySelectorAll("button")].find((b) => pattern.test(b.textContent || ""));
+        return button ? (button.disabled ? "disabled" : "enabled") : "absent";
+      };
+      const text = (selector) => [...document.querySelectorAll(selector)].map((n) => (n.textContent || "").trim()).filter(Boolean).join(" | ").slice(0, 300);
+      return {
+        url: location.pathname,
+        heading: text("h1"),
+        status: text("header p, [role=status]"),
+        alerts: text("[role=alert]"),
+        speakerTest: buttonState(/Speaker test/),
+        join: buttonState(/Join studio/),
+        leave: buttonState(/Leave/),
+        mediaDevices: Boolean(navigator.mediaDevices?.getUserMedia),
+      };
+    })
+    .catch((reason) => ({ unreadable: String(reason?.message ?? reason).split("\n")[0] }));
+}
 try {
   browser = await { chromium, firefox, webkit }[ENGINE].launch(options);
   const context = await browser.newContext(ENGINE === "chromium" ? { permissions: ["camera", "microphone"] } : {});
@@ -164,6 +189,7 @@ try {
     };
   });
   const guest = await context.newPage();
+  guestPage = guest;
   await guest.goto(`${APP}${invitation.invitationPath}`);
   await guest.getByRole("button", { name: /Speaker test/ }).click({ timeout: TIMEOUT });
   await guest.getByLabel(/I am wearing headphones/).check({ timeout: TIMEOUT });
@@ -191,7 +217,7 @@ try {
   await guest.getByRole("button", { name: /Leave/ }).click();
   report("guest-left", { ok: true });
 } catch (error) {
-  report("error", { ok: false, error: String(error?.message ?? error).split("\n")[0] });
+  report("error", { ok: false, error: String(error?.message ?? error).split("\n")[0], page: await describeGuest(guestPage) });
 } finally {
   await browser?.close();
   if (invitation.id) await api(`/webrtc/invitations/${encodeURIComponent(invitation.id)}`, { method: "DELETE", token }).catch(() => undefined);
