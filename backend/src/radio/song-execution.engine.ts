@@ -3846,7 +3846,13 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       // the same item as before.
       const resolved = resolveProgramSongLeaf(sequence, sequence.startedAt);
       if (!resolved) return null;
-      if (!resolved.highRotation) return resolved;
+      if (!resolved.highRotation) {
+        if (sequence.mode === 'shuffle')
+          this.metrics.recordShufflePick(
+            sequence.shuffleOrder?.length ? 'shuffled' : 'rows',
+          );
+        return resolved;
+      }
 
       if (state.rotationHistoryHealthy) {
         const eligibility = getHighRotationEligibility(

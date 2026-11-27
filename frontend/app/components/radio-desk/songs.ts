@@ -7,6 +7,7 @@ import type {
   ProgramSongSequence,
   ProgramSongSequenceItem,
 } from "../../utils/programSequence";
+import { programSongPlayOrder } from "../../utils/programSequence";
 import type { NextUp } from "./onAir";
 
 export type SongLeaf = Extract<ProgramSongSequenceItem, { kind: "preset" }>;
@@ -66,7 +67,8 @@ export function nextUp({
   queue: ProgramSongQueueEntry[];
   playback: ProgramSongPlaybackState | null;
 }): NextUpSong | null {
-  const leaves = rotationLeaves(sequence.items);
+  // In the order that plays, which in shuffle is not the rows' order.
+  const leaves = rotationLeaves(programSongPlayOrder(sequence));
   const byId = new Map(leaves.map((leaf) => [leaf.id, leaf]));
   const current = onAirLeaf(leaves, playback, sequence.activeItemId ?? null);
   // The entry on air stays in the queue until it ends (PlayNextQueue marks it Playing): it is not next (walk part 4).

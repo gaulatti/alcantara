@@ -170,6 +170,7 @@ function setup(songs: Array<Record<string, unknown>> = [CATALOGUE_SONG]) {
     recordSongQueueAction: jest.fn(),
     recordSongQueueDepth: jest.fn(),
     recordHighRotationAction: jest.fn(),
+    recordShufflePick: jest.fn(),
     recordHighRotationFavorites: jest.fn(),
     recordAutomaticPrograms: jest.fn(),
     recordEngineResync: jest.fn(),

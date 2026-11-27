@@ -14,6 +14,8 @@ interface BaseSequence<TItem extends BaseSequenceItem> {
   intervalMs: number;
   loop: boolean;
   startedAt: number;
+  /** The item ids in the order shuffle plays them. `items` stays the operator's own order. */
+  shuffleOrder?: string[];
 }
 
 export interface ProgramSongSequenceLeafItem extends BaseSequenceItem {
@@ -76,10 +78,26 @@ function normalizeMode(value: unknown): ProgramSequenceMode {
   return 'autoplay';
 }
 
+/**
+ * The items in the order the rotation plays them: in shuffle, the stored shuffled order (an item added since plays
+ * after it); otherwise the operator's order.
+ */
+export function programSongPlayOrder(
+  sequence: ProgramSongSequence,
+): ProgramSongSequenceItem[] {
+  const order = sequence.shuffleOrder;
+  if (sequence.mode !== 'shuffle' || !order?.length) return sequence.items;
+  const rank = new Map(order.map((id, index) => [id, index]));
+  return [...sequence.items].sort(
+    (a, b) =>
+      (rank.get(a.id) ?? order.length) - (rank.get(b.id) ?? order.length),
+  );
+}
+
 type SequenceAdvanceResult = 'advanced' | 'exhausted' | 'not-found';
 
 function resetSequenceCursor(sequence: ProgramSongSequence): void {
-  const first = sequence.items[0] ?? null;
+  const first = programSongPlayOrder(sequence)[0] ?? null;
   sequence.activeItemId = first?.id ?? null;
   if (first?.kind === 'sequence') resetSequenceCursor(first.sequence);
 }
@@ -88,8 +106,9 @@ function advanceSequenceCursor(
   sequence: ProgramSongSequence,
   activeLeafId: string,
 ): SequenceAdvanceResult {
-  for (let index = 0; index < sequence.items.length; index += 1) {
-    const item = sequence.items[index];
+  const items = programSongPlayOrder(sequence);
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
     let found = item.kind === 'preset' && item.id === activeLeafId;
 
     if (item.kind === 'sequence') {
@@ -100,7 +119,7 @@ function advanceSequenceCursor(
 
     if (!found) continue;
 
-    const next = sequence.items[index + 1] ?? null;
+    const next = items[index + 1] ?? null;
     if (next) {
       sequence.activeItemId = next.id;
       sequence.startedAt = Date.now();
@@ -132,7 +151,8 @@ export function advanceProgramSongSequence(
     if (result !== 'not-found') return result === 'advanced';
   }
 
-  const activeIndex = sequence.items.findIndex(
+  const items = programSongPlayOrder(sequence);
+  const activeIndex = items.findIndex(
     (item) => item.id === sequence.activeItemId,
   );
   if (activeIndex < 0) {
@@ -146,7 +166,7 @@ export function advanceProgramSongSequence(
     }
     return false;
   }
-  const active = sequence.items[activeIndex];
+  const active = items[activeIndex];
   if (active.kind === 'sequence') {
     const resolved = resolveProgramSongLeaf(sequence);
     if (resolved) {
@@ -155,7 +175,7 @@ export function advanceProgramSongSequence(
     }
   }
 
-  const next = sequence.items[activeIndex + 1] ?? null;
+  const next = items[activeIndex + 1] ?? null;
   if (next) {
     sequence.activeItemId = next.id;
     sequence.startedAt = Date.now();
@@ -263,6 +283,13 @@ function withNormalizedSequenceShape<TItem extends BaseSequenceItem>(
       typeof record.startedAt === 'number' && Number.isFinite(record.startedAt)
         ? record.startedAt
         : Date.now(),
+    ...(Array.isArray(record.shuffleOrder)
+      ? {
+          shuffleOrder: record.shuffleOrder.filter(
+            (id): id is string => typeof id === 'string',
+          ),
+        }
+      : {}),
   };
 }
 
@@ -361,9 +388,11 @@ function getSongItemPlaybackDurationMs(
 }
 
 function getSelectedSongItem(
-  sequence: ProgramSongSequence,
+  stored: ProgramSongSequence,
   nowMs: number,
 ): ProgramSongSequenceItem | null {
+  // Every walk below is along the order that plays.
+  const sequence = { ...stored, items: programSongPlayOrder(stored) };
   if (sequence.items.length === 0) {
     return null;
   }

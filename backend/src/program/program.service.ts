@@ -2057,6 +2057,9 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     return {
       songSequence: state.songSequence ?? null,
       sequenceVersion: programSongSequenceVersion(state.songSequence),
+      // This backend's engine plays `shuffleOrder` and leaves the rows alone (#834). A console that does not read it
+      // here saves the shuffled order as the rows, as an older backend needs.
+      shuffleKeepsRows: true,
       songQueue: normalizeProgramSongQueue(state.songQueue),
       mixerSettings,
       version: this.getProgramTopicVersion(normalizedProgramId, 'audioBus'),

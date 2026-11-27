@@ -36,6 +36,7 @@ import {
   createProgramSongSequence,
   createProgramTextSequence,
   normalizeProgramSongSequence,
+  rowsAsPlayOrder,
   type ProgramSongSequence,
   type ProgramSongSequenceItem,
 } from "../utils/programSequence";
@@ -1747,7 +1748,9 @@ export default function Control() {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              songSequence: normalizedSongSequence,
+              songSequence: rotationVersion.shuffleKeepsRows()
+                ? normalizedSongSequence
+                : rowsAsPlayOrder(normalizedSongSequence),
               sequenceVersion,
             }),
           },

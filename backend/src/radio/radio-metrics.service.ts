@@ -521,6 +521,10 @@ const SIMILARITY_ACTION_RESULTS: SimilarityActionResult[] = [
   'decision-persistence-failed',
 ];
 
+/** Which order a shuffle pick followed: the stored shuffled order, or the rows (a rotation saved without one). */
+const SHUFFLE_PICK_ORDERS = ['shuffled', 'rows'] as const;
+export type ShufflePickOrder = (typeof SHUFFLE_PICK_ORDERS)[number];
+
 const HIGH_ROTATION_ACTION_RESULTS: HighRotationActionResult[] = [
   'selected',
   'played',
@@ -584,6 +588,7 @@ export class RadioMetricsService {
   private readonly playoutUnconfirmedTakes = new Map<string, number>();
   private songQueueDepth = 0;
   private readonly highRotationActions = new Map<string, number>();
+  private readonly shufflePicks = new Map<ShufflePickOrder, number>();
   private readonly similarityActions = new Map<string, number>();
   private readonly radioSongScopeRefusals = new Map<string, number>();
   private readonly asRunScopeRefusals = new Map<string, number>();
@@ -725,6 +730,10 @@ export class RadioMetricsService {
       result,
       (this.highRotationActions.get(result) ?? 0) + 1,
     );
+  }
+
+  recordShufflePick(order: ShufflePickOrder): void {
+    this.shufflePicks.set(order, (this.shufflePicks.get(order) ?? 0) + 1);
   }
 
   recordAsRunScopeRefusal(path: AsRunScopePath): void {
@@ -1079,6 +1088,14 @@ export class RadioMetricsService {
       '# TYPE alcantara_radio_song_queue_depth gauge',
       `alcantara_radio_song_queue_depth ${this.songQueueDepth}`,
     );
+    lines.push(
+      '# HELP alcantara_radio_shuffle_picks_total Songs picked from the rotation cursor in shuffle, by the order followed.',
+      '# TYPE alcantara_radio_shuffle_picks_total counter',
+    );
+    for (const order of SHUFFLE_PICK_ORDERS)
+      lines.push(
+        `alcantara_radio_shuffle_picks_total{order="${order}"} ${this.shufflePicks.get(order) ?? 0}`,
+      );
     lines.push(
       '# HELP alcantara_radio_high_rotation_actions_total High rotation scheduler actions by bounded result.',
       '# TYPE alcantara_radio_high_rotation_actions_total counter',

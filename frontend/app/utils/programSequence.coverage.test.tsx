@@ -270,10 +270,10 @@ describe('song shuffle', () => {
 
   it('keeps the active song first, and rotates when the shuffle changed nothing', () => {
     const anchored = shuffleProgramSongSequence({ ...base, activeItemId: 'b' }, 'b', () => 0.99);
-    expect(anchored.items[0].id).toBe('b');
+    expect(anchored.shuffleOrder![0]).toBe('b');
     expect(anchored.activeItemId).toBe('b');
     const unanchored = shuffleProgramSongSequence(base, null, () => 0.99);
-    expect(unanchored.items.map((item) => item.id)).not.toEqual(['a', 'b', 'c']);
+    expect(unanchored.shuffleOrder).not.toEqual(['a', 'b', 'c']);
     expect(unanchored.mode).toBe('shuffle');
     expect(shuffleProgramSongSequence({ ...base, activeItemId: 'gone' }, 'gone', () => 0).activeItemId).toBe('gone');
   });
