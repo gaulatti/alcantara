@@ -1379,3 +1379,11 @@
     min-height: 44px;
   }
 }
+
+/* gaulatti/alcantara#879 item 7: at 1024 px the guest list sits first in the tools column, above the cartwall and the
+   mixer, so it is in view at 1024 × 768 without scrolling. The cartwall and mixer stay on the page below it. */
+@media (min-width: 1024px) {
+  .radio-tools > section[aria-label="Guest pre-fade listen"] {
+    order: -1;
+  }
+}

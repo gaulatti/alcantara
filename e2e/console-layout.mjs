@@ -213,6 +213,10 @@ export async function runLayoutPass(browser, { app, api, token, shots }) {
           for (const [panel, state] of Object.entries(d)) {
             record(`${name}: ${panel} on the page`, state.present, state.present ? (state.visible ? "visible" : `below the fold, bottom ${state.bottom}px of ${state.fold}px (accepted at this width)`) : "not on the page");
           }
+          // The guest list is above the fold at this width too (gaulatti/alcantara#879 item 7): the operator sees who is
+          // waiting and on the call without scrolling, and the mixer and cartwall stay on the page.
+          const guests = d.guests;
+          record(`${name}: guests visible without scrolling`, Boolean(guests?.visible), guests?.present ? `bottom ${guests.bottom}px of ${guests.fold}px fold` : "not on the page");
         }
         await page.screenshot({ path: join(shots, `desk-${size.width}x${size.height}.png`) });
       } finally {
