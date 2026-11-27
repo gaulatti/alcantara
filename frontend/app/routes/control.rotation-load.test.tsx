@@ -120,3 +120,21 @@ it("shows a failed rotation load as an error, then the rotation once the backend
   expect((await screen.findAllByText("Fictional opener", {}, { timeout: 8000 })).length).toBeGreaterThan(0);
   expect(screen.queryByText("Couldn't load the rotation")).toBeNull();
 }, 15000);
+
+// Walk part 5: the backend restarting more than once left the desk on "Couldn't load the rotation" until a reload,
+// because a second failed retry kept the flag set and nothing retried again. It keeps retrying until one answers.
+it("keeps retrying a failed rotation load past a failed retry", async () => {
+  let attempts = 0;
+  server.answer("GET /program/main/audio-bus", () => {
+    attempts += 1;
+    if (attempts <= 2) return new Response("down", { status: 500 });
+    return Response.json({
+      songSequence: { mode: "manual", items: [song("s1", "Fictional opener", 11)], activeItemId: "s1", intervalMs: 4000, loop: true, startedAt: 0 },
+      songQueue: [],
+    });
+  });
+  render(view());
+  expect(await screen.findByText("Couldn't load the rotation", {}, { timeout: 5000 })).toBeVisible();
+  expect((await screen.findAllByText("Fictional opener", {}, { timeout: 12000 })).length).toBeGreaterThan(0);
+  expect(attempts).toBeGreaterThanOrEqual(3);
+}, 20000);

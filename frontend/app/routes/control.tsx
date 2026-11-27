@@ -1734,13 +1734,15 @@ export default function Control() {
     }
   };
 
-  // Retry the rotation once the backend answers again, while its load is failing (a restart is the usual cause).
+  // Retry the rotation every few seconds while its load is failing, until the backend answers (a restart is the usual
+  // cause). One retry was not enough: a second failure left the flag set, the effect never ran again, and the desk
+  // kept "Couldn't load the rotation" until a reload (walk part 5).
   useEffect(() => {
     if (!rotationLoadFailed) return;
-    const retry = window.setTimeout(() => {
+    const retry = window.setInterval(() => {
       void fetchProgramAudioBusSettings(activeProgramId, false);
     }, 3000);
-    return () => window.clearTimeout(retry);
+    return () => window.clearInterval(retry);
   }, [rotationLoadFailed, activeProgramId]);
 
   const saveProgramAudioBusSongSequence = async (
