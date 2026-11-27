@@ -452,8 +452,8 @@ describe('next-song announcement and handoff', () => {
   });
 
   it.each([false, true])(
-    'tells the desk of a commanded jingle, and that it is over when frozen under it (%s)',
-    async (freeze) => {
+    'tells the desk of a commanded jingle, and that it is over unless a song replaced it (%s)',
+    async (replaced) => {
       const h = harness();
       h.palazzo.settings = {
         bumperEnabled: true,
@@ -466,12 +466,17 @@ describe('next-song announcement and handoff', () => {
         if (event.type === 'jingle_command') jingles.push(event.name);
       });
       await onAir(h);
+      const state = h.engine['states'].get(PROGRAM)!;
+      const song = state.activeSong;
+      // Between two songs, as the commanded spot runs: nothing active.
+      state.activeSong = null;
       const done = h.engine['maybeBumper'](PROGRAM);
       for (let j = 0; j < 60; j += 1) await Promise.resolve();
-      if (freeze) h.engine['states'].get(PROGRAM)!.frozen = true;
+      expect(jingles).toEqual(['Bumper']);
+      if (replaced) state.activeSong = song;
       await jest.advanceTimersByTimeAsync(8_000);
       await done;
-      expect(jingles).toEqual(freeze ? ['Bumper', null] : ['Bumper']);
+      expect(jingles).toEqual(replaced ? ['Bumper'] : ['Bumper', null]);
     },
   );
 

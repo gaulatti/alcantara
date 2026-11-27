@@ -141,7 +141,8 @@ export type SongEngineEvent =
   | {
       /**
        * A jingle sent by command is on air between two songs, with no song active (gaulatti/alcantara#879); a null
-       * name says it is over without a song following. For the console only.
+       * name says it is over. Nothing sent to Palazzo; renderers of the program stream see a playback that is not
+       * playing.
        */
       type: 'jingle_command';
       programId: string;
@@ -4937,8 +4938,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       this.recordBumperMetric('command', 'sent');
       this.emitJingle(programId, inst.name);
       await new Promise((r) => setTimeout(r, 8000));
-      // Frozen while the jingle played: no song follows to replace it on the desk.
-      if (this.states.get(programId)?.frozen) this.emitJingle(programId, null);
+      // Over. A song that follows says so itself; when none does (frozen, rotation ended, command failed), the desk
+      // must not keep naming the jingle.
+      if (!this.states.get(programId)?.activeSong)
+        this.emitJingle(programId, null);
     } catch (error) {
       this.logger.warn(
         `Bumper attempt failed before its send on ${programId} (${errorClass(error)})`,
