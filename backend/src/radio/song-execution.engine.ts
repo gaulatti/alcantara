@@ -365,6 +365,8 @@ function restampSequence(
 }
 
 interface SongEngineState {
+  /** Counts the Stops on this program, so a Play Next claim written across one can tell that it lost. */
+  stops?: number;
   /** The song the as-run log last saw start, read at boot, until the first start or adoption (#849). */
   airedAtBoot?: number;
   /** When the first announcement began waiting for the similarity index (#277). */
@@ -553,8 +555,7 @@ function moveCursorOffRemovedLeaves(
   const next = activeProgramSongLeafId(sequence);
   if (next && wanted.has(next))
     throw new BadRequestException('No leaf is left to move the rotation to');
-  if (next && sequence.activeItemId)
-    sequence.cuedItemId = next;
+  if (next && sequence.activeItemId) sequence.cuedItemId = next;
   return next;
 }
 
@@ -1718,6 +1719,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           ),
       );
     }
+    // A Play Next claim still being written when this Stop lands gives its entry back instead of starting it.
+    state.stops = (state.stops ?? 0) + 1;
     const stoppedQueueEntryId = state.activeSong?.queueEntryId ?? null;
     if (state.activeSong) {
       this.closePlayForAsRun(
@@ -4216,11 +4219,22 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           ? state.announcement
           : null;
       const queuePlaybackRequestId = announcedEntry?.playbackId ?? randomUUID();
+      const stopsAtClaim = state.stops ?? 0;
       state.transitioning = true;
       void this.claimQueueHead(programId, queueEntry.id, queuePlaybackRequestId)
         .then((claimed) => {
           const nextState = this.states.get(programId);
           if (!nextState) return;
+          // A Stop landed while the claim was being written: the Stop wins. Nothing starts, and the entry is given back
+          // and stays at the head of the queue (walk part 5).
+          if ((nextState.stops ?? 0) !== stopsAtClaim) {
+            if (claimed)
+              this.releaseQueueClaimAfterPlaybackStops(
+                programId,
+                queueEntry.id,
+              );
+            return;
+          }
           nextState.transitioning = false;
           if (claimed && nextState.activeSong) {
             // A take landed while the claim was being written: the taken song keeps the air, and the claim is given

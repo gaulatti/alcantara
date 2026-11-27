@@ -393,6 +393,9 @@ flight, the taken song keeps the air: when the save completes, the claim is give
 Stop gives it back, and the entry stays at the head of the queue. Before, the claim's continuation commanded the
 queued song over the taken one (#814 review).
 
+A Stop that lands while that save is in flight wins the same way: when the save completes, nothing starts, the claim
+is given back (`released`), and the entry stays at the head of the queue for the operator's next start (walk part 5).
+
 ## When a rotation that does not loop runs out
 
 At the end of the last song of an automatic rotation with Loop off, and nothing queued, the engine turns the rotation
