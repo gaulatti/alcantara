@@ -128,11 +128,17 @@ test("puts on air only on-air guests and the host's onair:host track, never talk
   const live = new Set(["guest-anna"]);
   assert.equal(isOnAirTrack(track("a", "guest-anna"), live), true);
   assert.equal(isOnAirTrack(track("b", "guest-cy"), live), false);
-  assert.equal(isOnAirTrack(track("c", "operator-1", "onair:host"), live), true);
-  assert.equal(isOnAirTrack(track("d", "operator-1", "talkback:all"), live), false);
-  assert.equal(isOnAirTrack(track("e", "guest-anna", "talkback:x"), live), false);
-  assert.equal(isOnAirTrack(track("f", "operator-1", "microphone"), live), false);
-  assert.equal(isOnAirTrack(track("g", "desktop-program-feed-x", "onair:host"), live), false);
+  const program = "modoitaliano.fm";
+  assert.equal(isOnAirTrack(track("c", "operator-host-mic-modoitaliano.fm", "onair:host"), live, program), true);
+  // gaulatti/alcantara#879: only the program's one host-mic identity; any other operator connection's onair:host is
+  // ignored, so two tabs can never put two host microphones on air.
+  assert.equal(isOnAirTrack(track("c2", "operator-1", "onair:host"), live, program), false);
+  assert.equal(isOnAirTrack(track("c3", "operator-host-mic-other.fm", "onair:host"), live, program), false);
+  assert.equal(isOnAirTrack(track("c4", "operator-host-mic-modoitaliano.fm", "microphone"), live, program), false);
+  assert.equal(isOnAirTrack(track("d", "operator-1", "talkback:all"), live, program), false);
+  assert.equal(isOnAirTrack(track("e", "guest-anna", "talkback:x"), live, program), false);
+  assert.equal(isOnAirTrack(track("f", "operator-1", "microphone"), live, program), false);
+  assert.equal(isOnAirTrack(track("g", "desktop-program-feed-x", "onair:host"), live, program), false);
   assert.equal(isOnAirTrack({ ...track("h", "guest-anna"), kind: "other" }, live), false);
 });
 
@@ -199,7 +205,7 @@ test("opens the push only while someone is on air, mixes what they say in real t
   assert.equal(h.children[0].written.length, 1, "nothing more is due yet");
 
   // The host goes on air too, then everybody leaves.
-  sending(h, "host", "operator-1", "onair:host");
+  sending(h, "host", "operator-host-mic-modoitaliano.fm", "onair:host");
   h.handlers().frame("anna", Int16Array.from([1]));
   await h.worker.step();
   assert.equal(h.worker.metrics.state.sources, 2);
@@ -465,4 +471,18 @@ test("still takes a dead publisher off air on the silence timer while the stream
   assert.equal(h.worker.isPushing(), false);
   h.worker.stop();
   await following;
+});
+
+test("puts no onair:host on air from an operator connection other than the program's one host mic", async () => {
+  const h = harness();
+  await h.worker.step();
+  // A second tab's microphone on an ordinary operator token: never on air (gaulatti/alcantara#879).
+  sending(h, "stray", "operator-1", "onair:host");
+  await h.worker.step();
+  assert.equal(h.worker.isPushing(), false);
+  assert.equal(h.worker.metrics.state.sources, 0);
+  sending(h, "host", "operator-host-mic-modoitaliano.fm", "onair:host");
+  await h.worker.step();
+  assert.equal(h.worker.isPushing(), true);
+  assert.equal(h.worker.metrics.state.sources, 1);
 });

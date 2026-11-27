@@ -50,12 +50,17 @@ export function readConfig(env) {
   };
 }
 
-/** Whether a track goes on air: an on-air guest's audio, or an operator's `onair:host` track. Never talkback. */
-export function isOnAirTrack(track, onAirGuests) {
+/**
+ * Whether a track goes on air: an on-air guest's audio, or the host's microphone. Never talkback. The host's microphone
+ * is `onair:host` from the program's one host-mic identity only (gaulatti/alcantara#879): LiveKit admits one
+ * participant per identity, so at most one host microphone reaches air, and an `onair:host` track from any other
+ * operator connection is ignored.
+ */
+export function isOnAirTrack(track, onAirGuests, programId) {
   if (track.kind !== "audio") return false;
   if (track.name.startsWith("talkback:")) return false;
   if (track.identity.startsWith("guest-")) return onAirGuests.has(track.identity);
-  return track.identity.startsWith("operator-") && track.name === "onair:host";
+  return track.identity === `operator-host-mic-${programId}` && track.name === "onair:host";
 }
 
 /** Sums the on-air sources into one mono 48 kHz feed. Each source queues what it receives; a pull drains them all. */
@@ -217,7 +222,7 @@ export function createWorker({ config, fetch, connectRoom, spawn, now = Date.now
         frame: (key, samples) => {
           const track = tracks.get(key);
           if (track && samples.some((sample) => sample !== 0)) lastFrameAt.set(key, now());
-          if (push && track && isOnAirTrack(track, onAirGuests)) mixer.push(key, samples);
+          if (push && track && isOnAirTrack(track, onAirGuests, config.programId)) mixer.push(key, samples);
         },
         disconnected: () => {
           room = null;
@@ -337,7 +342,7 @@ export function createWorker({ config, fetch, connectRoom, spawn, now = Date.now
   function evaluate() {
     const time = now();
     const sources = [...tracks.values()].filter(
-      (track) => isOnAirTrack(track, onAirGuests) && time - (lastFrameAt.get(track.key) ?? -Infinity) < FRAME_STALE_MS,
+      (track) => isOnAirTrack(track, onAirGuests, config.programId) && time - (lastFrameAt.get(track.key) ?? -Infinity) < FRAME_STALE_MS,
     );
     metrics.state.sources = sources.length;
     if (sources.length) {
