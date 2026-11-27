@@ -942,6 +942,71 @@ describe('WebrtcService coverage', () => {
     });
   });
 
+  describe('listParticipants return', () => {
+    const track = (name: string) => ({
+      sid: `TR_${name}`,
+      name,
+      source: TrackSource.MICROPHONE,
+      muted: false,
+      width: 0,
+      height: 0,
+      mimeType: 'audio/opus',
+    });
+    const reported = (returnFeedHealth: string) => ({
+      events: [{ type: 'telemetry', details: { returnFeedHealth } }],
+      _count: { events: 1 },
+    });
+
+    it('says the return is sending when the router publishes mix-minus tracks, and each guest reports what they hear', async () => {
+      const { service, prisma, livekit } = setup();
+      const hearingId = '22222222-2222-4222-8222-222222222222';
+      const silentId = '33333333-3333-4333-8333-333333333333';
+      const neverId = '44444444-4444-4444-8444-444444444444';
+      const future = new Date(Date.now() + 60_000);
+      prisma.guestInvitation.findMany.mockResolvedValue([
+        makeInvitation({ id: hearingId, activeSessionUntil: future, ...reported('healthy') }),
+        makeInvitation({ id: silentId, activeSessionUntil: future, ...reported('missing') }),
+        makeInvitation({ id: neverId, activeSessionUntil: null, events: [], _count: { events: 0 } }),
+      ]);
+      livekit.listParticipants.mockResolvedValue([
+        { identity: 'return-router-main', tracks: [track('mixminus:guest-a:master'), track('mixminus:guest-b:master')] },
+        { identity: `guest-${hearingId}`, tracks: [] },
+      ]);
+      const result = await service.listParticipants('main');
+      expect(result.room).toEqual({ returnSending: true, returnParticipant: 'return-router-main' });
+      expect(result.participants.map((p) => p.returnReaching)).toEqual(['healthy', 'missing', null]);
+    });
+
+    it('says the return is not sending when the router is absent, or present with no mix-minus track', async () => {
+      const { service, prisma, livekit } = setup();
+      prisma.guestInvitation.findMany.mockResolvedValue([makeInvitation({ activeSessionUntil: new Date(Date.now() + 60_000), ...reported('healthy') })]);
+      livekit.listParticipants.mockResolvedValue([]);
+      expect((await service.listParticipants('main')).room).toEqual({ returnSending: false, returnParticipant: null });
+
+      livekit.listParticipants.mockResolvedValue([{ identity: 'return-router-main', tracks: [track('program-audio')] }]);
+      expect((await service.listParticipants('main')).room).toEqual({ returnSending: false, returnParticipant: null });
+    });
+
+    it('counts a hand-opened router page that publishes mix-minus tracks', async () => {
+      const { service, prisma, livekit } = setup();
+      prisma.guestInvitation.findMany.mockResolvedValue([]);
+      livekit.listParticipants.mockResolvedValue([
+        { identity: 'renderer-main-7f3a', tracks: [track('mixminus:guest-a:master')] },
+        { identity: 'renderer-other-1', tracks: [track('mixminus:guest-a:master')] },
+      ]);
+      expect((await service.listParticipants('main')).room).toEqual({ returnSending: true, returnParticipant: 'renderer-main-7f3a' });
+    });
+
+    it('does not read a return from a guest whose latest report is not telemetry', async () => {
+      const { service, prisma } = setup();
+      prisma.guestInvitation.findMany.mockResolvedValue([
+        makeInvitation({ events: [{ type: 'join_failed', details: { reason: 'NotAllowedError' } }], _count: { events: 1 } }),
+      ]);
+      const [row] = (await service.listParticipants('main')).participants;
+      expect(row.returnReaching).toBeNull();
+    });
+  });
+
   describe('listParticipants', () => {
     it('merges live LiveKit state into stored invitations', async () => {
       const { service, prisma, livekit } = setup();

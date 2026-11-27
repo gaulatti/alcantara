@@ -74,6 +74,7 @@ describe('guest calls for a program id with a dot, through Fastify HTTP', () => 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       roomName: 'alcantara-modoitaliano.fm',
+      room: { returnSending: false, returnParticipant: null },
       participants: [],
     });
     expect(listParticipants).toHaveBeenCalledWith('alcantara-modoitaliano.fm');

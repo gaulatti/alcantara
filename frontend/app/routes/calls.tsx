@@ -54,7 +54,11 @@ type Participant = {
   everJoined?: boolean;
   icePath?: IcePath | null;
   joinFailure?: CallFailure | null;
+  // Whether the guest's own page has the return, from its latest report (null until it reports).
+  returnReaching?: 'healthy' | 'missing' | null;
 };
+// Whether the studio sends the return to guests: a return router publishing mix-minus tracks is in the room.
+type RoomReturn = { returnSending: boolean; returnParticipant: string | null };
 
 export function meta({}: Route.MetaArgs) {
   return [{ title: 'Guest Calls - Alcántara' }];
@@ -94,6 +98,7 @@ export default function CallsRoute() {
   const canOperate = hasPermission('alcantara:webrtc:operate');
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
+  const [roomReturn, setRoomReturn] = useState<RoomReturn | null>(null);
   const [displayName, setDisplayName] = useState('');
   const [expiresInHours, setExpiresInHours] = useState('24');
   const [createdUrl, setCreatedUrl] = useState('');
@@ -132,9 +137,11 @@ export default function CallsRoute() {
     const allInvitations = (await invitationResponse.json()) as Invitation[];
     const room = (await participantResponse.json()) as {
       participants: Participant[];
+      room?: RoomReturn;
     };
     setInvitations(allInvitations.filter((item) => item.programId === programId));
     setParticipants(room.participants);
+    setRoomReturn(room.room ?? null);
   }, [programId]);
 
   const load = useCallback(() => {
@@ -465,6 +472,15 @@ export default function CallsRoute() {
             </Card>
           </aside>
           <section className='caller-desk-strips' aria-label='Guest slots'>
+            {loadState !== 'loading' ? (
+              <p className='text-sm font-medium' data-return-sending={roomReturn ? String(roomReturn.returnSending) : 'unknown'}>
+                {roomReturn === null
+                  ? 'Return to guests: unknown'
+                  : roomReturn.returnSending
+                    ? 'Return to guests: sending (program audio)'
+                    : 'Return to guests: not sending'}
+              </p>
+            ) : null}
             {loadState === 'loading' ? (
               <div role='status' aria-label='Loading guest slots'>
                 <SkeletonCard rows={3} />

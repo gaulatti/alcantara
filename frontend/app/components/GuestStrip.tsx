@@ -43,7 +43,15 @@ export interface StripParticipant {
   commands: Array<DeskCommand & { status: string }>;
   icePath?: IcePath | null;
   joinFailure?: CallFailure | null;
+  // Whether the guest's own page has the return: from its latest report. Null when it has not reported yet.
+  returnReaching?: 'healthy' | 'missing' | null;
 }
+
+const RETURN_REACHING_LABEL = {
+  healthy: 'Return: reaching them',
+  missing: 'Return: not reaching them',
+  unknown: 'Return: no report from the guest yet',
+} as const;
 
 /**
  * One guest as a channel strip (alcantara#301): state, return, cue and talk in
@@ -185,6 +193,11 @@ export function GuestStrip({
         </span>
       </header>
       <CallPathLine participant={participant} />
+      {connected ? (
+        <p className="guest-strip-note" data-return-reaching={participant.returnReaching ?? 'unknown'}>
+          {RETURN_REACHING_LABEL[participant.returnReaching ?? 'unknown']}
+        </p>
+      ) : null}
       {state === "cued-live" ? (
         <p className="guest-strip-note">
           Sent the live cue. The guest is on the output only through a scene that carries them.

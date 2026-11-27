@@ -56,6 +56,10 @@ const GUEST_FAILURES: readonly WebrtcJoinResult[] = [
   'other',
 ];
 
+function returnReachingFrom(value: unknown): 'healthy' | 'missing' | null {
+  return value === 'healthy' || value === 'missing' ? value : null;
+}
+
 function icePathFrom(value: unknown): WebrtcIcePath | null {
   return WEBRTC_ICE_PATHS.find((path) => path === value) ?? null;
 }
@@ -644,8 +648,21 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
     const liveByIdentity = new Map(
       participants.map((participant) => [participant.identity, participant]),
     );
+    // The return to guests is sent by a return router: the runner's page, return-router-<programId>, or a page an
+    // operator opened by hand, renderer-<programId>-<uuid>. Either sends it while it publishes mix-minus tracks
+    // (named mixminus:<guest>:<bus>).
+    const sendingRouter = participants.find(
+      (participant) =>
+        (participant.identity === `return-router-${programId}` ||
+          participant.identity.startsWith(`renderer-${programId}-`)) &&
+        participant.tracks.some((track) => track.name.startsWith('mixminus:')),
+    );
     return {
       roomName: this.roomName(programId),
+      room: {
+        returnSending: Boolean(sendingRouter),
+        returnParticipant: sendingRouter?.identity ?? null,
+      },
       participants: invitations.map((invitation) => {
         const identity = this.guestIdentity(invitation.id);
         const participant = liveByIdentity.get(identity);
@@ -955,8 +972,14 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
     const details = (event?.details ?? {}) as {
       iceTransport?: unknown;
       reason?: unknown;
+      returnFeedHealth?: unknown;
     };
     return {
+      // Whether the guest's own page has the return track: from its latest report, null when it never reported.
+      returnReaching:
+        event?.type === 'telemetry'
+          ? returnReachingFrom(details.returnFeedHealth)
+          : null,
       icePath:
         event?.type === 'telemetry' ? icePathFrom(details.iceTransport) : null,
       joinFailure:
