@@ -23,45 +23,44 @@ const status = (extra: Record<string, unknown>) => ({
   ...extra,
 });
 
+const warning = () => screen.queryByRole("region", { name: "Simulcast output status" });
+/** Both status calls have answered and the page has taken them in. */
+const settled = async () => {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+};
+
 it("shows the reason the radio needs attention, and nothing for an unknown or missing one", async () => {
   api(status({ reason: "url-rejected" }));
   render(<SimulcastStatusRail programId="radio-1" />);
-  expect(
-    await screen.findByText("Radio needs attention: URL not allowed"),
-  ).toBeVisible();
-  cleanup();
-  api(status({ reason: "from-the-future" }));
-  render(<SimulcastStatusRail programId="radio-1" />);
-  expect(await screen.findByText("Radio needs attention")).toBeVisible();
-  cleanup();
-  api(null);
-  render(<SimulcastStatusRail programId="radio-1" />);
-  expect(await screen.findByText("Radio needs attention")).toBeVisible();
+  await settled();
+  expect(warning()).toHaveTextContent("Radio URL not allowed · Setup");
+  expect(screen.getByRole("link", { name: "Setup" })).toHaveAttribute("href", "/radio-settings");
+  for (const body of [status({ reason: "from-the-future" }), null]) {
+    cleanup();
+    api(body);
+    render(<SimulcastStatusRail programId="radio-1" />);
+    await settled();
+    expect(warning()).toHaveTextContent("Radio needs attention · Setup");
+  }
 });
 
-it("shows no engine reason for a program that has no engine (a null body)", async () => {
-  api(null);
-  render(<SimulcastStatusRail programId="tv-1" />);
-  const badge = await screen.findByText("Radio needs attention");
-  expect(badge.textContent).toBe("Radio needs attention");
-});
-
-it("says ready for a live status from an older backend", async () => {
-  api({ connection: "connected", degraded: false, detail: null });
-  render(<SimulcastStatusRail programId="radio-1" />);
-  expect(await screen.findByText("Radio ready")).toBeVisible();
-});
-
-it("reports the radio ready when the stream runs and the palazzo is connected", async () => {
-  api(status({ connection: "connected", degraded: false }));
-  render(<SimulcastStatusRail programId="radio-1" />);
-  expect(await screen.findByText("Radio ready")).toBeVisible();
+it("says nothing while the radio is healthy, including a live status from an older backend", async () => {
+  for (const body of [{ connection: "connected", degraded: false, detail: null }, status({ connection: "polling", degraded: false })]) {
+    api(body);
+    render(<SimulcastStatusRail programId="radio-1" />);
+    await settled();
+    expect(warning()).toBeNull();
+    cleanup();
+  }
 });
 
 it("reports the radio as needing attention when both status calls fail", async () => {
   vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
   render(<SimulcastStatusRail programId="radio-1" />);
-  expect(await screen.findByText("Radio needs attention")).toBeVisible();
+  await settled();
+  expect(warning()).toHaveTextContent("Radio needs attention · Setup");
 });
 
 it("asks for the status again every eight seconds", async () => {

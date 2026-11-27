@@ -114,10 +114,10 @@ describe("workspace toolbar", () => {
   });
   it("labels the sources as preview, program, both or staged and the ready line", () => {
     render(<BroadcastSwitcherDeck {...baseProps()} scenes={[scene, other, { id: 3, name: "Three" } as any]} />);
-    expect(screen.getByText("Ready: Two")).toBeInTheDocument();
+    expect(screen.queryByText("Ready: Two")).toBeNull();
     expect(screen.getAllByText("Program")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Preview")[0]).toBeInTheDocument();
-    expect(screen.getByText("Stage")).toBeInTheDocument();
+    expect(screen.queryByText("Stage")).toBeNull();
     cleanup();
     render(<BroadcastSwitcherDeck {...baseProps()} activeScene={other} />);
     expect(screen.getByText("Preview · Program")).toBeInTheDocument();

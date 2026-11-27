@@ -3487,9 +3487,6 @@ export default function Control() {
           }
         `}
       </style>
-      {programState?.type === "both" ? (
-        <SimulcastStatusRail programId={activeProgramId} />
-      ) : null}
       {sceneCatalogError ? (
         <div role="alert" className="mx-4 mt-3 flex flex-wrap items-center gap-3 rounded-[var(--radius-button)] border border-terracotta/40 bg-terracotta/10 px-3 py-2 text-sm text-terracotta">
           <div className="min-w-0 flex-1 space-y-1">
@@ -3516,6 +3513,11 @@ export default function Control() {
         </div>
       ) : null}
       <BroadcastSwitcherDeck
+        notice={
+          programState?.type === "both" ? (
+            <SimulcastStatusRail programId={activeProgramId} />
+          ) : null
+        }
         programId={activeProgramId}
         activeScene={programState?.activeScene ?? null}
         stagedScene={stagedSceneData}

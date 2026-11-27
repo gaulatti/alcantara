@@ -122,7 +122,7 @@ it("opens the WebSocket with a realtime ticket while the event stream is down", 
   expect(socket.url).toContain("programId=main");
   expect(socket.url).toContain("role=control");
   expect(socket.url).toContain("ticket=ticket-1");
-  expect(screen.getByTitle("Live updates connected")).toBeInTheDocument();
+  expect(screen.queryByTitle("Live updates disconnected")).toBeNull();
 });
 
 it("leaves the WebSocket alone while the event stream is up", async () => {
@@ -258,7 +258,7 @@ it("clears Program when the show says so", async () => {
   expect(statusOf("Fictional headlines")).toBe("Program");
   act(() => socket.send({ type: "scene_cleared", programId: "main" }));
   // Clearing Program leaves no source tagged Program (#251).
-  expect(statusOf("Fictional headlines")).toBe("Stage");
+  expect(source("Fictional headlines")).not.toHaveTextContent(/Preview|Program$/);
 });
 
 it("ignores updates for another show, unreadable messages and stale versions", async () => {
@@ -369,7 +369,7 @@ it("reconnects after the link closes, and closes it on an error", async () => {
   await act(() => vi.advanceTimersByTimeAsync(1500));
   await waitFor(() => expect(FakeSocket.instances).toHaveLength(2));
   act(() => FakeSocket.instances[1].open());
-  expect(screen.getByTitle("Live updates connected")).toBeInTheDocument();
+  expect(screen.queryByTitle("Live updates disconnected")).toBeNull();
 });
 
 // Walk part 5: a restarted backend's topic versions start again from 0. After a reconnect the console dropped every

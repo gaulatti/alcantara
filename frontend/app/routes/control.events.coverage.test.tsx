@@ -185,13 +185,16 @@ it("shows what is playing, and takes it off air", async () => {
   expect(await within(player).findByText(/^Nothing on air/)).toBeVisible();
 });
 
+/** What the PREVIEW monitor says is staged. */
+const preview = () => screen.getByRole("region", { name: "PREVIEW monitor" });
+
 it("follows the TV program: snapshots, staging, scene updates, clearing, fade to black and media groups", async () => {
   open("tv");
   await screen.findAllByRole("button", { name: /Fictional headlines/ });
   await send({ type: "scene_staged", stagedSceneId: 2, scene: desk });
-  expect(await screen.findByText("Ready: Fictional desk")).toBeVisible();
+  await waitFor(() => expect(preview()).toHaveTextContent("Fictional desk"));
   await send({ type: "scene_update", scene: { ...desk, name: "Fictional desk, renamed" } });
-  expect(await screen.findByText("Ready: Fictional desk, renamed")).toBeVisible();
+  await waitFor(() => expect(preview()).toHaveTextContent("Fictional desk, renamed"));
   await send({ type: "scene_update", scene: "corrupt" });
   await send({ type: "scene_staged", stagedSceneId: "2", scene: null });
   await send({ type: "fade_to_black", state: tvState({ fadeToBlack: true }) });
@@ -275,7 +278,7 @@ it("keeps a scene staged or cleared before the program has loaded from creating 
   // own scene is on Program.
   const rows = await screen.findAllByRole("button", { name: /Fictional headlines/ });
   await waitFor(() => expect(rows.some((row) => /Program$/.test(row.textContent ?? ""))).toBe(true));
-  expect(screen.queryByText("Ready: Fictional desk")).toBeNull();
+  expect(preview()).not.toHaveTextContent("Fictional desk");
 });
 
 it("moves the TV audio desk's faders and meters with the audio bus and meter events", async () => {

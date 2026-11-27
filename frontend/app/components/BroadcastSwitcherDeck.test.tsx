@@ -90,9 +90,9 @@ it("requires a deliberate second action before fading to black", () => {
   fireEvent.click(screen.getByRole("button", { name: "Fade to black" }));
   expect(onFadeToBlack).not.toHaveBeenCalled();
   // Armed, it says what the second press does, and never "take" (#875): it sits under Take to program.
-  const armed = screen.getByRole("button", { name: "Fade to black: armed. Press again to fade" });
-  expect(armed).toHaveTextContent("Press again to fade");
-  expect(screen.getByText("Armed. Press again to fade.")).toBeInTheDocument();
+  const armed = screen.getByRole("button", { name: "Fade to black: armed. Press again" });
+  expect(armed).toHaveTextContent("Press again");
+  expect(screen.getByText("Armed. Press again.")).toBeInTheDocument();
   expect(armed.textContent).not.toMatch(/take/i);
   fireEvent.click(
     screen.getByRole("button", { name: /^Fade to black: armed/ }),

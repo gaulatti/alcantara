@@ -18,7 +18,6 @@ import {
   MonitorPlay,
   Settings2,
   Smartphone,
-  Wifi,
   WifiOff,
 } from "lucide-react";
 import type { Scene } from "../models/broadcast";
@@ -39,6 +38,7 @@ import { getApiBaseUrl } from "../utils/apiBaseUrl";
 import { useFeatures } from "../hooks/useFeatures";
 import { BroadcastAction } from "./BroadcastAction";
 import { ConsoleClock } from "./ConsoleSurface";
+import { QUIET_ARM } from "../utils/quietArm";
 
 export type { ConsoleWorkspace } from "../contexts/ConsolePreferencesContext";
 
@@ -436,7 +436,7 @@ export function ConfidenceMonitor({
             {RETURN_STATE_LABEL[state]}
           </span>
         ) : (
-          <span className="switcher-return-local">{nativeMonitor ? "program source" : "local render"}</span>
+          <span className="switcher-return-local">{nativeMonitor ? "Program source" : "Local render"}</span>
         )}
         {behind && state !== "lost" ? (
           <span className="switcher-return-behind">{behind}</span>
@@ -452,7 +452,7 @@ export function ConfidenceMonitor({
             pulse={airState.pulse}
           />
         ) : null}
-        {!preview ? (
+        {!preview && !airState ? (
           <button
             type="button"
             className="switcher-return-listen"
@@ -510,11 +510,6 @@ export function ConfidenceMonitor({
             </span>
           </div>
         )}
-        {!preview && state === "local" && !nativeMonitor ? (
-          <p className="switcher-return-ribbon" role="note">
-            Local render · not the output
-          </p>
-        ) : null}
         {state === "frozen" ? (
           <p className="switcher-return-overlay" data-state="frozen" role="status">
             Frozen · same frame for {sinceLabel(lastFrameAt, now)}
@@ -549,6 +544,13 @@ interface Props {
   takeBusy?: boolean;
   takeError?: string | null;
   onFadeToBlack: () => void;
+  /** A page-level warning, shown between the title and the workspace tabs. */
+  notice?: ReactNode;
+}
+
+/** Which leg a row of controls acts on. */
+function LegTag({ children }: { children: string }) {
+  return <span className="switcher-leg">{children}</span>;
 }
 
 export function BroadcastSwitcherDeck(props: Props) {
@@ -690,8 +692,8 @@ export function BroadcastSwitcherDeck(props: Props) {
       aria-label="Assigned scenes"
     >
       <div className="console-panel-heading mb-2 flex items-center justify-between gap-2">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
-          Sources
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-text-primary">
+          Sources <LegTag>TV</LegTag>
         </h2>
         <span className="text-xs text-text-secondary">
           {props.scenes.length}
@@ -731,11 +733,7 @@ export function BroadcastSwitcherDeck(props: Props) {
                 />
               ) : isPreview ? (
                 <StatePill className="shrink-0" tone="arm" label="Preview" />
-              ) : (
-                <span className="shrink-0 text-xs text-text-secondary">
-                  Stage
-                </span>
-              )}
+              ) : null}
             </TooltipButton>
           );
         })}
@@ -747,9 +745,6 @@ export function BroadcastSwitcherDeck(props: Props) {
           </p>
         )}
       </div>
-      <p className="m-3 text-xs text-text-secondary">
-        Select a source to prepare it in Preview.
-      </p>
     </aside>
   );
 
@@ -760,38 +755,13 @@ export function BroadcastSwitcherDeck(props: Props) {
       data-touch-mode={touchMode}
     >
       <div className="console-toolbar">
-        <div
-          className="mr-2 flex items-center gap-2 font-semibold"
-          title={
-            props.realtimeConnected
-              ? "Live updates connected"
-              : "Live updates disconnected"
-          }
-        >
-          {props.realtimeConnected ? (
-            <Wifi size={16} className="text-sea" />
-          ) : (
-            <WifiOff size={16} className="text-accent-yellow" />
-          )}
-          <span>
-            <span className="console-eyebrow">Studio / {props.programId}</span>
-            Live control
+        <h1 className="console-toolbar-title text-lg">Simulcast control</h1>
+        {props.realtimeConnected ? null : (
+          <span title="Live updates disconnected" className="flex items-center gap-1.5 text-xs font-semibold text-accent-yellow">
+            <WifiOff size={15} aria-hidden="true" /> Live updates disconnected
           </span>
-        </div>
-        {WORKSPACES.map((option) => (
-          <Button
-            key={option.id}
-            type="button"
-            size="sm"
-            variant={option.id === workspace ? "primary" : "ghost"}
-            onClick={() => selectWorkspace(option.id)}
-            aria-pressed={workspace === option.id}
-          >
-            {option.label}
-          </Button>
-        ))}
-        <ConsoleClock />
-        <details className="relative ml-auto">
+        )}
+        <details className="relative">
           <summary className="switcher-options-summary flex cursor-pointer list-none items-center gap-1.5 rounded-[var(--radius-button)] px-2 py-1 text-xs text-text-secondary">
             <Settings2 size={15} />
             Workspace options
@@ -851,6 +821,24 @@ export function BroadcastSwitcherDeck(props: Props) {
           </div>
         </details>
       </div>
+      {props.notice}
+      <div className="switcher-tabs flex flex-wrap items-center gap-2 px-3 pt-3">
+        {WORKSPACES.map((option) => (
+          <Button
+            key={option.id}
+            type="button"
+            size="sm"
+            variant={option.id === workspace ? "primary" : "ghost"}
+            onClick={() => selectWorkspace(option.id)}
+            aria-pressed={workspace === option.id}
+          >
+            {option.label}
+          </Button>
+        ))}
+        <div className="ml-auto">
+          <ConsoleClock />
+        </div>
+      </div>
       {workspace !== "audio" && (
         <div
           className="switcher-body grid grid-cols-2 gap-3 p-3 md:grid-cols-[var(--source-width)_minmax(0,1fr)_minmax(0,1fr)]"
@@ -880,11 +868,11 @@ export function BroadcastSwitcherDeck(props: Props) {
             }
           />
           <div className="switcher-transports order-4 col-span-2 rounded-[var(--radius-ui)] border border-sand/30 bg-dark-sand p-3 md:order-4">
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="w-full min-w-0 text-xs text-text-secondary sm:w-auto sm:flex-1">
-                <span>Transition</span>
+            <div className="flex flex-wrap items-center gap-3">
+              <LegTag>TV</LegTag>
+              <div className="min-w-0 flex-1 basis-40">
                 <Select
-                  className="mt-1 w-full"
+                  className="w-full"
                   aria-label="Transition"
                   value={props.transitionId}
                   options={SCENE_TRANSITIONS.map((transition) => ({
@@ -910,15 +898,6 @@ export function BroadcastSwitcherDeck(props: Props) {
               >
                 {props.takeBusy ? "TAKING…" : "TAKE TO PROGRAM"}
               </BroadcastAction>
-            </div>
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-              <p role="status" className="text-xs text-text-secondary">
-                {props.takeBusy
-                  ? "Saving Preview and taking it to Program…"
-                  : props.stagedScene
-                    ? `Ready: ${props.stagedScene.name}`
-                    : "Choose a source to prepare the next scene."}
-              </p>
               {props.fadeToBlack ? (
                 <TooltipButton
                   type="button"
@@ -929,24 +908,29 @@ export function BroadcastSwitcherDeck(props: Props) {
                   RESTORE PROGRAM
                 </TooltipButton>
               ) : (
-                <div className="flex items-center gap-2">
+                <>
                   {ftbArmed ? (
                     <StatePill
                       tone="arm"
                       label="Fade to black armed: Alt+B again"
                     />
                   ) : null}
-                  {/* Hold, or press twice: one stray click never fades the program. Armed, it says the second press
-                      fades: it sits under Take to program, so "take" would point at the wrong control (#875). */}
+                  {/* Hold, or press twice: one stray click never fades the program. Neutral until armed. */}
                   <ArmTake
                     label="Fade to black"
-                    armedLabel="Press again to fade"
+                    armedLabel="Press again"
                     armTimeoutMs={FTB_ARM_MS}
+                    className={QUIET_ARM}
                     onTake={() => latestPropsRef.current.onFadeToBlack()}
                   />
-                </div>
+                </>
               )}
             </div>
+            {props.takeBusy ? (
+              <p role="status" className="mt-2 text-xs text-text-secondary">
+                Saving Preview and taking it to Program…
+              </p>
+            ) : null}
             {(props.takeError || stageError) && (
               <p
                 role="alert"

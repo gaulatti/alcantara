@@ -130,7 +130,7 @@ it("keeps the song queue for an update without a sequence and falls back for an 
   );
   // The show is still on its scene: the bad sequence did not touch the scene state.
   expect(statusOf("Fictional headlines")).toBe("Program");
-  expect(statusOf("Fictional desk")).toBe("Stage");
+  expect(source("Fictional desk")).not.toHaveTextContent(/Preview|Program$/);
 });
 
 // An instant take with no trigger time is stamped with the moment the console received it.

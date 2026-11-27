@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { controlServer, stubConsoleBrowser } from "../../test/controlKit";
@@ -88,26 +88,24 @@ afterEach(() => {
 
 it("readies the asset of the cartwall instant a scene saved before assets names", async () => {
   open({ assetId: null, instantId: 7 }, [bell]);
-  expect(await screen.findByText("Ready: Fictional rain")).toBeVisible();
-  expect(screen.getByRole("button", { name: "TAKE BG" })).toBeEnabled();
+  await waitFor(() => expect(screen.getByRole("button", { name: "TAKE BG" })).toBeEnabled());
+  expect(screen.getByText("Fictional rain")).toBeInTheDocument();
 });
 
 it("readies nothing for an asset that is no longer in the library", async () => {
   open({ assetId: "a-gone", instantId: null });
-  expect(
-    await screen.findByText(
-      "Select background audio, then press SAVE (or TAKE BG).",
-    ),
-  ).toBeVisible();
+  await screen.findByRole("button", { name: "TAKE BG" });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
   expect(screen.getByRole("button", { name: "TAKE BG" })).toBeDisabled();
 });
 
 it("readies nothing for an instant that is no longer in the cartwall", async () => {
   open({ assetId: null, instantId: 99 }, [bell]);
-  expect(
-    await screen.findByText(
-      "Select background audio, then press SAVE (or TAKE BG).",
-    ),
-  ).toBeVisible();
+  await screen.findByRole("button", { name: "TAKE BG" });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
   expect(screen.getByRole("button", { name: "TAKE BG" })).toBeDisabled();
 });

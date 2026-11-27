@@ -111,7 +111,7 @@ it("shows that a TAKE is being saved, and asks for a source when nothing is stag
   const { rerender } = render(<BroadcastSwitcherDeck {...props} takeBusy workspace="director" />);
   expect(screen.getByText("Saving Preview and taking it to Program…")).toBeInTheDocument();
   rerender(<BroadcastSwitcherDeck {...props} stagedScene={null} workspace="director" />);
-  expect(screen.getByText("Choose a source to prepare the next scene.")).toBeInTheDocument();
+  expect(screen.queryByText("Saving Preview and taking it to Program…")).toBeNull();
 });
 
 it("clears an armed fade-to-black when the deck is left", async () => {

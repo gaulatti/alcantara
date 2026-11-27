@@ -79,7 +79,8 @@ export function defaultConsoleProfile(
   deviceClass: DeviceClass,
 ): ConsoleProfile {
   return {
-    workspace: deviceClass === "desktop" ? "director" : "compact",
+    // A tablet opens on Director like a desktop does; only a phone opens on Remote.
+    workspace: deviceClass === "phone" ? "compact" : "director",
     ...(deviceClass === "phone"
       ? {}
       : { dockWidth: deviceClass === "desktop" ? 320 : 300 }),

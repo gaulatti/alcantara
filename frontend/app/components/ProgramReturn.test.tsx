@@ -81,8 +81,8 @@ describe("ConfidenceMonitor", () => {
     );
     const monitor = screen.getByRole("region", { name: "PROGRAM monitor, local render" });
     expect(monitor).toHaveAttribute("data-return-state", "local");
-    expect(within(monitor).getByRole("note")).toHaveTextContent("Local render · not the output");
-    expect(within(monitor).getByText("local render")).toBeVisible();
+    expect(within(monitor).queryByRole("note")).toBeNull();
+    expect(within(monitor).getByText("Local render")).toBeVisible();
     expect(within(monitor).getByTitle("PROGRAM confidence monitor")).toBeInTheDocument();
     const listen = within(monitor).getByRole("button", { name: /Listen/ });
     expect(listen).toBeDisabled();
@@ -95,14 +95,14 @@ describe("ConfidenceMonitor", () => {
   it("labels an empty program as local too", () => {
     render(<ConfidenceMonitor label="PROGRAM" tone="program" scene={null} src="/p" />);
     expect(screen.getByText("No scene selected")).toBeVisible();
-    expect(screen.getByRole("note")).toHaveTextContent("Local render · not the output");
+    expect(screen.getByText("Local render")).toBeInTheDocument();
   });
 
   it("marks the preview as a local render, without the program's ribbon or audio", () => {
     render(<ConfidenceMonitor label="PREVIEW" tone="preview" scene={scene} src="/p" />);
     const monitor = screen.getByRole("region", { name: "PREVIEW monitor" });
     expect(monitor).not.toHaveAttribute("data-return-state");
-    expect(within(monitor).getByText("local render")).toBeVisible();
+    expect(within(monitor).getByText("Local render")).toBeVisible();
     expect(within(monitor).queryByRole("note")).toBeNull();
     expect(within(monitor).queryByRole("button", { name: /Listen/ })).toBeNull();
   });
@@ -209,7 +209,7 @@ describe("a desktop host's program monitor (gaulatti/alcantara#431)", () => {
     );
     const tile = screen.getByRole("region", { name: "PROGRAM monitor, program source" });
     expect(within(tile).getByTestId("native-monitor")).toHaveTextContent("main");
-    expect(within(tile).getByText("program source")).toBeInTheDocument();
+    expect(within(tile).getByText("Program source")).toBeInTheDocument();
     expect(within(tile).queryByText("Local render · not the output")).toBeNull();
     expect(tile.querySelector("iframe")).toBeNull();
   });
@@ -223,6 +223,6 @@ describe("a desktop host's program monitor (gaulatti/alcantara#431)", () => {
       </>,
     );
     expect(screen.queryByTestId("native-monitor")).toBeNull();
-    expect(screen.getByText("Local render · not the output")).toBeInTheDocument();
+    expect(screen.getAllByText("Local render").length).toBeGreaterThan(0);
   });
 });

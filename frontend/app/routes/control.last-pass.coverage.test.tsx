@@ -100,7 +100,7 @@ it("says why the program could not prepare a Preview, and ignores a stale prepar
   fireEvent.click(screen.getAllByRole("button", { name: /Fictional headlines/ })[0]);
   await waitFor(() => expect(server.requests("POST /program/main/stage")).toHaveLength(2));
   await settle();
-  expect(screen.queryByText("Ready: Fictional headlines")).toBeNull();
+  expect(screen.getByRole("region", { name: "PREVIEW monitor" })).not.toHaveTextContent("Fictional headlines");
 });
 
 it("shows nothing playing when the program refuses to take the scene's background audio", async () => {

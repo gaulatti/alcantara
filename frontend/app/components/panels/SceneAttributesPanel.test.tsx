@@ -74,9 +74,10 @@ it("opens component preparation when scene metadata arrives after hydration", ()
   const { rerender } = render(
     <SceneAttributesPanel {...props} editableSceneComponentEntries={[]} />,
   );
-  expect(screen.getByRole("tab", { name: "Background audio" })).toHaveAttribute(
-    "aria-selected",
-    "true",
+  // A single section needs no tab: its name sits beside its control.
+  expect(screen.queryByRole("tablist")).toBeNull();
+  expect(screen.getByText("Background audio")).toHaveTextContent(
+    "Background audio",
   );
   rerender(<SceneAttributesPanel {...props} />);
   expect(screen.getByRole("tab", { name: "Giorgia player" })).toHaveAttribute(
@@ -114,16 +115,12 @@ it("names the staged scene and falls back to the component type without a catalo
   );
   expect(screen.getByRole("tab", { name: "player" })).toBeInTheDocument();
   expect(screen.getByRole("status")).toHaveTextContent("player is hidden.");
-  expect(
-    screen.queryByText(/FifthBell runtime settings are stored/),
-  ).toBeNull();
   rerender(<SceneAttributesPanel {...props} activeProgramId="fifthbell" />);
   expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent(
     "Prepare · Selected scene",
   );
-  expect(
-    screen.getByText(/FifthBell runtime settings are stored/),
-  ).toBeInTheDocument();
+  // No explanatory prose on the panel.
+  expect(screen.queryByText(/FifthBell runtime settings are stored/)).toBeNull();
 });
 it("chooses, takes and stops the scene background audio", () => {
   const onCommitComponentProps = vi.fn();
@@ -149,9 +146,6 @@ it("chooses, takes and stops the scene background audio", () => {
   expect(
     Array.from(clip.querySelectorAll("option")).map((o) => o.textContent),
   ).toEqual(["No background audio", "Rain bed"]);
-  expect(
-    screen.getByText("Select background audio, then press SAVE (or TAKE BG)."),
-  ).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "TAKE BG" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "STOP BG" })).toBeDisabled();
   expect(screen.queryByText("Loading background audio…")).toBeNull();
@@ -173,7 +167,6 @@ it("chooses, takes and stops the scene background audio", () => {
     />,
   );
   expect(screen.getByText("Loading background audio…")).toBeInTheDocument();
-  expect(screen.getByText("Ready: Rain bed")).toBeInTheDocument();
   fireEvent.change(screen.getByRole("combobox"), { target: { value: "" } });
   expect(onCommitComponentProps).toHaveBeenLastCalledWith("sceneInstant", {
     assetId: null,

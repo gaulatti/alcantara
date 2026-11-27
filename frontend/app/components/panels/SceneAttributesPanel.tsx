@@ -1,4 +1,4 @@
-import { Button, Card, Field, Select, Tabs } from "@gaulatti/bleecker";
+import { Button, Card, Select, Tabs } from "@gaulatti/bleecker";
 import { useEffect, useId, useMemo, useState } from "react";
 import type {
   BackgroundAudioAsset,
@@ -135,9 +135,6 @@ export function SceneAttributesPanel({
     return (
       <Card className="scene-preparation-empty">
         <h2 className="text-base font-semibold">Prepare the next scene</h2>
-        <p className="mt-2 text-sm text-text-secondary">
-          Stage a scene above to edit its attributes before taking it live.
-        </p>
       </Card>
     );
   }
@@ -187,17 +184,20 @@ export function SceneAttributesPanel({
             </Button>
           </div>
         ))}
-      <div className="scene-preparation-tabs">
-        <Tabs
-          aria-label="Scene components"
-          tabs={attributeTabs}
-          size="sm"
-          variant="enclosed"
-          activeTab={activeAttributeTab}
-          onChange={(id) => setActiveAttributeTab(id)}
-          className="overflow-x-auto"
-        />
-      </div>
+      {/* A single section needs no tab: its name sits beside its control. */}
+      {componentTabs.length > 0 && (
+        <div className="scene-preparation-tabs">
+          <Tabs
+            aria-label="Scene components"
+            tabs={attributeTabs}
+            size="sm"
+            variant="enclosed"
+            activeTab={activeAttributeTab}
+            onChange={(id) => setActiveAttributeTab(id)}
+            className="overflow-x-auto"
+          />
+        </div>
+      )}
 
       <div
         className="scene-preparation-scroll"
@@ -208,20 +208,18 @@ export function SceneAttributesPanel({
         }
       >
         <div className="console-props-body">
-          {activeProgramId === "fifthbell" && (
-            <p className="text-xs text-text-secondary dark:text-text-secondary">
-              FifthBell runtime settings are stored per component metadata
-              (`fifthbell-content`, `fifthbell-marquee`, `fifthbell-clock` /
-              `toni-clock`).
-            </p>
-          )}
-
           {activeAttributeTab === "__scene" ? (
             <div className="space-y-3">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                <div className="flex-1">
-                  <Field label="Audio clip">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="switcher-leg">TV</span>
+                {componentTabs.length === 0 ? (
+                  <span className="rounded-[var(--radius-button)] border border-sand/30 px-2 py-1 text-sm">
+                    Background audio
+                  </span>
+                ) : null}
+                <div className="min-w-0 flex-1 basis-40">
                     <Select
+                      aria-label="Audio clip"
                       value={selectedBackgroundAudioAssetId ?? ""}
                       onChange={(value) => {
                         const nextAssetId = value.trim() || null;
@@ -246,7 +244,6 @@ export function SceneAttributesPanel({
                           })),
                       ]}
                     />
-                  </Field>
                   {isLoadingBackgroundAudio ? (
                     <p className="mt-1 text-xs text-text-secondary">
                       Loading background audio…
@@ -277,13 +274,11 @@ export function SceneAttributesPanel({
                   </Button>
                 </div>
               </div>
-              <p className="text-xs text-text-secondary dark:text-text-secondary">
-                {sceneInstantPlayback.isPlaying
-                  ? `Playing: ${sceneInstantPlayback.instantName || "Scene instant"}`
-                  : selectedBackgroundAudioAsset
-                    ? `Ready: ${selectedBackgroundAudioAsset.name}`
-                    : "Select background audio, then press SAVE (or TAKE BG)."}
-              </p>
+              {sceneInstantPlayback.isPlaying ? (
+                <p className="text-xs text-text-secondary dark:text-text-secondary">
+                  Playing: {sceneInstantPlayback.instantName || "Scene instant"}
+                </p>
+              ) : null}
             </div>
           ) : activeComponentEntry ? (
             <div>

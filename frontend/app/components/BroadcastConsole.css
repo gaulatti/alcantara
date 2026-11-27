@@ -577,6 +577,17 @@
 .switcher-console {
   border-bottom: 1px solid var(--console-border);
 }
+/* Which leg a row of controls acts on: a quiet tag, no colour. */
+.switcher-leg {
+  flex-shrink: 0;
+  border: 1px solid var(--console-border);
+  border-radius: 4px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--console-muted);
+}
 .switcher-console .switcher-body {
   gap: 12px;
   padding: 12px;
@@ -1316,16 +1327,6 @@
   cursor: not-allowed;
   opacity: 0.6;
 }
-.switcher-return-ribbon {
-  position: absolute;
-  inset: auto 0 0 0;
-  padding: 4px 8px;
-  background: color-mix(in srgb, var(--console-canvas) 82%, transparent);
-  color: var(--console-text);
-  font-size: 12px;
-  font-weight: 600;
-  text-align: center;
-}
 .switcher-return-overlay {
   position: absolute;
   inset: 0;
@@ -1416,7 +1417,6 @@
    could not be read. Below 1280 px the header drops what it says elsewhere ("local render" is also on the picture)
    and Listen keeps its icon. */
 @media (max-width: 1279px) {
-  .switcher-monitor header .switcher-return-local,
   .switcher-monitor header .switcher-return-listen-label {
     display: none;
   }
@@ -1881,4 +1881,22 @@
 /* A timed block's listen control: the transport's key and volume, in a one-row panel. */
 .desk-listen {
   padding: 8px 12px;
+}
+
+/* The clock on the Simulcast tab row reads as one line. */
+.switcher-tabs .console-clock {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--console-muted);
+}
+.switcher-tabs .console-clock .console-eyebrow {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+.switcher-tabs .console-clock time {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }

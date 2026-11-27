@@ -1,5 +1,3 @@
-import { Button, StatusBadge } from '@gaulatti/bleecker';
-import { Radio, Settings2, Tv, WifiOff } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { palazzoReasonText } from '../utils/palazzoReason';
@@ -51,26 +49,14 @@ export function SimulcastStatusRail({ programId }: SimulcastStatusRailProps) {
   const reasonText = palazzoReasonText(palazzo?.reason);
   const radioHealthy = stream?.running === true && (palazzo?.connection === 'connected' || palazzo?.connection === 'polling') && palazzo?.degraded !== true;
 
+  // Healthy radio says nothing: the line exists only for a problem, with the one place to fix it.
+  if (radioHealthy) return null;
   return (
-    <section aria-label='Simulcast output status' className='flex flex-wrap items-center gap-3 border-b border-sand/20 bg-deep-sea px-3 py-2 text-xs'>
-      <StatusBadge label='SIMULCAST' variant='info' />
-      <span className='flex items-center gap-1.5 font-semibold text-text-primary'>
-        <Tv className='h-3.5 w-3.5' aria-hidden='true' />
-        TV scene controls
-      </span>
-      <span className='text-text-secondary' aria-hidden='true'>
-        +
-      </span>
-      <span className={`flex items-center gap-1.5 font-semibold ${radioHealthy ? 'text-sea' : 'text-accent-yellow'}`} title={palazzo?.detail ?? undefined}>
-        {radioHealthy ? <Radio className='h-3.5 w-3.5' aria-hidden='true' /> : <WifiOff className='h-3.5 w-3.5' aria-hidden='true' />}
-        Radio {radioHealthy ? 'ready' : 'needs attention'}
-        {!radioHealthy && reasonText ? `: ${reasonText}` : ''}
-      </span>
-      <span className='min-w-[14rem] flex-1 text-text-secondary'>Scene actions affect TV. Songs and audio clips feed the shared program mix.</span>
-      <Button as='a' href='/radio-settings' size='xs' variant='secondary'>
-        <Settings2 className='h-3.5 w-3.5' aria-hidden='true' />
-        Radio setup
-      </Button>
+    <section aria-label='Simulcast output status' className='mx-3 mt-3 rounded-[var(--radius-ui)] border border-accent-yellow/40 bg-accent-yellow/10 px-3 py-2 text-sm font-semibold text-accent-yellow' title={palazzo?.detail ?? undefined}>
+      Radio {reasonText || 'needs attention'} ·{' '}
+      <a href='/radio-settings' className='underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue'>
+        Setup
+      </a>
     </section>
   );
 }
