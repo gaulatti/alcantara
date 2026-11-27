@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import multipart from '@fastify/multipart';
+import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { Server as HttpServer } from 'http';
 import {
@@ -47,6 +48,10 @@ async function bootstrap() {
 
   app.enableCors(corsOptions());
   // SIGTERM runs the shutdown hooks: streams end, in-flight requests finish and the playout lease is freed (#873).
+  // The receipt is logged to the millisecond, so a handover's shutdown can be timed from the container's log.
+  process.once('SIGTERM', () =>
+    Logger.log(`PLAYOUT_SIGTERM ${new Date().toISOString()}`, 'Bootstrap'),
+  );
   app.enableShutdownHooks();
 
   // A standby (alcantara#873) holds every request but the health checks and the scrape until it takes the playout

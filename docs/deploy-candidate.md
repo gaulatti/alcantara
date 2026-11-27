@@ -36,11 +36,12 @@ After the restore check, the runtime preflight and the migrations, and before `d
    - It starts `alcantara-backend-next` beside the running one, on the other loopback port (3006 or 3007), and waits up to 90 s for `standby`. Seeing `active` while the old one is up removes it at once.
    - It points nginx at the new port (`BACKEND_SWITCH`). Only the installed site's `proxy_pass` port changes; certbot's TLS half stays. The new site is written beside the old one, checked non-empty and containing the new `proxy_pass`, then moved into place in one step. A full disk, a refused `nginx -t` or a failed reload leaves or puts back the previous site and reloads it, and the running backend stays untouched.
    - It stops the old one (`docker stop -t 15`, `OWNER_RELEASED`) and waits up to 20 s for `active` (`OWNER_ACQUIRED`). Any exit in between (an error, a signal) runs the restore below first.
-   - After `OWNER_ACQUIRED` it removes the stopped container (fix forward: no rollback container is left to stop later deploys) and renames the new one `alcantara-backend`. The public check and the radio check (5) follow, reading the live port from the container.
+   - After `OWNER_ACQUIRED` it prints both sides' own times: `OWNER_GRANTED` (when the new backend took the lock, from its `/health/ready`), then, from the stopped backend's log, `PREVIOUS_SIGTERM`, `PREVIOUS_STOPPING` (its writers began stopping) and `OWNER_UNLOCKED` (it freed the lock).
+   - It then removes the stopped container (fix forward: no rollback container is left to stop later deploys) and renames the new one `alcantara-backend`. The public check and the radio check (5) follow, reading the live port from the container.
 
    **If the new one never takes the lease.** It is removed, nginx goes back, and the previous backend is started and must report `active` within 20 s (`OWNER_RESTORED`; otherwise `OWNER_NOT_RESTORED`, loudly, exit 1). The public and radio checks still run against the restored backend, and the deploy ends with `ALCANTARA_DEPLOY_FAILED`. That failure leaves no backend driving playout for up to 15 s (stop) + 20 s (wait) + the previous backend's boot to `active` (about 10 s since stage 0; bounded at 20 s), so 35–55 s. That is the same order as every deploy before #873 (46.6 s measured), and it happens only on this failure. Palazzo keeps playing throughout, and its filler covers air.
 
-   The time with no backend driving playout on a normal handover is `OWNER_ACQUIRED − OWNER_RELEASED`.
+   The time with no backend driving playout on a normal handover is `OWNER_GRANTED − OWNER_UNLOCKED`. `OWNER_ACQUIRED − OWNER_RELEASED` bounds it from above: it also counts the old backend's shutdown up to the unlock, and the script's 0.5 s poll.
 
 5. **The radio plays** (gaulatti/alcantara#230). A healthy backend is not a playing radio, so after `ALCANTARA_HEALTHY` the deploy reads `alcantara_radio_automatic_programs` from the new backend (inside its container, with its own mounted scrape token; the token never reaches the host shell).
    - `0`: it prints `RADIO_CHECK_SKIPPED: no radio program is in automation` and ends.
@@ -113,7 +114,10 @@ Locally, in CI and in tests (not `NODE_ENV=production`) the instance is active f
 behaves exactly as before the lease. A deploy candidate is a permanent standby that never asks for the lock, and it
 does not hold requests (it serves read-only, as above).
 
-`GET /health/ready` answers `{"state":"standby"|"active","build":"<sha>"}`. An image without it answers 404, which
+`GET /health/ready` answers `{"state":"standby"|"active","build":"<sha>","grantedAt":<iso>|null,"activeSince":<iso>|null}`:
+when this instance took the lock, and when it then reported active. The backend also logs the handover to the
+millisecond (the logger's own stamp is to the second): `PLAYOUT_SIGTERM`, `PLAYOUT_STOPPING` and `PLAYOUT_UNLOCKED` on the
+instance that lets go, and `PLAYOUT_GRANTED` and `PLAYOUT_ACTIVE` (with the activation time) on the one that takes over. An image without it answers 404, which
 the deploy reads as "no lease".
 
 On SIGTERM (`enableShutdownHooks()`, with Node exec'd as the container's main process) the instance shuts down in this

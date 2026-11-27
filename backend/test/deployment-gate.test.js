@@ -272,6 +272,10 @@ case "$args" in
   "stop -t 15 alcantara-backend") ${stopFails ? 'exit 1' : `: > "${'$'}{PLAYOUT_DIR}/${livePort}"; ${activates ? `echo active > "${'$'}{PLAYOUT_DIR}/${livePort === '3006' ? '3007' : '3006'}"` : ':'}`} ;;
   "start alcantara-backend") ${oldRestores ? `echo active > "${'$'}{PLAYOUT_DIR}/${livePort}"` : ':'} ;;
   "logs alcantara-backend-candidate") echo 'Error: fictional start-up failure' ;;
+  "logs alcantara-backend")
+    echo '[Nest] 1  - 11/27/2026, 8:15:53 AM     LOG [Bootstrap] PLAYOUT_SIGTERM 2026-11-27T08:15:53.320Z'
+    echo '[Nest] 1  - 11/27/2026, 8:15:53 AM     LOG [PlayoutLease] PLAYOUT_STOPPING 2026-11-27T08:15:53.401Z'
+    echo '[Nest] 1  - 11/27/2026, 8:15:54 AM     LOG [PlayoutLease] PLAYOUT_UNLOCKED 2026-11-27T08:15:54.650Z (1249 ms after the writers began stopping)' ;;
   "exec alcantara-backend node"*) ${automaticPrograms === null ? 'exit 1' : `echo '${automaticPrograms}'`} ;;
   "exec palazzo node"*) ${radioLive ? "echo 'RADIO_LIVE'" : radioPlays ? "echo 'RADIO_PLAYING startedAt=fictional'" : "echo 'RADIO_NOT_PLAYING {}'; exit 1"} ;;
 esac
@@ -310,7 +314,8 @@ exit 0`,
     port="$(printf '%s' "$*" | sed -n 's#.*127\\.0\\.0\\.1:\\([0-9]*\\)/health.*#\\1#p')"
     state="$(cat "${playout}/$port" 2>/dev/null)"
     [ -n "$state" ] || exit 22
-    printf '{"state":"%s","build":"fictional"}' "$state" ;;
+    if [ "$state" = active ]; then printf '{"state":"%s","build":"fictional","grantedAt":"2026-11-27T08:15:54.700Z"}' "$state"
+    else printf '{"state":"%s","build":"fictional","grantedAt":null}' "$state"; fi ;;
 esac
 exit 0`,
   );
@@ -322,7 +327,7 @@ exit 0`,
   for (const name of ['install', 'sleep', 'certbot'])
     stub(name, 'exit 0');
   stub('nginx', `case "$*" in -t) exit ${nginxValid ? 0 : 1} ;; esac\nexit 0`);
-  stub('systemctl', `case "$*" in "reload nginx") exit ${reloadFails ? 1 : 0} ;; esac\nexit 0`);
+  stub('systemctl', `case "$*" in "reload nginx") ${reloadFails ? 'exit 1' : `exit 0`} ;; esac\nexit 0`);
   // mv restores the site when nginx refuses the switch: a real move inside the sandbox, recorded otherwise.
   stub('mv', `case "$*" in *"${bin}"*) command -p mv "$@" ;; esac\nexit 0`);
   const result = spawnSync(
@@ -918,4 +923,19 @@ test('a handover container left running with no live backend stops the deploy fo
   assert.match(run.stdout, /alcantara-backend-next\) is running with no alcantara-backend: requires operator review/);
   // The throwaway candidate may have run; nothing touches a live container.
   for (const line of run.log) assert.doesNotMatch(line, /^docker (run -d --name alcantara-backend(-next)? |stop|rename|start) /);
+});
+
+test("a handover prints both sides' own times: the previous backend's shutdown and the new one's grant", () => {
+  const run = runDeploy({ candidateHealthy: true, leaseImage: true, certificate: true, installedSite: site3006, repositorySite: repositoryHalf });
+  assert.equal(run.status, 0, run.stdout + run.stderr);
+  const lines = run.stdout.split('\n');
+  const index = (marker) => lines.findIndex((line) => line.startsWith(marker));
+  assert.equal(lines[index('OWNER_GRANTED')], 'OWNER_GRANTED 2026-11-27T08:15:54.700Z');
+  assert.equal(lines[index('PREVIOUS_SIGTERM')], 'PREVIOUS_SIGTERM 2026-11-27T08:15:53.320Z');
+  assert.equal(lines[index('PREVIOUS_STOPPING')], 'PREVIOUS_STOPPING 2026-11-27T08:15:53.401Z');
+  assert.equal(lines[index('OWNER_UNLOCKED')], 'OWNER_UNLOCKED 2026-11-27T08:15:54.650Z');
+  assert.ok(index('OWNER_ACQUIRED') < index('OWNER_GRANTED') && index('OWNER_GRANTED') < index('OWNER_UNLOCKED'));
+  // Read before the previous backend is removed.
+  const logs = run.log.indexOf('docker logs alcantara-backend');
+  assert.ok(logs >= 0 && logs < run.log.lastIndexOf('docker rm -f alcantara-backend'));
 });

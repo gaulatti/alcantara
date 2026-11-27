@@ -181,6 +181,26 @@ describe('main bootstrap', () => {
     expect(candidate.attachToServer).toHaveBeenCalledWith(server);
   });
 
+  it('logs the SIGTERM it receives to the millisecond, for timing a handover (#873)', async () => {
+    const once = jest.spyOn(process, 'once');
+    const write = jest
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+    try {
+      await runMain({ fastifyInstance: { server: { on: jest.fn() } } });
+      const call = once.mock.calls.find(([signal]) => signal === 'SIGTERM');
+      expect(call).toBeDefined();
+      (call![1] as () => void)();
+      const logged = write.mock.calls.map(([chunk]) => String(chunk)).join('');
+      expect(logged).toMatch(
+        /PLAYOUT_SIGTERM \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/,
+      );
+    } finally {
+      write.mockRestore();
+      once.mockRestore();
+    }
+  });
+
   it('uses PORT over HTTP_PORT, and HTTP_PORT when PORT is unset', async () => {
     process.env.PORT = '4100';
     process.env.HTTP_PORT = '4200';

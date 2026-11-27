@@ -92,6 +92,10 @@ export class PlayoutLease
   private readonly logger = new Logger(PlayoutLease.name);
   private readonly options: PlayoutLeaseOptions;
   private state: PlayoutState;
+  /** When this instance took the lock, and when it then reported active (after its writers started). */
+  private grantedAt: Date | null = null;
+  private activeAt: Date | null = null;
+  private stoppingAt: number | null = null;
   private readonly pending: Array<() => unknown> = [];
   private readonly waiters = new Set<() => void>();
   private connection: LeaseConnection | null = null;
@@ -114,6 +118,14 @@ export class PlayoutLease
 
   get current(): PlayoutState {
     return this.state;
+  }
+
+  /** The handover's own clock (alcantara#873): when the lock was taken and when the instance reported active. */
+  get timeline(): { grantedAt: string | null; activeSince: string | null } {
+    return {
+      grantedAt: this.grantedAt?.toISOString() ?? null,
+      activeSince: this.activeAt?.toISOString() ?? null,
+    };
   }
 
   /**
@@ -155,6 +167,13 @@ export class PlayoutLease
    * the engine and the schedulers live in global modules beside this one, so some of them may still be stopping here.
    */
   onModuleDestroy(): void {
+    if (this.stoppingAt === null && this.state === 'active' && this.grantedAt) {
+      this.stoppingAt = Date.now();
+      // Every handover line carries an ISO time to the millisecond; the logger's own stamp is to the second.
+      this.logger.log(
+        `PLAYOUT_STOPPING ${new Date(this.stoppingAt).toISOString()}`,
+      );
+    }
     this.stopping = true;
     if (this.attemptTimer) clearTimeout(this.attemptTimer);
     this.attemptTimer = null;
@@ -177,7 +196,10 @@ export class PlayoutLease
       this.state = 'standby';
       this.metrics.setPlayoutLeaseState('standby');
       await this.unlock(connection);
-      this.logger.log('Playout lease released at shutdown');
+      const unlockedAt = Date.now();
+      this.logger.log(
+        `PLAYOUT_UNLOCKED ${new Date(unlockedAt).toISOString()} (${unlockedAt - (this.stoppingAt as number)} ms after the writers began stopping)`,
+      );
     }
     // Closing the session frees the lock too, if the unlock above could not run.
     await connection?.end().catch(() => undefined);
@@ -245,6 +267,8 @@ export class PlayoutLease
 
   private async activate(): Promise<void> {
     const startedAt = Date.now();
+    this.grantedAt = new Date(startedAt);
+    this.logger.log(`PLAYOUT_GRANTED ${this.grantedAt.toISOString()}`);
     this.livenessTimer = setInterval(() => {
       void this.connection
         ?.query('SELECT 1')
@@ -253,9 +277,14 @@ export class PlayoutLease
     this.livenessTimer.unref?.();
     for (const start of this.pending.splice(0)) await this.run(start);
     this.state = 'active';
+    this.activeAt = new Date();
     this.metrics.setPlayoutLeaseState('active');
-    this.metrics.recordPlayoutActivation((Date.now() - startedAt) / 1000);
-    this.logger.log('Playout lease held: this instance drives playout');
+    this.metrics.recordPlayoutActivation(
+      (this.activeAt.getTime() - startedAt) / 1000,
+    );
+    this.logger.log(
+      `PLAYOUT_ACTIVE ${this.activeAt.toISOString()} (activation ${this.activeAt.getTime() - startedAt} ms): this instance drives playout`,
+    );
     for (const waiter of [...this.waiters]) waiter();
   }
 

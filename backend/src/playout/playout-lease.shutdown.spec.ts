@@ -1,4 +1,10 @@
-import { Global, Injectable, Module, OnModuleDestroy } from '@nestjs/common';
+import {
+  Global,
+  Injectable,
+  Logger,
+  Module,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { PlayoutModule } from './playout.module';
@@ -158,6 +164,94 @@ describe('PlayoutLease at shutdown', () => {
     });
     await local.beforeApplicationShutdown();
     expect(local.current).toBe('active');
+  });
+});
+
+describe('PlayoutLease handover times', () => {
+  beforeEach(() =>
+    jest.useFakeTimers({ now: new Date('2026-11-27T08:15:54.700Z') }),
+  );
+  afterEach(() => jest.useRealTimers());
+
+  it('records and logs, to the millisecond, the grant, activation, stop and unlock', async () => {
+    const lines: string[] = [];
+    const log = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation((message: unknown) => {
+        lines.push(String(message));
+      });
+    try {
+      const conn = connection([]);
+      const lease = new PlayoutLease(new ManagedMetricsService(), {
+        lock: true,
+        candidate: false,
+        connect: () => Promise.resolve(conn),
+        exit: jest.fn(),
+      });
+      expect(lease.timeline).toEqual({ grantedAt: null, activeSince: null });
+      void lease.whenActive(() => jest.advanceTimersByTime(350));
+      lease.start();
+      await jest.advanceTimersByTimeAsync(0);
+      expect(lease.timeline).toEqual({
+        grantedAt: '2026-11-27T08:15:54.700Z',
+        activeSince: '2026-11-27T08:15:55.050Z',
+      });
+      expect(lines).toEqual([
+        'PLAYOUT_GRANTED 2026-11-27T08:15:54.700Z',
+        'PLAYOUT_ACTIVE 2026-11-27T08:15:55.050Z (activation 350 ms): this instance drives playout',
+      ]);
+
+      jest.advanceTimersByTime(10_000);
+      lease.onModuleDestroy();
+      lease.onModuleDestroy();
+      jest.advanceTimersByTime(1_249);
+      await lease.beforeApplicationShutdown();
+      expect(lines.slice(2)).toEqual([
+        'PLAYOUT_STOPPING 2026-11-27T08:16:05.050Z',
+        'PLAYOUT_UNLOCKED 2026-11-27T08:16:06.299Z (1249 ms after the writers began stopping)',
+      ]);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('logs no stop for a standby, and an unlock without a stop when shutdown skipped the first phase', async () => {
+    const lines: string[] = [];
+    const log = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation((message: unknown) => {
+        lines.push(String(message));
+      });
+    try {
+      const standby = new PlayoutLease(new ManagedMetricsService(), {
+        lock: true,
+        candidate: false,
+        connect: () => Promise.resolve(connection([], [false])),
+        exit: jest.fn(),
+      });
+      standby.start();
+      await jest.advanceTimersByTimeAsync(0);
+      standby.onModuleDestroy();
+      await standby.beforeApplicationShutdown();
+      expect(lines).toEqual([]);
+
+      const active = new PlayoutLease(new ManagedMetricsService(), {
+        lock: true,
+        candidate: false,
+        connect: () => Promise.resolve(connection([])),
+        exit: jest.fn(),
+      });
+      active.start();
+      await jest.advanceTimersByTimeAsync(0);
+      lines.length = 0;
+      await active.beforeApplicationShutdown();
+      expect(lines[0]).toMatch(/^PLAYOUT_STOPPING /);
+      expect(lines[1]).toMatch(
+        /^PLAYOUT_UNLOCKED .* \(0 ms after the writers began stopping\)$/,
+      );
+    } finally {
+      log.mockRestore();
+    }
   });
 });
 

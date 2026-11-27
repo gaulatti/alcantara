@@ -182,6 +182,11 @@ playout_state() {
   curl --fail --silent --max-time 2 "http://127.0.0.1:$1/health/ready" | sed -n 's/.*"state":"\([a-z]*\)".*/\1/p'
 }
 
+# When the backend on loopback PORT took the playout lock, by its own clock (empty from a backend that does not say).
+playout_granted() {
+  curl --fail --silent --max-time 2 "http://127.0.0.1:$1/health/ready" | sed -n 's/.*"grantedAt":"\([^"]*\)".*/\1/p'
+}
+
 # Points the installed nginx site at loopback PORT, changing only its proxy_pass port (certbot's TLS half stays). The
 # new site is written beside it, checked complete (non-empty, the new proxy_pass in it) and moved into place in one
 # step; a full disk or any failure leaves the site as it was. If nginx refuses it or the reload fails, the previous
@@ -341,7 +346,13 @@ if [ "$handover" = true ]; then
     fi
   else
     trap - EXIT INT TERM
+    # The poll's time, and the backend's own grant time: the gap is OWNER_GRANTED − OWNER_UNLOCKED.
     echo "OWNER_ACQUIRED $(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
+    echo "OWNER_GRANTED $(playout_granted "$new_port" || true)"
+    # The previous backend's own shutdown times, from its log before it is removed: SIGTERM received, writers
+    # stopping, lock released.
+    { docker logs alcantara-backend 2>&1 || true; } | grep -oE 'PLAYOUT_(SIGTERM|STOPPING|UNLOCKED) [0-9T:.Z-]+' |
+      sed -e 's/^PLAYOUT_UNLOCKED/OWNER_UNLOCKED/' -e 's/^PLAYOUT_/PREVIOUS_/' || true
     # Fix forward from here: the new backend serves and drives playout, so the stopped one is not kept as a rollback
     # container (one left behind would stop every later deploy for operator review).
     docker rm -f alcantara-backend >/dev/null 2>&1 || true

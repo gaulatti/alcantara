@@ -17,6 +17,8 @@ export class HealthController {
     return {
       state: this.lease.current,
       build: process.env.ALCANTARA_BUILD_VERSION ?? null,
+      // The handover's own times, so the deploy reports when the lock was taken rather than when its poll saw it.
+      ...this.lease.timeline,
     };
   }
 }
