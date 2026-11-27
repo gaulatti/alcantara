@@ -95,8 +95,9 @@ const CONTROL_PLANE_UNREACHABLE = "The guest-call control plane can't be reached
 
 export default function CallsRoute() {
   const [programId] = useGlobalProgramId();
-  const { hasPermission } = useFeatures();
-  const canOperate = hasPermission('alcantara:webrtc:operate');
+  const { hasPermission, loading: featuresLoading } = useFeatures();
+  // Until the permissions are read, the page does not know what the operator may do: it says so, not "no permission".
+  const canOperate = !featuresLoading && hasPermission('alcantara:webrtc:operate');
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [roomReturn, setRoomReturn] = useState<RoomReturn | null>(null);
@@ -378,7 +379,9 @@ export default function CallsRoute() {
   };
 
   const activeInvitations = invitations.filter((item) => item.status !== 'revoked' && item.status !== 'expired');
-  const createBlockedReason = !canOperate
+  const createBlockedReason = featuresLoading
+    ? 'Checking your permissions…'
+    : !canOperate
     ? 'You do not have permission to create guest links.'
     : activeInvitations.length >= 6
       ? 'All 6 guest slots are assigned. Revoke a link to free one.'

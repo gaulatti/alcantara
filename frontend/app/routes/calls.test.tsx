@@ -73,14 +73,14 @@ const lk = vi.hoisted(() => {
   };
   return { state, Room, createLocalAudioTrack };
 });
-const permissions = vi.hoisted(() => ({ operate: true }));
+const permissions = vi.hoisted(() => ({ operate: true, loading: false }));
 
 vi.mock("livekit-client", () => ({
   Room: lk.Room,
   createLocalAudioTrack: lk.createLocalAudioTrack,
 }));
 vi.mock("../hooks/useFeatures", () => ({
-  useFeatures: () => ({ hasPermission: () => permissions.operate }),
+  useFeatures: () => ({ hasPermission: () => permissions.operate, loading: permissions.loading }),
 }));
 vi.mock("../utils/globalProgram", () => ({
   useGlobalProgramId: () => ["main show"],
@@ -383,6 +383,18 @@ it("says why creating a link is disabled: no permission, or every slot assigned"
   expect(
     screen.getByText("All 6 guest slots are assigned. Revoke a link to free one."),
   ).toBeVisible();
+});
+
+it("does not say the operator lacks permission while the permissions are still loading", async () => {
+  permissions.loading = true;
+  try {
+    serve();
+    render(<CallsRoute />);
+    expect(await screen.findByText("Checking your permissions…")).toBeVisible();
+    expect(screen.queryByText("You do not have permission to create guest links.")).not.toBeInTheDocument();
+  } finally {
+    permissions.loading = false;
+  }
 });
 
 it("shows loading as skeletons until the first list arrives", async () => {
