@@ -1338,6 +1338,12 @@
     "permission": "alcantara:webrtc:read"
   },
   {
+    "method": "POST",
+    "path": "/webrtc/host-mic-token",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
+  },
+  {
     "method": "GET",
     "path": "/webrtc/invitations",
     "public": false,

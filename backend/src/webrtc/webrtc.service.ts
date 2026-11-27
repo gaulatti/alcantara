@@ -131,6 +131,14 @@ function offAirAgain(before: { cue?: string; cueSessionId?: string | null }) {
   };
 }
 
+/**
+ * The one identity the host's microphone has in a program's room (gaulatti/alcantara#879). It starts with `operator-`
+ * as every operator connection does, so readers that predate it still treat it as the operator's.
+ */
+export function hostMicIdentity(programId: string): string {
+  return `operator-host-mic-${programId}`;
+}
+
 @Injectable()
 export class WebrtcService implements OnModuleInit, OnModuleDestroy {
   private lostCallSweep: ReturnType<typeof setInterval> | null = null;
@@ -1284,7 +1292,8 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
   async muteHostMic(programIdValue: unknown) {
     const programId = this.normalizeProgramId(programIdValue);
     const tracks = await this.hostMicTracks(programId);
-    if (tracks.length === 0) return { status: 'no-host-mic' as const, muted: 0 };
+    if (tracks.length === 0)
+      return { status: 'no-host-mic' as const, muted: 0 };
     for (const track of tracks) {
       try {
         await this.roomService.mutePublishedTrack(
@@ -1323,6 +1332,38 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       canSubscribe: true,
       canPublishData: true,
       // Visible, or the return router never receives the talkback. Guests subscribe only their own mix.
+      hidden: false,
+    });
+    return {
+      serverUrl: this.wsUrl,
+      token: await token.toJwt(),
+      roomName: this.roomName(programId),
+    };
+  }
+
+  /**
+   * A token for the host's microphone on air (gaulatti/alcantara#879). Its identity is fixed per program
+   * (hostMicIdentity), so LiveKit admits one at a time: a second tab or device that goes on air disconnects the first
+   * (DUPLICATE_IDENTITY), whatever either page does, and air never carries two host microphones. The contribution
+   * worker and the return router take `onair:host` only from this identity. It publishes a microphone only, sees
+   * no one and sends no data.
+   */
+  async createHostMicToken(programIdValue: unknown) {
+    this.requireConfiguration();
+    const programId = this.normalizeProgramId(programIdValue);
+    const token = new AccessToken(this.apiKey, this.apiSecret, {
+      identity: hostMicIdentity(programId),
+      name: 'Alcantara host microphone',
+      ttl: '5m',
+      metadata: JSON.stringify({ role: 'host-mic' }),
+    });
+    token.addGrant({
+      room: this.roomName(programId),
+      roomJoin: true,
+      canPublish: true,
+      canPublishSources: [TrackSource.MICROPHONE],
+      canSubscribe: false,
+      canPublishData: false,
       hidden: false,
     });
     return {
