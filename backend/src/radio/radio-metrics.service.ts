@@ -61,6 +61,7 @@ export type PalazzoMachineResult =
  * (Palazzo was playing; nothing to do), `unavailable` (no state could be read).
  */
 export type EngineResyncTrigger =
+  | 'boot'
   | 'foreign_ended'
   | 'watchdog'
   | 'command_failed';
@@ -93,6 +94,7 @@ export const ENGINE_DEGRADED_SITES: EngineDegradedSite[] = [
 ];
 
 const RESYNC_TRIGGERS: EngineResyncTrigger[] = [
+  'boot',
   'foreign_ended',
   'watchdog',
   'command_failed',

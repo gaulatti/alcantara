@@ -214,7 +214,7 @@ describe('RadioMetricsService engine resyncs', () => {
       .filter((line) =>
         line.startsWith('alcantara_radio_engine_resyncs_total{'),
       );
-    expect(series).toHaveLength(13);
+    expect(series).toHaveLength(17);
     expect(metrics.snapshot().engineResyncs).toEqual({
       'foreign_ended:resumed': 1,
       'watchdog:resumed': 2,
@@ -282,7 +282,9 @@ describe('RadioMetricsService announcements that never aired', () => {
     metrics.recordAnnouncedNotAired('no_start');
     metrics.recordAnnouncedNotAired('unbounded' as never);
     const rendered = metrics.render();
-    expect(rendered).toContain('alcantara_radio_announced_not_aired_total{reason="no_start"} 1');
+    expect(rendered).toContain(
+      'alcantara_radio_announced_not_aired_total{reason="no_start"} 1',
+    );
     expect(rendered).not.toContain('unbounded');
   });
 });

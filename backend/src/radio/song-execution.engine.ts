@@ -688,10 +688,15 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       const pid = s.programState.programId;
       if (!s.palazzoUrl) continue;
       if (!RADIO_PROGRAM_TYPES.has(s.programState.type)) continue;
-      this.hydrate(pid, s.programState);
+      // The rotation is taken up last: until then a Palazzo report has nothing to command from, so none can start a
+      // song before what already aired is known.
       this.restoreBumperPosition(pid, s);
       await this.recallLastStartedSong(pid);
       await this.recallHeardPlayout(pid, s.programState.playoutHeard);
+      this.hydrate(pid, s.programState);
+      // Telemetry starts alongside this and can report first. That report found no rotation, and a connected stream
+      // sends no other, so read Palazzo again now.
+      if (this.states.get(pid)!.reconciled) void this.resync(pid, 'boot');
     }
     this.updateHighRotationFavoriteMetric();
     // A deploy candidate (#223) starts no telemetry and no watchdog.

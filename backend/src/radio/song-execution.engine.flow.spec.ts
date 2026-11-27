@@ -2985,3 +2985,41 @@ describe('SongExecutionEngine and the playout lease', () => {
     engine.onModuleDestroy();
   });
 });
+
+// A host reboot: Palazzo is already up, idle, and its first report arrives before the rotation is taken up.
+describe('SongExecutionEngine and a Palazzo report ahead of the boot', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('reads Palazzo again once the rotation is taken up, without waiting for the watchdog', async () => {
+    const ctx = setup();
+    ctx.prisma.radioSettings.findMany.mockResolvedValue([
+      {
+        palazzoUrl: 'http://palazzo:3100',
+        programState: {
+          programId: 'radio-1',
+          type: 'radio',
+          songSequence: AUTO,
+          songQueue: [],
+          songRotation: null,
+        },
+      },
+    ]);
+    ctx.prisma.asRunRecord.findFirst.mockResolvedValue(null);
+    ctx.engine.registerRadioProgram('radio-1');
+    ctx.palazzo.state = idle(4);
+    ctx.engine.handlePalazzoSnapshot('radio-1', idle(4));
+    await flush(80);
+    expect(playedUrls(ctx)).toEqual([]);
+
+    await ctx.engine.onModuleInit();
+    await flush(80);
+
+    expect(playedUrls(ctx)).toHaveLength(1);
+    expect(ctx.metrics.recordEngineResync).toHaveBeenCalledWith(
+      'boot',
+      'resumed',
+    );
+    ctx.engine.onModuleDestroy();
+  });
+});
