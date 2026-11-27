@@ -159,9 +159,9 @@ widths. `hidden-component` retains explicit player restoration coverage.
 The PREVIEW and PROGRAM monitors are the program page rendered again in the
 director's own browser (`?confidence=preview|program`), and PROGRAM is silent
 (output gain 0). Neither is the output: they have no latency, no signal loss
-and no audio. Both headers say `local render`, PROGRAM carries a
-"Local render · not the output" ribbon, and its Listen action is disabled with
-the reason (alcantara#301). `ConfidenceMonitor` also takes a `returnSource` for
+and no audio. Both headers say `Local render` (alcantara#301). A PROGRAM monitor
+that shows its air state has no Listen action; on the Audio desk the Listen
+action is disabled with the reason. `ConfidenceMonitor` also takes a `returnSource` for
 a real return (from Alana or the Tauri pilot), which does not exist yet. When
 one does, the tile shows "Return · from <source>", how far it is behind, and
 one of Live, Delayed (more than 3 s behind), Frozen (the same frame for 2 s,
@@ -411,7 +411,8 @@ Fixture controls do not issue production audio commands.
 ## Workspaces and ergonomics
 
 - **Director** shows Preview and Program, the source bank, transition, CUT, TAKE,
-  and the lower scene-property workspace.
+  Fade to black, and the lower scene-property workspace. Desktop and tablet
+  widths open on it; a phone opens on Remote. A saved preference wins.
 - **Audio** puts the mixer and music playlist in separate working columns, with
   a compact Program confidence monitor above the Cartwall. Radio adds a bounded
   Play Next queue above the playlist;
@@ -428,10 +429,18 @@ source, then return to TAKE. Collection routes use stacked cards with visible
 actions where a desktop row would otherwise require horizontal navigation or
 hover.
 
+## Simulcast control page
+
+The page is its title, one amber line when the radio leg has a problem
+(**Radio <reason> · Setup**; nothing when it is healthy), the workspace tabs with
+the local time, and the workspace. Rows of controls carry a **TV** tag. Fade to
+black is neutral until the first press arms it (**Press again**). Live updates are
+mentioned only while they are disconnected.
+
 ## Program filler
 
-**Broadcast destinations** ends with a **Program filler** section (gaulatti/alcantara#127). It reads `GET /broadcast/programs/:programId/fillers` from #126 (see `docs/program-filler.md` once #126 lands).
-- Each leg the program has (television and/or radio) shows its version **Active this session** and its version **Pending next session**. For each version it shows the id, status (with reason), order and seed, sources (named from the media library when known), a short checksum, and the preparation time.
+**TV destinations** ends with one closed row per filler leg (gaulatti/alcantara#127). It reads `GET /broadcast/programs/:programId/fillers` from #126 (see `docs/program-filler.md` once #126 lands).
+- Closed, a row says whether a version is active and pending (and, with `broadcast.manage`, how many radio songs are selected). Open, each leg the program has (television and/or radio) shows its version **Active this session** and its version **Pending next session**. For each version it shows the id, status (with reason), order and seed, sources (named from the media library when known), a short checksum, and the preparation time.
 - With `broadcast.manage`, an operator can prepare a television filler from one enabled image or video asset, and a radio filler from enabled audio assets, in order or shuffled with a seed.
 - A failed preparation shows the server's message and keeps the selection for a retry.
 - Nothing claims a ready state the backend did not report.
@@ -452,7 +461,7 @@ Labels tabs, unified audio cards, capability badges, and inline label creation.
 `state=empty-preview`, `state=on-air`, `state=disconnected`, `state=ftb`,
 `state=audio`, `state=remote`, `state=taking`, `state=take-failed`, and
 `state=loading`, and `state=hidden-component`. Add `mode=both` to exercise the Simulcast
-status rail. Production builds do not expose the fixture route.
+radio warning line. Production builds do not expose the fixture route.
 
 Playback control states are available at `state=playback-live` and
 `state=playback-stale`. These fixtures show the mutually exclusive Manual,

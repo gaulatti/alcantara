@@ -10,13 +10,19 @@ returns it to a signed-in operator without keeping it.
 
 ## The operator page
 
-The **Broadcast destinations** page (Live → TV destinations) lists the catalog
-first. Those are the destinations the desktop studio's **Go live** streams to:
+The **TV destinations** page (Live → TV destinations) lists the catalog first.
+Those are the destinations the desktop studio's **Go live** streams to:
 Alcántara stores each key and hands it only to the signed-in desktop studio,
-through the ingest route. Alana's executor controls (state, destination
-selection, **Confirm Start** and **Confirm Stop**) sit below, under **Server
-playout (v2, not active)**. That server-side playout isn't in use yet, so
-Confirm Start there doesn't put the desktop studio on air.
+through the ingest route. Each row has Rename, Key, Test and **Retire**. Retire
+is neutral until the first press arms it; the second press, within three seconds,
+retires. A retired row keeps only Restore (and its order arrows).
+
+Below the catalog the inactive sections are one-line closed rows: **Server
+playout** (v2, not in use, so Confirm Start doesn't put the desktop studio on
+air), **Executor** (its state in words), and one row per filler leg. **Confirmed
+destinations** always shows its count and the three commands, **Reload while
+stopped**, **Confirm Start** and **Confirm Stop**; open the row to choose the
+destinations. A user without `broadcast.operate` sees the commands disabled.
 
 ## Ownership and command flow
 
