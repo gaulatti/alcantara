@@ -295,7 +295,7 @@ it("starts a rejoin's heartbeats from the new room, without the last room's feed
     returnFeedHealth: "missing",
   });
   // The new room waits for its own return feed.
-  expect(screen.getByText("Waiting for selected return feed")).toBeVisible();
+  expect(screen.getByText("Connecting you to the studio sound…")).toBeVisible();
 });
 
 it("ignores a director media command that names no device", async () => {

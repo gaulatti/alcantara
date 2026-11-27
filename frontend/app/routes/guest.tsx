@@ -8,6 +8,8 @@ import { isDrop, reportJoinFailure, roomIcePath } from '../utils/callTelemetry';
 import { isProgramFeed, preferredProgramFeed } from '../utils/programFeed';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { mediaErrorHelp, type MediaHelp } from '../utils/guestMediaHelp';
+import { GUEST_RETURN_COPY, guestReturnState } from '../components/guest/guestReturnCopy';
+import { GuestReturnLevel } from '../components/guest/GuestReturnLevel';
 import type { Route } from './+types/guest';
 
 type GuestStatus = 'preflight' | 'ready' | 'joining' | 'waiting' | 'live' | 'reconnecting' | 'left' | 'ended' | 'error';
@@ -84,8 +86,10 @@ export default function GuestRoute() {
   const [network, setNetwork] = useState('Checking network…');
   const [quality, setQuality] = useState('unknown');
   const [returnFeed, setReturnFeed] = useState(false);
-  // After this long on air with no return track, the page says so in plain words instead of waiting forever.
-  const [returnWaitExpired, setReturnWaitExpired] = useState(false);
+  // Whether the guest has heard the studio's return on this call: it tells "connecting" from "dropped".
+  const [returnEverPlayed, setReturnEverPlayed] = useState(false);
+  // The return participant whose audio is playing, read for the level meter.
+  const returnLevelSource = useRef<RemoteParticipant | null>(null);
   const [displayName, setDisplayName] = useState('Guest');
   const [programId, setProgramId] = useState('');
   const [returnVideo, setReturnVideo] = useState('program');
@@ -344,6 +348,7 @@ export default function GuestRoute() {
       roomRef.current = room;
       // A new room has no return feed and no quality reading yet: a rejoin does not report the last room's.
       setReturnFeed(false);
+      setReturnEverPlayed(false);
       setQuality('unknown');
       telemetryRef.current = { ...telemetryRef.current, returnFeed: false, quality: 'unknown' };
       const programReturn = credentials.returnVideo === 'program';
@@ -398,6 +403,7 @@ export default function GuestRoute() {
         if (track.kind === Track.Kind.Audio && returnAudioRef.current) {
           track.attach(returnAudioRef.current);
           void returnAudioRef.current.play();
+          returnLevelSource.current = participant;
         }
         setReturnFeed(true);
       };
@@ -418,6 +424,7 @@ export default function GuestRoute() {
           return;
         }
         track.detach();
+        if (track.kind === Track.Kind.Audio) returnLevelSource.current = null;
         setReturnFeed(false);
       });
       room.on(RoomEvent.ConnectionStateChanged, (state) => {
@@ -578,13 +585,8 @@ export default function GuestRoute() {
   };
 
   useEffect(() => {
-    if ((status !== 'live' && status !== 'reconnecting') || returnFeed) {
-      setReturnWaitExpired(false);
-      return;
-    }
-    const timer = window.setTimeout(() => setReturnWaitExpired(true), 5000);
-    return () => window.clearTimeout(timer);
-  }, [status, returnFeed]);
+    if (returnFeed) setReturnEverPlayed(true);
+  }, [returnFeed]);
 
   // The join needs the speaker test and the headphones confirmation. The page says which one is still missing.
   const readyToJoin = status === 'ready' && speakerChecked && headphonesConfirmed;
@@ -620,20 +622,19 @@ export default function GuestRoute() {
             }
           />
           {(status === 'live' || status === 'reconnecting') && !returnFeed ? (
-            <div className='absolute inset-0 flex items-center justify-center bg-zinc-950/80 text-center'>
+            <div className='absolute inset-0 flex items-center justify-center bg-zinc-950/80 px-6 text-center'>
               <div>
                 <Radio className='mx-auto animate-pulse text-sky-300' />
-                {returnWaitExpired ? (
-                  <p className='mt-3 max-w-xs px-4 font-semibold'>
-                    The studio isn't sending a return right now. You're still live and they can hear and see you.
-                  </p>
-                ) : (
-                  <p className='mt-3 font-semibold'>Waiting for selected return feed</p>
-                )}
-                <p className='mt-1 text-xs text-white/50'>
-                  {returnVideo} video · {returnAudioBus} N-1 audio
+                <p role='status' className='mt-3 max-w-sm font-semibold'>
+                  {GUEST_RETURN_COPY[guestReturnState({ returnFeed, everPlayed: returnEverPlayed })]}
                 </p>
               </div>
+            </div>
+          ) : null}
+          {(status === 'live' || status === 'reconnecting') && returnFeed ? (
+            <div className='absolute bottom-4 left-4 z-10 flex items-center gap-3 rounded-lg bg-zinc-950/70 px-3 py-2 text-sm'>
+              <span role='status'>{GUEST_RETURN_COPY.playing}</span>
+              <GuestReturnLevel read={() => returnLevelSource.current?.audioLevel ?? 0} />
             </div>
           ) : null}
           {status === 'waiting' ? (

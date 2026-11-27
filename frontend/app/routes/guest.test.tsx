@@ -455,7 +455,7 @@ it("joins the studio, subscribes only to its return feed and keeps the session",
   ]);
   expect(room().preview.attached).toHaveLength(1);
   expect(streams[0].getTracks().every((item) => item.stopped)).toBe(true);
-  expect(screen.getByText("Waiting for selected return feed")).toBeVisible();
+  expect(screen.getByText("Connecting you to the studio sound…")).toBeVisible();
   expect(screen.getByText("live")).toBeVisible();
   await waitFor(() =>
     expect(fetchCalls.some((call) => call.url.endsWith("/heartbeat"))).toBe(
@@ -530,11 +530,11 @@ it("joins the studio, subscribes only to its return feed and keeps the session",
   expect(attached).toEqual(["video", "audio"]);
   expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
   expect(
-    screen.queryByText("Waiting for selected return feed"),
+    screen.queryByText("Connecting you to the studio sound…"),
   ).not.toBeInTheDocument();
   emit("trackUnsubscribed", remote("video"));
   expect(attached.at(-1)).toBe("detached-video");
-  expect(screen.getByText("Waiting for selected return feed")).toBeVisible();
+  expect(screen.getByText("The studio sound dropped. It will come back by itself.")).toBeVisible();
 });
 
 // gaulatti/alexandria#9: the program return is the desktop's feed when it is in the
@@ -573,7 +573,7 @@ it("switches the program return to the desktop's feed when it joins, and back wh
   ]);
   emit("trackSubscribed", desktopTrack, publication("desktop-video", "video"), desktop);
   expect(events).toEqual(["attach alana", "attach desktop", "detach alana"]);
-  expect(screen.queryByText("Waiting for selected return feed")).not.toBeInTheDocument();
+  expect(screen.queryByText("Connecting you to the studio sound…")).not.toBeInTheDocument();
 
   // The desktop leaves: Alana's feed is attached before the desktop's is let go.
   emit("trackUnsubscribed", desktopTrack, publication("desktop-video", "video"), desktop);
@@ -584,12 +584,12 @@ it("switches the program return to the desktop's feed when it joins, and back wh
     "attach alana",
     "detach desktop",
   ]);
-  expect(screen.queryByText("Waiting for selected return feed")).not.toBeInTheDocument();
+  expect(screen.queryByText("Connecting you to the studio sound…")).not.toBeInTheDocument();
 
   // Alana's feed going away too leaves the guest waiting, as before.
   emit("trackUnsubscribed", alanaTrack, publication("alana-video", "video"), alana);
   expect(events.at(-1)).toBe("detach alana");
-  expect(screen.getByText("Waiting for selected return feed")).toBeVisible();
+  expect(screen.getByText("The studio sound dropped. It will come back by itself.")).toBeVisible();
 });
 
 // The desktop feed's sound is a microphone-source track ("program-audio"). A guest never
@@ -659,23 +659,34 @@ it("subscribes to feeds that were already in the room when it joined", async () 
   expect(subscribed).toEqual([["v", true]]);
 });
 
-it("says plainly when the studio sends no return, and keeps the self-view", async () => {
+it("says the studio sound is connecting until a return arrives, and keeps the self-view", async () => {
   await joined();
-  expect(screen.getByText("Waiting for selected return feed")).toBeVisible();
+  expect(screen.getByText("Connecting you to the studio sound…")).toBeVisible();
   const selfView = document.querySelector("video.z-10") as HTMLVideoElement;
   expect(selfView).toHaveClass("z-10");
-  await waitFor(
-    () =>
-      expect(
-        screen.getByText(
-          "The studio isn't sending a return right now. You're still live and they can hear and see you.",
-        ),
-      ).toBeVisible(),
-    { timeout: 7000 },
-  );
-  expect(screen.queryByText("Waiting for selected return feed")).not.toBeInTheDocument();
   expect(document.querySelector("video.z-10")).toBe(selfView);
-}, 12000);
+});
+
+it("says the studio sound is playing, with a level meter, once the return is heard", async () => {
+  await joined();
+  const attached: string[] = [];
+  const remote = (kind: string) => ({
+    kind,
+    attach: () => attached.push(kind),
+    detach: () => attached.push(`detached-${kind}`),
+  });
+  const router = { identity: "return-router-main", audioLevel: 0.4 };
+  const mix = {
+    kind: "audio",
+    trackName: "mixminus:guest-ada:aux-2",
+    setSubscribed: async () => {},
+  };
+  emit("trackSubscribed", remote("audio"), mix, router);
+  expect(attached).toEqual(["audio"]);
+  expect(screen.getByText("You're hearing the studio")).toBeVisible();
+  expect(screen.getByRole("meter", { name: "Studio sound level" })).toBeInTheDocument();
+  expect(screen.queryByText("Connecting you to the studio sound…")).not.toBeInTheDocument();
+});
 
 it("takes no return video when the guest's return is set to none", async () => {
   joinAnswer = () =>
@@ -961,11 +972,11 @@ it("shows a single-feed return when it arrives and waits again when it leaves", 
   emit("trackSubscribed", track, publication, preview);
   expect(attached).toEqual(["attach"]);
   expect(
-    screen.queryByText("Waiting for selected return feed"),
+    screen.queryByText("Connecting you to the studio sound…"),
   ).not.toBeInTheDocument();
   emit("trackUnsubscribed", track, publication, preview);
   expect(attached).toEqual(["attach", "detach"]);
-  expect(screen.getByText("Waiting for selected return feed")).toBeVisible();
+  expect(screen.getByText("The studio sound dropped. It will come back by itself.")).toBeVisible();
 });
 // gaulatti/alcantara#624 (guest.tsx deep routes): the paths that need the call's state traced to reach.
 
