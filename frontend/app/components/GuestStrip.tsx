@@ -349,6 +349,8 @@ export function GuestStrip({
           variant={armed ? "destructive" : "secondary"}
           disabled={cueDisabled}
           aria-pressed={armed}
+          // One width for both states, so arming does not widen the button or push the next one to another line.
+          className="min-w-[13rem] whitespace-nowrap"
           onClick={cueLive}
         >
           {armed ? "Press again or Space: cue live" : "Cue live"}
@@ -358,6 +360,7 @@ export function GuestStrip({
           variant="secondary"
           disabled={cueDisabled}
           data-holding={holding}
+          className="whitespace-nowrap"
           onPointerDown={startHold}
           onPointerUp={cancelHold}
           onPointerLeave={cancelHold}

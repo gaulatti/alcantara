@@ -139,6 +139,18 @@ describe("GuestStrip", () => {
     expect(within(card).queryByRole("checkbox")).toBeNull();
   });
 
+  it("keeps the cue-live and wrap buttons the same width when cue live is armed", () => {
+    const { card } = strip();
+    const cueLive = () => within(card).getByRole("button", { name: /Cue live|Press again or Space/ });
+    const wrap = () => within(card).getByRole("button", { name: /Hold · cue wrap/ });
+    // The colour changes when armed; the width and the no-wrap do not.
+    expect(cueLive().className).toContain("min-w-[13rem] whitespace-nowrap");
+    expect(wrap().className).toContain("whitespace-nowrap");
+    fireEvent.click(cueLive());
+    expect(cueLive().className).toContain("min-w-[13rem] whitespace-nowrap");
+    expect(wrap().className).toContain("whitespace-nowrap");
+  });
+
   it("disarms the live cue after a while, and sends it with Space while armed", () => {
     const { card, onCommand } = strip();
     fireEvent.click(within(card).getByRole("button", { name: "Cue live" }));
