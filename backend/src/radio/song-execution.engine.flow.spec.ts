@@ -118,6 +118,7 @@ function setup(
   const prisma = {
     radioSettings: { findMany: jest.fn().mockResolvedValue([]) },
     songIntro: { findUnique: jest.fn().mockResolvedValue(null) },
+    radioBumperPosition: { upsert: jest.fn().mockResolvedValue({}) },
     instant: { findUnique: jest.fn().mockResolvedValue(null) },
     // What the as-run log last saw start; none unless a test says so.
     asRunRecord: {
@@ -1057,6 +1058,86 @@ describe('SongExecutionEngine bumpers', () => {
     expect(ctx.radioService.playInstant).not.toHaveBeenCalled();
     expect(ctx.prisma.instant.findUnique).not.toHaveBeenCalled();
     expect(playedUrls(ctx)).toHaveLength(2);
+  });
+
+  // Counted in memory alone, every deploy delayed a bumper by a song and started the spots over.
+  describe('across a restart', () => {
+    const SETTINGS = bumperSettings({ bumperInterval: 2 });
+
+    function bumpered() {
+      const ctx = setup();
+      ctx.radioService.getRadioSettings.mockResolvedValue(SETTINGS);
+      ctx.prisma.instant.findUnique.mockImplementation(({ where }: { where: { id: number } }) =>
+        Promise.resolve({ name: `i${where.id}`, audioUrl: `https://example.test/${where.id}.mp3` }),
+      );
+      ctx.prisma.programState.findUnique.mockImplementation(() => Promise.resolve({ ...ctx.store.current, id: 7 }));
+      return ctx;
+    }
+
+    /** A process booting with this row stored, then one song to its end. */
+    async function bootAndEndOneSong(bumperPosition: unknown, setting: Record<string, unknown> = {}) {
+      const ctx = bumpered();
+      ctx.prisma.radioSettings.findMany.mockResolvedValue([
+        {
+          palazzoUrl: 'http://palazzo',
+          bumperInterval: 2,
+          bumperInstantIds: [10, 11],
+          ...setting,
+          programState: { programId: 'radio-1', type: 'radio', songSequence: AUTO, songQueue: [], songRotation: null, bumperPosition },
+        },
+      ]);
+      await ctx.engine.onModuleInit();
+      ctx.engine.handlePalazzoSnapshot('radio-1', idle());
+      await flush(60);
+      end(ctx, activeRequestId(ctx.engine));
+      await flush(60);
+      const spots = ctx.radioService.playInstant.mock.calls.map((call) => call[1]);
+      ctx.engine.onModuleDestroy();
+      return spots;
+    }
+
+    it('keeps the count and the next spot, so the bumper falls where it would have', async () => {
+      const first = bumpered();
+      end(first, await startAutomatic(first));
+      await flush(60);
+      expect(first.radioService.playInstant).not.toHaveBeenCalled();
+      const stored = { songCount: 1, nextBumperIdx: 0, interval: 2, instantIds: [10, 11] };
+      expect(first.prisma.radioBumperPosition.upsert).toHaveBeenCalledWith({
+        where: { programStateId: 7 },
+        create: { programStateId: 7, ...stored },
+        update: stored,
+      });
+      first.engine.onModuleDestroy();
+
+      expect(await bootAndEndOneSong(stored)).toEqual(['https://example.test/10.mp3']);
+      expect(await bootAndEndOneSong({ ...stored, songCount: 3, nextBumperIdx: 1 })).toEqual([
+        'https://example.test/11.mp3',
+      ]);
+    });
+
+    it('starts the count at zero with nothing stored, or a position of another interval or other instants', async () => {
+      const stored = { songCount: 1, nextBumperIdx: 1, interval: 2, instantIds: [10, 11] };
+      expect(await bootAndEndOneSong(null)).toEqual([]);
+      expect(await bootAndEndOneSong(undefined)).toEqual([]);
+      expect(await bootAndEndOneSong(stored, { bumperInterval: 3 })).toEqual([]);
+      expect(await bootAndEndOneSong(stored, { bumperInstantIds: [11, 10] })).toEqual([]);
+    });
+
+    it('plays on when the position cannot be stored', async () => {
+      const ctx = bumpered();
+      ctx.prisma.radioBumperPosition.upsert.mockRejectedValue(new Error('disk full'));
+      end(ctx, await startAutomatic(ctx));
+      await flush(60);
+      expect(playedUrls(ctx)).toHaveLength(2);
+      expect(ctx.metrics.recordEngineDegraded).toHaveBeenCalledWith('bumper_position');
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Bumper position not stored on radio-1'));
+      // A program deleted meanwhile has no row to store against.
+      ctx.prisma.programState.findUnique.mockResolvedValue(null);
+      ctx.prisma.radioBumperPosition.upsert.mockClear();
+      end(ctx, activeRequestId(ctx.engine));
+      await flush(60);
+      expect(ctx.prisma.radioBumperPosition.upsert).not.toHaveBeenCalled();
+    });
   });
 
   it('plays a random bumper and waits before the next song', async () => {

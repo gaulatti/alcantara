@@ -91,6 +91,7 @@ model ProgramState {
   mediaGroups            ProgramMediaGroup[]
   stingers               ProgramStinger[]
   radioSettings          RadioSettings?
+  bumperPosition         RadioBumperPosition?
   nowPlayingConsumers    NowPlayingConsumer[]
   songIntros             SongIntro[]
   broadcastSelections    BroadcastDestinationSelection[]
@@ -678,6 +679,18 @@ model RadioSettings {
   similarityPool          String @default("sequence")
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
+}
+
+/// Where a program's station bumpers stand, written by the song engine so a restart keeps their cadence. It counts
+/// only while the program's bumper interval and instants are the ones it was written with.
+model RadioBumperPosition {
+  programStateId Int          @id
+  programState   ProgramState @relation(fields: [programStateId], references: [id], onDelete: Cascade)
+  songCount      Int
+  nextBumperIdx  Int
+  interval       Int
+  instantIds     Int[]
+  updatedAt      DateTime     @updatedAt
 }
 
 model NowPlayingConsumer {

@@ -442,7 +442,10 @@ same segue and loudness the song command would carry; with segue off, neither.
   `alcantara_radio_announcement_skipped_total{reason}`.
 - **Bumper slots (gaulatti/alcantara#232, contract gaulatti/palazzo#50).**
   Bumpers stay Alcantara's: every `bumperInterval` songs, a spot from
-  `bumperInstantIds`, sequential or random. When the end of the song on air is
+  `bumperInstantIds`, sequential or random. The count and the next spot are
+  stored as songs end (`RadioBumperPosition`) and taken up at a restart; a
+  position stored for another interval or other instants is ignored and the
+  count starts at zero. When the end of the song on air is
   a slot and Palazzo's state lists `next.bumper` in `capabilities`, the engine
   chooses the spot once for that song and announces the successor with
   `bumper: {playbackId, url}`. Palazzo then plays the spot when the song ends,

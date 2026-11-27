@@ -588,6 +588,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       where: { enabled: true },
       select: {
         palazzoUrl: true,
+        bumperInterval: true,
+        bumperInstantIds: true,
         programState: {
           select: {
             programId: true,
@@ -595,6 +597,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
             songSequence: true,
             songQueue: true,
             songRotation: true,
+            bumperPosition: true,
           },
         },
       },
@@ -604,6 +607,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       if (!s.palazzoUrl) continue;
       if (!RADIO_PROGRAM_TYPES.has(s.programState.type)) continue;
       this.hydrate(pid, s.programState);
+      this.restoreBumperPosition(pid, s);
       await this.recallLastStartedSong(pid);
     }
     this.updateHighRotationFavoriteMetric();
@@ -651,6 +655,70 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     this.logger.log(
       `Booting ${pid}, mode=${seq.mode}, awaiting Palazzo snapshot`,
     );
+  }
+
+  /**
+   * Takes up the bumper count and the next spot where the last process left them. A position written for another
+   * interval or other instants is ignored, as is none: the count starts at zero.
+   */
+  private restoreBumperPosition(
+    programId: string,
+    setting: {
+      bumperInterval?: number | null;
+      bumperInstantIds?: number[];
+      programState: {
+        bumperPosition?: {
+          songCount: number;
+          nextBumperIdx: number;
+          interval: number;
+          instantIds: number[];
+        } | null;
+      };
+    },
+  ): void {
+    const stored = setting.programState.bumperPosition;
+    if (
+      !stored ||
+      stored.interval !== setting.bumperInterval ||
+      String(stored.instantIds) !== String(setting.bumperInstantIds)
+    )
+      return;
+    const state = this.ensureState(programId);
+    state.songCount = stored.songCount;
+    state.nextBumperIdx = stored.nextBumperIdx;
+  }
+
+  /** Best effort and never awaited by a song change: a failure costs at most one late bumper after a restart. */
+  private storeBumperPosition(
+    programId: string,
+    state: SongEngineState,
+    settings: { bumperInterval?: number | null; bumperInstantIds: number[] },
+  ): void {
+    // Read now: the write runs later.
+    const position = {
+      songCount: state.songCount,
+      nextBumperIdx: state.nextBumperIdx,
+      interval: settings.bumperInterval!,
+      instantIds: [...settings.bumperInstantIds],
+    };
+    const write = async (): Promise<void> => {
+      const row = await this.prisma.programState.findUnique({
+        where: { programId },
+        select: { id: true },
+      });
+      if (!row) return;
+      await this.prisma.radioBumperPosition.upsert({
+        where: { programStateId: row.id },
+        create: { programStateId: row.id, ...position },
+        update: position,
+      });
+    };
+    void write().catch((error) => {
+      this.logger.warn(
+        `Bumper position not stored on ${programId} (${errorClass(error)})`,
+      );
+      this.metrics.recordEngineDegraded('bumper_position');
+    });
   }
 
   /**
@@ -737,12 +805,15 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       where: { enabled: true, programState: { programId: next } },
       select: {
         palazzoUrl: true,
+        bumperInterval: true,
+        bumperInstantIds: true,
         programState: {
           select: {
             type: true,
             songSequence: true,
             songQueue: true,
             songRotation: true,
+            bumperPosition: true,
           },
         },
       },
@@ -753,7 +824,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     const capable =
       !!setting?.palazzoUrl &&
       RADIO_PROGRAM_TYPES.has(setting.programState.type);
-    if (setting && capable) this.hydrate(next, setting.programState);
+    if (setting && capable) {
+      this.hydrate(next, setting.programState);
+      this.restoreBumperPosition(next, setting);
+    }
     this.telemetry?.renameProgram?.(
       current,
       next,
@@ -4544,7 +4618,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       try {
         const settings = await this.radioService.getRadioSettings(programId);
         const length = settings?.bumperInstantIds.length ?? 0;
-        if (length) state.nextBumperIdx = (spot.index + 1) % length;
+        if (length) {
+          state.nextBumperIdx = (spot.index + 1) % length;
+          this.storeBumperPosition(programId, state, settings!);
+        }
       } catch (error) {
         // The sequence stays where it was.
         this.logger.warn(
@@ -4619,10 +4696,15 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       )
         return;
       const state = this.states.get(programId);
-      if (!state || state.songCount % settings.bumperInterval !== 0) return;
+      if (!state) return;
+      if (state.songCount % settings.bumperInterval !== 0) {
+        this.storeBumperPosition(programId, state, settings);
+        return;
+      }
       const ids = settings.bumperInstantIds;
       const idx = this.bumperIndex(state, settings);
       state.nextBumperIdx = (idx + 1) % ids.length;
+      this.storeBumperPosition(programId, state, settings);
       const inst = await this.prisma.instant.findUnique({
         where: { id: ids[idx] },
       });
@@ -4662,6 +4744,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
             ) {
               state.bumperSpotsSent?.delete(playbackRequestId);
               state.nextBumperIdx = idx;
+              this.storeBumperPosition(programId, state, settings);
               return;
             }
             continue;

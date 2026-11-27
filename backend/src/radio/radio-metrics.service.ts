@@ -73,19 +73,21 @@ export type EngineResyncResult =
 /**
  * Engine paths that degrade instead of failing (#237): Palazzo state unreadable
  * at resync, radio settings unreadable when advancing the bumper sequence, a
- * bumper attempt that failed before its send, and a command with no radio
- * settings for the program.
+ * bumper attempt that failed before its send, a command with no radio
+ * settings for the program, and a bumper position that could not be stored.
  */
 export type EngineDegradedSite =
   | 'telemetry_state'
   | 'bumper_settings'
   | 'bumper_attempt'
-  | 'radio_settings_missing';
+  | 'radio_settings_missing'
+  | 'bumper_position';
 export const ENGINE_DEGRADED_SITES: EngineDegradedSite[] = [
   'telemetry_state',
   'bumper_settings',
   'bumper_attempt',
   'radio_settings_missing',
+  'bumper_position',
 ];
 
 const RESYNC_TRIGGERS: EngineResyncTrigger[] = [
