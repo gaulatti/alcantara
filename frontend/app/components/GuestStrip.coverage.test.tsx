@@ -340,3 +340,15 @@ it("says audio and video are not sent when the guest has no such track", () => {
   expect(av).toHaveTextContent("Audio not sent");
   expect(av).toHaveTextContent("Video not sent");
 });
+
+// "Dropped" is for a guest who was live and lost the connection. A slot whose invitation was never used is invited.
+it("says a guest who never joined is invited, not dropped", () => {
+  renderStrip({ connectionState: "offline" }, { neverJoined: true });
+  expect(screen.getByText("Invited, not joined")).toBeVisible();
+  expect(screen.queryByText("Dropped")).toBeNull();
+});
+
+it("still says a guest who was live and lost the connection is dropped", () => {
+  renderStrip({ connectionState: "offline" }, { neverJoined: false });
+  expect(screen.getByText("Dropped")).toBeVisible();
+});

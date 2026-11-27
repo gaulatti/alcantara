@@ -55,6 +55,7 @@ export interface StripParticipant {
 export function GuestStrip({
   participant,
   expiresAt,
+  neverJoined = false,
   canOperate,
   busy,
   talking,
@@ -70,6 +71,8 @@ export function GuestStrip({
 }: {
   participant: StripParticipant;
   expiresAt: string;
+  /** The invitation was never used: an offline participant is then invited, not dropped. */
+  neverJoined?: boolean;
   canOperate: boolean;
   busy: boolean;
   talking: boolean;
@@ -178,7 +181,7 @@ export function GuestStrip({
           </p>
         </div>
         <span className="guest-strip-state" data-state={state}>
-          {STRIP_LABEL[state]}
+          {neverJoined && state === "offline" ? "Invited, not joined" : STRIP_LABEL[state]}
         </span>
       </header>
       <CallPathLine participant={participant} />
