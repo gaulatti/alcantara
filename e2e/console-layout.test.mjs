@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { MAX_DEAD_BAND_FRACTION, assertLocalOrigin, longestDeadBand, overlappingPairs } from "./console-layout.mjs";
+import { MAX_DEAD_BAND_FRACTION, assertLocalOrigin, longestDeadBand, overlappingPairs, pickDeskProgram } from "./console-layout.mjs";
 
 // Column occupancy is one boolean per step from the top of the fold; each step is 10 px here.
 const yes = (n) => Array.from({ length: n }, () => true);
@@ -37,3 +37,24 @@ test("is local only", () => {
   assertLocalOrigin("http://127.0.0.1:5173");
   assert.throws(() => assertLocalOrigin("https://alcantara.gaulatti.com"), /local-only/);
 });
+
+test("the desk show is chosen again until the picker shows it, and a pick that never takes is reported", async () => {
+  const fakePage = (values) => {
+    let i = 0;
+    const picker = {
+      waitFor: async () => undefined,
+      click: async () => undefined,
+      textContent: async () => values[Math.min(i, values.length - 1)],
+    };
+    return {
+      getByRole: (role) => (role === "combobox" ? picker : { click: async () => { i += 1; } }),
+      waitForTimeout: async () => undefined,
+    };
+  };
+  const took = await pickDeskProgram(fakePage(["main", "radio-demo.fm"]), 3);
+  assert.deepEqual(took, { ok: true, shown: "radio-demo.fm", attempt: 1 });
+  const never = await pickDeskProgram(fakePage(["main"]), 2);
+  assert.equal(never.ok, false);
+  assert.equal(never.shown, "main");
+});
+

@@ -138,6 +138,12 @@ export async function measureDesk(page) {
 async function openOperatorPage(browser, app, size, path) {
   const context = await browser.newContext({ viewport: size });
   const page = await context.newPage();
+  // The page's own errors, kept so a failing check can say what the page reported (diagnostic only).
+  page.pageErrors = [];
+  page.on("pageerror", (error) => page.pageErrors.push(`pageerror: ${String(error.message || error).slice(0, 200)}`));
+  page.on("console", (message) => {
+    if (message.type() === "error") page.pageErrors.push(`console: ${message.text().slice(0, 200)}`);
+  });
   await page.goto(`${app}${path}`, { waitUntil: "domcontentloaded", timeout: 120_000 });
   return { context, page };
 }
@@ -164,6 +170,24 @@ async function joinStandInGuest(browser, { app, api, token }) {
     headers: { authorization: `Bearer ${token}` },
   });
   return { invitation: invite, guest: { context, page } };
+}
+
+/**
+ * Chooses the desk's show in the program picker and checks that the picker shows it. The picker can take a click before
+ * its list is ready, so the choice is retried, and the value the picker ends on is returned for the report.
+ */
+export async function pickDeskProgram(page, attempts = 3) {
+  const picker = page.getByRole("combobox", { name: "Program" });
+  let shown = "";
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    await picker.waitFor({ timeout: 120_000 });
+    await picker.click({ timeout: 120_000 });
+    await page.getByRole("option", { name: DESK_PROGRAM }).click({ timeout: 120_000 });
+    shown = (await picker.textContent())?.trim() ?? "";
+    if (shown === DESK_PROGRAM) return { ok: true, shown, attempt };
+    await page.waitForTimeout(1_000);
+  }
+  return { ok: false, shown, attempt: attempts };
 }
 
 /** Runs the layout pass. Returns a list of { check, ok, detail } for the caller to print and count. */
@@ -197,12 +221,17 @@ export async function runLayoutPass(browser, { app, api, token, shots }) {
     for (const size of DESK_SIZES) {
       const { context, page } = await openOperatorPage(browser, app, size, "/");
       try {
-        // The header's program picker is a combobox labelled "Program"; the show is chosen from its list.
-        await page.getByRole("combobox", { name: "Program" }).click({ timeout: 120_000 });
-        await page.getByRole("option", { name: DESK_PROGRAM }).click({ timeout: 120_000 });
+        // The header's program picker is a combobox labelled "Program"; the show is chosen from its list, and the choice
+        // is checked: a pick that did not take leaves the desk on another show, which is not the desk being measured.
+        const picked = await pickDeskProgram(page);
         await page.locator(".radio-cartwall").first().waitFor({ timeout: 120_000 }).catch(() => undefined);
         const d = await measureDesk(page);
         const name = `radio desk ${size.width}x${size.height}`;
+        record(`${name}: ${DESK_PROGRAM} chosen in the program picker`, picked.ok, `picker shows "${picked.shown}" after ${picked.attempt} attempt(s)`);
+        // On a missing panel, say what the page reported, so a flake leaves its cause in the log.
+        if (Object.values(d).some((state) => !state.present)) {
+          record(`${name}: page errors when a panel is missing`, false, page.pageErrors.slice(0, 5).join(" | ") || "none reported");
+        }
         if (size.width === 1440) {
           for (const [panel, state] of Object.entries(d)) {
             record(`${name}: ${panel} visible without scrolling`, state.visible, state.present ? `bottom ${state.bottom}px of ${state.fold}px fold` : "not on the page");
