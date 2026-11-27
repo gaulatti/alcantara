@@ -281,7 +281,21 @@ async function main() {
       });
     }
 
-    const guest = await context.newPage();
+    // The guest is signed out, as in production, where the sign-in library answers a session with no ID token. In its
+    // own context the local test-auth session is answered the same way (gaulatti/alcantara#354: a fetch wrapper that
+    // needed a token stopped every production guest's join before it left the browser).
+    const guestContext = await browser.newContext({ permissions: ["camera", "microphone"] });
+    await guestContext.route("**/__test/session**", (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          accessToken: "",
+          expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+          user: { sub: "", id: "", name: "", email: "" },
+        }),
+      }),
+    );
+    const guest = await guestContext.newPage();
     pages.push(guest);
     await guest.goto(`${APP}${invitation.invitationPath}`);
     await guest
