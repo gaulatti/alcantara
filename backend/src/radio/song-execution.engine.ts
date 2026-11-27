@@ -164,6 +164,8 @@ export interface PalazzoTelemetrySource {
    * authoritative state. Null when it cannot be read.
    */
   currentState?(programId: string): Promise<PalazzoPlaybackState | null>;
+  /** Stops following a deleted program and drops what was held for it. */
+  removeProgram?(programId: string): void;
   /** Moves a renamed program's telemetry to its new id, in one synchronous step. */
   renameProgram?(
     current: string,
@@ -607,6 +609,26 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     this.clearSimilarityWait(state);
   }
 
+  /** Stops a program's timers and forgets its state. */
+  private drop(programId: string): void {
+    const state = this.states.get(programId);
+    if (state) this.silence(programId, state);
+    this.states.delete(programId);
+    this.radioProgramIds.delete(programId);
+  }
+
+  /**
+   * A deleted program: its engine and rundown timers stop, its state is dropped and Palazzo is no longer followed for
+   * it. Nothing is commanded.
+   */
+  removeProgram(programId: string): void {
+    this.drop(programId);
+    this.flightService.removeProgram(programId);
+    this.telemetry?.removeProgram?.(programId);
+    this.updateQueueDepthMetric();
+    this.updateHighRotationFavoriteMetric();
+  }
+
   /**
    * A renamed program that is off air: the engine forgets the old id and takes up the new one from the database, and
    * Palazzo telemetry moves with it. Everything is read first, so the switch itself is one synchronous step.
@@ -626,13 +648,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         },
       },
     });
-    // The new id may still hold the engine of a deleted program, which would be hydrated over; both ids are dropped.
-    for (const programId of [current, next]) {
-      const state = this.states.get(programId);
-      if (state) this.silence(programId, state);
-      this.states.delete(programId);
-      this.radioProgramIds.delete(programId);
-    }
+    // The new id may still hold something under it, which would be hydrated over; both ids are dropped.
+    this.drop(current);
+    this.drop(next);
     const capable =
       !!setting?.palazzoUrl &&
       RADIO_PROGRAM_TYPES.has(setting.programState.type);
