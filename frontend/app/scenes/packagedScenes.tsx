@@ -7,7 +7,6 @@ import type {
   ModoItalianoPodcastPlayerProps,
   ModoItalianoGiorgiaClockProps,
 } from '@modoitaliano/giorgia/scenes';
-import type { ModoItalianoPodcastPlayerProps as LegacyPodcastPlayerProps } from '@modoitaliano/giorgia/scenes/legacy';
 
 /**
  * The on-air scene renderers are @modoitaliano/giorgia's (gaulatti/alcantara#382, #391). This
@@ -23,7 +22,6 @@ const Chyron = lazy(async () => ({ default: (await import('@modoitaliano/giorgia
 const Clock = lazy(async () => ({ default: (await import('@modoitaliano/giorgia/scenes')).ModoItalianoGiorgiaClock }));
 const PodcastPlayer = lazy(async () => ({ default: (await import('@modoitaliano/giorgia/scenes')).ModoItalianoGiorgiaPodcastPlayer }));
 const Bracket = lazy(async () => ({ default: (await import('@modoitaliano/giorgia/scenes')).ModoItalianoGiorgiaBracket }));
-const LegacyPodcastPlayer = lazy(async () => ({ default: (await import('@modoitaliano/giorgia/scenes/legacy')).ModoItalianoPodcastPlayer }));
 
 export function ModoItalianoGiorgiaChyron(props: ModoItalianoGiorgiaChyronProps) {
   return (
@@ -53,14 +51,6 @@ export function ModoItalianoBracket(props: Omit<ModoItalianoBracketProps, 'loadS
   return (
     <Suspense fallback={null}>
       <Bracket {...props} loadSongCatalog={fetchSongCatalog} />
-    </Suspense>
-  );
-}
-
-export function ModoItalianoPodcastPlayer(props: LegacyPodcastPlayerProps) {
-  return (
-    <Suspense fallback={null}>
-      <LegacyPodcastPlayer {...props} />
     </Suspense>
   );
 }

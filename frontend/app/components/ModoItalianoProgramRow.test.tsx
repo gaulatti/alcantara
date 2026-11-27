@@ -8,7 +8,7 @@ import { ModoItalianoProgramRow } from './ModoItalianoProgramRow';
 vi.setConfig({ testTimeout: 30_000 });
 configure({ asyncUtilTimeout: 15_000 });
 beforeAll(async () => {
-  await Promise.all([import('@modoitaliano/giorgia/scenes'), import('@modoitaliano/giorgia/scenes/legacy')]);
+  await import('@modoitaliano/giorgia/scenes');
 }, 120_000);
 
 afterEach(cleanup);
