@@ -973,17 +973,18 @@ describe('SongExecutionEngine authoritative track end', () => {
       expect(ctx.radioService.playSong).toHaveBeenCalledTimes(1);
     });
 
-    it('stops without falling through when the queue head cannot be resolved', async () => {
-      const { ctx, settings } = await endWithPendingSettings();
-      ctx.engine.handleQueueUpdated('radio-1', [
-        {
-          id: 'q9',
-          itemId: 'ghost',
-          enqueuedAt: 1,
-          active: true,
-          playbackRequestId: 'ghost-request',
-        },
-      ]);
+    // A queued head that cannot be resolved goes through its claim ("stops and releases when the claimed item cannot
+    // be resolved"), and one already claimed under an ID sent before is dropped ("Play Next after Take now"); what is
+    // left for this branch is a queue that cannot be played at all.
+    it('stops without falling through when the queue cannot be played', async () => {
+      const ctx = setup();
+      await startQueued(ctx);
+      const settings = deferred<unknown>();
+      ctx.radioService.getRadioSettings.mockReturnValueOnce(settings.promise);
+      // A Play Next song ends (no cursor write follows it), and the queue is blocked while the bumper settings load.
+      end(ctx, activeRequestId(ctx.engine));
+      await flush(80);
+      stateOf(ctx.engine).queueBlocked = true;
       settings.resolve(null);
       await flush(80);
       expect(stateOf(ctx.engine).queueBlocked).toBe(true);
@@ -1877,6 +1878,280 @@ describe('degraded engine paths are logged and counted', () => {
       'Resync could not read Palazzo state for radio-1 (string)',
     );
     expect(JSON.stringify(warn.mock.calls)).not.toContain('secret');
+  });
+});
+
+// Walk part 4 (an operator's hour on the radio desk, 2026-11-26): a Play Next song on air was replaced by Take now.
+// Its queue claim was never given back, so after the taken song the engine re-sent the claim's playback ID. Palazzo's
+// playout journal never replays a playback ID (it answers duplicate:true), nothing aired while the desk said On air,
+// and every watchdog resume re-sent the same ID.
+describe('SongExecutionEngine Play Next after Take now', () => {
+  const sentIds = (ctx: ReturnType<typeof setup>) =>
+    ctx.radioService.playSong.mock.calls.map((call: unknown[]) => call[4]);
+  const queueActions = (ctx: ReturnType<typeof setup>) =>
+    ctx.metrics.recordSongQueueAction.mock.calls.map(
+      (call: unknown[]) => call[0],
+    );
+  const tick = async (ctx: ReturnType<typeof setup>) => {
+    await ctx.engine.checkPlayback();
+    await flush(80);
+  };
+  // Palazzo's answer to a song command names the playback ID it accepted, as RadioService returns it.
+  const accepting = (ctx: ReturnType<typeof setup>, extra: Record<string, unknown> = {}) =>
+    ctx.radioService.playSong.mockImplementation((...args: unknown[]) =>
+      Promise.resolve({ ok: true, playbackRequestId: args[4], ...extra }),
+    );
+  const sentSet = (ctx: ReturnType<typeof setup>) =>
+    (stateOf(ctx.engine) as unknown as { sentRequestIds?: Set<string> }).sentRequestIds ?? new Set<string>();
+  // Marks a playback ID as already sent by this process, as an earlier airing would have.
+  const alreadySent = (ctx: ReturnType<typeof setup>, id: string) => {
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    (stateOf(ctx.engine) as unknown as { sentRequestIds?: Set<string> }).sentRequestIds = new Set([id]);
+  };
+
+  it('gives the claim back on Take now, and the Play Next song airs again later under a new playback ID', async () => {
+    const ctx = setup();
+    await startQueued(ctx, [{ id: 'q1', itemId: 'song-a', enqueuedAt: 1 }]);
+    const firstAiring = activeRequestId(ctx.engine);
+    ctx.engine.handleManualSong(
+      'radio-1',
+      'https://example.test/library.mp3',
+      'Library song',
+      'Library artist',
+    );
+    await flush(80);
+    expect(queueActions(ctx)).toContain('preempted');
+    expect(ctx.store.current?.songQueue).toEqual([
+      { id: 'q1', itemId: 'song-a', enqueuedAt: 1 },
+    ]);
+    // The taken song ends; the Play Next song is claimed afresh and commanded.
+    end(ctx, activeRequestId(ctx.engine));
+    await flush(120);
+    expect(playedUrls(ctx)).toEqual([
+      'https://example.test/a.mp3',
+      'https://example.test/library.mp3',
+      'https://example.test/a.mp3',
+    ]);
+    const reAiring = activeRequestId(ctx.engine);
+    expect(reAiring).not.toBe(firstAiring);
+    expect(new Set(sentIds(ctx)).size).toBe(3);
+    expect(ctx.store.current?.songQueue).toEqual([
+      expect.objectContaining({ id: 'q1', active: true, playbackRequestId: reAiring }),
+    ]);
+    // Palazzo starts it: it is on air, not held silent.
+    ctx.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playing(reAiring, 'https://example.test/a.mp3', 5),
+    );
+    expect(activeRequestId(ctx.engine)).toBe(reAiring);
+  });
+
+  it('never re-sends a playback ID Palazzo answered as a duplicate when nothing airs: it drops the entry and plays what follows', async () => {
+    const ctx = setup();
+    accepting(ctx, { duplicate: true });
+    await startQueued(ctx, [
+      { id: 'q1', itemId: 'song-a', enqueuedAt: 1 },
+      { id: 'q2', itemId: 'song-b', enqueuedAt: 2 },
+    ]);
+    const silent = activeRequestId(ctx.engine);
+    // Palazzo stays idle through several watchdog bounds.
+    ctx.palazzo.state = idle(9);
+    for (let round = 0; round < 4; round += 1) {
+      await tick(ctx);
+      jest.advanceTimersByTime(NO_PLAYBACK_BOUND_MS);
+      await tick(ctx);
+    }
+    const ids = sentIds(ctx);
+    expect(ids.filter((id) => id === silent)).toHaveLength(1);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(playedUrls(ctx)[1]).toBe('https://example.test/b.mp3');
+  });
+
+  it('sends a claim persisted before a restart once, as designed, and drops it when nothing airs', async () => {
+    const ctx = setup();
+    // The claim's command may have been lost in the restart, so it is sent once; this one had aired already.
+    accepting(ctx, { duplicate: true });
+    await startQueued(ctx, [
+      {
+        id: 'q1',
+        itemId: 'song-a',
+        enqueuedAt: 1,
+        active: true,
+        playbackRequestId: 'sent-before-restart',
+      },
+      { id: 'q2', itemId: 'song-b', enqueuedAt: 2 },
+    ]);
+    expect(sentIds(ctx)).toEqual(['sent-before-restart']);
+    ctx.palazzo.state = idle(9);
+    for (let round = 0; round < 4; round += 1) {
+      await tick(ctx);
+      jest.advanceTimersByTime(NO_PLAYBACK_BOUND_MS);
+      await tick(ctx);
+    }
+    const ids = sentIds(ctx);
+    expect(ids.filter((id) => id === 'sent-before-restart')).toHaveLength(1);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(playedUrls(ctx)[1]).toBe('https://example.test/b.mp3');
+  });
+
+  it('drops a claimed head whose playback ID this process already sent, instead of sending it again', async () => {
+    const ctx = setup();
+    alreadySent(ctx, 'aired-and-cut');
+    await startQueued(ctx, [
+      {
+        id: 'q1',
+        itemId: 'song-a',
+        enqueuedAt: 1,
+        active: true,
+        playbackRequestId: 'aired-and-cut',
+      },
+      { id: 'q2', itemId: 'song-b', enqueuedAt: 2 },
+    ]);
+    await flush(120);
+    expect(sentIds(ctx)).not.toContain('aired-and-cut');
+    expect(queueActions(ctx)).toContain('stale-claim-dropped');
+    expect(playedUrls(ctx)).toEqual(['https://example.test/b.mp3']);
+    expect(ctx.store.current?.songQueue).toEqual([
+      expect.objectContaining({ id: 'q2', active: true }),
+    ]);
+  });
+
+  it('remembers a bounded window of sent playback IDs', () => {
+    const ctx = setup();
+    accepting(ctx);
+    for (let index = 0; index < 130; index += 1) {
+      ctx.engine.handleManualSong('radio-1', `https://example.test/${index}.mp3`);
+    }
+    return flush(200).then(() => {
+      const sent = sentSet(ctx);
+      expect(sent.size).toBe(128);
+      expect(sent.has(activeRequestId(ctx.engine))).toBe(true);
+    });
+  });
+
+  // Yakko's pre-read: only a song command Palazzo accepted marks its ID as sent.
+  it('never marks a command that was skipped because another song took over, or one Palazzo refused', async () => {
+    const ctx = setup();
+    accepting(ctx);
+    const lookup = deferred<null>();
+    ctx.prisma.songIntro.findUnique.mockReturnValueOnce(lookup.promise);
+    // The first take waits for its intro lookup; a second take replaces it meanwhile.
+    ctx.engine.handleManualSong('radio-1', 'https://example.test/first.mp3', 'First', 'Artist', 1000, '', 41);
+    const skipped = activeRequestId(ctx.engine);
+    ctx.engine.handleManualSong('radio-1', 'https://example.test/second.mp3');
+    const taken = activeRequestId(ctx.engine);
+    lookup.resolve(null);
+    await flush(80);
+    expect(sentIds(ctx)).toEqual([taken]);
+    expect(sentSet(ctx).has(skipped)).toBe(false);
+    expect(sentSet(ctx).has(taken)).toBe(true);
+
+    // Yakko's review: when Palazzo answers with an ID of its own, the ID Alcantara sent is spent as well.
+    ctx.radioService.playSong.mockResolvedValueOnce({
+      ok: true,
+      playbackRequestId: 'palazzo-own-id',
+    });
+    ctx.engine.handleManualSong('radio-1', 'https://example.test/renamed.mp3');
+    const requested = activeRequestId(ctx.engine);
+    await flush(80);
+    expect(sentSet(ctx).has(requested)).toBe(true);
+    expect(sentSet(ctx).has('palazzo-own-id')).toBe(true);
+
+    ctx.radioService.playSong.mockResolvedValueOnce({ ok: false });
+    ctx.engine.handleManualSong('radio-1', 'https://example.test/refused.mp3');
+    const refused = activeRequestId(ctx.engine);
+    await flush(80);
+    expect(sentSet(ctx).has(refused)).toBe(false);
+  });
+
+  it('continues an automatic rotation after dropping the last queued entry, and stops a manual one', async () => {
+    const stale = [
+      {
+        id: 'q1',
+        itemId: 'song-b',
+        enqueuedAt: 1,
+        active: true,
+        playbackRequestId: 'stale',
+      },
+    ];
+    const automatic = setup();
+    alreadySent(automatic, 'stale');
+    await startQueued(automatic, stale);
+    await flush(120);
+    expect(automatic.store.current?.songQueue).toEqual([]);
+    expect(playedUrls(automatic)).toHaveLength(1);
+    expect(sentIds(automatic)).not.toContain('stale');
+
+    const manual = setup({ songSequence: sequenceOf([SONG_A, SONG_B], 'manual') });
+    manual.store.current!.songQueue = stale;
+    alreadySent(manual, 'stale');
+    manual.engine.handleSequenceUpdated(
+      'radio-1',
+      sequenceOf([SONG_A, SONG_B], 'manual'),
+    );
+    manual.engine.handleQueueUpdated('radio-1', stale);
+    // A manual rotation plays the queue at a song's end; here the entry is stale.
+    const internalsOf = manual.engine as unknown as {
+      playNext(programId: string): boolean;
+    };
+    expect(internalsOf.playNext('radio-1')).toBe(true);
+    await flush(120);
+    expect(manual.radioService.playSong).not.toHaveBeenCalled();
+    expect(manual.publisher.publishStopped).toHaveBeenCalled();
+    expect(manual.store.current?.songQueue).toEqual([]);
+  });
+
+  it('leaves a song that started meanwhile alone, and blocks the queue when the drop cannot be saved', async () => {
+    const stale = [
+      {
+        id: 'q1',
+        itemId: 'song-b',
+        enqueuedAt: 1,
+        active: true,
+        playbackRequestId: 'stale',
+      },
+    ];
+    const meanwhile = setup();
+    const save = deferred<unknown>();
+    meanwhile.store.current!.songQueue = stale;
+    alreadySent(meanwhile, 'stale');
+    meanwhile.engine.handleQueueUpdated('radio-1', stale);
+    meanwhile.prisma.programState.update.mockImplementationOnce(() => save.promise);
+    const internalsOf = meanwhile.engine as unknown as {
+      playNext(programId: string): boolean;
+    };
+    internalsOf.playNext('radio-1');
+    await flush(20);
+    meanwhile.engine.handleManualSong('radio-1', 'https://example.test/live.mp3');
+    save.resolve({});
+    await flush(120);
+    expect(playedUrls(meanwhile)).toEqual(['https://example.test/live.mp3']);
+
+    const failing = setup();
+    failing.store.current!.songQueue = stale;
+    alreadySent(failing, 'stale');
+    failing.engine.handleQueueUpdated('radio-1', stale);
+    failing.prisma.programState.update.mockRejectedValueOnce(new Error('disk full'));
+    (failing.engine as unknown as { playNext(programId: string): boolean }).playNext(
+      'radio-1',
+    );
+    await flush(120);
+    expect(stateOf(failing.engine).queueBlocked).toBe(true);
+    expect(failing.radioService.playSong).not.toHaveBeenCalled();
+  });
+
+  it('consumes a Play Next song that ends normally, exactly as before', async () => {
+    const ctx = setup();
+    await startQueued(ctx, [{ id: 'q1', itemId: 'song-a', enqueuedAt: 1 }]);
+    end(ctx, activeRequestId(ctx.engine));
+    await flush(120);
+    expect(ctx.store.current?.songQueue).toEqual([]);
+    expect(queueActions(ctx)).not.toContain('stale-claim-dropped');
+    expect(queueActions(ctx)).not.toContain('preempted');
+    expect(queueActions(ctx)).toContain('consumed');
+    // A Play Next song never moved the cursor: the rotation continues from it, under a new playback ID.
+    expect(playedUrls(ctx)).toHaveLength(2);
+    expect(new Set(sentIds(ctx)).size).toBe(2);
   });
 });
 
