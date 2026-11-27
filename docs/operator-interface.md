@@ -173,6 +173,11 @@ focus), and only the guest it is for can receive it. Releasing always closes the
 up. Talking to a guest who was cued live needs "Allow talk while cued live" to
 be ticked first. The live cue is armed by one press and sent by a second press,
 or by Space within 5 s. The wrap cue needs a 0.8 s hold.
+Cue live a beat before the guest speaks; air follows about 6 s later (on a radio show, the station's live input takes
+that long to come up after the cue).
+**Mic on air** in the status strip puts the operator's own microphone on the radio's air (red **ON AIR** while it is on;
+off by default, and leaving the page turns it off). While a guest or the host mic is on air with the music up, the
+radio desk says "Guest on air, music at full level" beside the Mixer faders: pull Music down by hand.
 A waiting guest can be admitted to their strip (**Admit**), spoken to without
 going on air (**Talk privately**, which ends with **End private talk**), or turned
 away (**Decline**). Screening applies to each new session: the guest's own
