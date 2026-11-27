@@ -347,6 +347,8 @@ export default function Control() {
       updatedAt: new Date(0).toISOString(),
     });
   const programRealtimeSocketRef = useRef<WebSocket | null>(null);
+  // Whether the event stream has connected for the current show: a later connect is a reconnect.
+  const sseConnectedBeforeRef = useRef(false);
   const [programSseConnectionState, setProgramSseConnectionState] =
     useState<SSEConnectionState>("connecting");
   const canUseProgramRealtimeFallback =
@@ -432,6 +434,25 @@ export default function Control() {
     });
   }, []);
 
+  // A reconnect may reach a restarted backend, whose topic versions start again from 0: every update and snapshot it
+  // sent was dropped as older than the last one seen, and the radio desk sat on a false state ("Couldn't load the
+  // rotation", Manual, nothing cued) until a reload (walk part 5). Start again from the process reached.
+  const resyncWithReachedBackend = (programId: string) => {
+    latestControlVersionByTopicRef.current = {
+      state: -1,
+      audioBus: -1,
+      audioMeter: -1,
+      songPlayback: -1,
+      sceneInstant: -1,
+      flight: -1,
+    };
+    void fetchProgramState(programId);
+    void fetchProgramAudioBusSettings(programId, false);
+    void fetchProgramAudioMeter(programId);
+    void fetchProgramSongPlayback(programId);
+    void fetchSceneInstantPlayback(programId);
+  };
+
   const shouldApplyControlUpdatePayload = useCallback(
     (payload: unknown, topicOverride?: ProgramUpdateTopic): boolean => {
       const topic =
@@ -477,6 +498,7 @@ export default function Control() {
   useEffect(() => {
     setProgramState(null);
     setSelectedScene(null);
+    sseConnectedBeforeRef.current = false;
     latestControlVersionByTopicRef.current = {
       state: -1,
       audioBus: -1,
@@ -637,6 +659,8 @@ export default function Control() {
 
     let disposed = false;
     let reconnectTimer: number | null = null;
+    // Whether a socket of this effect has opened before: a later open is a reconnect.
+    let openedBefore = false;
 
     const connect = async () => {
       /* v8 ignore start -- connect is called synchronously by the effect, and the cleanup clears the reconnect timer, so disposed is false on entry */
@@ -690,6 +714,8 @@ export default function Control() {
           return;
         }
         setIsProgramRealtimeConnected(true);
+        if (openedBefore) resyncWithReachedBackend(activeProgramId);
+        openedBefore = true;
       });
 
       socket.addEventListener("message", (event) => {
@@ -3178,6 +3204,14 @@ export default function Control() {
     onMessage: handleProgramEvent,
     onConnectionStateChange: setProgramSseConnectionState,
   });
+
+  // The event stream reconnected (connected again after a drop): it may have reached a restarted backend.
+  useEffect(() => {
+    if (programSseConnectionState !== "connected") return;
+    if (sseConnectedBeforeRef.current) resyncWithReachedBackend(activeProgramId);
+    sseConnectedBeforeRef.current = true;
+    // Only the connection state decides; the show's own change resets the ref and loads it.
+  }, [programSseConnectionState]);
 
   const editableSceneComponentEntries = Object.entries(sceneEditorProps).filter(
     ([componentType]) =>

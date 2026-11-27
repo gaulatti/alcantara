@@ -372,6 +372,61 @@ it("reconnects after the link closes, and closes it on an error", async () => {
   expect(screen.getByTitle("Live updates connected")).toBeInTheDocument();
 });
 
+// Walk part 5: a restarted backend's topic versions start again from 0. After a reconnect the console dropped every
+// update as older than the last one seen, and the radio desk sat on a false state until a reload.
+it("starts its versions again and reloads the show when the link reconnects, so a restarted backend is heard", async () => {
+  vi.useFakeTimers({
+    toFake: ["setTimeout", "clearTimeout"],
+    shouldAdvanceTime: true,
+  });
+  const { socket } = await openLink();
+  act(() =>
+    socket.send({
+      type: "program_state_snapshot",
+      programId: "main",
+      version: 50,
+      state: programState([desk, headlines]),
+    }),
+  );
+  await waitFor(() => expect(statusOf("Fictional desk")).toBe("Program"));
+  const reads = server.requests("GET /program/main/state").length;
+  act(() => socket.emit("close"));
+  await act(() => vi.advanceTimersByTimeAsync(1500));
+  await waitFor(() => expect(FakeSocket.instances).toHaveLength(2));
+  act(() => FakeSocket.instances[1].open());
+  // The reconnect reloads the show from the process it reached.
+  await waitFor(() =>
+    expect(server.requests("GET /program/main/state").length).toBeGreaterThan(reads),
+  );
+  await waitFor(() => expect(statusOf("Fictional headlines")).toBe("Program"));
+  // The restarted backend's first update, at version 1, is applied.
+  act(() =>
+    FakeSocket.instances[1].send({
+      type: "program_state_snapshot",
+      programId: "main",
+      version: 1,
+      state: programState([desk, headlines]),
+    }),
+  );
+  await waitFor(() => expect(statusOf("Fictional desk")).toBe("Program"));
+});
+
+it("reloads the show when the event stream reconnects, and not on its first connect", async () => {
+  sse.state = "connected";
+  render(<Control />);
+  await screen.findAllByText("Fictional headlines");
+  const reads = server.requests("GET /program/main/state").length;
+  const busReads = server.requests("GET /program/main/audio-bus").length;
+  act(() => sse.report!("connected"));
+  expect(server.requests("GET /program/main/state")).toHaveLength(reads);
+  act(() => sse.report!("connecting"));
+  act(() => sse.report!("connected"));
+  await waitFor(() =>
+    expect(server.requests("GET /program/main/state").length).toBeGreaterThan(reads),
+  );
+  expect(server.requests("GET /program/main/audio-bus").length).toBeGreaterThan(busReads);
+});
+
 it("closes the link when the console leaves, and ignores what it still delivers", async () => {
   const { view, socket } = await openLink();
   view.unmount();
