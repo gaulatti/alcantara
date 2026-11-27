@@ -3008,11 +3008,11 @@ describe('SongExecutionEngine and a Palazzo report ahead of the boot', () => {
     ctx.prisma.asRunRecord.findFirst.mockResolvedValue(null);
     ctx.engine.registerRadioProgram('radio-1');
     ctx.palazzo.state = idle(4);
+    const booting = ctx.engine.onModuleInit();
     ctx.engine.handlePalazzoSnapshot('radio-1', idle(4));
-    await flush(80);
     expect(playedUrls(ctx)).toEqual([]);
 
-    await ctx.engine.onModuleInit();
+    await booting;
     await flush(80);
 
     expect(playedUrls(ctx)).toHaveLength(1);

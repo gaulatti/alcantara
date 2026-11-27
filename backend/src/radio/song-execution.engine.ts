@@ -411,6 +411,8 @@ function restampSequence(
 interface SongEngineState {
   /** A song stored as on air by the last process and never closed, read at boot, until the first snapshot. */
   heardAtBoot?: HeardPlayout;
+  /** Palazzo reported before this program's rotation was taken up: read it again once it is. */
+  reportedBeforeTakeUp?: true;
   /** The last position stored, so it is written every few seconds rather than every report. */
   heardStored?: { playbackRequestId: string; at: number };
   /** Counts the Stops on this program, so a Play Next claim written across one can tell that it lost. */
@@ -657,10 +659,15 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
    * Takes up every radio program (hydrate, recall the playing song) and starts the watchdog, once this instance holds
    * the playout lease (alcantara#873): a standby must not adopt the song another instance is driving.
    */
+  /** True from start-up until every radio program's rotation, queue and last air have been read. */
+  private takingUp = false;
+
   async onModuleInit(): Promise<void> {
     // A deploy candidate (#223) loads every program read-only, as before; takeOver() starts no watchdog for it. It never
     // holds the lease, so it must not wait for it.
     if (isDeployCandidate()) return this.takeOver();
+    // Telemetry starts alongside this and can report first.
+    this.takingUp = true;
     await startWhenActive(this.lease, () => this.takeOver());
   }
 
@@ -688,15 +695,19 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       const pid = s.programState.programId;
       if (!s.palazzoUrl) continue;
       if (!RADIO_PROGRAM_TYPES.has(s.programState.type)) continue;
-      // The rotation is taken up last: until then a Palazzo report has nothing to command from, so none can start a
-      // song before what already aired is known.
+      // The rotation is taken up last: a Palazzo report is held until then, so none is judged before what already
+      // aired is known.
       this.restoreBumperPosition(pid, s);
       await this.recallLastStartedSong(pid);
       await this.recallHeardPlayout(pid, s.programState.playoutHeard);
       this.hydrate(pid, s.programState);
-      // Telemetry starts alongside this and can report first. That report found no rotation, and a connected stream
-      // sends no other, so read Palazzo again now.
-      if (this.states.get(pid)!.reconciled) void this.resync(pid, 'boot');
+    }
+    this.takingUp = false;
+    // A connected stream sends no second report, so a program whose first one was held is read again now.
+    for (const [pid, state] of this.states) {
+      if (!state.reportedBeforeTakeUp) continue;
+      state.reportedBeforeTakeUp = undefined;
+      void this.resync(pid, 'boot');
     }
     this.updateHighRotationFavoriteMetric();
     // A deploy candidate (#223) starts no telemetry and no watchdog.
@@ -2120,6 +2131,11 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   ): void {
     if (!this.isRadioCapable(programId)) return;
     const state = this.ensureState(programId);
+    // Without its rotation, a playing song would be adopted outside it and an idle player left silent.
+    if (this.takingUp && !state.sequence) {
+      state.reportedBeforeTakeUp = true;
+      return;
+    }
     state.reconciled = true;
     state.frozen = false;
     const restarted =
