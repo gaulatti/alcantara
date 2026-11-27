@@ -43,6 +43,8 @@ export interface NextUp {
   durationMs: number | null;
   /** A looping rotation of one song: next is the song on air again. */
   sameSong?: boolean;
+  /** Where the next song comes from: the Play Next queue, or the rotation. */
+  via?: "queue" | "rotation";
 }
 
 export interface OnAirView {
@@ -289,7 +291,8 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
                 .join(" · "),
         }
       : null,
-    modeLabel: MODE_LABELS[input.mode],
+    // A queued song plays next whatever the rotation's mode: say so, not the mode (walk part 5).
+    modeLabel: input.next?.via === "queue" ? "Play Next" : MODE_LABELS[input.mode],
     chips: shownChips,
   };
 }

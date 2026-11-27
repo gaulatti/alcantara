@@ -66,3 +66,15 @@ describe("deriveOnAir with missing details", () => {
     expect(view.chips.find((chip) => chip.id === "engine")?.label).toBe("Engine ready");
   });
 });
+
+// Walk part 5: with a song in Play Next, the strip still labelled Next by the rotation's mode.
+describe("deriveOnAir names where the next song comes from", () => {
+  const next = { title: "Copper Season", artist: "The Paper Hours", durationMs: null };
+  it("labels a queued next as Play Next, whatever the mode", () => {
+    expect(deriveOnAir({ ...base, mode: "shuffle", next: { ...next, via: "queue" } }).modeLabel).toBe("Play Next");
+  });
+  it("labels a next from the rotation by the mode", () => {
+    expect(deriveOnAir({ ...base, mode: "shuffle", next: { ...next, via: "rotation" } }).modeLabel).toBe("Shuffle");
+    expect(deriveOnAir({ ...base, mode: "autoplay", next }).modeLabel).toBe("Autoplay");
+  });
+});
