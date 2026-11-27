@@ -36,6 +36,37 @@ export function readConfig(env) {
   };
 }
 
+/** Strips what could be a credential: queries, fragments, long token-like strings and the renderer key itself. */
+export function redact(text, key = "") {
+  let line = String(text);
+  if (key) line = line.split(key).join("<key>");
+  return line
+    .replace(/\b((?:https?|wss?):\/\/[^\s?#"']+)[?#][^\s"']*/g, "$1?<redacted>")
+    .replace(/[A-Za-z0-9_\-+=]{32,}(?:\.[A-Za-z0-9_\-+=]+)*/g, "<redacted>")
+    .replace(/\s+/g, " ")
+    .slice(0, 300);
+}
+
+/**
+ * What the runner's log keeps of a router page: its own `[return-router]` diagnostics as written, and errors and
+ * failed requests with anything credential-like removed. Nothing else of the page's console.
+ */
+export function watchPage(page, programId, key, log = console.log) {
+  const say = (line) => log(`${programId}: ${line}`);
+  page.on("console", (message) => {
+    const text = message.text();
+    if (text.startsWith("[return-router] ")) say(redact(text, key));
+    else if (message.type() === "error") say(`page console error: ${redact(text, key)}`);
+  });
+  page.on("pageerror", (error) => say(`page error: ${redact(error?.message ?? error, key)}`));
+  page.on("requestfailed", (request) =>
+    say(`request failed: ${request.method()} ${redact(request.url().split(/[?#]/)[0], key)} ${redact(request.failure()?.errorText ?? "", key)}`),
+  );
+  page.on("response", (response) => {
+    if (response.status() >= 400) say(`HTTP ${response.status()} ${response.request().method()} ${redact(response.url().split(/[?#]/)[0], key)}`);
+  });
+}
+
 /**
  * The programs that need a router now, or null when the answer says nothing: the pages then stay as they are. An
  * unchanged answer is a 304 to the last ETag and carries no body.
@@ -231,6 +262,7 @@ async function main() {
       [new URL(config.app).origin, KEY_STORAGE, config.key],
     );
     const page = await context.newPage();
+    watchPage(page, programId, config.key);
     // runner=1 asks for the fixed identity return-router-<program>; a page opened by hand does not take it.
     await page.goto(`${config.app}/return-router/${encodeURIComponent(programId)}?runner=1`, { timeout: 30_000 });
     return { page, close: () => context.close() };

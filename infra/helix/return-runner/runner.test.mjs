@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createRunner, readConfig, wantedPrograms, BACKOFF_MS, GONE_MS, STUCK_MS } from "./runner.mjs";
+import { createRunner, readConfig, wantedPrograms, redact, watchPage, BACKOFF_MS, GONE_MS, STUCK_MS } from "./runner.mjs";
 
 const env = { ALCANTARA_API_URL: "https://api.example/", ALCANTARA_APP_URL: "https://app.example", WEBRTC_RENDERER_KEY: "secret-key" };
 const config = readConfig(env);
@@ -116,4 +116,26 @@ test("opens a failed or stuck page again after a growing wait, and logs no key o
   assert.ok(!h.lines.join("\n").includes("secret-key"));
   assert.match(h.runner.metrics(), /return_runner_opens_total\{result="failed"\} 1/);
   assert.ok(!h.runner.metrics().includes("broken"));
+});
+
+test("keeps the router's own diagnostics and its failures, with nothing credential-like", () => {
+  const handlers = {};
+  const lines = [];
+  watchPage({ on: (event, handler) => (handlers[event] = handler) }, "a", "secret-key", (line) => lines.push(line));
+  const message = (type, text) => handlers.console({ type: () => type, text: () => text });
+  message("log", "[return-router] levels program=0.0000 mixes=1 mixpeak=0");
+  message("log", "something else the page said");
+  message("error", "failed wss://livekit.example/rtc?access_token=eyJhbGciOiJIUzI1NiJ9.abc with secret-key");
+  handlers.pageerror(new Error("boom"));
+  handlers.requestfailed({ method: () => "GET", url: () => "https://api.example/webrtc/return-audio?ticket=abc123", failure: () => ({ errorText: "net::ERR_FAILED" }) });
+  handlers.response({ status: () => 502, url: () => "https://api.example/webrtc/renderer-state?x=1", request: () => ({ method: () => "POST" }) });
+  handlers.response({ status: () => 200, url: () => "https://api.example/ok", request: () => ({ method: () => "GET" }) });
+  assert.deepEqual(lines, [
+    "a: [return-router] levels program=0.0000 mixes=1 mixpeak=0",
+    "a: page console error: failed wss://livekit.example/rtc?<redacted> with <key>",
+    "a: page error: boom",
+    "a: request failed: GET https://api.example/webrtc/return-audio net::ERR_FAILED",
+    "a: HTTP 502 POST https://api.example/webrtc/renderer-state",
+  ]);
+  assert.equal(redact("token abcdefghijklmnopqrstuvwxyz0123456789ABCD.sig end"), "token <redacted> end");
 });
