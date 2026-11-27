@@ -183,11 +183,12 @@ export function renderRailLink(props: ShellLinkProps) {
 export default function Layout() {
   const [selectedProgramId] = useGlobalProgramId();
   return (
-    <RadioMonitorProvider programId={selectedProgramId}>
-      <HostMicProvider programId={selectedProgramId}>
+    // The microphone is outside the monitor, which mutes itself while the microphone is open.
+    <HostMicProvider programId={selectedProgramId}>
+      <RadioMonitorProvider programId={selectedProgramId}>
         <ConsoleShell />
-      </HostMicProvider>
-    </RadioMonitorProvider>
+      </RadioMonitorProvider>
+    </HostMicProvider>
   );
 }
 
@@ -1065,7 +1066,7 @@ function ConsoleShell() {
                   className='inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.05] py-0.5 pl-2.5 pr-1 text-xs font-semibold text-text-secondary'
                 >
                   <Headphones size={14} />
-                  <span className='max-w-32 truncate'>{radioMonitor.state === 'buffering' ? 'Connecting' : 'Listening'} · {selectedProgramId}</span>
+                  <span className='max-w-32 truncate'>{radioMonitor.micLive ? 'Muted, mic live' : radioMonitor.state === 'buffering' ? 'Connecting' : 'Listening'} · {selectedProgramId}</span>
                   <Button size='xs' variant='ghost' onClick={radioMonitor.stop} aria-label='Stop listening'>
                     <Square size={12} />
                   </Button>

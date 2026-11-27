@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useHostMic } from "./HostMicOnAir";
 import { apiUrl } from "../utils/apiBaseUrl";
 
 export type RadioMonitorState = "stopped" | "buffering" | "playing";
@@ -182,6 +183,8 @@ export type RadioListener = ReturnType<typeof useRadioListener>;
 type RadioMonitorValue = RadioListener & {
   /** Mutes the monitor while something is being pre-listened on this device (#835). */
   setPreListening: (active: boolean) => void;
+  /** The host microphone is open on this device: the monitor is muted so it cannot feed back to air (#879). */
+  micLive: boolean;
   /** A player view calls this while it is on screen; the grant is prepared only then. */
   attachPlayer: () => () => void;
 };
@@ -210,10 +213,14 @@ export function RadioMonitorProvider({
     [],
   );
   const [preListening, setPreListening] = useState(false);
-  const value = { ...listener, attachPlayer, setPreListening };
+  // From the press, before anything is published, until the microphone is off. Headphone pre-listens have their own
+  // audio and are not touched.
+  const hostMic = useHostMic();
+  const micLive = hostMic !== null && hostMic.state !== "off";
+  const value = { ...listener, attachPlayer, setPreListening, micLive };
   return (
     <RadioMonitorContext.Provider value={value}>
-      <audio {...listener.audioProps} muted={preListening} />
+      <audio {...listener.audioProps} muted={preListening || micLive} />
       {children}
     </RadioMonitorContext.Provider>
   );

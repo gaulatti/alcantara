@@ -179,7 +179,11 @@ be read (#875).
 **Mic on air** is on the radio desk's on-air strip as well as on Guest calls. The
 microphone belongs to the console: it stays live while the operator moves
 between pages, every page's header says **Mic on air** with an **Off** button
-while it is on, and switching shows or signing out switches it off (#879).
+while it is on, and switching shows or signing out switches it off (#879). While
+the microphone is open, from the press until it is off, **Listen** is muted so
+the speakers cannot feed back to air, and says **Muted while your mic is live**;
+it is heard again when the microphone goes off. Headphone pre-listens (PFL) are
+not muted.
 
 Guest calls belongs to the show in its header: switching shows starts a fresh
 desk, dropping the previous show's lists, drafts, link and open microphones, and

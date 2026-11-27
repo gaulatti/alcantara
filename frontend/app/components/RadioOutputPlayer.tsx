@@ -13,7 +13,10 @@ function RadioListenerView({
   listener,
   focusOnHash,
   audio,
+  micLive = false,
 }: {
+  /** The monitor is muted because the host microphone is open. */
+  micLive?: boolean;
   listener: RadioListener;
   focusOnHash: unknown;
   audio?: boolean;
@@ -35,7 +38,9 @@ function RadioListenerView({
     >
       {audio ? <audio {...listener.audioProps} /> : null}
       <p role="status" className="text-xs text-text-secondary">
-        {state === "playing"
+        {micLive
+          ? "Muted while your mic is live"
+          : state === "playing"
           ? "Listening to broadcast"
           : state === "buffering"
             ? "Connecting to broadcast…"
@@ -126,7 +131,7 @@ function SharedRadioPlayer({
 }) {
   const { attachPlayer } = monitor;
   useEffect(() => attachPlayer(), [attachPlayer]);
-  return <RadioListenerView listener={monitor} focusOnHash={programId} />;
+  return <RadioListenerView listener={monitor} focusOnHash={programId} micLive={monitor.micLive} />;
 }
 
 /** Listener-side audio only. This component never issues a playout command. */
