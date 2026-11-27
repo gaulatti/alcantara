@@ -1,7 +1,7 @@
 import { TooltipButton } from "../components/BleeckerButtons";
 import { Button, Checkbox, Field, Select, StatusBadge } from '@gaulatti/bleecker';
 import { Camera, CameraOff, CheckCircle2, Headphones, Mic, MicOff, PhoneOff, Radio, Volume2 } from 'lucide-react';
-import { ConnectionState, Room, RoomEvent, Track, type RemoteParticipant, type RemoteTrack, type RemoteTrackPublication } from 'livekit-client';
+import { ConnectionState, DisconnectReason, Room, RoomEvent, Track, type RemoteParticipant, type RemoteTrack, type RemoteTrackPublication } from 'livekit-client';
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router';
 import { isDrop, reportJoinFailure, roomIcePath } from '../utils/callTelemetry';
@@ -42,6 +42,8 @@ const STUDIO_NOT_READY = 'The studio is not ready for guests yet. Try again in a
 const STUDIO_UNREACHABLE = 'The studio could not be reached. Check your connection and try again.';
 const CONNECT_FAILED = 'Could not connect to the studio. Check your Wi-Fi or mobile data, then try again.';
 const DROPPED = 'Your connection to the studio dropped. Check your Wi-Fi or mobile data, then rejoin.';
+// The studio removed this guest from the room: not a network drop, and the same link can join again.
+const REMOVED = 'The studio removed you from the call. You can rejoin with the same link.';
 
 export default function GuestRoute() {
   const { invitation = '' } = useParams();
@@ -67,6 +69,8 @@ export default function GuestRoute() {
   const [preflightAttempt, setPreflightAttempt] = useState(0);
   // Set when the page itself ends the call (leave, or a revoked session), so the disconnect is not reported as a drop.
   const intentionalEndRef = useRef(false);
+  // Set when the studio removes this guest, so the disconnect that follows is reported as a removal, not a drop.
+  const removedRef = useRef(false);
   // The join was refused (401/403): the invitation is closed, so a rejoin cannot succeed (gaulatti/alcantara#353).
   const [invitationClosed, setInvitationClosed] = useState(false);
   const [cameraEnabled, setCameraEnabled] = useState(true);
@@ -418,13 +422,19 @@ export default function GuestRoute() {
         if (state === ConnectionState.Reconnecting) setStatus('reconnecting');
         if (state === ConnectionState.Connected) setStatus('live');
         if (state === ConnectionState.Disconnected && !intentionalEndRef.current) {
-          setError(DROPPED);
+          if (!removedRef.current) setError(DROPPED);
           setStatus('ended');
         }
       });
       // Only a call that got as far as live can drop; a failed join is reported as one.
       let wentLive = false;
       room.on(RoomEvent.Disconnected, (reason) => {
+        if (reason === DisconnectReason.PARTICIPANT_REMOVED) {
+          removedRef.current = true;
+          setError(REMOVED);
+          setStatus('ended');
+          return;
+        }
         if (!wentLive || !isDrop(reason)) return;
         pendingDropRef.current = true;
         void heartbeat().catch(() => undefined);
@@ -491,6 +501,7 @@ export default function GuestRoute() {
     const room = new Room({ disconnectOnPageLeave: true });
     roomRef.current = room;
     intentionalEndRef.current = false;
+    removedRef.current = false;
     room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {
       if (track.kind !== Track.Kind.Audio || !returnAudioRef.current) return;
       track.attach(returnAudioRef.current);

@@ -169,7 +169,7 @@ it("requests or mutes the microphone and camera, and disables those without a tr
 it("mutes the microphone and camera when they are live, after a plain-words confirmation, and disables them when the guest has no such track", () => {
   const { onCommand } = renderStrip();
   fireEvent.click(screen.getByRole("button", { name: "Mute mic" }));
-  expect(screen.getByRole("group", { name: "Confirm" })).toHaveTextContent("Mute Lucía Ferrer's microphone? They are asked to switch it off.");
+  expect(screen.getByRole("group", { name: "Confirm" })).toHaveTextContent("Mute Lucía Ferrer's microphone now? It is switched off at once.");
   expect(onCommand).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Mute microphone" }));
   expect(onCommand).toHaveBeenLastCalledWith({ type: "media", device: "microphone", enabled: false });
