@@ -77,6 +77,12 @@ const lk = vi.hoisted(() => {
 
 vi.mock("livekit-client", () => ({
   Room: lk.Room,
+  DisconnectReason: {
+    CLIENT_INITIATED: 0,
+    PARTICIPANT_REMOVED: 1,
+    ROOM_DELETED: 2,
+    DUPLICATE_IDENTITY: 3,
+  },
   ConnectionState: {
     Connected: "connected",
     Reconnecting: "reconnecting",
@@ -87,6 +93,7 @@ vi.mock("livekit-client", () => ({
     TrackSubscribed: "trackSubscribed",
     TrackUnsubscribed: "trackUnsubscribed",
     ConnectionStateChanged: "connectionStateChanged",
+    Disconnected: "disconnected",
     ConnectionQualityChanged: "connectionQualityChanged",
     DataReceived: "dataReceived",
   },
@@ -1124,4 +1131,13 @@ describe("the guest page on a phone", () => {
     expect(await screen.findByText("You left the studio.")).toBeVisible();
     expect(screen.queryByText(/dropped/)).toBeNull();
   });
+});
+
+// The studio removing the guest is not a network drop: the page says so, and offers the same link again.
+it("says the studio removed the guest, not that the connection dropped", async () => {
+  await joined();
+  act(() => room().emit("disconnected", 1));
+  expect(await screen.findByText("The studio removed you from the call. You can rejoin with the same link.")).toBeVisible();
+  expect(screen.queryByText(/dropped/)).toBeNull();
+  expect(screen.getByRole("button", { name: "Rejoin the studio" })).toBeInTheDocument();
 });

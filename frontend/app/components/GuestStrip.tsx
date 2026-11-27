@@ -196,8 +196,8 @@ export function GuestStrip({
             {confirming === 'remove'
               ? `Remove ${participant.name} from the call? They drop off now. Their link still works until it expires, so they can rejoin.`
               : confirming === 'mic'
-                ? `Mute ${participant.name}'s microphone? They are asked to switch it off.`
-                : `Turn off ${participant.name}'s camera? They are asked to switch it off.`}
+                ? `Mute ${participant.name}'s microphone now? It is switched off at once.`
+                : `Turn off ${participant.name}'s camera now? It is switched off at once.`}
           </p>
           <Button
             size="xs"
