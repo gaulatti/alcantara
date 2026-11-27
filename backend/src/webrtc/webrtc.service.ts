@@ -623,6 +623,12 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       sourceMuted: invitation.sourceMuted,
       sourceDelayMs: invitation.sourceDelayMs,
       reconnectWindowSeconds: SESSION_LEASE_MS / 1000,
+      // The guest's cue as the claim left it. A new session, or one back after a lapse, was cleared by the claim, so it
+      // is standby; only a reconnect keeps its cue, judged against this session.
+      cue:
+        sameSession && reconnected.count === 1
+          ? guestCueState({ ...invitation, activeSessionId: sessionId }, sessionId)
+          : 'standby',
     };
   }
 
@@ -700,6 +706,8 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
     return {
       activeSessionUntil: activeSessionUntil.toISOString(),
       admission: session.invitation.admittedAt ? 'admitted' : 'waiting',
+      // The guest's own cue for this session only, from the invitation the verified token resolved.
+      cue: guestCueState(session.invitation, session.sessionId),
     };
   }
 
