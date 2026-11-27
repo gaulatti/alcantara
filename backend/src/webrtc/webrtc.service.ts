@@ -1,4 +1,7 @@
-import { PlayoutLease, startWhenActive } from '../playout/playout-lease.service';
+import {
+  PlayoutLease,
+  startWhenActive,
+} from '../playout/playout-lease.service';
 import {
   BadRequestException,
   ConflictException,
@@ -26,6 +29,7 @@ import {
   RoomServiceClient,
   TrackSource,
 } from 'livekit-server-sdk';
+import { Observable, Subject, filter } from 'rxjs';
 import type { CanonicalIdentity } from '../identity/principals';
 import { PrismaService } from '../prisma.service';
 import {
@@ -51,6 +55,8 @@ const MAX_GUESTS = 6;
 const PROGRAM_ROOM_MAX_PARTICIPANTS = 24;
 const SESSION_LEASE_MS = 60_000;
 const LOST_CALL_SWEEP_MS = 30_000;
+/** The on-air stream sends the current list at least this often, so its reader can tell a live stream from a stuck one. */
+export const ON_AIR_REFRESH_MS = 5_000;
 // Only long enough to connect: the guest page asks /webrtc/join again for every join, and once connected LiveKit
 // refreshes the token itself (exp is checked only at connect), so a token a guest holds stops opening a room soon.
 const JOIN_TOKEN_TTL = '60s';
@@ -67,8 +73,12 @@ const GUEST_FAILURES: readonly WebrtcJoinResult[] = [
 
 // The guest's own report of the studio's return (the telemetry field returnFeedHealth): healthy while playing,
 // stalled when it has been missing for the stall time, missing otherwise.
-function returnReachingFrom(value: unknown): 'healthy' | 'stalled' | 'missing' | null {
-  return value === 'healthy' || value === 'stalled' || value === 'missing' ? value : null;
+function returnReachingFrom(
+  value: unknown,
+): 'healthy' | 'stalled' | 'missing' | null {
+  return value === 'healthy' || value === 'stalled' || value === 'missing'
+    ? value
+    : null;
 }
 
 function icePathFrom(value: unknown): WebrtcIcePath | null {
@@ -78,6 +88,9 @@ function icePathFrom(value: unknown): WebrtcIcePath | null {
 @Injectable()
 export class WebrtcService implements OnModuleInit, OnModuleDestroy {
   private lostCallSweep: ReturnType<typeof setInterval> | null = null;
+  /** A program whose on-air list may have changed: a cue, an admission, a new session, a removal or a revoke. */
+  private readonly onAirChanges = new Subject<string>();
+  private readonly onAirClosing = new Subject<void>();
 
   constructor(
     private readonly config: ConfigService,
@@ -101,6 +114,10 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
   onModuleDestroy() {
     if (this.lostCallSweep) clearInterval(this.lostCallSweep);
     this.lostCallSweep = null;
+    // Shutting down (alcantara#873): end every on-air stream, so the server can close and the workers reconnect to
+    // the instance that takes over (they poll meanwhile).
+    this.onAirClosing.next();
+    this.onAirClosing.complete();
   }
 
   /**
@@ -292,6 +309,7 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
           },
         },
       });
+      this.onAirChanges.next(invitation.programId);
     }
     await this.disconnectIfPresent(
       this.roomName(invitation.programId),
@@ -318,6 +336,7 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
         },
       },
     });
+    this.onAirChanges.next(invitation.programId);
     // Ends the screening connection, which tells the page at once that something changed.
     await this.disconnectIfPresent(
       this.screeningRoomName(id),
@@ -343,6 +362,7 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
         },
       },
     });
+    this.onAirChanges.next(invitation.programId);
     await this.disconnectIfPresent(
       this.screeningRoomName(id),
       this.guestIdentity(id),
@@ -483,6 +503,8 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
         'This invitation is already active in another session.',
       );
     }
+    // A new session is off air until cued again in it.
+    if (newSession?.count === 1) this.onAirChanges.next(invitation.programId);
 
     const identity = this.guestIdentity(invitation.id);
     const admitted = sameSession.count === 1 && Boolean(invitation.admittedAt);
@@ -816,6 +838,7 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
         },
       },
     });
+    this.onAirChanges.next(programId);
     return { identity, status: 'removed' };
   }
 
@@ -900,7 +923,70 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
    */
   async onAirGuests(rendererKey: string | undefined, programIdValue: unknown) {
     this.authorizeRenderer(rendererKey);
+    return this.onAirList(this.normalizeProgramId(programIdValue));
+  }
+
+  /**
+   * The same list as a stream, for the on-air contribution worker: the current list at once, again within moments of
+   * any change (a cue, an admission, a new session, a removal or a revoke), and at least every ON_AIR_REFRESH_MS. A
+   * list identical to the last one sent is sent only on the refresh. A failed read sends nothing; the reader then
+   * finds the stream stale and polls.
+   */
+  onAirStream(
+    rendererKey: string | undefined,
+    programIdValue: unknown,
+  ): Observable<{ data: string }> {
+    this.authorizeRenderer(rendererKey);
     const programId = this.normalizeProgramId(programIdValue);
+    return new Observable<{ data: string }>((subscriber) => {
+      let closed = false;
+      let last: string | null = null;
+      let reading = false;
+      let again = false;
+      const send = async (refresh: boolean) => {
+        if (reading) {
+          again = true;
+          return;
+        }
+        reading = true;
+        let force = refresh;
+        try {
+          do {
+            again = false;
+            const data = JSON.stringify(await this.onAirList(programId));
+            if (closed) return;
+            if (data !== last) this.metrics.recordOnAirStreamChange();
+            if (data !== last || force) subscriber.next({ data });
+            last = data;
+            force = false;
+          } while (again && !closed);
+        } catch {
+          // Nothing is sent: the reader's freshness check falls back to polling, and the next change reads again.
+        } finally {
+          reading = false;
+        }
+      };
+      const changes = this.onAirChanges
+        .pipe(filter((changed) => changed === programId))
+        .subscribe(() => void send(false));
+      const refresh = setInterval(() => void send(true), ON_AIR_REFRESH_MS);
+      refresh.unref?.();
+      const closing = this.onAirClosing.subscribe({
+        complete: () => subscriber.complete(),
+      });
+      this.metrics.recordOnAirStream(1);
+      void send(true);
+      return () => {
+        closed = true;
+        changes.unsubscribe();
+        clearInterval(refresh);
+        closing.unsubscribe();
+        this.metrics.recordOnAirStream(-1);
+      };
+    });
+  }
+
+  private async onAirList(programId: string) {
     const rows = await this.prisma.guestInvitation.findMany({
       where: {
         programId,
@@ -1494,7 +1580,11 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
 
   /** Stores the operator's cue for the guest's current session; live reaches air for that session only. */
   private async storeCue(
-    invitation: { id: string; activeSessionId: string | null },
+    invitation: {
+      id: string;
+      programId: string;
+      activeSessionId: string | null;
+    },
     cue: string,
   ) {
     await this.prisma.guestInvitation.update({
@@ -1502,6 +1592,7 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       data: { cue, cueSessionId: invitation.activeSessionId },
     });
     this.metrics.recordGuestCue(cue as GuestCue);
+    this.onAirChanges.next(invitation.programId);
   }
 
   private async invitationForIdentity(programId: string, identity: string) {

@@ -9,6 +9,7 @@ import {
   Mixer,
   OFF_AIR_HOLD_MS,
   STALE_LIST_MS,
+  STREAM_STALE_MS,
   createWorker,
   ffmpegArgs,
   isOnAirTrack,
@@ -28,9 +29,15 @@ function harness({ guests = [], listStatus = 200, tokenStatus = 200, connectFail
   const calls = [];
   const children = [];
   let handlers = null;
-  const state = { guests, listStatus, tokenStatus, connectFails, list: null };
+  const state = { guests, listStatus, tokenStatus, connectFails, list: null, streams: [], streamStatus: 200 };
   const fetch = async (url, init = {}) => {
     calls.push({ url, init });
+    if (url.includes("/webrtc/on-air/stream")) {
+      if (state.streamStatus !== 200) return new Response(null, { status: state.streamStatus });
+      const stream = eventStream(init.signal);
+      state.streams.push(stream);
+      return stream.response;
+    }
     if (url.includes("/webrtc/on-air")) {
       if (state.listStatus !== 200) return new Response(null, { status: state.listStatus });
       return Response.json(state.list ?? { programId: "modoitaliano.fm", guests: state.guests });
@@ -73,6 +80,27 @@ function harness({ guests = [], listStatus = 200, tokenStatus = 200, connectFail
     advance: (ms) => (clock += ms),
   };
 }
+
+/** A held-open event stream the test writes to, as the backend's on-air stream does; aborting it errors the body. */
+function eventStream(signal) {
+  let controller;
+  const body = new ReadableStream({ start: (value) => (controller = value) });
+  const encoder = new TextEncoder();
+  signal?.addEventListener("abort", () => {
+    try {
+      controller.error(new Error("aborted"));
+    } catch {}
+  });
+  return {
+    response: new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
+    send: (guests) => controller.enqueue(encoder.encode(`id: 1\ndata: ${JSON.stringify({ programId: "modoitaliano.fm", guests })}\n\n`)),
+    raw: (text) => controller.enqueue(encoder.encode(text)),
+    end: () => controller.close(),
+  };
+}
+/** Lets a held stream's reader take what was written. */
+const drain = () => new Promise((resolve) => setImmediate(resolve));
+const polls = (h) => h.calls.filter((call) => /\/webrtc\/on-air\?/.test(call.url)).length;
 
 const track = (key, identity, name = "microphone") => ({ key, identity, name, kind: "audio" });
 /** A track that is sending audio: subscribed, with a frame just received. */
@@ -312,4 +340,129 @@ test("takes a source off air once it sends only digital silence, so a publisher 
   h.handlers().frame("ghost", Int16Array.from([5]));
   await h.worker.step();
   assert.equal(h.worker.isPushing(), false);
+});
+
+test("puts a cued guest on air the moment the stream says so, and takes them off as fast, without a poll", async () => {
+  const h = harness();
+  await h.worker.step();
+  sending(h, "anna", "guest-anna");
+  await h.worker.step();
+  assert.equal(h.worker.isPushing(), false);
+  const following = h.worker.follow();
+  await drain();
+  const [stream] = h.state.streams;
+  assert.equal(h.calls.at(-1).url, "https://api.example.test/webrtc/on-air/stream?programId=modoitaliano.fm");
+  assert.equal(h.calls.at(-1).init.headers["X-Renderer-Key"], KEY);
+  // Split across reads, as a socket may deliver it.
+  stream.raw(`id: 1\ndata: ${JSON.stringify({ programId: "modoitaliano.fm", guests: ["guest-anna"] }).slice(0, 10)}`);
+  await drain();
+  assert.equal(h.worker.isPushing(), false);
+  stream.raw(`${JSON.stringify({ programId: "modoitaliano.fm", guests: ["guest-anna"] }).slice(10)}\n\n`);
+  await drain();
+  assert.equal(h.worker.isPushing(), true, "on air without waiting for the next poll");
+  h.handlers().frame("anna", Int16Array.from([7]));
+  assert.equal(h.worker.mixer.queues.has("anna"), true);
+
+  // Wrap: the guest's audio stops reaching the mix at once; the push closes after the same short hold as before.
+  stream.send([]);
+  await drain();
+  h.worker.mixer.remove("anna");
+  h.handlers().frame("anna", Int16Array.from([7]));
+  assert.equal(h.worker.mixer.queues.has("anna"), false);
+  h.advance(OFF_AIR_HOLD_MS);
+  await h.worker.step();
+  assert.equal(h.worker.isPushing(), false);
+
+  // While the stream is live the poll rests.
+  const before = polls(h);
+  await h.worker.step();
+  assert.equal(polls(h), before);
+  assert.match(h.worker.metrics.render(), /^alcantara_contribution_streaming 1$/m);
+  assert.match(h.worker.metrics.render(), /^alcantara_contribution_polls_total\{result="skipped"\} 2$/m);
+  stream.end();
+  await following;
+  assert.equal(h.worker.streamRetryMs(), 0, "a stream that worked is opened again at once");
+});
+
+test("falls back to the poll when the stream ends or goes quiet, and opens it again", async () => {
+  const h = harness({ guests: ["guest-anna"] });
+  const first = h.worker.follow();
+  await drain();
+  h.state.streams[0].send([]);
+  await drain();
+  await h.worker.step();
+  assert.equal(polls(h), 0);
+  // Quiet past the bound: the step drops it and polls.
+  h.advance(STREAM_STALE_MS);
+  await h.worker.step();
+  await first;
+  assert.equal(polls(h), 1);
+  assert.match(h.worker.metrics.render(), /^alcantara_contribution_streaming 0$/m);
+  assert.match(h.worker.metrics.render(), /^alcantara_contribution_stream_total\{result="ended"\} 1$/m);
+
+  // Reconnected: the stream leads again; when it ends, the next step polls.
+  const second = h.worker.follow();
+  await drain();
+  h.state.streams[1].send(["guest-anna"]);
+  await drain();
+  await h.worker.step();
+  assert.equal(polls(h), 1);
+  h.state.streams[1].end();
+  await second;
+  await h.worker.step();
+  assert.equal(polls(h), 2);
+  assert.match(h.worker.metrics.render(), /^alcantara_contribution_stream_total\{result="connected"\} 2$/m);
+});
+
+test("backs off a stream that brings no list: an older backend, a refusal, a malformed event or a dead socket", async () => {
+  const h = harness();
+  h.state.streamStatus = 404;
+  await h.worker.follow();
+  assert.equal(h.worker.streamRetryMs(), BACKOFF_MS[0]);
+  h.state.streamStatus = 401;
+  await h.worker.follow();
+  assert.equal(h.worker.streamRetryMs(), BACKOFF_MS[1]);
+  h.state.streamStatus = 200;
+  const malformed = h.worker.follow();
+  await drain();
+  h.state.streams[0].raw('data: {"guests":"guest-anna"}\n\n');
+  await malformed;
+  assert.equal(h.worker.streamRetryMs(), BACKOFF_MS[2]);
+  const empty = h.worker.follow();
+  await drain();
+  h.state.streams[1].raw(": keep-alive\n\n");
+  h.state.streams[1].end();
+  await empty;
+  assert.equal(h.worker.streamRetryMs(), BACKOFF_MS[2]);
+  assert.match(h.worker.metrics.render(), /^alcantara_contribution_stream_total\{result="failed"\} 4$/m);
+  // Polling carried on throughout.
+  await h.worker.step();
+  assert.equal(polls(h), 1);
+  // Stopping the worker drops an open stream.
+  const open = h.worker.follow();
+  await drain();
+  h.worker.stop();
+  await open;
+});
+
+test("still takes a dead publisher off air on the silence timer while the stream says they are cued", async () => {
+  const h = harness();
+  await h.worker.step();
+  const following = h.worker.follow();
+  await drain();
+  h.state.streams[0].send(["guest-anna"]);
+  await drain();
+  sending(h, "anna", "guest-anna");
+  await h.worker.step();
+  assert.equal(h.worker.isPushing(), true);
+  h.advance(FRAME_STALE_MS);
+  h.state.streams[0].send(["guest-anna"]);
+  await drain();
+  assert.equal(h.worker.metrics.state.sources, 0);
+  h.advance(OFF_AIR_HOLD_MS);
+  h.state.streams[0].send(["guest-anna"]);
+  await drain();
+  assert.equal(h.worker.isPushing(), false);
+  h.worker.stop();
+  await following;
 });

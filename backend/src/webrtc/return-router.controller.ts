@@ -6,7 +6,9 @@ import {
   Headers,
   Post,
   Query,
+  Sse,
 } from '@nestjs/common';
+import type { Observable } from 'rxjs';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { Public } from '../auth/public.decorator';
 import { RequirePermission } from '../auth/require-permission.decorator';
@@ -51,5 +53,16 @@ export class ReturnRouterController {
     @Query('programId') programId: unknown,
   ) {
     return this.webrtc.onAirGuests(rendererKey, programId);
+  }
+
+  /** The same list pushed as it changes, so the worker puts a cue on air without waiting for its next poll. */
+  @Sse('on-air/stream')
+  @Public()
+  @Header('Cache-Control', 'no-store')
+  onAirStream(
+    @Headers('x-renderer-key') rendererKey: string | undefined,
+    @Query('programId') programId: unknown,
+  ): Observable<{ data: string }> {
+    return this.webrtc.onAirStream(rendererKey, programId);
   }
 }

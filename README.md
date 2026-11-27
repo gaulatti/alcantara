@@ -185,8 +185,8 @@ Palazzo's output, so the bed never carries a guest's own voice back to them.
 A guest the operator cues live, and the host's own microphone, reach the station's air through Palazzo's single
 live input. The contribution worker on the station's host (`infra/cumulus/compose.contribution.yml`, started by
 `infra/cumulus/contribution-up.sh`) is the only producer for that input. It joins the program's call room as the
-hidden listener `contribution-<programId>` (`POST /webrtc/renderer-token` with `role: "contribution"`), asks
-`GET /webrtc/on-air?programId=…` (renderer key) every second which guests are on air, mixes their audio and every
+hidden listener `contribution-<programId>` (`POST /webrtc/renderer-token` with `role: "contribution"`), follows
+which guests are on air, mixes their audio and every
 operator track named `onair:host` into one mono feed, and pushes it as AAC to Palazzo's `RTMP_URL` on the internal
 broadcast-control network. It connects to Palazzo only while someone is on air: Palazzo counts a connected input as
 live even when it is silent, and a live input holds the filler off. Talkback (`talkback:*`) never reaches air. It is
@@ -197,6 +197,16 @@ to, so a guest who rejoins in a new session starts off air, as they start unadmi
 before the guest's page is told, so a delivery that fails still takes the guest off air; live is stored only once
 the guest was told. If the backend stops answering, the worker keeps the last list for 30 seconds, then takes
 everybody off air.
+
+The worker learns the on-air list from `GET /webrtc/on-air/stream?programId=…` (renderer key), an event stream it
+holds open. The stream sends the list at once, again as soon as a cue, admission, new session, removal or revoke
+changes it, and at least every 5 s. A cue or a wrap therefore reaches the worker within moments, not on its next
+poll. While the stream is live (a list within the last 12 s) the worker does not poll. When the stream ends, goes
+quiet or is refused (an older backend answers 404), the worker polls `GET /webrtc/on-air?programId=…` every second
+as before, and opens the stream again: at once after one that worked, otherwise after 1, 3, then 10 s. A wrapped
+guest's audio stops reaching the mix as soon as the list arrives, and the push to Palazzo still closes after the
+same 1.5 s hold. A publisher that died still leaves air after 10 s of digital silence, whatever the list says. At
+shutdown the backend ends every stream, so the workers reconnect to the instance that takes over (#873).
 
 The desk's **Mic on air** (on `/calls`, off by default, red ON AIR while on) publishes the operator's microphone
 as `onair:host`, receivable only by the contribution worker and the return router. Switching it off, leaving the
@@ -209,8 +219,11 @@ of every guest's return: the bed carries their voices a few seconds late. Guests
 talkback and the host in real time through the room. Talkback is receivable only by its guest and the program's
 return router, which builds that guest's mix.
 
-Metrics: `alcantara_webrtc_guest_cues_total{cue}` and `alcantara_webrtc_on_air_guests` on the backend; on the
-worker (`:8091/metrics`, internal): `alcantara_contribution_polls_total{result}`,
+Metrics: `alcantara_webrtc_guest_cues_total{cue}`, `alcantara_webrtc_on_air_guests`, `alcantara_webrtc_on_air_streams`
+(open streams) and `alcantara_webrtc_on_air_stream_changes_total` (changed lists sent) on the backend; on the
+worker (`:8091/metrics`, internal): `alcantara_contribution_polls_total{result}` (`ok`, `failure`, `skipped` while
+the stream is live), `alcantara_contribution_stream_total{result}` (`connected`, `lists`, `ended`, `failed`),
+`alcantara_contribution_streaming`,
 `alcantara_contribution_pushes_total{result}` (`started`, `stopped`, `failed`),
 `alcantara_contribution_room_connections_total{result}`, `alcantara_contribution_on_air_sources`,
 `alcantara_contribution_pushing` and `alcantara_contribution_room_connected`. None carries a program or guest label.

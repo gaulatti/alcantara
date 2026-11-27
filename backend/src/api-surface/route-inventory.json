@@ -1398,6 +1398,12 @@
     "permission": "alcantara:webrtc:read"
   },
   {
+    "method": "GET",
+    "path": "/webrtc/on-air/stream",
+    "public": true,
+    "permission": "alcantara:webrtc:read"
+  },
+  {
     "method": "POST",
     "path": "/webrtc/operator-report",
     "public": false,

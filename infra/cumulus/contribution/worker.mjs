@@ -22,6 +22,11 @@ export const OFF_AIR_HOLD_MS = 1_500;
 export const FRAME_STALE_MS = 10_000;
 /** The last on-air list keeps applying while the backend does not answer, for at most this long; then off air. */
 export const STALE_LIST_MS = 30_000;
+/**
+ * The on-air stream counts as live while its last list is this recent; the backend sends one at least every 5 s.
+ * Past it the stream is dropped and opened again, and the poll takes over meanwhile.
+ */
+export const STREAM_STALE_MS = 12_000;
 /** Waits before the RTMP push and the room connection are tried again after their first, second and later failures. */
 export const BACKOFF_MS = [1_000, 3_000, 10_000];
 
@@ -97,8 +102,13 @@ export function ffmpegArgs(target) {
 }
 
 export function createMetrics() {
-  const counts = { polls: { ok: 0, failure: 0 }, pushes: { started: 0, stopped: 0, failed: 0 }, room: { connected: 0, failed: 0 } };
-  const state = { sources: 0, pushing: 0, roomConnected: 0 };
+  const counts = {
+    polls: { ok: 0, failure: 0, skipped: 0 },
+    stream: { connected: 0, lists: 0, ended: 0, failed: 0 },
+    pushes: { started: 0, stopped: 0, failed: 0 },
+    room: { connected: 0, failed: 0 },
+  };
+  const state = { sources: 0, pushing: 0, roomConnected: 0, streaming: 0 };
   return {
     counts,
     state,
@@ -107,6 +117,9 @@ export function createMetrics() {
         "# HELP alcantara_contribution_polls_total On-air list polls by bounded result.",
         "# TYPE alcantara_contribution_polls_total counter",
         ...Object.entries(counts.polls).map(([result, n]) => `alcantara_contribution_polls_total{result="${result}"} ${n}`),
+        "# HELP alcantara_contribution_stream_total On-air stream events: connected, lists received, ended, failed to open.",
+        "# TYPE alcantara_contribution_stream_total counter",
+        ...Object.entries(counts.stream).map(([result, n]) => `alcantara_contribution_stream_total{result="${result}"} ${n}`),
         "# HELP alcantara_contribution_pushes_total RTMP pushes to Palazzo by bounded result.",
         "# TYPE alcantara_contribution_pushes_total counter",
         ...Object.entries(counts.pushes).map(([result, n]) => `alcantara_contribution_pushes_total{result="${result}"} ${n}`),
@@ -122,6 +135,9 @@ export function createMetrics() {
         "# HELP alcantara_contribution_room_connected Whether the worker is in the call room.",
         "# TYPE alcantara_contribution_room_connected gauge",
         `alcantara_contribution_room_connected ${state.roomConnected}`,
+        "# HELP alcantara_contribution_streaming Whether the on-air stream is live (a recent list), so the poll rests.",
+        "# TYPE alcantara_contribution_streaming gauge",
+        `alcantara_contribution_streaming ${state.streaming}`,
       ];
       return `${lines.join("\n")}\n`;
     },
@@ -147,17 +163,30 @@ export function createWorker({ config, fetch, connectRoom, spawn, now = Date.now
   let pushFailures = 0;
   let pushRetryAt = 0;
   let lastOnAirAt = null;
+  let streamAt = null;
+  let stream = null;
+  let streamFailures = 0;
 
   const headers = { "X-Renderer-Key": config.key, "Content-Type": "application/json" };
   const backoff = (failures) => BACKOFF_MS[Math.min(failures - 1, BACKOFF_MS.length - 1)];
 
+  const query = `programId=${encodeURIComponent(config.programId)}`;
+  const guestsOf = (body) => {
+    if (!Array.isArray(body?.guests) || !body.guests.every((guest) => typeof guest === "string")) throw new Error("malformed on-air list");
+    return new Set(body.guests);
+  };
+  const streamLive = () => stream !== null && streamAt !== null && now() - streamAt < STREAM_STALE_MS;
+
   async function poll() {
+    // The stream is the faster source; the poll rests while it is live and takes over when it is not.
+    if (streamLive()) {
+      metrics.counts.polls.skipped += 1;
+      return;
+    }
     try {
-      const response = await fetch(`${config.api}/webrtc/on-air?programId=${encodeURIComponent(config.programId)}`, { headers });
+      const response = await fetch(`${config.api}/webrtc/on-air?${query}`, { headers });
       if (!response.ok) throw new Error(`on-air list ${response.status}`);
-      const body = await response.json();
-      if (!Array.isArray(body?.guests) || !body.guests.every((guest) => typeof guest === "string")) throw new Error("malformed on-air list");
-      onAirGuests = new Set(body.guests);
+      onAirGuests = guestsOf(await response.json());
       listAt = now();
       metrics.counts.polls.ok += 1;
     } catch {
@@ -250,9 +279,62 @@ export function createWorker({ config, fetch, connectRoom, spawn, now = Date.now
     push.child.stdin.write(Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength));
   }
 
-  async function step() {
-    await poll();
-    await ensureRoom();
+  /**
+   * Holds the on-air stream open until it ends, applying each list as it arrives: a cue goes on air, and a wrap off,
+   * without waiting for the next poll. Never throws; `streamRetryMs()` says how long to wait before the next one.
+   */
+  async function follow() {
+    const abort = new AbortController();
+    const session = { abort, lists: 0 };
+    stream = session;
+    try {
+      const response = await fetch(`${config.api}/webrtc/on-air/stream?${query}`, {
+        headers: { "X-Renderer-Key": config.key, Accept: "text/event-stream" },
+        signal: abort.signal,
+      });
+      if (!response.ok || !response.body) throw new Error(`on-air stream ${response.status}`);
+      metrics.counts.stream.connected += 1;
+      const decoder = new TextDecoder();
+      let buffered = "";
+      for await (const chunk of response.body) {
+        buffered += decoder.decode(chunk, { stream: true });
+        let end;
+        while ((end = buffered.indexOf("\n\n")) !== -1) {
+          const event = buffered.slice(0, end);
+          buffered = buffered.slice(end + 2);
+          const data = event
+            .split("\n")
+            .filter((line) => line.startsWith("data:"))
+            .map((line) => line.slice(5).trimStart())
+            .join("\n");
+          if (!data) continue;
+          onAirGuests = guestsOf(JSON.parse(data));
+          listAt = streamAt = now();
+          session.lists += 1;
+          streamFailures = 0;
+          metrics.counts.stream.lists += 1;
+          metrics.state.streaming = 1;
+          evaluate();
+        }
+      }
+    } catch {
+      // Refused, unreachable, malformed or dropped: the next one waits, as the room and the push do.
+    } finally {
+      // A stream that brought no list (an older backend, a refusal) counts as a failure and backs off.
+      if (session.lists) metrics.counts.stream.ended += 1;
+      else {
+        metrics.counts.stream.failed += 1;
+        streamFailures += 1;
+      }
+      if (stream === session) {
+        stream = null;
+        streamAt = null;
+        metrics.state.streaming = 0;
+      }
+    }
+  }
+
+  function evaluate() {
     const time = now();
     const sources = [...tracks.values()].filter(
       (track) => isOnAirTrack(track, onAirGuests) && time - (lastFrameAt.get(track.key) ?? -Infinity) < FRAME_STALE_MS,
@@ -267,7 +349,28 @@ export function createWorker({ config, fetch, connectRoom, spawn, now = Date.now
     }
   }
 
-  return { step, writeAudio, metrics, mixer, isPushing: () => push !== null, stop: stopPush, room: () => room };
+  async function step() {
+    // A stream that went quiet is stuck: drop it, so it is opened again, and poll meanwhile.
+    if (stream && streamAt !== null && now() - streamAt >= STREAM_STALE_MS) stream.abort.abort();
+    await poll();
+    await ensureRoom();
+    evaluate();
+  }
+
+  return {
+    step,
+    follow,
+    streamRetryMs: () => (streamFailures ? backoff(streamFailures) : 0),
+    writeAudio,
+    metrics,
+    mixer,
+    isPushing: () => push !== null,
+    stop: () => {
+      stream?.abort.abort();
+      stopPush();
+    },
+    room: () => room,
+  };
 }
 
 /** The LiveKit side, on @livekit/rtc-node: subscribes to every audio track and hands its mono 48 kHz frames over. */
@@ -312,6 +415,12 @@ async function main() {
     response.writeHead(worker.room() ? 200 : 503).end();
   }).listen(config.port, "0.0.0.0");
   setInterval(() => worker.writeAudio(), 20);
+  void (async () => {
+    for (;;) {
+      await worker.follow();
+      await new Promise((resolve) => setTimeout(resolve, worker.streamRetryMs()));
+    }
+  })();
   for (;;) {
     await worker.step();
     await new Promise((resolve) => setTimeout(resolve, config.pollMs));

@@ -435,6 +435,8 @@ export class ManagedMetricsService {
   private readonly playoutHold: Histogram;
   private readonly guestCues: Counter;
   private readonly onAirGuests: Gauge;
+  private readonly onAirStreams: Gauge;
+  private readonly onAirStreamChanges: Counter;
   private readonly mcpAuth: Counter<string>;
   private readonly mcpOAuth: Counter<string>;
   private readonly mcpRequests: Counter<string>;
@@ -705,6 +707,16 @@ export class ManagedMetricsService {
     this.onAirGuests = new Gauge({
       name: 'alcantara_webrtc_on_air_guests',
       help: 'Call guests on air (cued live in their current session) at the last on-air contribution poll.',
+      registers: [this.registry],
+    });
+    this.onAirStreams = new Gauge({
+      name: 'alcantara_webrtc_on_air_streams',
+      help: 'Open on-air list streams (one per connected contribution worker).',
+      registers: [this.registry],
+    });
+    this.onAirStreamChanges = new Counter({
+      name: 'alcantara_webrtc_on_air_stream_changes_total',
+      help: 'Changed on-air lists sent on an on-air stream.',
       registers: [this.registry],
     });
     for (const cue of GUEST_CUES) this.guestCues.labels(cue).inc(0);
@@ -1178,6 +1190,14 @@ export class ManagedMetricsService {
 
   setOnAirGuests(count: number): void {
     this.onAirGuests.set(count);
+  }
+
+  recordOnAirStream(delta: 1 | -1): void {
+    this.onAirStreams.inc(delta);
+  }
+
+  recordOnAirStreamChange(): void {
+    this.onAirStreamChanges.inc();
   }
 
   recordProgramSseConnection(delta: 1 | -1): void {
