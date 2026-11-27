@@ -1605,6 +1605,18 @@ describe('SongExecutionEngine after a restart mid-song', () => {
       expect(playedUrls(ctx)).toEqual(['https://example.test/a.mp3']);
     });
   }
+
+  // gaulatti/alcantara#849: a restart that outlasts both the playing song and the announced one. The cursor song
+  // (song A) was on air when the backend went down, and it has already ended: its start is in the as-run log, and
+  // song B was announced after it. Palazzo is idle at boot, so the engine must play B, not A again.
+  it('a restart that outlasts the cursor song and its announced successor plays the successor, never the cursor song again', async () => {
+    const ctx = setup();
+    ctx.engine.handleSequenceUpdated('radio-1', { ...AUTO, activeItemId: 'song-a' });
+    ctx.engine.handlePalazzoSnapshot('radio-1', idle(4));
+    await flush(80);
+    expect(playedUrls(ctx)).not.toContain('https://example.test/a.mp3');
+    expect(playedUrls(ctx)).toEqual(['https://example.test/b.mp3']);
+  });
 });
 
 // gaulatti/alcantara#230, 2026-11-20 20:13Z: every Palazzo restart unfroze
