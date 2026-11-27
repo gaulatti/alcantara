@@ -5,7 +5,6 @@ import {
   Module,
   Post,
   UseGuards,
-  type INestApplication,
 } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import {
@@ -129,5 +128,4 @@ describe('HTTP metrics through the Fastify adapter', () => {
       expect(entry.labels.route).not.toContain('locked');
     }
   });
-
 });

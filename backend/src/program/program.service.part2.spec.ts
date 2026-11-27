@@ -2,7 +2,6 @@ import { Prisma } from '@prisma/client';
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return -- Test doubles and private-state inspection are intentionally loosely typed. */
 import { scriptedTransport } from '../outbound/safe-fetch.testing';
 import {
-  BadGatewayException,
   BadRequestException,
   ConflictException,
   NotFoundException,
@@ -926,7 +925,6 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
         version: 0,
       });
     });
-
   });
 
   describe('scene instant playback', () => {
