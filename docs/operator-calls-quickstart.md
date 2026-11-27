@@ -20,11 +20,11 @@ Where a step names a page, it is the console at `/` (the radio desk), or Guest c
 
 5. **Check "Hears the studio".** On their guest strip, wait for the line **Hears the studio**. It means the guest's page reports they are hearing the studio. Do not cue them before you see it.
 
-6. **Cue live.** On their strip, press **Cue live**, then press it again (or press Space) to confirm; the button reads **Press again or Space: cue live** until then. The strip then shows **Live · cued** and "Cued live: they go out on the radio…". Air follows a few seconds after the cue, so cue a beat early, not on the word. To stand them by instead, press **Standby**.
+6. **Cue live.** On their strip, press **Cue live**, then press it again (or press Space) to confirm; the button reads **Press again or Space: cue live** until then. The strip then shows **Live · cued** and "Cued live: they go out on the radio…". Air follows about 6 seconds after the cue (measured at 5.67 to 6.15 s; see the cue note in `docs/operator-interface.md`), so cue a beat early, not on the word. To stand them by instead, press **Standby**.
 
 7. **Mic on air for yourself.** On `/calls`, press **Mic on air**. It turns to **ON AIR · Mic on air** while your microphone is on air. Press it again to take yourself off air. Leaving the page also takes you off air.
 
-8. **Talkback, which never reaches air.** On a guest's strip, hold **Hold · talk (T)** (or hold the T key) to speak to that guest alone. It says **Talking… release to stop** while held. To talk to a guest who is not yet admitted, press **Talk privately** on their waiting row; it is private and not on air. Note: a guest who is cued live can hear talk on the strip only if you tick **Allow talk while cued live**; leave that unticked to keep talk off air.
+8. **Talkback, which never reaches air.** On a guest's strip, hold **Hold · talk (T)** (or hold the T key) to speak to that guest alone. It says **Talking… release to stop** while held. The guest hears you in their own return mix only. Talk never goes to the radio's air or to the program mix, whatever is ticked. The **Allow talk while cued live** tick only lets that button work while the guest is cued live; it does not put talk on air. To talk to a guest who is not yet admitted, press **Talk privately** on their waiting row; it is private and not on air.
 
 9. **Wrap.** On the cued guest's strip, hold **Hold · cue wrap** until it says **Keep holding…** and lets go. The guest comes off air. Press **Standby** to keep them on the call without air, or revoke their link when they are finished.
 
