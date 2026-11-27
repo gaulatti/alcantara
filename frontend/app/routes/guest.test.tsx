@@ -304,12 +304,25 @@ it("runs the preflight: devices, network, a speaker test and an echo check", asy
   expect(await screen.findByText("Completed")).toBeVisible();
   expect(tone).toEqual({ started: true, closed: true });
   expect(joinButton()).toBeDisabled();
-  // Either headphones or the operator's accepted speaker risk unlocks the join.
-  fireEvent.click(screen.getByLabelText(/Operator accepted speaker risk/));
-  expect(joinButton()).toBeEnabled();
-  fireEvent.click(screen.getByLabelText(/Operator accepted speaker risk/));
+  // The join waits for the headphones confirmation; the guest is not offered a way around it.
+  expect(screen.queryByLabelText(/Operator accepted speaker risk/)).not.toBeInTheDocument();
+  expect(screen.getByText("Confirm you are wearing headphones.")).toBeVisible();
   fireEvent.click(screen.getByLabelText(/I am wearing headphones/));
   expect(joinButton()).toBeEnabled();
+  expect(screen.queryByText("Confirm you are wearing headphones.")).not.toBeInTheDocument();
+});
+
+it("says why the join is locked and which step comes next", async () => {
+  openPage();
+  expect(await screen.findByText("Play the test tone first.")).toBeVisible();
+  expect(joinButton()).toHaveAttribute("aria-describedby", "join-blocked-reason");
+  expect(screen.getByRole("list", { name: "Steps to join" })).toHaveTextContent("1. Play the test tone");
+  expect(screen.getByText("Speaker test").closest("button")).toHaveAttribute("aria-current", "step");
+
+  fireEvent.click(screen.getByText("Speaker test").closest("button")!);
+  expect(await screen.findByText("Confirm you are wearing headphones.")).toBeVisible();
+  expect(screen.getByRole("list", { name: "Steps to join" })).toHaveTextContent("2. Confirm headphones");
+  expect(screen.getByText("Speaker test").closest("button")).not.toHaveAttribute("aria-current");
 });
 
 it("falls back to the first devices and a plain network note", async () => {
@@ -645,6 +658,24 @@ it("subscribes to feeds that were already in the room when it joined", async () 
   }
   expect(subscribed).toEqual([["v", true]]);
 });
+
+it("says plainly when the studio sends no return, and keeps the self-view", async () => {
+  await joined();
+  expect(screen.getByText("Waiting for selected return feed")).toBeVisible();
+  const selfView = document.querySelector("video.z-10") as HTMLVideoElement;
+  expect(selfView).toHaveClass("z-10");
+  await waitFor(
+    () =>
+      expect(
+        screen.getByText(
+          "The studio isn't sending a return right now. You're still live and they can hear and see you.",
+        ),
+      ).toBeVisible(),
+    { timeout: 7000 },
+  );
+  expect(screen.queryByText("Waiting for selected return feed")).not.toBeInTheDocument();
+  expect(document.querySelector("video.z-10")).toBe(selfView);
+}, 12000);
 
 it("takes no return video when the guest's return is set to none", async () => {
   joinAnswer = () =>

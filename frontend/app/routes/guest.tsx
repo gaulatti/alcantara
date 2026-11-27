@@ -76,7 +76,6 @@ export default function GuestRoute() {
   const [cameraEnabled, setCameraEnabled] = useState(true);
   const [microphoneEnabled, setMicrophoneEnabled] = useState(true);
   const [headphonesConfirmed, setHeadphonesConfirmed] = useState(false);
-  const [echoRiskAccepted, setEchoRiskAccepted] = useState(false);
   const [speakerChecked, setSpeakerChecked] = useState(false);
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [microphones, setMicrophones] = useState<MediaDeviceInfo[]>([]);
@@ -85,6 +84,8 @@ export default function GuestRoute() {
   const [network, setNetwork] = useState('Checking network…');
   const [quality, setQuality] = useState('unknown');
   const [returnFeed, setReturnFeed] = useState(false);
+  // After this long on air with no return track, the page says so in plain words instead of waiting forever.
+  const [returnWaitExpired, setReturnWaitExpired] = useState(false);
   const [displayName, setDisplayName] = useState('Guest');
   const [programId, setProgramId] = useState('');
   const [returnVideo, setReturnVideo] = useState('program');
@@ -275,7 +276,8 @@ export default function GuestRoute() {
   };
 
   const join = async () => {
-    if (!speakerChecked || (!headphonesConfirmed && !echoRiskAccepted)) return;
+    // The rejoin after a drop starts from a state that is not 'ready', so the guard is the checks, not the status.
+    if (!speakerChecked || !headphonesConfirmed) return;
     setStatus('joining');
     setError('');
     intentionalEndRef.current = false;
@@ -575,7 +577,18 @@ export default function GuestRoute() {
     setStatus('left');
   };
 
-  const readyToJoin = status === 'ready' && speakerChecked && (headphonesConfirmed || echoRiskAccepted);
+  useEffect(() => {
+    if ((status !== 'live' && status !== 'reconnecting') || returnFeed) {
+      setReturnWaitExpired(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setReturnWaitExpired(true), 5000);
+    return () => window.clearTimeout(timer);
+  }, [status, returnFeed]);
+
+  // The join needs the speaker test and the headphones confirmation. The page says which one is still missing.
+  const readyToJoin = status === 'ready' && speakerChecked && headphonesConfirmed;
+  const joinBlockedBy = !speakerChecked ? 'Play the test tone first.' : !headphonesConfirmed ? 'Confirm you are wearing headphones.' : '';
   return (
     <main className='min-h-screen bg-zinc-950 px-4 py-8 text-white'>
       <div className='mx-auto max-w-5xl'>
@@ -602,7 +615,7 @@ export default function GuestRoute() {
             muted
             className={
               status === 'live' || status === 'reconnecting'
-                ? 'absolute bottom-4 right-4 aspect-video w-1/4 rounded-lg border-2 border-white/40 bg-black object-cover'
+                ? 'absolute bottom-4 right-4 z-10 aspect-video w-1/4 rounded-lg border-2 border-white/40 bg-black object-cover'
                 : 'h-full w-full object-cover'
             }
           />
@@ -610,7 +623,13 @@ export default function GuestRoute() {
             <div className='absolute inset-0 flex items-center justify-center bg-zinc-950/80 text-center'>
               <div>
                 <Radio className='mx-auto animate-pulse text-sky-300' />
-                <p className='mt-3 font-semibold'>Waiting for selected return feed</p>
+                {returnWaitExpired ? (
+                  <p className='mt-3 max-w-xs px-4 font-semibold'>
+                    The studio isn't sending a return right now. You're still live and they can hear and see you.
+                  </p>
+                ) : (
+                  <p className='mt-3 font-semibold'>Waiting for selected return feed</p>
+                )}
                 <p className='mt-1 text-xs text-white/50'>
                   {returnVideo} video · {returnAudioBus} N-1 audio
                 </p>
@@ -682,9 +701,21 @@ export default function GuestRoute() {
             {microphoneEnabled ? <Mic size={18} /> : <MicOff size={18} />} {microphoneEnabled ? 'Mic on' : 'Mic off'}
           </Button>
           {status === 'ready' || status === 'error' ? (
-            <Button className='col-span-2 sm:col-span-1' disabled={!readyToJoin} onClick={() => void join()}>
-              <Radio size={18} /> Join studio
-            </Button>
+            <div className='col-span-2 flex flex-col items-stretch gap-2 sm:col-span-1 sm:items-center'>
+              <Button
+                className='w-full'
+                disabled={!readyToJoin}
+                aria-describedby={!readyToJoin && joinBlockedBy ? 'join-blocked-reason' : undefined}
+                onClick={() => void join()}
+              >
+                <Radio size={18} /> Join studio
+              </Button>
+              {!readyToJoin && joinBlockedBy ? (
+                <p id='join-blocked-reason' className='text-center text-sm text-amber-200'>
+                  {joinBlockedBy}
+                </p>
+              ) : null}
+            </div>
           ) : null}
           {status === 'joining' ? <Button loading>Joining</Button> : null}
           {status === 'waiting' || status === 'live' || status === 'reconnecting' ? (
@@ -694,7 +725,19 @@ export default function GuestRoute() {
           ) : null}
         </div>
         {status === 'ready' || status === 'error' ? (
-          <div className='mx-auto mt-8 grid max-w-3xl gap-5 rounded-2xl border border-white/10 bg-white/[0.04] p-6 sm:grid-cols-2'>
+          <>
+          <ol aria-label='Steps to join' className='mx-auto mt-8 flex max-w-3xl flex-wrap justify-center gap-2 text-sm text-white/70'>
+            <li className={speakerChecked ? 'text-emerald-300' : 'font-semibold text-sky-200'}>
+              1. {speakerChecked ? 'Speaker tested' : 'Play the test tone'}
+            </li>
+            <li aria-hidden='true' className='text-white/30'>›</li>
+            <li className={headphonesConfirmed ? 'text-emerald-300' : speakerChecked ? 'font-semibold text-sky-200' : ''}>
+              2. {headphonesConfirmed ? 'Headphones confirmed' : 'Confirm headphones'}
+            </li>
+            <li aria-hidden='true' className='text-white/30'>›</li>
+            <li className={readyToJoin ? 'font-semibold text-sky-200' : ''}>3. Join studio</li>
+          </ol>
+          <div className='mx-auto mt-4 grid max-w-3xl gap-5 rounded-2xl border border-white/10 bg-white/[0.04] p-6 sm:grid-cols-2'>
             <Field label='Camera' className='[&_label]:text-white/70'>
               <Select
                 value={cameraId}
@@ -715,7 +758,14 @@ export default function GuestRoute() {
                 }))}
               />
             </Field>
-            <TooltipButton type='button' onClick={() => void playSpeakerTest()} className='flex items-center gap-3 rounded-xl border border-white/10 p-4 text-left hover:bg-white/[0.05]'>
+            <TooltipButton
+              type='button'
+              onClick={() => void playSpeakerTest()}
+              aria-current={!speakerChecked ? 'step' : undefined}
+              className={`flex items-center gap-3 rounded-xl border p-4 text-left hover:bg-white/[0.05] ${
+                !speakerChecked ? 'border-sky-300 bg-sky-300/10 ring-2 ring-sky-300' : 'border-white/10'
+              }`}
+            >
               <Volume2 className={speakerChecked ? 'text-emerald-300' : 'text-sky-300'} />
               <span>
                 <strong className='block'>Speaker test</strong>
@@ -727,20 +777,16 @@ export default function GuestRoute() {
               <small className='text-white/50'>{network}</small>
             </div>
             <Checkbox
-              containerClassName='rounded-xl border border-white/10 p-4'
+              containerClassName={`rounded-xl border p-4 ${
+                speakerChecked && !headphonesConfirmed ? 'border-sky-300 bg-sky-300/10 ring-2 ring-sky-300' : 'border-white/10'
+              }`}
               checked={headphonesConfirmed}
               onChange={(event) => setHeadphonesConfirmed(event.target.checked)}
               label={<span className='flex items-center gap-3'><Headphones className='text-sky-300' /><strong>I am wearing headphones</strong></span>}
               description='Required to prevent echo.'
             />
-            <Checkbox
-              containerClassName='rounded-xl border border-amber-300/20 p-4'
-              checked={echoRiskAccepted}
-              onChange={(event) => setEchoRiskAccepted(event.target.checked)}
-              label={<strong className='text-amber-200'>Operator accepted speaker risk</strong>}
-              description='Use only when headphones are impossible.'
-            />
           </div>
+          </>
         ) : null}
       </div>
     </main>
