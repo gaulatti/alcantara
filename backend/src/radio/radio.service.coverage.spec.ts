@@ -42,6 +42,13 @@ function build(settings: Record<string, unknown> | null = defaultSettings()) {
     updateMixer: jest.fn().mockResolvedValue(undefined),
     getPlaybackState: jest.fn(),
     stopInstants: jest.fn().mockResolvedValue(undefined),
+    getMixer: jest.fn().mockResolvedValue({
+      mainVolume: 1,
+      songVolume: 1,
+      instantVolume: 1,
+      songMuted: false,
+      instantMuted: false,
+    }),
   };
   const configValues: Record<string, string | undefined> = {
     MEDIA_S3_BUCKET: BUCKET,
@@ -1843,6 +1850,22 @@ describe('RadioService coverage', () => {
         new BadGatewayException(
           'Palazzo did not answer; the instant stop was not confirmed',
         ),
+      );
+    });
+  });
+
+  describe('getMixer', () => {
+    // The dead-air watchdog reads it: a muted or closed fader is the operator's, never touched.
+    it("reads Palazzo's mixer, and says it is unavailable when Palazzo does not answer", async () => {
+      const { service, palazzo } = build();
+      await expect(service.getMixer('p')).resolves.toMatchObject({
+        songMuted: false,
+        mainVolume: 1,
+      });
+      expect(palazzo.getMixer).toHaveBeenCalledWith('http://palazzo:3100', 'p');
+      palazzo.getMixer.mockRejectedValue(new Error('x'));
+      await expect(service.getMixer('p')).rejects.toThrow(
+        new BadGatewayException('Palazzo mixer state is unavailable'),
       );
     });
   });

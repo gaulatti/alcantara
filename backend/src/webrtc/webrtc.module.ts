@@ -14,5 +14,7 @@ import { WebrtcMcpTools } from '../mcp/capabilities/webrtc';
     ReturnRouterService,
     PrismaService,
   ],
+  // The dead-air watchdog asks who is on air through calls (radio/dead-air-watchdog.module.ts).
+  exports: [WebrtcService],
 })
 export class WebrtcModule {}

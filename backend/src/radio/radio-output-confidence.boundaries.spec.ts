@@ -82,6 +82,7 @@ describe('radio output observations, clock boundaries and multi-program metrics'
       outputRms: null,
       lastSampleAt: null,
       quietForMs: null,
+      deadAir: null,
     });
     service.onModuleDestroy();
   });

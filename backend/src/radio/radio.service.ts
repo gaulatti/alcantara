@@ -38,7 +38,10 @@ import {
   isLocalMediaUrl,
   localMediaEnvironment,
 } from '../config/local-media';
-import type { PalazzoPlaybackState } from './palazzo-contract';
+import type {
+  PalazzoMixerState,
+  PalazzoPlaybackState,
+} from './palazzo-contract';
 import {
   MAX_WINDOW_SECONDS,
   MIN_WINDOW_SECONDS,
@@ -1127,6 +1130,17 @@ export class RadioService {
     } catch (error) {
       this.logMachineFailure('updateMixer', programId, error);
       throw palazzoCommandFailure('radio mixer update', error);
+    }
+  }
+
+  /** Palazzo's mixer now, for the dead-air watchdog: a muted or closed fader is the operator's, never touched. */
+  async getMixer(programId: string): Promise<PalazzoMixerState> {
+    const settings = await this.requireRadioSettings(programId);
+    try {
+      return await this.palazzo.getMixer(this.palazzoUrl(settings), programId);
+    } catch (error) {
+      this.logMachineFailure('getMixer', programId, error);
+      throw new BadGatewayException('Palazzo mixer state is unavailable');
     }
   }
 

@@ -80,6 +80,58 @@ playlist. When the desk itself silenced the song, the alarm says so first: with 
 "Music is muted on this desk" with **Unmute music**, and with the Music or Output fader at zero it names the fader to
 raise, never "hold Stop", which would leave the silence on air. The `state=radio-dead-air` fixture shows this state.
 
+### Dead-air watchdog (unattended station)
+
+For a station nobody is watching (overnight shuffle), the backend recovers from dead air by itself
+(`backend/src/radio/dead-air-watchdog.service.ts`). It is always on; there is no flag.
+
+- **When it acts.** Output confidence must read silent while audio is expected, and the quiet must have lasted
+  **20 s** (`DEAD_AIR_ACT_MS`). Real playout has much shorter quiet runs: on 2026-11-27, 57 song changes over four
+  hours all had gaps of 0.5 s or less, and a 6-minute sample at 2 Hz never stayed below 0.001 RMS for more than
+  1.0 s. That makes 20 s twenty times the longest real quiet. A pass runs every 5 s, on the instance that holds the
+  playout lease.
+- **Steps, smallest first, each judged 20 s after its song actually started** (`DEAD_AIR_STEP_WAIT_MS`; from the
+  command when the song never starts):
+  1. **Play again.** The same song is played again from its start, through the engine's take path; the rotation keeps
+     its mode and cursor. A song is played again at most once. Play Next entries and catalog picks are never played
+     again, so they go straight to step 2.
+  2. **Next song.** The silent song is ended as at a natural end. The announced successor that Palazzo never started
+     is let go, so the next song's command is sent and the rotation keeps its mode. This is never the operator's Stop,
+     which would turn the rotation manual.
+  3. **Give up.** The desk's Dead air advice leads with "Dead air: could not recover" in bold red. The backend logs
+     `DEAD AIR on <program>: could not recover` as an error, with the steps it took, and `alcantara_radio_dead_air_unrecovered_programs`
+     counts the program. Nothing more is tried until the radio is heard again.
+- **Cap.** At most **3 episodes per program per rolling hour**. A fourth goes straight to giving up.
+- **Never acts, and holds instead.** Every guard is read fresh just before each step, and a reading it cannot make
+  holds. It holds:
+  - while this instance is a standby (a deploy's handover);
+  - unless the rotation is autoplay or shuffle and not frozen. The operator's Stop turns it manual, so an explicit stop
+    is never undone;
+  - while the engine is unreconciled, a command or transition is pending, a spot or intro is on air, or a clocked log
+    runs the air;
+  - while Palazzo's state cannot be read, Palazzo reports itself degraded or idle, or plays another track;
+  - while Palazzo's live input is on air, or Palazzo does not report it (unknown is never off);
+  - while a guest is cued live, a host microphone is published, or calls cannot be read;
+  - while the mixer has the music muted or the Music or Output fader at zero. The mixer is the operator's choice:
+    the desk explains it and the watchdog never touches it;
+  - when output confidence is unknown or unavailable (stale samples, Liquidsoap disconnected, Palazzo unreachable).
+    That is a lost reading, not dead air, and the engine's nothing-on-air watchdog (45 s) keeps its own job.
+
+  The desk shows what holds it ("Automatic recovery is waiting: a guest is cued live.").
+- **What it never does.** It never touches the mixer, prepares or starts the recovery playlist, stops the session,
+  withdraws a Play Next entry, or acts on a TV program.
+- **The log line before an act.** Before every on-air action it logs one warning with what it saw, so a bad act can be
+  explained afterwards, for example `Dead air on <program>: resend (quiet_for_ms=24000, lease=active, mode=shuffle,
+  live_on_air=false, guests_live=0, host_mics=0, mixer=ok, request=<playback id>, guards=ok)`. A hold is logged once
+  per reason per episode, with the same fields.
+- **As-run.** A play the watchdog played again or moved past ends with end reason `dead_air`. It aired until it fell
+  silent, so it still counts as a performance, as a stop does.
+- **Where operators see it.** `GET /radio/:programId/output-confidence` and the MCP read tools' `output_confidence`
+  carry the episode as `deadAir` / `dead_air`: `step` (`resend`, `advance`, `give_up` or null), `gaveUp`, `held` (the
+  guard) and `since`. It is null when there is no episode. The `state=radio-dead-air-recovering` and
+  `state=radio-dead-air-gave-up` fixtures show the desk's two states.
+- **Local walk.** [Fake Palazzo](fake-palazzo.md), "A dead-air watchdog walk".
+
 **Engine audio detected** measures Palazzo's post-master mix before Icecast.
 **Listen** returns Icecast audio through Palazzo and Alcántara's
 backends using the station's existing private Palazzo connection. It requires no
@@ -113,7 +165,11 @@ contains no URL or station labels. Updating only the listener URL does not
 reconnect Palazzo telemetry. The nullable database column is additive; reverting
 application code safely leaves it unused without removing station data.
 
-The authenticated private `/metrics` endpoint includes `alcantara_radio_log_transitions_total{result}` with bounded `interrupted`, `completed`, `unended-closed` and `unended-close-failed` (#241), `record-failed` (#256: a play's started or ended as-run row was lost after three retries; the writer retries a failed write after 250, 500 and 1000 ms, per program in arrival order, and the writes are idempotent), `resume-failed`, `filled`, `fill-failed`, `generated`, `generation-failed`, `edited`, `edit-failed`, `published`, `started`, `start-failed`, `cue-failed`, `cue-retried` and `cue-skipped` (#719, below), `preflight-failed`, and `poll-failed` results; `alcantara_radio_output_confidence_transitions_total{state}` with bounded confidence states; `alcantara_radio_output_silent_programs`; `alcantara_radio_recovery_preparations_total{result}` with bounded `ready` and `failed` results; and the existing Palazzo request/retry metrics with `filler-prepare` and `automation-*` operations. No program, song, URL, version, or error text appears in metric labels. The Radio desk shows active and upcoming log state and recovery readiness; inspect Palazzo's filler metrics and lifecycle state for its local playback and preparation details.
+The authenticated private `/metrics` endpoint includes `alcantara_radio_log_transitions_total{result}` with bounded `interrupted`, `completed`, `unended-closed` and `unended-close-failed` (#241), `record-failed` (#256: a play's started or ended as-run row was lost after three retries; the writer retries a failed write after 250, 500 and 1000 ms, per program in arrival order, and the writes are idempotent), `resume-failed`, `filled`, `fill-failed`, `generated`, `generation-failed`, `edited`, `edit-failed`, `published`, `started`, `start-failed`, `cue-failed`, `cue-retried` and `cue-skipped` (#719, below), `preflight-failed`, and `poll-failed` results; `alcantara_radio_output_confidence_transitions_total{state}` with bounded confidence states; `alcantara_radio_output_silent_programs`; `alcantara_radio_dead_air_steps_total{step,result}`, with `step` one of
+`resend`, `advance` or `give_up` and `result` one of `recovered` (heard again after the step), `still_silent` (the
+next step was needed) or `held` (a guard held the step, counted once per reason per episode), every pair exposed from
+zero; `alcantara_radio_dead_air_unrecovered_programs` (programs the watchdog gave up on, until they are heard again);
+`alcantara_radio_recovery_preparations_total{result}` with bounded `ready` and `failed` results; and the existing Palazzo request/retry metrics with `filler-prepare` and `automation-*` operations. No program, song, URL, version, or error text appears in metric labels. The Radio desk shows active and upcoming log state and recovery readiness; inspect Palazzo's filler metrics and lifecycle state for its local playback and preparation details.
 
 ### Timed-block cues during an engine outage (#719)
 

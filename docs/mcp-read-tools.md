@@ -69,6 +69,12 @@ recovery panel does; `recovery.connection` is `unavailable` and `automation`
 null when Palazzo does not answer. A program with no radio settings is
 `unavailable`.
 
+`output_confidence` (in `get_on_air` and `get_radio_health`) carries `dead_air`,
+the dead-air watchdog's episode: `step` (`resend`, `advance`, `give_up` or null),
+`gave_up`, `held` (the guard that holds the next step, or null) and `since`. It
+is null when there is no episode. See [Radio station workflow](radio-station-workflow.md),
+"Dead-air watchdog".
+
 ## wait_for_change
 
 The tool holds the request open for at most `timeout_seconds`

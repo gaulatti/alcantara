@@ -40,6 +40,34 @@ docker compose --profile fake-palazzo up --build
 5. **Hold Stop session.** The fake clears program audio and unbinds the filler.
 6. **See what Alcántara sent** with `GET /__fake/log`.
 
+## A dead-air watchdog walk
+
+The backend's dead-air watchdog ([Radio station workflow](radio-station-workflow.md), "Dead-air watchdog") acts only
+on an autoplay or shuffle rotation, so the manual walk above never triggers it. On `radio-demo.fm`, with radio enabled
+and the rotation on **Shuffle**, run each step with the program's control routes and read `GET /__fake/log`. Each step
+watches the desk's Dead air advice and the backend's `/metrics` (`alcantara_radio_dead_air_*`).
+
+```bash
+fake() { docker compose exec palazzo wget -qO- --header 'Content-Type: application/json' --post-data "$2" "http://127.0.0.1:3100/__fake/programs/radio-demo.fm/$1"; }
+fake silence '{"silent":true}'      # dead air while the track keeps playing
+fake silence '{"silent":false}'     # heard again
+fake live '{"onAir":true}'          # the live input on air; '{"onAir":null}' stops reporting it
+```
+
+1. **Recovered by the replay.** Make the output silent. About 20 s later the log shows one `POST /playback/song` with
+   the same song and a new playback id, and the advice says "Automatic recovery played the song again from its
+   start." Clear the silence: `resend`/`recovered` counts 1 and nothing else is sent.
+2. **Not recovered.** Leave it silent. It plays the song again, then about 20 s after that replay starts it sends
+   the next song's command, then about 20 s later it gives up. The advice leads with "Dead air: could not recover",
+   and `alcantara_radio_dead_air_unrecovered_programs` reads 1 until the silence clears.
+3. **Live input.** Set `live` on air, then `null`, then cue a guest live: no command is sent, and the advice says what
+   holds it.
+4. **Stop, freeze, lost readings.** Hold Stop, then make the output silent: nothing is sent, because the rotation is
+   manual. `mute-events` (state unknown) sends nothing either.
+5. **Mixer.** Mute Music on the desk, then make the output silent: nothing is sent, and the mixer is left alone.
+6. **A replay that goes silent again** is moved past, never played again a second time.
+7. **A fourth episode within the hour** goes straight to giving up.
+
 ## Routes
 
 Every contract route lives under `/v1/programs/{programId}`, for any valid
@@ -56,7 +84,7 @@ fake restarts.
 | `POST /playback/instant` | `{ok, playbackRequestId}`, with `instant.started`, then `instant.ended` 3 s later. 409 `automation is not ready` until the lifecycle is ready, as in Palazzo. |
 | `POST /playback/instant/stop` | `{ok: true}`. Ends every instant. |
 | `GET /mixer`, `PUT /mixer` | The mixer state. `PUT` needs the lifecycle ready (409 otherwise) and gains between 0 and 2. The mixer scales the reported output level. |
-| `GET /playback/state` | The full playback state, schema version 1, with URLs. `live: {onAir: false}`, `capabilities` from `FAKE_CAPABILITIES`. |
+| `GET /playback/state` | The full playback state, schema version 1, with URLs. `live` as the `live` control route set it (default `{onAir: false}`), `capabilities` from `FAKE_CAPABILITIES`. |
 | `GET /playback/events` | SSE. A `snapshot` first, then `audio.levels` and `playback.position` every second, `heartbeat` every 10 s, and the lifecycle events. Ids are `bootId:sequence`, with one contiguous sequence per program. `Last-Event-ID` inside the 512-event window replays from the snapshot at that cursor; an unknown cursor gets the current snapshot, then `replay.gap`. |
 | `GET /output/audio` | `audio/wav`: an endless 8 kHz mono stream. A quiet 440 Hz tone while output is audible, digital silence otherwise. |
 | `PUT /fillers/{version}` | `{version, status: "ready", ready: true, mode, assets[], preparedAt}`. Validates 1 to 100 assets with a 64-hex `sha256`. Nothing is downloaded. |
@@ -71,6 +99,7 @@ fake restarts.
 | --- | --- |
 | `GET /__fake/health` | `{ok: true, programs}` |
 | `POST /__fake/programs/{id}/silence` `{"silent": true\|false}` | Dead air: every level, output included, reads 0 while the track keeps playing. |
+| `POST /__fake/programs/{id}/live` `{"onAir": true\|false\|null}` | Palazzo's live input (a guest or the host mic pushed by the contribution worker): on air, off, or not reported (`null` leaves `live` out of the state, as a Palazzo that does not report it). Default off. |
 | `POST /__fake/programs/{id}/mute-events` `{"muted": true\|false}` | Liquidsoap down, as Palazzo reports it (#734): one `telemetry.disconnected`, then nothing on the event stream (no levels, position or heartbeat), while every HTTP route still answers and the state reads `liquidsoap.connected: false` with a `staleSince`. A reconnect still gets its snapshot. Unmuting emits `telemetry.connected` and the stream resumes. |
 | `POST /__fake/programs/{id}/end-track` | Ends the current track now, as a natural end, and goes into any announced song. |
 | `GET /__fake/programs/{id}` | Internal state: silence flag, playback, automation, next, instants, fillers, mixer, subscriber count. |

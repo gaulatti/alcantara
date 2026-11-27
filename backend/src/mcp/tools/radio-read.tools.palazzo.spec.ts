@@ -759,6 +759,7 @@ describe('MCP radio read tools against a fake Palazzo and the console endpoints'
         output_rms: confidence.outputRms,
         last_sample_at: confidence.lastSampleAt,
         quiet_for_ms: confidence.quietForMs,
+        dead_air: null,
       });
       expectNoCredentials(answer.body, answer.text);
     });
@@ -1016,6 +1017,7 @@ describe('MCP radio read tools against a fake Palazzo and the console endpoints'
           output_rms: confidence.outputRms,
           last_sample_at: confidence.lastSampleAt,
           quiet_for_ms: confidence.quietForMs,
+        dead_air: null,
         },
         recovery: {
           connection: recovery.connection,

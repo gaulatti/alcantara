@@ -1093,6 +1093,22 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /**
+   * Who can be on air through calls now, for the dead-air watchdog: the guests cued live in their current session and
+   * the host microphone tracks published. Both zero where calls are not configured. Throws when LiveKit cannot be read,
+   * so the watchdog holds rather than act under a live voice.
+   */
+  async onAirPresence(
+    programId: string,
+  ): Promise<{ guestsLive: number; hostMics: number }> {
+    if (!this.hasConfiguration()) return { guestsLive: 0, hostMics: 0 };
+    const [{ guests }, mics] = await Promise.all([
+      this.onAirList(programId),
+      this.hostMicTracks(programId),
+    ]);
+    return { guestsLive: guests.length, hostMics: mics.length };
+  }
+
   private async onAirList(programId: string) {
     const rows = await this.prisma.guestInvitation.findMany({
       where: {

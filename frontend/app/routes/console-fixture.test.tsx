@@ -76,6 +76,7 @@ vi.mock("../components/RadioPanel", () => ({
         output: p.fixtureData.output.state,
         expected: p.fixtureData.output.expectedAudio,
         rms: p.fixtureData.output.outputRms,
+        deadAir: p.fixtureData.output.deadAir ?? null,
         skipped: p.fixtureData.logs.flatMap((log: any) =>
           (log.cueOutcomes ?? []).map((outcome: any) => outcome.cueId),
         ),
@@ -779,10 +780,27 @@ it("hands the radio desk a dead-air output with a prepared, unbound recovery pla
     rms: 0,
     recovery: { prepared: "fixture-filler", bound: false },
   });
+  expect(data("radio").deadAir).toBeNull();
   cleanup();
   open("?state=radio-live");
   expect(data("radio")).toMatchObject({
     output: "audible",
+    deadAir: null,
     recovery: { prepared: "fixture-filler", bound: true },
+  });
+});
+
+// The dead-air watchdog's two desk states: recovering (it played the song again) and given up.
+it.each([
+  ["radio-dead-air-recovering", { step: "resend", gaveUp: false, held: null }],
+  ["radio-dead-air-gave-up", { step: "give_up", gaveUp: true, held: null }],
+])("hands the radio desk dead air with the watchdog's %s state", (state, deadAir) => {
+  open(`?state=${state}`);
+  expect(data("radio")).toMatchObject({
+    output: "silent",
+    expected: true,
+    rms: 0,
+    deadAir,
+    recovery: { prepared: "fixture-filler", bound: false },
   });
 });

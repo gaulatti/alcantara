@@ -435,22 +435,29 @@ export default function ConsoleFixture() {
                     ? "unavailable"
                     : fixture === "radio-empty" || fixture === "radio-rotation-ended"
                       ? "idle"
-                      : fixture === "radio-dead-air"
+                      : fixture.startsWith("radio-dead-air")
                         ? "silent"
                         : "audible",
                 expectedAudio: fixture !== "radio-empty" && fixture !== "radio-rotation-ended",
                 outputRms:
                   fixture === "radio-empty" ||
-                  fixture === "radio-dead-air" ||
+                  fixture.startsWith("radio-dead-air") ||
                   fixture === "radio-rotation-ended"
                     ? 0
                     : 0.08,
                 lastSampleAt: new Date().toISOString(),
-                quietForMs: fixture === "radio-dead-air" ? 15_000 : null,
+                quietForMs: fixture.startsWith("radio-dead-air") ? 15_000 : null,
+                // The dead-air watchdog: recovering (it played the song again) or given up.
+                deadAir:
+                  fixture === "radio-dead-air-recovering"
+                    ? { step: "resend", gaveUp: false, held: null, since: new Date().toISOString() }
+                    : fixture === "radio-dead-air-gave-up"
+                      ? { step: "give_up", gaveUp: true, held: null, since: new Date().toISOString() }
+                      : null,
               },
               // Dead air with a recovery playlist prepared but not yet bound (gaulatti/alcantara#694).
               recovery:
-                fixture === "radio-dead-air"
+                fixture.startsWith("radio-dead-air")
                   ? {
                       preparedVersion: "fixture-filler",
                       connection: "connected",

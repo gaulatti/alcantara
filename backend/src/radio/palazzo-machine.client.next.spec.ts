@@ -314,7 +314,17 @@ describe('PalazzoMachineClient next-song announcement: unknown state', () => {
     ).resolves.toEqual({ result: 'rejected' });
     expect(series(metrics, 'unknown-value')).toBe(1);
     expect(series(metrics, 'malformed')).toBe(0);
-    expect(metrics.render()).not.toContain('held');
+    // Palazzo's unknown value never becomes a label. The dead-air watchdog's own bounded `held` result is not it.
+    expect(
+      metrics
+        .render()
+        .split('\n')
+        .filter(
+          (line) =>
+            line.includes('held') &&
+            !/^(# (HELP|TYPE) )?alcantara_radio_dead_air_steps_total/.test(line),
+        ),
+    ).toEqual([]);
   });
 
   it('still rejects a mismatched playback ID echo as malformed', async () => {

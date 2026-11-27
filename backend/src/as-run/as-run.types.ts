@@ -36,7 +36,8 @@ export type AsRunEndReason =
   | 'superseded'
   | 'preempted'
   | 'fixed_start'
-  | 'playout_restart';
+  | 'playout_restart'
+  | 'dead_air';
 
 export const AS_RUN_END_REASONS: readonly string[] = [
   'stopped',
@@ -47,6 +48,9 @@ export const AS_RUN_END_REASONS: readonly string[] = [
   'fixed_start',
   // Palazzo restarted under the song: it aired up to the cut, so it is counted, and the row says it was cut.
   'playout_restart',
+  // The dead-air watchdog played the song again, or moved past it, after it went silent on air. It aired until it fell
+  // silent, so it is counted, as a stop is.
+  'dead_air',
 ];
 
 /**

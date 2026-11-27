@@ -88,3 +88,32 @@ describe('taking the host microphone off air', () => {
     expect(mute).not.toHaveBeenCalled();
   });
 });
+
+// The dead-air watchdog asks who can be on air through calls before it acts: it holds on any guest cued live or host
+// microphone published, and on a LiveKit it cannot read.
+describe('who is on air through calls, for the dead-air watchdog', () => {
+  it('counts the host microphone tracks and the guests cued live', async () => {
+    const { service } = serviceWith([
+      { identity: OPERATOR, tracks: [track('onair:host', 'TR_mic')] },
+      { identity: 'guest-1', tracks: [track('onair:host', 'TR_guest')] },
+    ]);
+    Object.defineProperty(service, 'onAirList', {
+      value: jest.fn(async () => ({ programId: 'main', guests: ['guest-a', 'guest-b'] })),
+    });
+    await expect(service.onAirPresence('main')).resolves.toEqual({ guestsLive: 2, hostMics: 1 });
+  });
+
+  it('throws when LiveKit cannot be read, so the watchdog holds', async () => {
+    const { service, roomService } = serviceWith([]);
+    roomService.listParticipants.mockRejectedValueOnce(new Error('livekit down'));
+    Object.defineProperty(service, 'onAirList', {
+      value: jest.fn(async () => ({ programId: 'main', guests: [] })),
+    });
+    await expect(service.onAirPresence('main')).rejects.toThrow();
+  });
+
+  it('reports nobody where calls are not configured', async () => {
+    const service = new WebrtcService(new ConfigService({}), {} as never, new ManagedMetricsService());
+    await expect(service.onAirPresence('main')).resolves.toEqual({ guestsLive: 0, hostMics: 0 });
+  });
+});

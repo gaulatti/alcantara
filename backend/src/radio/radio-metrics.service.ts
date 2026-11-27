@@ -501,6 +501,12 @@ const ANALYSIS_DROP_RESULTS: AnalysisDropResult[] = [
   'lookup-failed',
 ];
 
+/** The dead-air watchdog's steps, smallest first, and what became of each (dead-air-watchdog.service.ts). */
+export type DeadAirStep = 'resend' | 'advance' | 'give_up';
+export type DeadAirResult = 'recovered' | 'still_silent' | 'held';
+export const DEAD_AIR_STEPS: readonly DeadAirStep[] = ['resend', 'advance', 'give_up'];
+export const DEAD_AIR_RESULTS: readonly DeadAirResult[] = ['recovered', 'still_silent', 'held'];
+
 const NEXT_ANNOUNCEMENT_RESULTS: NextAnnouncementResult[] = [
   'accepted',
   'not_ready',
@@ -600,6 +606,8 @@ export class RadioMetricsService {
   private readonly radioLogResults = new Map<string, number>();
   private readonly recoveryPreparations = new Map<string, number>();
   private outputSilentPrograms = 0;
+  private readonly deadAirSteps = new Map<string, number>();
+  private deadAirUnrecoveredPrograms = 0;
   private readonly connectionsByState = new Map<string, number>();
   private reconnectAttempts = 0;
   private reconnectFailures = 0;
@@ -913,6 +921,17 @@ export class RadioMetricsService {
   /** Radio programs whose rotation runs on its own (autoplay or shuffle). */
   recordAutomaticPrograms(count: number): void {
     this.automaticPrograms = Math.max(0, Math.floor(count));
+  }
+
+  recordDeadAirStep(step: DeadAirStep, result: DeadAirResult): void {
+    if (!DEAD_AIR_STEPS.includes(step) || !DEAD_AIR_RESULTS.includes(result))
+      return;
+    const key = `${step}:${result}`;
+    this.deadAirSteps.set(key, (this.deadAirSteps.get(key) ?? 0) + 1);
+  }
+
+  recordDeadAirUnrecoveredPrograms(count: number): void {
+    this.deadAirUnrecoveredPrograms = Math.max(0, Math.floor(count));
   }
 
   recordOutputSilentPrograms(count: number): void {
@@ -1310,6 +1329,20 @@ export class RadioMetricsService {
       '# HELP alcantara_radio_output_silent_programs Radio programs with expected playback and confirmed low output level.',
       '# TYPE alcantara_radio_output_silent_programs gauge',
       `alcantara_radio_output_silent_programs ${this.outputSilentPrograms}`,
+    );
+    lines.push(
+      '# HELP alcantara_radio_dead_air_steps_total Dead-air watchdog steps by bounded step and result: recovered, still silent after it, or held by a guard.',
+      '# TYPE alcantara_radio_dead_air_steps_total counter',
+    );
+    for (const step of DEAD_AIR_STEPS)
+      for (const result of DEAD_AIR_RESULTS)
+        lines.push(
+          `alcantara_radio_dead_air_steps_total{step="${step}",result="${result}"} ${this.deadAirSteps.get(`${step}:${result}`) ?? 0}`,
+        );
+    lines.push(
+      '# HELP alcantara_radio_dead_air_unrecovered_programs Radio programs the dead-air watchdog gave up on, until they are heard again.',
+      '# TYPE alcantara_radio_dead_air_unrecovered_programs gauge',
+      `alcantara_radio_dead_air_unrecovered_programs ${this.deadAirUnrecoveredPrograms}`,
     );
     lines.push(
       '# HELP alcantara_radio_monitor_sessions_total Backend Program monitor connection transitions.',

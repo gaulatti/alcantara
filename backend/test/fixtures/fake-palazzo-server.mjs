@@ -116,6 +116,9 @@ function program(programId) {
       instantMuted: false,
     },
     silent: false,
+    // Palazzo's live input (call guests and the host mic) as its snapshot reports it; null leaves it out, as a
+    // Palazzo that does not report it does.
+    live: { onAir: false },
     songCommands: new Map(),
     nextCommands: new Map(),
     fillers: new Map(),
@@ -203,7 +206,7 @@ function playbackState(p) {
         ? round(Math.max(0, p.trackLengthSeconds - position))
         : null,
     levels: levels(p),
-    live: { onAir: false },
+    ...(p.live ? { live: { ...p.live } } : {}),
     capabilities: [...CONFIG.capabilities],
   };
 }
@@ -970,6 +973,12 @@ async function route(req, res, url) {
       if (typeof body?.silent !== 'boolean') throw new HttpError(400, 'silent must be a boolean');
       p.silent = body.silent;
       answer = { ok: true, silent: p.silent };
+    } else if (action === '/live' && method === 'POST') {
+      // The live input on air (a guest or the host mic pushed by the contribution worker), off, or not reported.
+      if (body?.onAir !== null && typeof body?.onAir !== 'boolean')
+        throw new HttpError(400, 'onAir must be a boolean or null');
+      p.live = body.onAir === null ? null : { onAir: body.onAir };
+      answer = { ok: true, live: p.live };
     } else if (action === '/mute-events' && method === 'POST') {
       // Palazzo with Liquidsoap down (gaulatti/palazzo playback-telemetry.service.ts markDisconnected): one
       // telemetry.disconnected, then a silent event stream, while the HTTP API, the state endpoint included,

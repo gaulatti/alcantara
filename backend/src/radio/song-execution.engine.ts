@@ -555,7 +555,31 @@ export type SongEngineEndReason =
   | 'preempted'
   | 'fixed_start'
   /** Palazzo restarted under the song: it was heard only up to the cut (gaulatti/palazzo#74). */
-  | 'playout_restart';
+  | 'playout_restart'
+  /** The dead-air watchdog played it again or moved past it after it went silent on air. */
+  | 'dead_air';
+
+/** Why the dead-air watchdog may not act on the engine now (deadAirTarget). */
+export type DeadAirEngineHold =
+  | 'standby'
+  | 'not_automatic'
+  | 'frozen'
+  | 'unreconciled'
+  | 'clocked_log'
+  | 'busy'
+  | 'no_song';
+
+export type DeadAirTarget =
+  | {
+      ok: true;
+      mode: 'autoplay' | 'shuffle';
+      playbackRequestId: string;
+      /** When Palazzo confirmed the song's start (ms). */
+      startedAt: number;
+      /** A playlist song, which may be played again; anything else is only advanced past. */
+      replayable: boolean;
+    }
+  | { ok: false; reason: DeadAirEngineHold };
 
 /**
  * Drives radio automation from authoritative Palazzo playback state.
@@ -2123,6 +2147,103 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (this.flightService.isClockedLogRunning(programId)) return 'clocked_log';
     if (state.busyWithForeignTrack) return 'foreign_track';
     return 'no_successor';
+  }
+
+  /**
+   * The song the dead-air watchdog may act on, or why it may not (dead-air-watchdog.service.ts): only this lease's
+   * active instance, an automatic (autoplay or shuffle) rotation that is neither frozen nor stopped, reconciled with
+   * Palazzo, airing a song Palazzo confirmed, with no command, transition, spot or clocked log in the way. An
+   * operator's Stop turns the rotation manual, so an explicit stop is never undone.
+   */
+  deadAirTarget(programId: string): DeadAirTarget {
+    if (this.playoutReleased()) return { ok: false, reason: 'standby' };
+    const state = this.states.get(programId);
+    if (!state || !this.radioProgramIds.has(programId))
+      return { ok: false, reason: 'no_song' };
+    const mode = state.sequence?.mode;
+    if (mode !== 'autoplay' && mode !== 'shuffle')
+      return { ok: false, reason: 'not_automatic' };
+    if (state.frozen) return { ok: false, reason: 'frozen' };
+    if (!state.reconciled || !this.telemetry?.isReconciled(programId))
+      return { ok: false, reason: 'unreconciled' };
+    if (this.flightService.isClockedLogRunning(programId))
+      return { ok: false, reason: 'clocked_log' };
+    if (
+      state.transitioning ||
+      state.pendingRequestIds.size > 0 ||
+      state.busyWithForeignTrack ||
+      state.announcedSpotOnAir
+    )
+      return { ok: false, reason: 'busy' };
+    const song = state.activeSong;
+    if (!song || song.authoritativeStartedAt === null)
+      return { ok: false, reason: 'no_song' };
+    if (song.introStatus === 'playing') return { ok: false, reason: 'busy' };
+    return {
+      ok: true,
+      mode,
+      playbackRequestId: song.playbackRequestId,
+      startedAt: song.authoritativeStartedAt,
+      // Only a playlist song is played again: a Play Next entry or a catalog pick replayed by a take would give its
+      // claim back and air twice, so those go straight to the advance.
+      replayable:
+        song.queueEntryId === null &&
+        song.itemId !== '' &&
+        !song.itemId.startsWith(CATALOG_ITEM_PREFIX),
+    };
+  }
+
+  /**
+   * Dead air, first step: the same song again from its start, as a take does, with the rotation's mode and cursor
+   * left as they are. Its play closes with end reason `dead_air`. Returns the new playback's id, or null when the
+   * song on air is no longer the one the watchdog judged, or the watchdog may not act now.
+   */
+  resendForDeadAir(programId: string, playbackRequestId: string): string | null {
+    const target = this.deadAirTarget(programId);
+    if (
+      !target.ok ||
+      !target.replayable ||
+      target.playbackRequestId !== playbackRequestId
+    )
+      return null;
+    const song = this.states.get(programId)!.activeSong!;
+    this.closePlayForAsRun(programId, song, 'dead_air');
+    this.handleManualSong(
+      programId,
+      song.audioUrl,
+      song.title,
+      song.artist,
+      song.durationMs,
+      song.coverUrl,
+      song.songId ?? undefined,
+    );
+    return this.states.get(programId)!.activeSong!.playbackRequestId;
+  }
+
+  /** The radio programs the engine follows, for the dead-air watchdog. */
+  deadAirPrograms(): string[] {
+    return [...this.radioProgramIds];
+  }
+
+  /**
+   * Dead air, second step: the silent song is ended as at a natural end, so the rotation moves on to what it would
+   * play next and keeps its mode. Its announced successor is let go first: Palazzo never started it, so the end must
+   * send the next song's command rather than promote it. False when the song on air is no longer the one judged, or the
+   * watchdog may not act now.
+   */
+  advanceForDeadAir(programId: string, playbackRequestId: string): boolean {
+    const target = this.deadAirTarget(programId);
+    if (!target.ok || target.playbackRequestId !== playbackRequestId)
+      return false;
+    const state = this.states.get(programId)!;
+    const song = state.activeSong!;
+    this.forgetAnnouncement(programId, state, 'replaced');
+    this.closePlayForAsRun(programId, song, 'dead_air');
+    return this.handleAuthoritativeTrackEnded(
+      programId,
+      state,
+      song.playbackRequestId,
+    );
   }
 
   handlePalazzoSnapshot(

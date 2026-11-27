@@ -19,7 +19,19 @@ interface Observation {
   lastReportedState: OutputConfidenceState;
 }
 
-const AUDIO_THRESHOLD = 0.001;
+/** What the dead-air watchdog is doing about a silent program (dead-air-watchdog.service.ts), for the desk. */
+export interface DeadAirStatus {
+  /** The last recovery step taken in this episode, or null while none was taken yet. */
+  step: 'resend' | 'advance' | 'give_up' | null;
+  /** True once every step failed: dead air the watchdog could not recover, until the radio is heard again. */
+  gaveUp: boolean;
+  /** Why the next step waits (a guard), or null. */
+  held: string | null;
+  /** When the episode began (ISO). */
+  since: string;
+}
+
+export const AUDIO_THRESHOLD = 0.001;
 const SILENCE_LIMIT_MS = 10_000;
 const SAMPLE_STALE_MS = 15_000;
 
@@ -28,6 +40,7 @@ export class RadioOutputConfidenceService
   implements OnModuleInit, OnModuleDestroy
 {
   private readonly observations = new Map<string, Observation>();
+  private readonly deadAir = new Map<string, DeadAirStatus>();
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly metrics: RadioMetricsService) {}
@@ -78,7 +91,14 @@ export class RadioOutputConfidenceService
     this.recordTransition(observation, this.state(observation, Date.now()));
   }
 
+  /** The watchdog's episode for a program, or null when there is none (silence ended or never began). */
+  setDeadAir(programId: string, status: DeadAirStatus | null): void {
+    if (status) this.deadAir.set(programId, status);
+    else this.deadAir.delete(programId);
+  }
+
   get(programId: string, now = Date.now()) {
+    const deadAir = this.deadAir.get(programId) ?? null;
     const observation = this.observations.get(programId);
     if (!observation)
       return {
@@ -87,6 +107,7 @@ export class RadioOutputConfidenceService
         outputRms: null,
         lastSampleAt: null,
         quietForMs: null,
+        deadAir,
       };
     const state = this.state(observation, now);
     this.recordTransition(observation, state);
@@ -102,6 +123,7 @@ export class RadioOutputConfidenceService
         observation.quietSince === null
           ? null
           : Math.max(0, now - observation.quietSince),
+      deadAir,
     };
   }
 

@@ -167,6 +167,21 @@ async function mutesEventsAsLiquidsoapDown() {
   assert.equal(refused.status, 400);
 }
 
+// The dead-air watchdog's walk: the live input on air, off, or not reported, as Palazzo's state says it.
+async function setsTheLiveInput() {
+  const state = () => call(origin, 'GET', '/v1/programs/radio-live/playback/state');
+  assert.deepEqual((await state()).body.live, { onAir: false });
+  const on = await call(origin, 'POST', '/__fake/programs/radio-live/live', { body: { onAir: true } });
+  assert.deepEqual(on.body, { ok: true, live: { onAir: true } });
+  assert.deepEqual((await state()).body.live, { onAir: true });
+  await call(origin, 'POST', '/__fake/programs/radio-live/live', { body: { onAir: null } });
+  assert.equal('live' in (await state()).body, false);
+  await call(origin, 'POST', '/__fake/programs/radio-live/live', { body: { onAir: false } });
+  assert.deepEqual((await state()).body.live, { onAir: false });
+  const refused = await call(origin, 'POST', '/__fake/programs/radio-live/live', { body: { onAir: 'yes' } });
+  assert.equal(refused.status, 400);
+}
+
 test('the fake Palazzo answers the recovery path', async (t) => {
   const fake = await startFakePalazzo({ port: 0, host: '127.0.0.1' });
   origin = `http://127.0.0.1:${fake.port}`;
@@ -180,6 +195,7 @@ test('the fake Palazzo answers the recovery path', async (t) => {
       'mutes the event stream as Palazzo does with Liquidsoap down',
       mutesEventsAsLiquidsoapDown,
     );
+    await t.test('sets the live input for the dead-air walk', setsTheLiveInput);
   } finally {
     await fake.close();
   }

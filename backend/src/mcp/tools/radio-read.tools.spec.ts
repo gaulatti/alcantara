@@ -716,6 +716,7 @@ describe('MCP radio read tools', () => {
           output_rms: null,
           last_sample_at: null,
           quiet_for_ms: null,
+          dead_air: null,
         },
       });
       expect(answer.body.output_confidence).toEqual({
@@ -724,6 +725,7 @@ describe('MCP radio read tools', () => {
         output_rms: h.confidence.get(PROGRAM).outputRms,
         last_sample_at: h.confidence.get(PROGRAM).lastSampleAt,
         quiet_for_ms: h.confidence.get(PROGRAM).quietForMs,
+        dead_air: null,
       });
       expectNoCredentials(answer.body);
     });
@@ -1649,6 +1651,29 @@ describe('MCP radio read tools', () => {
   });
 
   describe('get_radio_health', () => {
+    it("carries the dead-air watchdog's episode in the output confidence", async () => {
+      h.machine.getAutomation.mockResolvedValue(null);
+      h.confidence.setDeadAir(PROGRAM, {
+        step: 'give_up',
+        gaveUp: true,
+        held: null,
+        since: '2026-11-17T11:59:30.000Z',
+      });
+      try {
+        const answer = await h.session(ALL).run('get_radio_health');
+        expect(answer.body.output_confidence).toMatchObject({
+          dead_air: {
+            step: 'give_up',
+            gave_up: true,
+            held: null,
+            since: '2026-11-17T11:59:30.000Z',
+          },
+        });
+      } finally {
+        h.confidence.setDeadAir(PROGRAM, null);
+      }
+    });
+
     it('reports the Palazzo connection, the output confidence and the recovery state the console shows', async () => {
       h.machine.getAutomation.mockResolvedValue({
         lastSequence: 12,

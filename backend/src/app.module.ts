@@ -14,6 +14,7 @@ import { MediaModule } from './media/media.module';
 import { MediaGroupsModule } from './media-groups/media-groups.module';
 import { StingersModule } from './stingers/stingers.module';
 import { RadioModule } from './radio/radio.module';
+import { DeadAirWatchdogModule } from './radio/dead-air-watchdog.module';
 import { AuthModule } from './auth/auth.module';
 import { MetricsController } from './metrics.controller';
 import { WebrtcModule } from './webrtc/webrtc.module';
@@ -51,6 +52,7 @@ import { AccessModule } from './access/access.module';
     StingersModule,
     RadioModule,
     WebrtcModule,
+    DeadAirWatchdogModule,
     OperatorPreferencesModule,
     BroadcastDestinationsModule,
     FillerModule,

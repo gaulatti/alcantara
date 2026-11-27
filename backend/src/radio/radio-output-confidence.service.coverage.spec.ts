@@ -50,6 +50,7 @@ describe('RadioOutputConfidenceService coverage', () => {
       outputRms: null,
       lastSampleAt: null,
       quietForMs: null,
+      deadAir: null,
     });
     expect(metrics.recordOutputConfidenceTransition).not.toHaveBeenCalled();
   });

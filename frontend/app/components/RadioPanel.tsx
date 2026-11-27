@@ -169,6 +169,14 @@ interface OutputConfidence {
   outputRms: number | null;
   lastSampleAt: string | null;
   quietForMs: number | null;
+  /** The backend's dead-air watchdog for this silence, or null when it has nothing to say (no silence yet). */
+  deadAir?: DeadAirStatus | null;
+}
+interface DeadAirStatus {
+  step: "resend" | "advance" | "give_up" | null;
+  gaveUp: boolean;
+  held: string | null;
+  since: string;
 }
 interface RecoveryStatus {
   preparedVersion: string | null;
@@ -189,6 +197,42 @@ function notAiredReason(reason: string | null): string {
   // The airing walk's W3: a fixed start passed over the cue.
   if (reason === "fixed_start") return "not aired, cut by a fixed start";
   return reason ? `not aired (${reason})` : "not aired";
+}
+
+/** Why automatic recovery waits, for the operator (backend dead-air-watchdog.service.ts DeadAirHold). */
+const DEAD_AIR_HOLDS: Record<string, string> = {
+  standby: "this server is handing over playout",
+  not_automatic: "the rotation is not on autoplay or shuffle",
+  frozen: "the engine is frozen",
+  unreconciled: "the engine is still reading Palazzo",
+  clocked_log: "a clocked log runs the air",
+  busy: "a command or transition is in progress",
+  no_song: "no confirmed song is on air",
+  palazzo_unread: "Palazzo's state cannot be read",
+  palazzo_degraded: "Palazzo reports itself degraded",
+  not_playing: "Palazzo plays nothing",
+  other_track: "Palazzo plays another track",
+  live_on_air: "the live input is on air",
+  live_unknown: "Palazzo does not say whether the live input is on air",
+  spot_or_intro: "a spot or an intro is on air",
+  mixer_unread: "the mixer cannot be read",
+  mixer_muted: "the mixer is muted or a fader is down, and it is never touched",
+  calls_unread: "calls cannot be read",
+  guest_live: "a guest is cued live",
+  host_mic_live: "a host microphone is open",
+  changed: "the song changed while it was checking",
+};
+
+/** What the dead-air watchdog did or waits for, as one line in the Dead air advice; null when it has not begun. */
+export function deadAirLine(deadAir: DeadAirStatus | null | undefined): string | null {
+  if (!deadAir) return null;
+  if (deadAir.gaveUp)
+    return "Dead air: could not recover. Automatic recovery did not bring the sound back, and the air is still silent. Act now.";
+  const held = deadAir.held ? DEAD_AIR_HOLDS[deadAir.held] ?? deadAir.held : null;
+  if (held) return `Automatic recovery is waiting: ${held}.`;
+  if (deadAir.step === "resend") return "Automatic recovery played the song again from its start.";
+  if (deadAir.step === "advance") return "Automatic recovery moved on to the next song.";
+  return null;
 }
 
 /** Why the desk refuses what would be accepted and not air while Palazzo's playout is down. */
@@ -1144,6 +1188,14 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   tabIndex={-1}
                   className="mt-2 flex flex-col items-start gap-1.5 text-xs text-terracotta"
                 >
+                  {deadAirLine(output.deadAir) ? (
+                    <p
+                      data-dead-air-watchdog={output.deadAir?.gaveUp ? "gave-up" : "recovering"}
+                      className={output.deadAir?.gaveUp ? "text-sm font-extrabold uppercase tracking-wide text-accent-red" : "font-semibold"}
+                    >
+                      {deadAirLine(output.deadAir)}
+                    </p>
+                  ) : null}
                   {mixer.song.muted ? (
                     // Walk part 4: the desk's own mute silenced the song. Taking it off air would leave the
                     // silence for good; unmuting cures it.

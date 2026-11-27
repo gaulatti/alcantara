@@ -162,6 +162,15 @@ export class McpRadioReadTools implements McpToolProviderShape {
       output_rms: confidence.outputRms,
       last_sample_at: confidence.lastSampleAt,
       quiet_for_ms: confidence.quietForMs,
+      // The dead-air watchdog's episode: the last step taken, whether it gave up, and what holds the next step.
+      dead_air: confidence.deadAir
+        ? {
+            step: confidence.deadAir.step,
+            gave_up: confidence.deadAir.gaveUp,
+            held: confidence.deadAir.held,
+            since: confidence.deadAir.since,
+          }
+        : null,
     };
   }
 

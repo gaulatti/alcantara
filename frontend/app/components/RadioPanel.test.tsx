@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 import type { ComponentProps } from "react";
 import { readFileSync } from "node:fs";
-import { RadioPanel } from "./RadioPanel";
+import { RadioPanel, deadAirLine } from "./RadioPanel";
 import { RadioMonitorProvider } from "./RadioMonitor";
 import { dbToFader, faderToDb } from "../utils/audioTaper";
 import * as flight from "../services/flight";
@@ -2385,6 +2385,60 @@ describe("dead air", () => {
     expect(tone("Dead air")).toBe("bad");
     expect(tone("Stream verified")).toBe("idle");
     expect(tone("Engine ready")).toBe("idle");
+  });
+
+  // The backend's dead-air watchdog: what it did, what holds it, and that it gave up, inside the Dead air advice.
+  const since = "2026-11-27T03:00:25.000Z";
+  const watchdogAlert = (status: unknown) => {
+    const p = deadAir({ preparedVersion: null, automation: null, connection: "connected" });
+    (p.fixtureData!.output as { deadAir?: unknown }).deadAir = status;
+    mount(p);
+    return screen.getByRole("alert", { name: "Dead air" });
+  };
+
+  it("says loudly that automatic recovery could not recover, above the operator's own advice", () => {
+    const alarm = watchdogAlert({ step: "give_up", gaveUp: true, held: null, since });
+    expect(alarm).toHaveTextContent(
+      "Dead air: could not recover. Automatic recovery did not bring the sound back, and the air is still silent. Act now.",
+    );
+    expect(alarm.querySelector("[data-dead-air-watchdog]")).toHaveAttribute("data-dead-air-watchdog", "gave-up");
+    expect(alarm).toHaveTextContent(/Hold Stop/);
+  });
+
+  it.each([
+    [{ step: "resend", gaveUp: false, held: null, since }, "Automatic recovery played the song again from its start."],
+    [{ step: "advance", gaveUp: false, held: null, since }, "Automatic recovery moved on to the next song."],
+    [{ step: null, gaveUp: false, held: "guest_live", since }, "Automatic recovery is waiting: a guest is cued live."],
+    [
+      { step: "resend", gaveUp: false, held: "mixer_muted", since },
+      "Automatic recovery is waiting: the mixer is muted or a fader is down, and it is never touched.",
+    ],
+    // A hold this desk does not know yet is shown as the backend names it, never hidden.
+    [{ step: null, gaveUp: false, held: "new_guard", since }, "Automatic recovery is waiting: new_guard."],
+  ])("says what automatic recovery did or waits for (%o)", (status, line) => {
+    const alarm = watchdogAlert(status);
+    expect(alarm).toHaveTextContent(line);
+    expect(alarm.querySelector("[data-dead-air-watchdog]")).toHaveAttribute("data-dead-air-watchdog", "recovering");
+  });
+
+  it.each([null, undefined, { step: null, gaveUp: false, held: null, since }])(
+    "adds no recovery line while the watchdog has nothing to say (%o)",
+    (status) => {
+      expect(watchdogAlert(status).querySelector("[data-dead-air-watchdog]")).toBeNull();
+    },
+  );
+
+  it("names every hold the backend's watchdog can report", () => {
+    const holds = [
+      "standby", "not_automatic", "frozen", "unreconciled", "clocked_log", "busy", "no_song", "palazzo_unread",
+      "palazzo_degraded", "not_playing", "other_track", "live_on_air", "live_unknown", "spot_or_intro",
+      "mixer_unread", "mixer_muted", "calls_unread", "guest_live", "host_mic_live", "changed",
+    ];
+    // Each has its own words, never the raw fallback.
+    for (const held of holds)
+      expect(deadAirLine({ step: null, gaveUp: false, held, since: "" })).not.toBe(
+        `Automatic recovery is waiting: ${held}.`,
+      );
   });
 
   // Walk part 4: muting the desk's Music channel while a song aired raised Dead air with "Hold Stop to take the silent
