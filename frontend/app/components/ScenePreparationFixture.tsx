@@ -55,7 +55,7 @@ export function ScenePreparationFixture({
             ? [["clock-widget", clockWidget]]
             : clock
               ? [
-                  ["modoitaliano-clock", clockProps],
+                  ["modoitaliano-giorgia-clock", clockProps],
                   ["slideshow", slideshow],
                   [type, player],
                 ]
@@ -64,8 +64,8 @@ export function ScenePreparationFixture({
         componentTypes={[
           { type, name: "Giorgia player", description: "" },
           {
-            type: "modoitaliano-clock",
-            name: "Modo Italiano Clock",
+            type: "modoitaliano-giorgia-clock",
+            name: "Modo Italiano Giorgia Clock",
             description: "",
           },
           { type: "slideshow", name: "Slideshow", description: "" },
@@ -93,7 +93,7 @@ export function ScenePreparationFixture({
           const update =
             component === "clock-widget"
               ? setClockWidget
-              : component === "modoitaliano-clock"
+              : component === "modoitaliano-giorgia-clock"
                 ? setClockProps
                 : component === "slideshow"
                   ? setSlideshow

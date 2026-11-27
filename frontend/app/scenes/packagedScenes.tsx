@@ -1,13 +1,13 @@
 import React, { Suspense, lazy } from 'react';
 import { getProgramAudioBusSnapshot, subscribeProgramAudioBus } from '../utils/programAudioBus';
 import { fetchSongCatalog } from '../services/songs';
-import type { ModoItalianoGiorgiaChyronProps, ModoItalianoPodcastPlayerProps, ModoItalianoGiorgiaClockProps } from '@modoitaliano/giorgia/scenes';
 import type {
   ModoItalianoBracketProps,
-  ModoItalianoChyronProps,
-  ModoItalianoClockProps,
-  ModoItalianoPodcastPlayerProps as LegacyPodcastPlayerProps,
-} from '@modoitaliano/giorgia/scenes/legacy';
+  ModoItalianoGiorgiaChyronProps,
+  ModoItalianoPodcastPlayerProps,
+  ModoItalianoGiorgiaClockProps,
+} from '@modoitaliano/giorgia/scenes';
+import type { ModoItalianoPodcastPlayerProps as LegacyPodcastPlayerProps } from '@modoitaliano/giorgia/scenes/legacy';
 
 /**
  * The on-air scene renderers are @modoitaliano/giorgia's (gaulatti/alcantara#382, #391). This
@@ -22,9 +22,7 @@ const audioBus = { getSnapshot: getProgramAudioBusSnapshot, subscribe: subscribe
 const Chyron = lazy(async () => ({ default: (await import('@modoitaliano/giorgia/scenes')).ModoItalianoGiorgiaChyron }));
 const Clock = lazy(async () => ({ default: (await import('@modoitaliano/giorgia/scenes')).ModoItalianoGiorgiaClock }));
 const PodcastPlayer = lazy(async () => ({ default: (await import('@modoitaliano/giorgia/scenes')).ModoItalianoGiorgiaPodcastPlayer }));
-const LegacyChyron = lazy(async () => ({ default: (await import('@modoitaliano/giorgia/scenes/legacy')).ModoItalianoChyron }));
-const LegacyClock = lazy(async () => ({ default: (await import('@modoitaliano/giorgia/scenes/legacy')).ModoItalianoClock }));
-const LegacyBracket = lazy(async () => ({ default: (await import('@modoitaliano/giorgia/scenes/legacy')).ModoItalianoBracket }));
+const Bracket = lazy(async () => ({ default: (await import('@modoitaliano/giorgia/scenes')).ModoItalianoGiorgiaBracket }));
 const LegacyPodcastPlayer = lazy(async () => ({ default: (await import('@modoitaliano/giorgia/scenes/legacy')).ModoItalianoPodcastPlayer }));
 
 export function ModoItalianoGiorgiaChyron(props: ModoItalianoGiorgiaChyronProps) {
@@ -51,26 +49,10 @@ export function ModoItalianoGiorgiaPodcastPlayer(props: ModoItalianoPodcastPlaye
   );
 }
 
-export function ModoItalianoChyron(props: ModoItalianoChyronProps) {
-  return (
-    <Suspense fallback={null}>
-      <LegacyChyron {...props} />
-    </Suspense>
-  );
-}
-
-export function ModoItalianoClock(props: Omit<ModoItalianoClockProps, 'audioBus'>) {
-  return (
-    <Suspense fallback={null}>
-      <LegacyClock {...props} audioBus={audioBus} />
-    </Suspense>
-  );
-}
-
 export function ModoItalianoBracket(props: Omit<ModoItalianoBracketProps, 'loadSongCatalog'>) {
   return (
     <Suspense fallback={null}>
-      <LegacyBracket {...props} loadSongCatalog={fetchSongCatalog} />
+      <Bracket {...props} loadSongCatalog={fetchSongCatalog} />
     </Suspense>
   );
 }

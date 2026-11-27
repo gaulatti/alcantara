@@ -158,7 +158,7 @@ it("chooses, takes and stops the scene's background audio", async () => {
 it.each([
   ["fifthbell-content", {}, (props: any) => expect(Array.isArray(props.weatherCities) && props.weatherCities.length).toBeTruthy()],
   ["reloj-digital-loop-clock", {}, (props: any) => expect(props.textSequence?.items?.length).toBe(1)],
-  ["modoitaliano-chyron", {}, (props: any) => expect(props.ctaSequence?.items?.length).toBe(1)],
+  ["modoitaliano-giorgia-chyron", {}, (props: any) => expect(props.ctaSequence?.items?.length).toBe(1)],
   ["modoitaliano-giorgia-chyron", {}, (props: any) => expect(props.textSequence?.items?.[0]?.useMarquee).toBe(false)],
   ["fifthbell", {}, (props: any) => expect(Array.isArray(props.weatherCities)).toBe(true)],
   ["fifthbell-marquee", { fifthbell: { tone: "legacy" }, "fifthbell-marquee": { speed: 3 } }, (props: any) => expect(props).toMatchObject({ tone: "legacy", speed: 3 })],

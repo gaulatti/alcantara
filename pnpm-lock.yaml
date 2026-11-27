@@ -190,8 +190,8 @@ importers:
         specifier: 0.1.55
         version: 0.1.55(@types/dom-mediacapture-record@1.0.22)(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react-is@18.3.1)(react@19.2.4)(redux@5.0.1)
       '@modoitaliano/giorgia':
-        specifier: 0.1.119
-        version: 0.1.119(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        specifier: 0.1.120
+        version: 0.1.120(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@react-router/node':
         specifier: 7.12.0
         version: 7.12.0(react-router@7.12.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(typescript@5.9.3)
@@ -1690,8 +1690,8 @@ packages:
       '@cfworker/json-schema':
         optional: true
 
-  '@modoitaliano/giorgia@0.1.119':
-    resolution: {integrity: sha512-i+QdtBgRjgf4VABWf5GDEhklmvmjiJjFpZde0ntJuw9Dsivq2cJx4vKpGxS6fSE+O/FBrBTUzJtyGJ8wUT2qBQ==}
+  '@modoitaliano/giorgia@0.1.120':
+    resolution: {integrity: sha512-/QjeDuf528uuewYUWyqTda4H3ZX1x4orP22Dpc0PuXCZnCgWHHpiv721FJYiktqjhIUOlLj48RYlb/YIhZ1RqQ==}
     engines: {node: '>=20.0.0'}
     peerDependencies:
       react: ^19.0.0
@@ -9686,7 +9686,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@modoitaliano/giorgia@0.1.119(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
+  '@modoitaliano/giorgia@0.1.120(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
     dependencies:
       '@fontsource/barlow': 5.3.0
       '@fontsource/barlow-condensed': 5.3.0

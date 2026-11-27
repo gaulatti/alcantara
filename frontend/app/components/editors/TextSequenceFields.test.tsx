@@ -60,7 +60,7 @@ it("hides the chyron editors when the chyron is off, reading the stored show val
     const h = handlers();
     render(
       <ProgramChyronEditorFields
-        componentType="modoitaliano-chyron"
+        componentType="modoitaliano-giorgia-chyron"
         props={{ show }}
         {...h}
       />,
@@ -68,7 +68,7 @@ it("hides the chyron editors when the chyron is off, reading the stored show val
     expect(screen.queryByText("Main Chyron")).toBeNull();
     fireEvent.click(screen.getByRole("switch", { name: "Show Chyron" }));
     expect(h.updateProp).toHaveBeenCalledWith(
-      "modoitaliano-chyron",
+      "modoitaliano-giorgia-chyron",
       "show",
       true,
     );
@@ -76,7 +76,7 @@ it("hides the chyron editors when the chyron is off, reading the stored show val
   }
   render(
     <ProgramChyronEditorFields
-      componentType="modoitaliano-chyron"
+      componentType="modoitaliano-giorgia-chyron"
       props={{ show: "yes" }}
       {...handlers()}
     />,
@@ -88,7 +88,7 @@ it("seeds the sequences from legacy text and replaces it with sequences on edit"
   const h = handlers();
   render(
     <ProgramChyronEditorFields
-      componentType="modoitaliano-chyron"
+      componentType="modoitaliano-giorgia-chyron"
       props={{ text: "Ultime notizie", useMarquee: true, cta: "Seguici" }}
       {...h}
     />,
@@ -115,7 +115,7 @@ it("seeds legacy marquee-only text and keeps sequences that already have text", 
   const h = handlers();
   const { unmount } = render(
     <ProgramChyronEditorFields
-      componentType="modoitaliano-chyron"
+      componentType="modoitaliano-giorgia-chyron"
       props={{ text: "", useMarquee: true }}
       {...h}
     />,
@@ -126,7 +126,7 @@ it("seeds legacy marquee-only text and keeps sequences that already have text", 
   unmount();
   render(
     <ProgramChyronEditorFields
-      componentType="modoitaliano-chyron"
+      componentType="modoitaliano-giorgia-chyron"
       props={{
         text: "Legacy",
         cta: "Legacy CTA",
@@ -159,7 +159,7 @@ it("seeds legacy text into an existing empty-text sequence whose first item is n
   };
   render(
     <ProgramChyronEditorFields
-      componentType="modoitaliano-chyron"
+      componentType="modoitaliano-giorgia-chyron"
       props={{
         text: "Legacy",
         cta: "Legacy CTA",
@@ -177,7 +177,7 @@ it("takes a chyron or CTA on air and commits it, also without a commit action", 
   const h = handlers();
   render(
     <ProgramChyronEditorFields
-      componentType="modoitaliano-chyron"
+      componentType="modoitaliano-giorgia-chyron"
       props={{
         textSequence: textSequence("Main"),
         ctaSequence: textSequence("Call"),
@@ -199,7 +199,7 @@ it("takes a chyron or CTA on air and commits it, also without a commit action", 
   const { replaceProps, updateProp } = handlers();
   render(
     <ProgramChyronEditorFields
-      componentType="modoitaliano-chyron"
+      componentType="modoitaliano-giorgia-chyron"
       props={{
         textSequence: textSequence("Main"),
         ctaSequence: textSequence("Call"),
@@ -225,7 +225,7 @@ it("selects the seeded legacy text when the saved sequence has no selection", ()
   const h = handlers();
   render(
     <ProgramChyronEditorFields
-      componentType="modoitaliano-chyron"
+      componentType="modoitaliano-giorgia-chyron"
       props={{
         text: "Legacy",
         cta: "Legacy CTA",

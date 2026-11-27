@@ -148,7 +148,6 @@ it("hosts the dedicated editors for richer types", () => {
     ["slideshow", "Image label"],
     ["toni-chyron", "Social Handles (comma-separated)"],
     ["fifthbell-chyron", "Social Handles (comma-separated)"],
-    ["modoitaliano-chyron", "Main Chyron"],
     ["modoitaliano-giorgia-chyron", "Main Chyron"],
     ["reloj-digital-loop-clock", "Lower Third Title"],
     ["modoitaliano-bracket", "Matches Configuration"],
@@ -450,14 +449,6 @@ it("toggles the Modo Italiano clocks, with key-safe only on the Giorgia clock", 
       value,
     );
   }
-  cleanup();
-  fields("modoitaliano-clock");
-  expect(
-    screen.queryByRole("checkbox", {
-      name: "Key-safe (for chroma key scenes)",
-    }),
-  ).toBeNull();
-  expect(box("Show World Clocks").checked).toBe(true);
 });
 
 it("edits the Toni and FifthBell clocks, their timing and the world clock cities", () => {

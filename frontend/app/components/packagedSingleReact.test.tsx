@@ -4,8 +4,6 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import BrokawFifthBellProgramRenderer from './BrokawFifthBellProgramRenderer';
 import {
   ModoItalianoBracket,
-  ModoItalianoChyron,
-  ModoItalianoClock,
   ModoItalianoGiorgiaChyron,
   ModoItalianoGiorgiaClock,
   ModoItalianoGiorgiaPodcastPlayer,
@@ -45,8 +43,6 @@ it('renders every packaged Giorgia scene without a second React', async () => {
       <ModoItalianoGiorgiaChyron show textSequence={sequence as never} />
       <ModoItalianoGiorgiaClock programId='main' />
       <ModoItalianoGiorgiaPodcastPlayer {...(podcast as React.ComponentProps<typeof ModoItalianoGiorgiaPodcastPlayer>)} />
-      <ModoItalianoChyron show textSequence={sequence as never} />
-      <ModoItalianoClock programId='main' />
       <ModoItalianoBracket title='TORNEO' />
       <ModoItalianoPodcastPlayer {...(podcast as React.ComponentProps<typeof ModoItalianoPodcastPlayer>)} />
     </>,

@@ -2890,7 +2890,6 @@ export default function Control() {
           textSequence: createProgramTextSequence("manual"),
           ctaSequence: createProgramTextSequence("manual"),
         };
-      case "modoitaliano-chyron":
       case "modoitaliano-giorgia-chyron":
         return {
           ...base,

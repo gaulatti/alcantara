@@ -1,6 +1,6 @@
 import { act, cleanup, configure, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { resolveProgramRow } from '../utils/programRow';
+import { normalizeSceneComponentTypes, normalizeSceneMetadata, resolveProgramRow } from '../utils/programRow';
 import { ModoItalianoProgramRow } from './ModoItalianoProgramRow';
 
 // The scene renderers load the library lazily. Import it once up front, outside any test's clock, so
@@ -17,15 +17,17 @@ const text = (value: string) => ({ mode: 'manual', items: [{ id: 'a', text: valu
 const song = { mode: 'manual', items: [{ id: 's', kind: 'preset', artist: 'Giorgia', title: 'La cura per me', coverUrl: '/cover.jpg' }], activeItemId: 's' };
 
 async function renderRow(componentType: string, metadata: Record<string, unknown>, songSequence: unknown = song) {
-  const plan = resolveProgramRow(componentType.split(','));
+  // As the program route does: retired ids and their stored props reach the Giorgia renderers.
+  const stored = componentType.split(',');
+  const plan = resolveProgramRow(normalizeSceneComponentTypes(stored));
   if (!plan) throw new Error(`no row for ${componentType}`);
-  const { container } = render(<ModoItalianoProgramRow plan={plan} metadata={metadata} programId='row-test' songSequence={songSequence} />);
-  // The scene renderers load lazily (the library's when the pinned version has them): let them settle.
-  if (componentType.includes('giorgia')) {
-    await waitFor(() => expect(container.querySelector('.modoitaliano-giorgia-clock-header')).not.toBeNull(), { timeout: 5000 });
-  }
+  const sceneMetadata = normalizeSceneMetadata(metadata, stored);
+  const { container } = render(<ModoItalianoProgramRow plan={plan} metadata={sceneMetadata} programId='row-test' songSequence={songSequence} />);
+  // The scene renderers load lazily: let them settle.
+  await waitFor(() => expect(container.querySelector('.modoitaliano-giorgia-clock-header')).not.toBeNull(), { timeout: 5000 });
   // A shown chyron renders text as soon as its lazy component has loaded: wait for that, not a delay.
-  const chyronShown = plan.chyronType !== null && (metadata[plan.chyronType] as { show?: unknown } | undefined)?.show !== false;
+  const chyron = sceneMetadata[plan.chyronType] as { show?: unknown; textSequence?: unknown } | undefined;
+  const chyronShown = chyron?.show !== false && chyron?.textSequence !== undefined;
   if (chyronShown) {
     await waitFor(() => expect(container.querySelector('[data-program-row-slot="chyron"]')?.childNodes.length).toBeGreaterThan(0));
   }
@@ -123,43 +125,44 @@ describe('ModoItalianoProgramRow: Giorgia', () => {
   });
 });
 
-describe('ModoItalianoProgramRow: legacy', () => {
-  const chyron = { 'modoitaliano-chyron': { show: true, textSequence: text('Titular') } };
-
-  it('keeps the legacy geometry and slot sizing', async () => {
-    const container = await renderRow('modoitaliano-clock,modoitaliano-chyron', chyron);
-    const row = container.querySelector<HTMLElement>('[data-program-row="legacy"]');
-    expect(row?.className).toBe('absolute z-[950] flex items-end gap-6');
-    expect(row?.style.left).toBe('110px');
-    expect(row?.style.right).toBe('110px');
-    expect(row?.style.bottom).toBe('110px');
-    expect(slot(container, 'chyron')?.className).toBe('flex-1 min-w-0');
-    expect(slot(container, 'clock')?.className).toBe('shrink-0');
-    expect(slot(container, 'chyron')?.textContent).toContain('TITULAR');
-    expect(slot(container, 'clock')?.textContent).toContain('Estás escuchando:');
-    expect(container.querySelector('.modoitaliano-giorgia-clock-header')).toBeNull();
-    expect(container.querySelector('[data-giorgia-rule]')).toBeNull();
-  });
-
-  it('does not mount the legacy chyron while it is hidden', async () => {
-    const container = await renderRow('modoitaliano-clock,modoitaliano-chyron', { 'modoitaliano-chyron': { show: false, textSequence: text('Titular') } });
-    expect(slot(container, 'chyron')?.childNodes).toHaveLength(0);
-  });
-
-  it('applies the clock switches from the legacy clock metadata', async () => {
-    const container = await renderRow('modoitaliano-clock,modoitaliano-bracket', { 'modoitaliano-clock': { showWorldClocks: 0, showLogo: 'no' } }, null);
-    expect(slot(container, 'clock')?.childNodes).toHaveLength(0);
-    const visible = await renderRow('modoitaliano-clock,modoitaliano-bracket', { 'modoitaliano-clock': { showWorldClocks: 1, showLogo: 'yes' } }, null);
-    expect(slot(visible, 'clock')?.querySelector('[aria-label="MI"]')).not.toBeNull();
+describe('ModoItalianoProgramRow: settings as the scenes store them', () => {
+  it('reads numbers and words as switches, keeps the default for a word it does not know, and starts from defaults without chyron settings', async () => {
+    const container = await renderRow('modoitaliano-giorgia-clock,modoitaliano-giorgia-chyron', {
+      'modoitaliano-giorgia-clock': { showLogo: 0, showPlaybackProgress: 'true', keySafe: 'maybe' }
+    });
+    expect(container.querySelector('svg[aria-label="ModoItaliano"]')).toBeNull();
+    // keySafe stays off for an unknown word: the grade keeps its gradient.
+    for (const grade of container.querySelectorAll<HTMLElement>('[data-giorgia-grade]')) expect(grade.style.background).toContain('linear-gradient');
+    expect(container.querySelector('[data-program-row="giorgia"]')).not.toBeNull();
   });
 });
 
-describe('ModoItalianoProgramRow: flags it cannot read', () => {
-  it('keeps the row when a flag is neither a boolean, a number nor a known word', async () => {
-    const container = await renderRow('modoitaliano-giorgia-clock,modoitaliano-giorgia-chyron', {
-      'modoitaliano-giorgia-clock': { showWorldClocks: 'maybe' },
-      'modoitaliano-giorgia-chyron': { show: true, textSequence: text('Sanremo 2027'), ctaSequence: text('En directo') },
-    });
-    expect(container.querySelector('[data-program-row="giorgia"]')).not.toBeNull();
+describe('ModoItalianoProgramRow: a scene stored with the retired chyron and clock ids', () => {
+  const layout = 'cronica-background,modoitaliano-chyron,cronica-chyron,modoitaliano-clock';
+
+  it('draws the Giorgia row with the props stored under the retired keys, and no warnings', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const warnings = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const container = await renderRow(layout, {
+        'modoitaliano-chyron': { show: true, textSequence: text('Titular'), ctaSequence: text('En directo') },
+        'modoitaliano-clock': { showLogo: false, showPlaybackProgress: false }
+      });
+      expect(container.querySelector('[data-program-row="giorgia"]')).not.toBeNull();
+      expect(slot(container, 'chyron')?.textContent).toContain('TITULAR');
+      expect(container.querySelector('svg[aria-label="ModoItaliano"]')).toBeNull();
+      expect(container.querySelector('.modoitaliano-giorgia-clock-progress')).toBeNull();
+      expect(errors).not.toHaveBeenCalled();
+      expect(warnings).not.toHaveBeenCalled();
+    } finally {
+      errors.mockRestore();
+      warnings.mockRestore();
+    }
+  });
+
+  it('honours a hidden retired chyron', async () => {
+    const container = await renderRow(layout, { 'modoitaliano-chyron': { show: false, textSequence: text('Titular') } });
+    expect(slot(container, 'chyron')?.childNodes).toHaveLength(0);
+    expect(slot(container, 'clock')?.querySelector('.modoitaliano-giorgia-clock-on-air')).not.toBeNull();
   });
 });

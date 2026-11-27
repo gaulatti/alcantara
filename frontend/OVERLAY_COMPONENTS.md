@@ -91,7 +91,7 @@ import { ModoItalianoGiorgiaClock } from '~/components';
 <ModoItalianoGiorgiaClock programId="modoitaliano" showWorldClocks showLogo showPlaybackProgress />
 ```
 
-Use the component type `modoitaliano-giorgia-clock`. Its scene attributes match `modoitaliano-clock`: `showWorldClocks`, `showLogo`, and `showPlaybackProgress`. The `part` prop (`'all'`, `'header'`, `'onAir'`) lets the scene row place the two pieces separately. Song data, the program audio bus, song sequences and time overrides behave as in `modoitaliano-clock`.
+Use the component type `modoitaliano-giorgia-clock`. Its scene attributes are `showWorldClocks`, `showLogo`, `showPlaybackProgress` and `keySafe`. The `part` prop (`'all'`, `'header'`, `'onAir'`) lets the scene row place the two pieces separately. The on-air block reads the program audio bus and the song sequence, and honours the time override.
 
 ### `ModoItalianoGiorgiaChyron`
 
@@ -103,7 +103,7 @@ import { ModoItalianoGiorgiaChyron } from '~/components';
 <ModoItalianoGiorgiaChyron show textSequence={textSequence} ctaSequence={ctaSequence} />
 ```
 
-Use the component type `modoitaliano-giorgia-chyron`. Configure it with the same program chyron editor used by `modoitaliano-chyron`. Standalone it spans `left`/`right: 82px`, `bottom: 70px`.
+Use the component type `modoitaliano-giorgia-chyron`. Configure it with the program chyron editor. Standalone it spans `left`/`right: 82px`, `bottom: 70px`.
 
 ### `ModoItalianoGiorgiaArtistBumper`
 
@@ -183,27 +183,11 @@ Example scene metadata:
 
 ### Modo Italiano bottom row
 
-The Giorgia family is the current Modo Italiano look. The original family (`modoitaliano-clock`, `modoitaliano-chyron`, `modoitaliano-bracket`, `modoitaliano-podcast-player`) is kept for legacy and historical scenes. Do not combine the two in one layout.
+The Giorgia family is the Modo Italiano look. The former chyron and clock (`modoitaliano-chyron`, `modoitaliano-clock`) are retired: the migration `20261127020000_giorgia_chyron_clock` moved every stored layout and its scene props to `modoitaliano-giorgia-chyron` and `modoitaliano-giorgia-clock` (the props contracts are the same), and the program renderer still draws an old id through its Giorgia replacement (`normalizeSceneComponentTypes` and `normalizeSceneMetadata` in `app/utils/programRow.ts`), so no scene goes blank. The bracket (`modoitaliano-bracket`) keeps its type and props and draws `ModoItalianoGiorgiaBracket` from `@modoitaliano/giorgia/scenes`, in the Giorgia look. `modoitaliano-podcast-player` is the last renderer from `@modoitaliano/giorgia/scenes/legacy`.
 
-When a scene pairs a clock with its chyron, the renderer lays them out together along the bottom instead of rendering each standalone. `resolveProgramRow` in `app/utils/programRow.ts` makes that decision:
+When a scene lists both `modoitaliano-giorgia-clock` and `modoitaliano-giorgia-chyron`, `resolveProgramRow` lays them out together along the bottom instead of rendering each standalone: `left`/`right: 82px`, `bottom: 70px`, the chyron in the left slot and the clock's on-air block in the right one, with the clock's header top-left. The headline keeps at least half the row, so a long now-playing title cannot squeeze it; while the chyron is hidden the on-air block takes the left edge. Any other component in the scene (for example `cronica-chyron` or `cronica-background`) renders standalone alongside the row.
 
-- `modoitaliano-giorgia-clock` rows only with `modoitaliano-giorgia-chyron`.
-- `modoitaliano-clock` rows with `modoitaliano-chyron`, and without a chyron still moves into its row beside `cronica-chyron`, `modoitaliano-bracket`, `modoitaliano-podcast-player`, or `modoitaliano-giorgia-podcast-player`.
-- The families never pair with each other. A component of the other family in the same layout renders standalone, in its own position.
-- A scene gets at most one row; the Giorgia pair takes it when both families are complete.
-
-The anchoring clock decides the geometry:
-
-| Anchor | Row position | Left slot | Right slot |
-|--------|--------------|-----------|------------|
-| `modoitaliano-clock` (legacy) | `left`/`right`/`bottom: 110px` | legacy chyron | the clock card, docked right |
-| `modoitaliano-giorgia-clock` | `left`/`right: 82px`, `bottom: 70px` | the Giorgia chyron | the on-air block; the header stays top-left |
-
-In the Giorgia row the headline keeps at least half the row, so a long now-playing title cannot squeeze it; while the chyron is hidden the on-air block takes the left edge. The legacy row is unchanged: the chyron slot shrinks freely and the clock card never does.
-
-The row is rendered by `ModoItalianoProgramRow` (`app/components/ModoItalianoProgramRow.tsx`).
-
-On their own, the legacy clock sits top-right (`top: 64px`, `right: 96px`) and the legacy chyron spans the bottom at `110px`.
+The row is rendered by `ModoItalianoProgramRow` (`app/components/ModoItalianoProgramRow.tsx`). On its own, the Giorgia clock draws its header top-left and its on-air block bottom-left.
 
 ---
 

@@ -48,8 +48,6 @@ const hoisted = vi.hoisted(() => {
     "ToniClock",
     "ToniLogo",
     "Earone",
-    "ModoItalianoClock",
-    "ModoItalianoChyron",
     "ModoItalianoGiorgiaClock",
     "ModoItalianoGiorgiaChyron",
     "ModoItalianoBracket",
@@ -835,16 +833,57 @@ describe("the chart badge", () => {
 });
 
 describe("the Modo Italiano components", () => {
-  it("shows the legacy clock and chyron on one bottom row, and none of them standalone", async () => {
+  it("draws a scene stored with the retired clock and chyron ids as the Giorgia row, with the props stored under the old keys", async () => {
     await show(
-      sceneOf(["modoitaliano-clock", "modoitaliano-chyron"]),
+      sceneOf(["cronica-background", "modoitaliano-chyron", "cronica-chyron", "modoitaliano-clock"], {
+        "modoitaliano-chyron": { show: false, textSequence: ["t"], ctaSequence: ["c"] },
+        "modoitaliano-clock": { showWorldClocks: "off", showLogo: 0, showPlaybackProgress: "yes" },
+      }),
     );
-    expect(present("ModoItalianoClock")).toBe(false);
-    expect(present("ModoItalianoChyron")).toBe(false);
+    expect(present("ModoItalianoGiorgiaClock")).toBe(false);
+    expect(present("ModoItalianoGiorgiaChyron")).toBe(false);
+    expect(present("CronicaBackground")).toBe(true);
+    expect(present("CronicaChyron")).toBe(true);
     expect(stub("ModoItalianoProgramRow")).toMatchObject({
       programId: "main",
-      plan: { clockType: "modoitaliano-clock", chyronType: "modoitaliano-chyron" },
+      plan: { clockType: "modoitaliano-giorgia-clock", chyronType: "modoitaliano-giorgia-chyron" },
+      metadata: {
+        "modoitaliano-giorgia-chyron": { show: false, textSequence: ["t"], ctaSequence: ["c"] },
+        "modoitaliano-giorgia-clock": { showWorldClocks: "off", showLogo: 0, showPlaybackProgress: "yes" },
+      },
     });
+  });
+
+  it("draws a retired clock beside the bracket as the standalone Giorgia clock with its stored settings", async () => {
+    await show(
+      sceneOf(["modoitaliano-clock", "modoitaliano-bracket"], {
+        "modoitaliano-clock": { showWorldClocks: "off", showLogo: 0, showPlaybackProgress: "yes" },
+      }),
+    );
+    expect(present("ModoItalianoProgramRow")).toBe(false);
+    expect(present("ModoItalianoBracket")).toBe(true);
+    expect(stub("ModoItalianoGiorgiaClock")).toMatchObject({
+      programId: "main",
+      transitionDurationMs: 300,
+      shuffleCities: false,
+      widthPx: 220,
+      showWorldClocks: false,
+      showLogo: false,
+      showPlaybackProgress: true,
+      showBellIcon: false,
+      language: "es",
+    });
+  });
+
+  it("draws a type once when a scene lists both its retired and its Giorgia id, with the props under the retired key, as the migration keeps them", async () => {
+    await show(
+      sceneOf(["modoitaliano-clock", "modoitaliano-giorgia-clock"], {
+        "modoitaliano-clock": { showLogo: false },
+        "modoitaliano-giorgia-clock": { showLogo: true },
+      }),
+    );
+    expect(stubs("ModoItalianoGiorgiaClock")).toHaveLength(1);
+    expect(stub("ModoItalianoGiorgiaClock")).toMatchObject({ showLogo: false });
   });
 
   it("shows the Giorgia clock and chyron on one bottom row, and the rest standalone", async () => {
@@ -861,35 +900,16 @@ describe("the Modo Italiano components", () => {
     });
   });
 
-  it("shows the clocks and chyrons standalone when there is no row, with their settings and the song sequence", async () => {
+  it("shows the clock and chyron standalone when there is no row, with their settings and the song sequence", async () => {
     await show(
-      sceneOf(
-        ["modoitaliano-clock", "modoitaliano-giorgia-clock"],
-        {
-          "modoitaliano-clock": {
-            showWorldClocks: "off",
-            showLogo: 0,
-            showPlaybackProgress: "yes",
-          },
-          "modoitaliano-giorgia-clock": {
-            showWorldClocks: true,
-            showLogo: "maybe",
-            keySafe: "true",
-          },
+      sceneOf(["modoitaliano-giorgia-clock"], {
+        "modoitaliano-giorgia-clock": {
+          showWorldClocks: true,
+          showLogo: "maybe",
+          keySafe: "true",
         },
-      ),
+      }),
     );
-    expect(stub("ModoItalianoClock")).toMatchObject({
-      programId: "main",
-      transitionDurationMs: 300,
-      shuffleCities: false,
-      widthPx: 220,
-      showWorldClocks: false,
-      showLogo: false,
-      showPlaybackProgress: true,
-      showBellIcon: false,
-      language: "es",
-    });
     expect(stub("ModoItalianoGiorgiaClock")).toMatchObject({
       showWorldClocks: true,
       showLogo: true,
@@ -900,23 +920,15 @@ describe("the Modo Italiano components", () => {
     cleanup();
 
     await show(
-      sceneOf(["modoitaliano-chyron", "modoitaliano-giorgia-chyron"], {
-        "modoitaliano-chyron": {
-          show: false,
-          textSequence: ["t"],
-          ctaSequence: ["c"],
-        },
-        "modoitaliano-giorgia-chyron": { keySafe: 1 },
+      sceneOf(["modoitaliano-giorgia-chyron"], {
+        "modoitaliano-giorgia-chyron": { keySafe: 1, textSequence: ["t"], ctaSequence: ["c"] },
       }),
     );
-    expect(stub("ModoItalianoChyron")).toMatchObject({
-      show: false,
-      textSequence: ["t"],
-      ctaSequence: ["c"],
-    });
     expect(stub("ModoItalianoGiorgiaChyron")).toMatchObject({
       show: true,
       keySafe: true,
+      textSequence: ["t"],
+      ctaSequence: ["c"],
     });
   });
 
@@ -1095,11 +1107,15 @@ describe("the remaining settings of the components", () => {
 
   it("shows the chyrons of the Modo Italiano family unless told to hide them", async () => {
     await show(
-      sceneOf(["modoitaliano-chyron", "modoitaliano-giorgia-chyron"], {
+      sceneOf(["modoitaliano-giorgia-chyron"]),
+    );
+    expect(stub("ModoItalianoGiorgiaChyron").show).toBe(true);
+    cleanup();
+    await show(
+      sceneOf(["modoitaliano-giorgia-chyron"], {
         "modoitaliano-giorgia-chyron": { show: false },
       }),
     );
-    expect(stub("ModoItalianoChyron").show).toBe(true);
     expect(stub("ModoItalianoGiorgiaChyron").show).toBe(false);
   });
 

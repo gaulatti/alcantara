@@ -255,24 +255,6 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
     }
   },
   {
-    id: 'modoitaliano-clock',
-    name: 'Modo Italiano Clock',
-    description: 'Modo Italiano branded clock',
-    hasConfigurableSceneAttributes: true,
-    defaultProps: {
-      showWorldClocks: true,
-      showLogo: true,
-      showPlaybackProgress: true
-    }
-  },
-  {
-    id: 'modoitaliano-chyron',
-    name: 'Modo Italiano Chyron',
-    description: 'Modo Italiano branded chyron with text sequences',
-    hasConfigurableSceneAttributes: true,
-    defaultProps: { show: true }
-  },
-  {
     id: 'modoitaliano-giorgia-clock',
     name: 'Modo Italiano Giorgia Clock',
     description: 'Giorgia-branded clock and now-playing overlay',

@@ -16,8 +16,6 @@ import {
   ToniClock,
   ToniLogo,
   Earone,
-  ModoItalianoClock,
-  ModoItalianoChyron,
   ModoItalianoGiorgiaClock,
   ModoItalianoGiorgiaChyron,
   ModoItalianoBracket,
@@ -34,7 +32,7 @@ import {
   Scoreboard
 } from '../components';
 import RelojClone from '../components/RelojClone';
-import { resolveProgramRow } from '../utils/programRow';
+import { normalizeSceneComponentTypes, normalizeSceneMetadata, resolveProgramRow } from '../utils/programRow';
 import { ModoItalianoProgramRow } from '../components/ModoItalianoProgramRow';
 import RelojLoopClock from '../components/RelojLoopClock';
 import RelojDigitalLoopClock from '../components/RelojDigitalLoopClock';
@@ -1537,10 +1535,12 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       return <div className='w-full h-full flex items-center justify-center text-white text-4xl'>No Active Scene</div>;
     }
 
-    const components = scene.layout.componentType
+    // A retired chyron or clock id renders through its Giorgia replacement, with the props stored under either key.
+    const storedComponents = scene.layout.componentType
       .split(',')
       .map((componentType) => componentType.trim())
       .filter(Boolean);
+    const components = normalizeSceneComponentTypes(storedComponents);
 
     // Parse metadata
     let metadata: any = {};
@@ -1548,6 +1548,9 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       metadata = scene.metadata ? JSON.parse(scene.metadata) : {};
     } catch (err) {
       console.error('Failed to parse scene metadata:', err);
+    }
+    if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
+      metadata = normalizeSceneMetadata(metadata, storedComponents);
     }
 
     const mergedFifthBellChyronProps = {
@@ -1783,39 +1786,6 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                     widthPx={typeof fifthBellClockProps.worldClockWidthPx === 'number' ? fifthBellClockProps.worldClockWidthPx : undefined}
                     showWorldClocks={typeof fifthBellClockProps.showWorldClocks === 'boolean' ? fifthBellClockProps.showWorldClocks : undefined}
                     showBellIcon={resolvedShowBellIcon}
-                  />
-                );
-              case 'modoitaliano-clock': {
-                if (programRow?.ownedTypes.has(componentType)) {
-                  return null;
-                }
-                return (
-                  <ModoItalianoClock
-                    key={componentType}
-                    programId={programId}
-                    timeOverride={globalTimeOverride}
-                    transitionDurationMs={300}
-                    shuffleCities={false}
-                    widthPx={220}
-                    showWorldClocks={toBoolean(props.showWorldClocks, true)}
-                    showLogo={toBoolean(props.showLogo, true)}
-                    showPlaybackProgress={toBoolean(props.showPlaybackProgress, true)}
-                    showBellIcon={false}
-                    songSequence={audioBusSettings?.songSequence}
-                    language='es'
-                  />
-                );
-              }
-              case 'modoitaliano-chyron':
-                if (programRow?.ownedTypes.has(componentType)) {
-                  return null;
-                }
-                return (
-                  <ModoItalianoChyron
-                    key={componentType}
-                    show={typeof props.show === 'boolean' ? props.show : true}
-                    textSequence={props.textSequence}
-                    ctaSequence={props.ctaSequence}
                   />
                 );
               case 'modoitaliano-giorgia-clock':

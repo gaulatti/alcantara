@@ -24,8 +24,6 @@ export { default as RelojDigitalLoopClock } from './RelojDigitalLoopClock';
 export { default as RelojClone } from './RelojClone';
 export {
   ModoItalianoBracket,
-  ModoItalianoChyron,
-  ModoItalianoClock,
   ModoItalianoGiorgiaChyron,
   ModoItalianoGiorgiaClock,
   ModoItalianoGiorgiaPodcastPlayer,

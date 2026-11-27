@@ -12,8 +12,8 @@ afterEach(cleanup);
 
 it("renders the actual clock editor with dedicated checkboxes and one component label", () => {
   render(<ScenePreparationFixture clock />);
-  expect(screen.getAllByText("Modo Italiano Clock")).toHaveLength(1);
-  const panel = screen.getByRole("tabpanel", { name: "Modo Italiano Clock" });
+  expect(screen.getAllByText("Modo Italiano Giorgia Clock")).toHaveLength(1);
+  const panel = screen.getByRole("tabpanel", { name: "Modo Italiano Giorgia Clock" });
   const control = within(panel).getByRole("checkbox", {
     name: "Show World Clocks",
   });
@@ -34,7 +34,7 @@ it("renders the actual clock editor with dedicated checkboxes and one component 
   expect(
     within(slide).getByRole("checkbox", { name: "Shuffle" }),
   ).toBeChecked();
-  fireEvent.click(screen.getByRole("tab", { name: "Modo Italiano Clock" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Modo Italiano Giorgia Clock" }));
   expect(
     screen.getByRole("checkbox", { name: "Show World Clocks" }),
   ).not.toBeChecked();
@@ -81,6 +81,6 @@ it("renders a player-only scene named for the show, with no clock tabs", () => {
   render(<ScenePreparationFixture />);
   expect(screen.getByRole("tab", { name: "Giorgia player" })).toBeInTheDocument();
   expect(screen.queryByRole("tab", { name: "Slideshow" })).toBeNull();
-  expect(screen.queryByRole("tab", { name: "Modo Italiano Clock" })).toBeNull();
+  expect(screen.queryByRole("tab", { name: "Modo Italiano Giorgia Clock" })).toBeNull();
   expect(screen.getByRole("textbox", { name: "Episode Title" })).toHaveValue("Local rehearsal");
 });
