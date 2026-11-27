@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   controlServer,
@@ -600,4 +600,46 @@ it("leaves without error when an open link refuses to close", async () => {
     throw new Error("already closing");
   };
   expect(() => view.unmount()).not.toThrow();
+});
+
+// With the link open the studio's answers arrive on it, so a command is not followed by a read of the whole show.
+it("stages a source over an open link without reading the show again", async () => {
+  server.answer("POST /program/main/stage", () =>
+    Response.json({ version: 1, stagedSceneId: 2, stagedScene: desk }),
+  );
+  await openLink();
+  const reads = server.requests("GET /program/main/state").length;
+  fireEvent.click(source("Fictional desk"));
+  await waitFor(() => expect(source("Fictional desk")).toHaveAttribute("aria-pressed", "true"));
+  expect(server.requests("POST /program/main/stage")).toHaveLength(1);
+  expect(server.requests("GET /program/main/state")).toHaveLength(reads);
+});
+
+it("says a TAKE could not add its scene when the studio gives no reason, without reading the show again", async () => {
+  server.answer("GET /program/main/state", () => Response.json(programState([headlines])));
+  // Staging answers with a scene the show does not list, so TAKE has to add it first.
+  server.answer("POST /program/main/stage", () =>
+    Response.json({ version: 1, stagedSceneId: 2, stagedScene: desk }),
+  );
+  server.answer("POST /program/main/scenes", () => Response.json({}, { status: 409 }));
+  await openLink();
+  const reads = server.requests("GET /program/main/state").length;
+  fireEvent.click(source("Fictional headlines"));
+  await waitFor(() => expect(server.requests("POST /program/main/stage")).toHaveLength(1));
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  // The TAKE button only follows scenes the show lists; the Space shortcut takes whatever is staged.
+  fireEvent.keyDown(window, { code: "Space", key: " " });
+  expect(await screen.findByText("The scene could not be added to this show.")).toBeInTheDocument();
+  expect(server.requests("GET /program/main/state")).toHaveLength(reads);
+});
+
+it("does not reconnect when the link closes after the console has left", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+  const { view, socket } = await openLink();
+  view.unmount();
+  socket.emit("close");
+  await act(() => vi.advanceTimersByTimeAsync(5000));
+  expect(FakeSocket.instances).toHaveLength(1);
 });

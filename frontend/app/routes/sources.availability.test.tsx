@@ -229,4 +229,29 @@ describe('SourcesRoute preview check left before it answers', () => {
   it('ignores a config answer that has LiveKit disabled after the page is left', async () => {
     await leaveBeforeAnswer(json({ livekit: { enabled: false } }));
   });
+
+  // An answer that arrives after the operator has left the page changes nothing.
+  it('ignores a refused token that arrives after the page has left', async () => {
+    let answer!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn(async () => json({ livekit: { enabled: true } })));
+    vi.mocked(authFetch).mockReturnValue(new Promise<Response>((resolve) => (answer = resolve)));
+    const view = render(<SourcesRoute initialSources={[source]} />);
+    await waitFor(() => expect(authFetch).toHaveBeenCalled());
+    view.unmount();
+    answer(json({}, 502));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(connectMock).not.toHaveBeenCalled();
+  });
+
+  it('ignores a connect that fails after the page has left', async () => {
+    let fail!: (reason: Error) => void;
+    stub(json({ livekit: { enabled: true } }));
+    connectMock.mockReturnValue(new Promise((_resolve, reject) => (fail = reject)));
+    const view = render(<SourcesRoute initialSources={[source]} />);
+    await waitFor(() => expect(connectMock).toHaveBeenCalled());
+    view.unmount();
+    fail(new Error('refused'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(disconnectMock).toHaveBeenCalled();
+  });
 });

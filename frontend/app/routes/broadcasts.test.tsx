@@ -873,3 +873,9 @@ it("closes the add dialog with Escape, sending nothing", async () => {
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add destination" })).toBeNull());
   expect(api.post).not.toHaveBeenCalled();
 });
+
+it("counts a single destination in the singular", async () => {
+  catalog = catalog.slice(0, 1);
+  await page();
+  expect(screen.getByText("1 destination")).toBeInTheDocument();
+});
