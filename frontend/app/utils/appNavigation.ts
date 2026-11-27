@@ -39,9 +39,10 @@ export function getAppNavigationSections({
       items: [
         { id: "control", href: "/", label: controlLabel },
         { id: "rundown", href: "/flight", label: "Rundown" },
+        // Every show takes calls: a cued guest also goes out on the radio (alcantara#875).
+        { id: "calls", href: "/calls", label: "Guest calls" },
         ...(hasTelevision
           ? [
-              { id: "calls", href: "/calls", label: "Guest calls" },
               { id: "sources", href: "/sources", label: "External sources" },
               ...(canViewBroadcasts
                 ? [

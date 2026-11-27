@@ -17,6 +17,7 @@ describe("program-aware application navigation", () => {
     expect(labels("radio")).toEqual([
       "Radio desk",
       "Rundown",
+      "Guest calls",
       "Media",
       "Shows",
       "Radio distribution",
@@ -48,6 +49,13 @@ describe("program-aware application navigation", () => {
       });
     }
     expect(labels("radio")).not.toContain("External sources");
+  });
+
+  // alcantara#875: a cued guest goes out on the radio, so a radio show reaches calls from its menu too.
+  it("links guest calls on every kind of show", () => {
+    for (const type of ["tv", "radio", "both"] as const) {
+      expect(labels(type).filter((label) => label === "Guest calls")).toHaveLength(1);
+    }
   });
 
   it("does not expose developer tools in the production navigation", () => {
