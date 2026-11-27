@@ -218,10 +218,13 @@ function runDeploy({
   repositorySite = '# nginx',
   // gaulatti/alcantara#873: an image that answers /health/ready, the running backend's port, whether the new one
   // reports standby, whether it takes the lease once the old one stops, and whether nginx accepts the switch.
-  leaseImage = false,
+  // Every image holds the lease since the closer; false is an image from before it, which is refused. Left unset, the
+  // running backend reports nothing on /health/ready, so the deploy stops it, then starts the new one (the path a
+  // new host or a skipped handover takes); true makes it the active owner, so the deploy hands over.
+  leaseImage,
   livePort = '3006',
   // The running backend's own /health/ready: 'active' for one that holds the lease, '' for one from before it.
-  liveState = leaseImage ? 'active' : '',
+  liveState = leaseImage === true ? 'active' : '',
   standbyReady = true,
   standbyState = 'standby',
   activates = true,
@@ -272,7 +275,7 @@ case "$args" in
   "run --rm"*print-metrics-token*) ${tokenFails ? 'exit 1' : 'echo fictional-scrape-token'} ;;
   *"State.Running"*) echo ${candidateHealthy ? 'true' : 'false'} ;;
   *"State.ExitCode"*) echo 3 ;;
-  "exec alcantara-backend-candidate"*health/ready*) exit ${leaseImage ? 0 : 3} ;;
+  "exec alcantara-backend-candidate"*health/ready*) exit ${leaseImage === false ? 3 : 0} ;;
   "exec alcantara-backend-candidate"*) exit ${candidateHealthy ? 0 : 1} ;;
   *"Config.Env"*) echo "NODE_ENV=production"; echo "PORT=${livePort}" ;;
   "stop -t 15 alcantara-backend") ${stopFails ? 'exit 1' : `: > "${'$'}{PLAYOUT_DIR}/${livePort}"; ${activates ? `echo active > "${'$'}{PLAYOUT_DIR}/${livePort === '3006' ? '3007' : '3006'}"` : ':'}; ${slowStop ? `command -p sleep ${slowStop}; echo stop-finished >> "${calls}"` : ':'}`} ;;
@@ -834,12 +837,21 @@ test('a standby that never takes the lease is removed, nginx goes back, and the 
   assert.equal(run.log.indexOf('docker rename alcantara-backend-next alcantara-backend'), -1);
 });
 
-test('an image without the lease is replaced as before, even when a backend is running', () => {
-  const run = runDeploy({ candidateHealthy: true, leaseImage: false, installedSite: site3006, repositorySite: repositoryHalf, certificate: true });
-  assert.equal(run.status, 0, run.stdout + run.stderr);
-  assert.ok(run.log.includes('docker stop alcantara-backend'));
-  assert.ok(run.log.some((line) => line.startsWith('docker run -d --name alcantara-backend ')));
-  assert.equal(run.log.findIndex((line) => line.startsWith('docker run -d --name alcantara-backend-next')), -1);
+// The closer of gaulatti/alcantara#873: an image from before the lease is no longer replaced the old way. It is
+// refused before the running backend or nginx is touched (the expand-only migrations ran first, as for any candidate).
+test('an image without the lease is refused, and nothing running is touched', () => {
+  for (const noLiveBackend of [false, true]) {
+    const run = runDeploy({ candidateHealthy: true, leaseImage: false, noLiveBackend, installedSite: site3006, repositorySite: repositoryHalf, certificate: true });
+    assert.equal(run.status, 1);
+    assert.match(run.stdout, /^ALCANTARA_DEPLOY_REFUSED: the image does not answer \/health\/ready, so it does not hold the playout lease; the running backend is untouched$/m);
+    assert.ok(run.log.includes('docker rm -f alcantara-backend-candidate'));
+    for (const line of run.log) {
+      assert.doesNotMatch(line, /^docker (stop|rename|start) /);
+      assert.doesNotMatch(line, /^docker run -d --name alcantara-backend(-next)? /);
+      assert.doesNotMatch(line, /^systemctl reload nginx/);
+    }
+    assert.doesNotMatch(run.stdout, /HANDOVER_SKIPPED|BACKEND_SWITCH|ALCANTARA_HEALTHY/);
+  }
 });
 
 // Review of the handover (Yakko, #873): each case below was a way to two engines, an empty nginx site, or a locked deploy.
@@ -862,7 +874,6 @@ test('a standby that reports active while the running backend is up is removed a
 test('today\'s path after a handover to 3007 serves on 3006 and points nginx back at it', () => {
   const run = runDeploy({
     candidateHealthy: true,
-    leaseImage: false,
     livePort: '3007',
     certificate: true,
     installedSite: site3006.replace('3006', '3007'),
@@ -922,7 +933,6 @@ test('a host short of memory replaces the backend as before', () => {
 test('today\'s path whose public check fails points nginx back at the previous backend\'s port', () => {
   const run = runDeploy({
     candidateHealthy: true,
-    leaseImage: false,
     livePort: '3007',
     publicStatus: '502',
     certificate: true,

@@ -116,11 +116,13 @@ if [ "$candidate_ready" != true ]; then
   docker rm -f alcantara-backend-candidate >/dev/null 2>&1 || true
   exit 1
 fi
-# gaulatti/alcantara#873: an image that answers /health/ready holds the playout lease, so it can start beside the
-# running backend and take over without a gap. One that does not (404) is replaced as before.
-lease_supported=false
-if docker exec alcantara-backend-candidate node -e "fetch('http://127.0.0.1:3006/health/ready').then((r) => process.exit(r.status === 200 ? 0 : 3), () => process.exit(1))" >/dev/null 2>&1; then
-  lease_supported=true
+# gaulatti/alcantara#873: every image holds the playout lease and answers /health/ready, so it can start beside the
+# running backend and take over without a gap. One that does not is from before the lease: it could start beside a
+# running backend without knowing it must not drive playout, so it is refused before anything running is touched.
+if ! docker exec alcantara-backend-candidate node -e "fetch('http://127.0.0.1:3006/health/ready').then((r) => process.exit(r.status === 200 ? 0 : 3), () => process.exit(1))" >/dev/null 2>&1; then
+  echo 'ALCANTARA_DEPLOY_REFUSED: the image does not answer /health/ready, so it does not hold the playout lease; the running backend is untouched'
+  docker rm -f alcantara-backend-candidate >/dev/null 2>&1 || true
+  exit 1
 fi
 docker rm -f alcantara-backend-candidate >/dev/null
 echo 'Alcantara candidate passed its health check'
@@ -281,18 +283,18 @@ if docker inspect alcantara-backend >/dev/null 2>&1; then
   [ -n "$live_port" ] || live_port=3006
 fi
 
-# gaulatti/alcantara#873: the handover needs both sides to speak the lease. The new image must answer /health/ready
-# (lease_supported, from its candidate) and the running backend must report itself active: a running backend from
-# before the lease holds no lock, so a standby beside it would take the free lock at once and two engines would drive
-# playout. It also needs room for a second backend for a minute. Anything else takes today's path.
+# gaulatti/alcantara#873: the handover needs the running backend to report itself active: one that is not (a standby
+# that never took the lock, or one that does not answer) holds no lock, so a standby beside it would take the free lock
+# at once and two engines could drive playout. It also needs room for a second backend for a minute. With no running
+# backend (a new host), or when either condition fails, the backend is stopped, then started in its place.
 handover=false
-if [ "$lease_supported" = true ] && docker inspect alcantara-backend >/dev/null 2>&1; then
+if docker inspect alcantara-backend >/dev/null 2>&1; then
   live_state="$(playout_state "$live_port" || true)"
   memory="$(available_mb)"
   if [ "$live_state" != active ]; then
-    echo "HANDOVER_SKIPPED: the running backend does not hold the playout lease (state: ${live_state:-none}); replacing it as before"
+    echo "HANDOVER_SKIPPED: the running backend does not hold the playout lease (state: ${live_state:-none}); stopping it, then starting the new one in its place"
   elif [ -n "$memory" ] && [ "$memory" -lt 600 ]; then
-    echo "HANDOVER_SKIPPED: ${memory} MB available, under 600 MB; replacing the backend as before"
+    echo "HANDOVER_SKIPPED: ${memory} MB available, under 600 MB; stopping the backend, then starting the new one in its place"
   else
     handover=true
   fi
@@ -425,8 +427,8 @@ if [ "$handover" = true ]; then
     }
   fi
 else
-  # Today's path always serves on 3006: nginx is pointed back at it below, whatever port a handover left. The
-  # previous backend's own port is kept for the rollback.
+  # Stop then start, always on 3006: nginx is pointed back at it below, whatever port a handover left. The previous
+  # backend's own port is kept for the rollback.
   old_port="$live_port"
   live_port=3006
   had_previous=false

@@ -21,16 +21,15 @@ After the restore check, the runtime preflight and the migrations, and before `d
 1. Start `alcantara-backend-candidate` from the new image. It gets the same configuration and secrets as the live container, plus `ALCANTARA_DEPLOY_CANDIDATE=1`. It is not on the `broadcast-control` network, so it cannot reach Palazzo. It publishes no port, has no restart policy and gets no metrics token mount (its health check calls `GET /`, never `/metrics`; the token is provisioned after the candidate passes, see [radio-telemetry.md](radio-telemetry.md#metrics)).
 2. Check `GET /` from inside the container, up to 45 tries 2 s apart. The check stops early if the container exits.
 3. **Failure:** the deploy prints `Alcantara candidate failed its health check; the running backend is untouched` and the candidate's bounded log tail (on stderr, filtered as for the live container), removes the candidate and exits 1. The running backend is never stopped.
-4. **Success:** the deploy removes the candidate and prints `Alcantara candidate passed its health check`. Before removing it, it asks the candidate for `GET /health/ready`. A 200 means the image holds the playout lease (see below) and the deploy hands over without a gap (4a). Otherwise (an image from before the lease, 404), or when no backend is running, it replaces the running container exactly as before, with its own health check, rollback and `ALCANTARA_HEALTHY`.
+4. **Success:** the deploy removes the candidate and prints `Alcantara candidate passed its health check`. Before removing it, it asks the candidate for `GET /health/ready`. A 200 means the image holds the playout lease (see below) and the deploy hands over without a gap (4a). Any other answer is an image from before the lease: the deploy stops with `ALCANTARA_DEPLOY_REFUSED` and leaves the running backend and nginx untouched (the expand-only migrations have already run, as for any candidate). With no backend running (a new host), or when the handover is skipped (below), it stops the running container, then starts the new one in its place, with its own health check, rollback and `ALCANTARA_HEALTHY`.
 
 4a. **The handover** (gaulatti/alcantara#873). Every live container runs `node dist/src/main` under Docker's init (`--init`).
 
-   **When it runs.** All of these must hold, or the deploy prints `HANDOVER_SKIPPED: …` and replaces the container exactly as before:
-   - the new image answers `/health/ready` (asked of its candidate);
-   - the **running** backend reports `active` on its own port (a running backend from before the lease holds no lock, so a standby beside it would take the free lock and two engines would drive playout);
+   **When it runs.** The new image always answers `/health/ready` (an image that does not is refused, above). Both of these must also hold, or the deploy prints `HANDOVER_SKIPPED: …` and stops the container, then starts the new one in its place:
+   - the **running** backend reports `active` on its own port (one that does not holds no lock, so a standby beside it would take the free lock and two engines could drive playout);
    - the host has at least 600 MB available (`MemAvailable`) for a second backend for about a minute.
 
-   Today's path always serves on 3006, and nginx is pointed back at 3006 after it, whatever port a handover left.
+   Stop then start always serves on 3006, and nginx is pointed back at 3006 after it, whatever port a handover left.
 
    **Steps.**
    - It starts `alcantara-backend-next` beside the running one, on the other loopback port (3006 or 3007), and waits up to 90 s for `standby`. Seeing `active` while the old one is up removes it at once.
@@ -123,8 +122,8 @@ does not hold requests (it serves read-only, as above).
 `GET /health/ready` answers `{"state":"standby"|"active","build":"<sha>","grantedAt":<iso>|null,"activeSince":<iso>|null}`:
 when this instance took the lock, and when it then reported active. The backend also logs the handover to the
 millisecond (the logger's own stamp is to the second): `PLAYOUT_SIGTERM`, `PLAYOUT_STOPPING` and `PLAYOUT_UNLOCKED` on the
-instance that lets go, and `PLAYOUT_GRANTED` and `PLAYOUT_ACTIVE` (with the activation time) on the one that takes over. An image without it answers 404, which
-the deploy reads as "no lease".
+instance that lets go, and `PLAYOUT_GRANTED` and `PLAYOUT_ACTIVE` (with the activation time) on the one that takes over. An image without it (from before the lease)
+answers 404, and the deploy refuses it.
 
 On SIGTERM (`enableShutdownHooks()`, with Node exec'd as the container's main process) the instance shuts down in this
 order:
