@@ -146,13 +146,13 @@ beforeEach(() => {
       async close() {}
     },
   );
-  // The 20-second heartbeat is kept for the test to run; every other interval runs as usual.
+  // The live 3-second heartbeat is kept for the test to run; every other interval runs as usual.
   const realSetInterval = window.setInterval.bind(window);
   vi.spyOn(window, "setInterval").mockImplementation(((
     handler: () => void,
     delay?: number,
   ) => {
-    if (delay === 20_000) {
+    if (delay === 3_000) {
       scheduledHeartbeats.push(handler);
       return 0;
     }

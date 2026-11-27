@@ -525,7 +525,8 @@ export default function GuestRoute() {
       announceJoinRef.current = true;
       wentLive = true;
       stopHeartbeat();
-      heartbeatRef.current = window.setInterval(() => void heartbeat(), 20_000);
+      // Live uses the same 3-second beat as the waiting room, so the studio's cue reaches the guest's page within seconds.
+      heartbeatRef.current = window.setInterval(() => void heartbeat(), 3_000);
       void heartbeat();
     } catch (reason) {
       void reportJoinFailure(invitation, reason);

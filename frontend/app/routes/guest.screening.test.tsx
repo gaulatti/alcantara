@@ -241,11 +241,14 @@ it('shows You\'re on air when the studio has cued the guest live, and Off air wh
   cueState = 'live';
   await joinAdmitted();
   await live();
+  // The studio's cue reaches the page on the live heartbeat, within seconds of the cue.
+  await act(async () => poll!());
   expect(screen.getByText("You're on air")).toBeVisible();
   expect(screen.getByText("You're on air").closest('[role="status"]')).toHaveAttribute('data-on-air', 'true');
 
   cueState = 'standby';
-  await act(async () => scheduledBeat!());
+  // The live heartbeat is the 3-second beat, the same handler the waiting room used.
+  await act(async () => poll!());
   expect(await screen.findByText('Off air')).toBeVisible();
   expect(screen.queryByText("You're on air")).toBeNull();
 });
