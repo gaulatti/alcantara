@@ -241,8 +241,10 @@ function runDeploy({
   noLiveBackend = false,
   // How many checks after the reload still find a worker from before it accepting (Infinity: it never stops).
   nginxWorkersLinger = 0,
-  // The old backend takes this long to exit after it frees the lease (held connections), in seconds.
-  slowStop = 0,
+  // The old backend frees the lease but does not exit (held connections) until the deploy has seen the new one take it.
+  // The order is forced by a named pipe, not by timing: a deploy that polls only after `docker stop` returns leaves the
+  // stop waiting out its bound, and the log then shows it finished first.
+  slowStop = false,
   // The host nginx master's pid as systemd reports it ('' or '0' when unknown).
   nginxMaster = '4242',
 }) {
@@ -257,6 +259,8 @@ function runDeploy({
   const { spawnSync } = require('node:child_process');
   const bin = mkdtempSync(join(tmpdir(), 'alcantara-deploy-'));
   const calls = join(bin, 'calls.log');
+  const takeoverSeen = join(bin, 'takeover-seen');
+  if (slowStop) spawnSync('mkfifo', [takeoverSeen]);
   const stub = (name, body) => {
     writeFileSync(
       join(bin, name),
@@ -278,7 +282,7 @@ case "$args" in
   "exec alcantara-backend-candidate"*health/ready*) exit ${leaseImage === false ? 3 : 0} ;;
   "exec alcantara-backend-candidate"*) exit ${candidateHealthy ? 0 : 1} ;;
   *"Config.Env"*) echo "NODE_ENV=production"; echo "PORT=${livePort}" ;;
-  "stop -t 15 alcantara-backend") ${stopFails ? 'exit 1' : `: > "${'$'}{PLAYOUT_DIR}/${livePort}"; ${activates ? `echo active > "${'$'}{PLAYOUT_DIR}/${livePort === '3006' ? '3007' : '3006'}"` : ':'}; ${slowStop ? `command -p sleep ${slowStop}; echo stop-finished >> "${calls}"` : ':'}`} ;;
+  "stop -t 15 alcantara-backend") ${stopFails ? 'exit 1' : `${slowStop ? `exec 3<> "${takeoverSeen}"; ` : ''}: > "${'$'}{PLAYOUT_DIR}/${livePort}"; ${activates ? `echo active > "${'$'}{PLAYOUT_DIR}/${livePort === '3006' ? '3007' : '3006'}"` : ':'}; ${slowStop ? `read -r -t 30 -u 3; echo stop-finished >> "${calls}"` : ':'}`} ;;
   "start alcantara-backend") ${oldRestores ? `echo active > "${'$'}{PLAYOUT_DIR}/${livePort}"` : ':'} ;;
   "logs alcantara-backend-candidate") echo 'Error: fictional start-up failure' ;;
   "logs alcantara-backend")
@@ -323,6 +327,10 @@ exit 0`,
     port="$(printf '%s' "$*" | sed -n 's#.*127\\.0\\.0\\.1:\\([0-9]*\\)/health.*#\\1#p')"
     state="$(cat "${playout}/$port" 2>/dev/null)"
     [ -n "$state" ] || exit 22
+    ${slowStop ? `# The first answer that the new backend holds the lease lets the old one finish stopping.
+    if [ "$state" = active ] && [ "$port" = ${livePort === '3006' ? '3007' : '3006'} ] && mkdir "${takeoverSeen}.sent" 2>/dev/null; then
+      # Logged again as answered: its first line can precede the stop's own, since the two start together.
+      echo "curl $*" >> "${calls}"; echo seen 1<> "${takeoverSeen}"; fi` : ':'}
     if [ "$state" = active ]; then printf '{"state":"%s","build":"fictional","grantedAt":"2026-11-27T08:15:54.700Z"}' "$state"
     else printf '{"state":"%s","build":"fictional","grantedAt":null}' "$state"; fi ;;
 esac
@@ -1027,7 +1035,7 @@ test('the takeover is seen while the old backend is still stopping, and its log 
     certificate: true,
     installedSite: site3006,
     repositorySite: repositoryHalf,
-    slowStop: 1,
+    slowStop: true,
   });
   assert.equal(run.status, 0, run.stdout + run.stderr);
   const stop = run.log.findIndex((line) => line.startsWith('docker stop -t 15 alcantara-backend'));
