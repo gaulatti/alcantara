@@ -52,6 +52,7 @@ const api = vi.hoisted(() => ({ authFetch: vi.fn() }));
 vi.mock("livekit-client", () => ({
   Room: lk.FakeRoom,
   RoomEvent: { Disconnected: "disconnected", TrackMuted: "trackMuted" },
+  DisconnectReason: { DUPLICATE_IDENTITY: 2 },
   Track: { Source: { Microphone: "microphone", Camera: "camera" } },
   createLocalAudioTrack: lk.createLocalAudioTrack,
 }));
@@ -81,7 +82,7 @@ it("publishes the host's mic as onair:host only to the contribution worker and t
   render(<HostMicOnAir programId="modoitaliano.fm" canOperate />);
   fireEvent.click(offButton());
   await waitFor(() => expect(onButton()).toHaveAttribute("aria-pressed", "true"));
-  expect(api.authFetch).toHaveBeenCalledWith("/webrtc/operator-token", expect.objectContaining({ method: "POST", body: JSON.stringify({ programId: "modoitaliano.fm" }) }));
+  expect(api.authFetch).toHaveBeenCalledWith("/webrtc/host-mic-token", expect.objectContaining({ method: "POST", body: JSON.stringify({ programId: "modoitaliano.fm" }) }));
   const room = lk.state.rooms[0];
   expect(room.connectedTo).toEqual(["wss://livekit.example", "fictional-operator-token"]);
   expect(room.published).toEqual(["onair:host"]);
@@ -100,6 +101,18 @@ it("leaves the air when the room drops, and says so", async () => {
   expect(lk.state.tracks[0].stopped).toBe(true);
   expect(offButton()).toBeVisible();
   expect(screen.getByRole("alert")).toHaveTextContent("The host microphone left the air: the call room closed.");
+});
+
+// gaulatti/alcantara#879: the host microphone has one identity per show, so another tab or device going on air takes
+// over and LiveKit disconnects this one; the page says so, and is off.
+it("says the microphone moved when another tab or device takes it over", async () => {
+  render(<HostMicOnAir programId="main" canOperate />);
+  fireEvent.click(offButton());
+  await waitFor(() => onButton());
+  act(() => lk.state.rooms[0].handlers.get("disconnected")!(2));
+  expect(lk.state.tracks[0].stopped).toBe(true);
+  expect(offButton()).toBeVisible();
+  expect(screen.getByRole("alert")).toHaveTextContent("Mic moved to another tab or device: it is on air from there, and off here.");
 });
 
 it("says why it could not go on air and stays off", async () => {

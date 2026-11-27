@@ -47,6 +47,15 @@ export function meta() {
   return [{ title: 'Return Router - Alcántara' }];
 }
 
+/**
+ * The host's microphone on air: `onair:host` from the program's one host-mic identity only (gaulatti/alcantara#879).
+ * LiveKit admits that identity once at a time, so guests hear one host microphone, and an `onair:host` from any other
+ * operator connection is not mixed in.
+ */
+export function isHostMic(input: { participantIdentity: string; trackName: string }, programId: string): boolean {
+  return input.participantIdentity === `operator-host-mic-${programId}` && input.trackName === 'onair:host';
+}
+
 function readRendererKey() {
   const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const key = fragment.get('key') || window.sessionStorage.getItem('alcantara-renderer-key') || '';
@@ -167,7 +176,7 @@ export default function ReturnRouterRoute() {
       // While anyone is on air (a connected guest cued live, or the host's `onair:host` mic) the program bed carries
       // their voices a few seconds late, so it leaves every return: guests hear each other and the host in real
       // time through the room instead (mix-minus by muting the late program bed).
-      const hostOnAir = Array.from(inputs.values()).some((input) => input.participantIdentity.startsWith('operator-') && input.trackName === 'onair:host');
+      const hostOnAir = Array.from(inputs.values()).some((input) => isHostMic(input, programId));
       const anyoneOnAir = hostOnAir || routes.some((route) => route.onAir === true && connectedGuests.has(route.participantIdentity));
       const wanted = routes.filter((item) => connectedGuests.has(item.participantIdentity));
       const wantedNames = new Map(wanted.map((route) => [route.participantIdentity, `mixminus:${route.participantIdentity}:${route.returnAudioBus}`]));
@@ -208,7 +217,7 @@ export default function ReturnRouterRoute() {
           const isSelectedBus = programBus
             ? input.participantIdentity === preferredProgramFeed(programId, programFeedsWithAudio)
             : input.participantIdentity === `${route.returnAudioBus}-feed-${programId}`;
-          const isHost = input.participantIdentity.startsWith('operator-') && input.trackName === 'onair:host';
+          const isHost = isHostMic(input, programId);
           const isTargetedTalkback =
             input.participantIdentity.startsWith('operator-') &&
             (input.trackName === `talkback:${route.participantIdentity.replace(/^guest-/, '')}` || input.trackName === 'talkback:all');

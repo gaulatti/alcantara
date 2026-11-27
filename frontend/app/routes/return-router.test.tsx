@@ -1094,7 +1094,7 @@ describe("while someone is on air", () => {
     await settle();
     const element = nodes.find((n) => n.label.startsWith("element:"))!;
     expect(reaches(element, mixFor("guest-anna")!)).toBe(true);
-    emit("trackSubscribed", ...audioTrack("host-mic", "t9", "onair:host", "operator-desk"));
+    emit("trackSubscribed", ...audioTrack("host-mic", "t9", "onair:host", "operator-host-mic-main"));
     await settle();
     expect(reaches(sourceOf("host-mic"), mixFor("guest-anna")!)).toBe(true);
     expect(reaches(sourceOf("host-mic"), mixFor("guest-cy")!)).toBe(true);
@@ -1103,5 +1103,10 @@ describe("while someone is on air", () => {
     emit("trackSubscribed", ...audioTrack("fake-host", "t10", "onair:host", "guest-cy"));
     await settle();
     expect(reaches(sourceOf("fake-host"), mixFor("guest-cy")!)).toBe(false);
+    // An onair:host from any operator connection but the show's one host mic is not the host on air (#879).
+    emit("trackSubscribed", ...audioTrack("second-tab", "t11", "onair:host", "operator-desk"));
+    await settle();
+    expect(reaches(sourceOf("second-tab"), mixFor("guest-anna")!)).toBe(false);
+    expect(reaches(sourceOf("second-tab"), mixFor("guest-cy")!)).toBe(false);
   });
 });

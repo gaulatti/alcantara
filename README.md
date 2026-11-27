@@ -188,8 +188,8 @@ A guest the operator cues live, and the host's own microphone, reach the station
 live input. The contribution worker on the station's host (`infra/cumulus/compose.contribution.yml`, started by
 `infra/cumulus/contribution-up.sh`) is the only producer for that input. It joins the program's call room as the
 hidden listener `contribution-<programId>` (`POST /webrtc/renderer-token` with `role: "contribution"`), follows
-which guests are on air, mixes their audio and every
-operator track named `onair:host` into one mono feed, and pushes it as AAC to Palazzo's `RTMP_URL` on the internal
+which guests are on air, mixes their audio and the host's microphone (`onair:host` from the show's one host-mic
+identity, `operator-host-mic-<programId>`) into one mono feed, and pushes it as AAC to Palazzo's `RTMP_URL` on the internal
 broadcast-control network. It connects to Palazzo only while someone is on air: Palazzo counts a connected input as
 live even when it is silent, and a live input holds the filler off. Talkback (`talkback:*`) never reaches air. It is
 capped at 256 MB and half a core; if it stops, Palazzo loses only the live input and music and filler carry on.
@@ -211,7 +211,11 @@ same 1.5 s hold. A publisher that died still leaves air after 10 s of digital si
 shutdown the backend ends every stream, so the workers reconnect to the instance that takes over (#873).
 
 The desk's **Mic on air** (on `/calls`, off by default, red ON AIR while on) publishes the operator's microphone
-as `onair:host`, receivable only by the contribution worker and the return router. Switching it off, leaving the
+as `onair:host`, receivable only by the contribution worker and the return router. It joins with its own token
+(`POST /webrtc/host-mic-token`), whose identity is fixed per show, so LiveKit admits one host microphone at a time: a
+second tab or device that goes on air takes over, and the first says "Mic moved to another tab or device". The
+worker and the return router take `onair:host` from that identity only, so air never carries two host microphones
+(#879). Switching it off, leaving the
 page or losing the room unpublishes it. Palazzo mixes the live input over the music at the music's own level
 (ducking is not automatic yet), so while its live input is on air and the music is up the radio desk shows
 "Guest on air, music at full level" beside the Mixer faders.

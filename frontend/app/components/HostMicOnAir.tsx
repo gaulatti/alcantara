@@ -1,6 +1,6 @@
 import { Button } from '@gaulatti/bleecker';
 import { Mic, MicOff } from 'lucide-react';
-import { createLocalAudioTrack, Room, RoomEvent, Track } from 'livekit-client';
+import { createLocalAudioTrack, DisconnectReason, Room, RoomEvent, Track } from 'livekit-client';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { authFetch } from '../services/api';
 
@@ -43,7 +43,9 @@ function useHostMicController() {
     const current: { room: Room; track: { stop: () => void } | null } = { room: new Room(), track: null };
     link.current = current;
     try {
-      const response = await authFetch('/webrtc/operator-token', {
+      // The host microphone's own token (gaulatti/alcantara#879): one identity per show, so a second tab or device that
+      // goes on air takes over from this one, enforced by LiveKit, and air never carries two.
+      const response = await authFetch('/webrtc/host-mic-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ programId })
@@ -59,12 +61,16 @@ function useHostMicController() {
         setState('off');
         setError('The studio muted the host microphone. It is off air.');
       });
-      current.room.on(RoomEvent.Disconnected, () => {
+      current.room.on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
         if (link.current !== current) return;
         link.current = null;
         current.track?.stop();
         setState('off');
-        setError('The host microphone left the air: the call room closed.');
+        setError(
+          reason === DisconnectReason.DUPLICATE_IDENTITY
+            ? 'Mic moved to another tab or device: it is on air from there, and off here.'
+            : 'The host microphone left the air: the call room closed.'
+        );
       });
       await current.room.connect(credentials.serverUrl, credentials.token);
       const microphone = await createLocalAudioTrack();
