@@ -359,7 +359,9 @@
 /* Direct-manipulation builder (gaulatti/alcantara#299): library + timeline. */
 .rundown-builder {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  /* The picker grows with the editor so a title is readable beside its length and Add (about 76px of title at a
+     fixed 220px on a 1280 screen); the timeline keeps the larger share. */
+  grid-template-columns: clamp(220px, 38%, 280px) minmax(0, 1fr);
   border-bottom: 1px solid var(--console-border);
 }
 .rundown-kbd {
