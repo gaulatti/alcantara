@@ -875,7 +875,7 @@ records, the change is never blocked: a record that cannot be stored is logged a
 | `song_request_reanalysis` | `alcantara:song:manage` | W | Queues up to 25 songs for a new audio analysis (cue points and loudness), taken one at a time by the media-analysis job at low priority (#235). A song keeps its current cue points until its new result replaces them; a song that is playing on a program or announced there as the next song is refused `on_air` (per song in the dry run), checked again when queued. Console route `POST /songs/reanalysis`. `rule` is `C2` (the default, the current cue rule: a quiet tail beyond the 1.5 s bound is cut 1.5 s before the old cue-out), `C` (the rule before the clamp, which keeps the old cue-out there) or `previous` (the rule before #235): `C` and `previous` are a way back for a bad batch that needs no deploy; the rule that ran is the song's `ruleVersion`. |
 | `song_update` | `alcantara:song:manage` | W | Changes the given fields of a song; a field left out stays, null clears cover_url, duration, the chart values and the intro. |
 | `stinger_list_stingers` | `alcantara:stinger:read` | R | Lists every stinger (a transition video played between scenes) with its cut point, enabled flag and times, newest change first. |
-| `webrtc_admit_guest` | `alcantara:webrtc:operate` | A | Admits a waiting guest onto their strip (screening before air). |
+| `webrtc_admit_guest` | `alcantara:webrtc:operate` | A | Admits a waiting guest onto their strip (screening before air); refused for a guest who is not waiting, as the desk offers Admit only to one. |
 | `webrtc_control_participant` | `alcantara:webrtc:operate` | A | Sends one command to a connected guest of a program room: type "media" (device camera or microphone, enabled; disabling mutes the published track), "cue" (standby, live or wrap), "message" (text of up to 500 characters shown to the guest) or "talkback" (enabled). |
 | `webrtc_list_invitations` | `alcantara:webrtc:read` | R | Lists the guest invitations (program, guest name, slot, return feed, gain, expiry, status and the last ten commands sent). |
 | `webrtc_list_participants` | `alcantara:webrtc:read` | R | Lists the guests invited to a program room and whether each is connected, reconnecting or offline, with their tracks and recent commands. |
@@ -884,8 +884,11 @@ records, the change is never blocked: a record that cannot be stored is logged a
 ## The radio desk's rotation and guest screening (#788)
 
 File: `backend/src/mcp/capabilities/rotation.ts`, registered in the MCP module. These have no route of their own: each
-reads the rotation as `GET /program/:programId/audio-bus` gives it and writes it back with the console's own save and
-rotation version, so a rotation that changed meanwhile is refused with `conflict`.
+reads the rotation as `GET /program/:programId/audio-bus` gives it and writes it back with the console's own save. Every
+write takes the `sequence_version` that `radio_get_rotation` returned, names it in its confirm target, and sends it with the
+save: a rotation that changed since that read is refused, and nothing is written. The writes ask for
+`alcantara:program:operate`, except `radio_take_rotation_song`, which puts a song on air and asks for
+`alcantara:radio:operate`, as the console's `POST /radio/:programId/song` does.
 
 | Capability | Desk action | Tier |
 |---|---|---|

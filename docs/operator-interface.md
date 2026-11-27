@@ -172,7 +172,9 @@ be ticked first. The live cue is armed by one press and sent by a second press,
 or by Space within 5 s. The wrap cue needs a 0.8 s hold.
 A waiting guest can be admitted to their strip (**Admit**), spoken to without
 going on air (**Talk privately**, which ends with **End private talk**), or turned
-away (**Decline**). A per-guest on-air state and mic meters are not built yet,
+away (**Decline**). Screening applies to each new session: the guest's own
+session reconnecting keeps its admission, and any other session waits to be
+admitted again. A per-guest on-air state and mic meters are not built yet,
 and the desk says so. Mute and remove ask first, in plain words; a request to
 turn a device back on does not. **Remove session** drops the guest, who can
 rejoin with the same link until it expires. Without LiveKit (alcantara#51) the page names that dependency, and a control
