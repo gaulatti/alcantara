@@ -1424,6 +1424,26 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
       },
     );
 
+    // The desk names a jingle (gaulatti/alcantara#879): the engine's two fields reach the console's playback.
+    it.each(['playback_update', 'song_playback_active'])(
+      'carries the jingle fields of %s through',
+      (type) => {
+        const { service } = build();
+        const jingles = {
+          jingle: { name: 'Fictional spot' },
+          jingleNext: { name: 'Fictional spot two' },
+        };
+        (service as any).handleEngineEvent({
+          type,
+          programId: 'main',
+          playback: { ...playbackData, ...jingles },
+        });
+        expect(
+          (service as any).programSongPlaybackByProgramId.get('main'),
+        ).toEqual({ ...expectedPlayback, ...jingles });
+      },
+    );
+
     it('keeps the acting identity off the public program stream', () => {
       const { service } = build();
       const events: any[] = [];
