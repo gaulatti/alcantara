@@ -66,6 +66,8 @@ let refused: boolean;
 let beats: Array<Record<string, unknown>>;
 let poll: (() => void) | null;
 let scheduledBeat: (() => void) | null;
+// When set, a heartbeat answer waits here: the test decides when the server's answer arrives.
+let heartbeatGate: Promise<void> | null;
 // The studio's cue for the guest's session, as the join and heartbeat responses carry it.
 let cueState: 'live' | 'standby' | 'wrap' | undefined;
 
@@ -78,6 +80,7 @@ beforeEach(() => {
   beats = [];
   poll = null;
   scheduledBeat = null;
+  heartbeatGate = null;
   cueState = 'standby';
   window.sessionStorage.clear();
   const video = [track()];
@@ -136,7 +139,10 @@ beforeEach(() => {
         });
       if (url.endsWith('/webrtc/session/heartbeat')) {
         beats.push((JSON.parse(String(init!.body)) as { telemetry: Record<string, unknown> }).telemetry);
-        return refused ? new Response(null, { status: 401 }) : Response.json({ admission, cue: cueState });
+        // The server answers from the state it holds when the request arrives, whatever arrives while it is on the way.
+        const answered = cueState;
+        if (heartbeatGate) await heartbeatGate;
+        return refused ? new Response(null, { status: 401 }) : Response.json({ admission, cue: answered });
       }
       return new Response(null, { status: 204 });
     })
@@ -241,14 +247,11 @@ it('shows You\'re on air when the studio has cued the guest live, and Off air wh
   cueState = 'live';
   await joinAdmitted();
   await live();
-  // The studio's cue reaches the page on the live heartbeat, within seconds of the cue.
-  await act(async () => poll!());
   expect(screen.getByText("You're on air")).toBeVisible();
   expect(screen.getByText("You're on air").closest('[role="status"]')).toHaveAttribute('data-on-air', 'true');
 
   cueState = 'standby';
-  // The live heartbeat is the 3-second beat, the same handler the waiting room used.
-  await act(async () => poll!());
+  await act(async () => scheduledBeat!());
   expect(await screen.findByText('Off air')).toBeVisible();
   expect(screen.queryByText("You're on air")).toBeNull();
 });
@@ -261,3 +264,126 @@ it('shows no on-air state until the studio has said, rather than guessing Off ai
   expect(screen.queryByText("You're on air")).toBeNull();
   expect(screen.queryByText('Off air')).toBeNull();
 });
+
+// The studio's cue message sets the banner at once; the heartbeat's cue corrects it; a reconnect clears it.
+const cueMessage = (cue: 'live' | 'standby' | 'wrap') => new TextEncoder().encode(JSON.stringify({ id: 'cue-1', type: 'cue', cue, sentAt: new Date().toISOString() }));
+
+it('a director cue message flips the banner at once, without waiting for a heartbeat', async () => {
+  admission = 'admitted';
+  cueState = 'standby';
+  await joinAdmitted();
+  await live();
+  await waitFor(() => expect(beats.length).toBeGreaterThan(0));
+  expect(screen.getByText('Off air')).toBeVisible();
+  act(() => lk.state.rooms[0].emit('dataReceived', cueMessage('live'), undefined, undefined, 'alcantara-director'));
+  expect(screen.getByText("You're on air")).toBeVisible();
+  act(() => lk.state.rooms[0].emit('dataReceived', cueMessage('standby'), undefined, undefined, 'alcantara-director'));
+  expect(screen.getByText('Off air')).toBeVisible();
+});
+
+it('the next heartbeat corrects a banner the studio message got wrong', async () => {
+  admission = 'admitted';
+  cueState = 'standby';
+  await joinAdmitted();
+  await live();
+  await waitFor(() => expect(beats.length).toBeGreaterThan(0));
+  act(() => lk.state.rooms[0].emit('dataReceived', cueMessage('live'), undefined, undefined, 'alcantara-director'));
+  expect(screen.getByText("You're on air")).toBeVisible();
+  // The server says standby (for example after a rejoin the page did not see): the heartbeat wins.
+  cueState = 'standby';
+  await act(async () => scheduledBeat!());
+  expect(await screen.findByText('Off air')).toBeVisible();
+  expect(screen.queryByText("You're on air")).toBeNull();
+});
+
+it('a reconnect clears the banner until the studio answers again', async () => {
+  admission = 'admitted';
+  cueState = 'live';
+  await joinAdmitted();
+  await live();
+  await waitFor(() => expect(beats.length).toBeGreaterThan(0));
+  expect(screen.getByText("You're on air")).toBeVisible();
+  act(() => lk.state.rooms[0].emit('connectionStateChanged', 'reconnecting'));
+  expect(screen.queryByText("You're on air")).toBeNull();
+  expect(screen.queryByText('Off air')).toBeNull();
+});
+
+it('a cue message from another participant does not set the banner', async () => {
+  admission = 'admitted';
+  cueState = 'standby';
+  await joinAdmitted();
+  await live();
+  await waitFor(() => expect(beats.length).toBeGreaterThan(0));
+  act(() =>
+    lk.state.rooms[0].emit('dataReceived', cueMessage('live'), { identity: 'guest-other' }, undefined, 'alcantara-director'),
+  );
+  expect(screen.queryByText("You're on air")).toBeNull();
+  expect(screen.getByText('Off air')).toBeVisible();
+});
+
+it('a heartbeat that started before the studio cue cannot override it, in either direction', async () => {
+  admission = 'admitted';
+  cueState = 'live';
+  await joinAdmitted();
+  await live();
+  await waitFor(() => expect(beats.length).toBeGreaterThan(0));
+  expect(screen.getByText("You're on air")).toBeVisible();
+  // A beat that the server answers as live, held on the way back, while the studio sends wrap.
+  let release!: () => void;
+  heartbeatGate = new Promise<void>((resolve) => (release = resolve));
+  await act(async () => scheduledBeat!());
+  act(() => lk.state.rooms[0].emit('dataReceived', cueMessage('wrap'), undefined, undefined, 'alcantara-director'));
+  expect(screen.getByText('Off air')).toBeVisible();
+  await act(async () => release());
+  heartbeatGate = null;
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  expect(screen.getByText('Off air')).toBeVisible();
+  expect(screen.queryByText("You're on air")).toBeNull();
+});
+
+it('a studio live cue, then the confirming beat, shows on air', async () => {
+  admission = 'admitted';
+  cueState = 'standby';
+  await joinAdmitted();
+  await live();
+  await waitFor(() => expect(beats.length).toBeGreaterThan(0));
+  cueState = 'live';
+  act(() => lk.state.rooms[0].emit('dataReceived', cueMessage('live'), undefined, undefined, 'alcantara-director'));
+  expect(screen.getByText("You're on air")).toBeVisible();
+  // The confirming beat about two seconds later reads the stored state; it agrees.
+  const before = beats.length;
+  await waitFor(() => expect(beats.length).toBeGreaterThan(before), { timeout: 3_000 });
+  expect(screen.getByText("You're on air")).toBeVisible();
+});
+
+it('a reconnect reads the studio cue at once, not on the next 20-second beat', async () => {
+  admission = 'admitted';
+  cueState = 'live';
+  await joinAdmitted();
+  await live();
+  await waitFor(() => expect(beats.length).toBeGreaterThan(0));
+  act(() => lk.state.rooms[0].emit('connectionStateChanged', 'reconnecting'));
+  const before = beats.length;
+  act(() => lk.state.rooms[0].emit('connectionStateChanged', 'connected'));
+  await waitFor(() => expect(beats.length).toBeGreaterThan(before));
+  expect(await screen.findByText("You're on air")).toBeVisible();
+});
+
+it('an answer in flight from before a reconnect cannot refill the cleared banner', async () => {
+  admission = 'admitted';
+  cueState = 'live';
+  await joinAdmitted();
+  await live();
+  await waitFor(() => expect(beats.length).toBeGreaterThan(0));
+  expect(screen.getByText("You're on air")).toBeVisible();
+  let release!: () => void;
+  heartbeatGate = new Promise<void>((resolve) => (release = resolve));
+  await act(async () => scheduledBeat!());
+  act(() => lk.state.rooms[0].emit('connectionStateChanged', 'reconnecting'));
+  expect(screen.queryByText("You're on air")).toBeNull();
+  await act(async () => release());
+  heartbeatGate = null;
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  expect(screen.queryByText("You're on air")).toBeNull();
+});
+

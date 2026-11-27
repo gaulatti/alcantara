@@ -101,6 +101,11 @@ export default function GuestRoute() {
   const [displayName, setDisplayName] = useState('Guest');
   // The studio's cue for this guest's session: live is on air. Null until the studio has said, so nothing is guessed.
   const [cue, setCue] = useState<GuestCue | null>(null);
+  // Orders the studio's cue messages against the heartbeat's answers (see heartbeat).
+  const orderRef = useRef(0);
+  const cueOrderRef = useRef(0);
+  const reconnectingRef = useRef(false);
+  const confirmTimerRef = useRef<number | null>(null);
   const [programId, setProgramId] = useState('');
   const [returnVideo, setReturnVideo] = useState('program');
   const [returnAudioBus, setReturnAudioBus] = useState('master');
@@ -129,6 +134,8 @@ export default function GuestRoute() {
 
   const heartbeat = async () => {
     if (!sessionTokenRef.current) return;
+    // Requests and studio cues share one order: an answer may set the cue only if its request started after the last one.
+    const requestOrder = ++orderRef.current;
     const telemetry = telemetryRef.current;
     const icePath = await roomIcePath(roomRef.current);
     const joined = announceJoinRef.current;
@@ -156,7 +163,8 @@ export default function GuestRoute() {
     if (response.ok) {
       // The studio's cue for this session is kept current on every heartbeat, so a missed message never leaves the page wrong.
       const answer = (await response.json().catch(() => null)) as { admission?: string; cue?: GuestCue } | null;
-      if (answer?.cue) setCue(answer.cue);
+      // An answer whose request began before the last studio cue was applied describes an older state: it is ignored.
+      if (answer?.cue && requestOrder > cueOrderRef.current) setCue(answer.cue);
       if (waitingRef.current) {
         // Another heartbeat may have seen it first.
         if (answer?.admission === 'admitted' && waitingRef.current) {
@@ -191,7 +199,10 @@ export default function GuestRoute() {
       if (document.visibilityState === 'visible' && heartbeatRef.current !== null) void heartbeatNowRef.current().catch(() => undefined);
     };
     document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      if (confirmTimerRef.current !== null) window.clearTimeout(confirmTimerRef.current);
+    };
   }, []);
 
   const acknowledge = async (command: DirectorCommand, commandStatus: 'accepted' | 'rejected' | 'read' | 'acknowledged') => {
@@ -463,8 +474,22 @@ export default function GuestRoute() {
         setReturnFeed(false);
       });
       room.on(RoomEvent.ConnectionStateChanged, (state) => {
-        if (state === ConnectionState.Reconnecting) setStatus('reconnecting');
-        if (state === ConnectionState.Connected) setStatus('live');
+        // A reconnect may have taken the guest off air: the banner is cleared until the studio's next answer.
+        if (state === ConnectionState.Reconnecting) {
+          reconnectingRef.current = true;
+          // Answers still in flight from before the reconnect may not refill the banner just cleared.
+          cueOrderRef.current = ++orderRef.current;
+          setStatus('reconnecting');
+          setCue(null);
+        }
+        if (state === ConnectionState.Connected) {
+          setStatus('live');
+          // After a reconnect, the studio's cue for the guest is read at once, not on the next 20-second beat.
+          if (reconnectingRef.current) {
+            reconnectingRef.current = false;
+            void heartbeatNowRef.current().catch(() => undefined);
+          }
+        }
         if (state === ConnectionState.Disconnected && !intentionalEndRef.current) {
           if (!removedRef.current) setError(DROPPED);
           setStatus('ended');
@@ -486,8 +511,11 @@ export default function GuestRoute() {
       room.on(RoomEvent.ConnectionQualityChanged, (next, participant) => {
         if (participant.isLocal) setQuality(String(next).toLowerCase());
       });
-      room.on(RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
+      room.on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
         if (topic !== 'alcantara-director') return;
+        // The studio's directions are sent from the server, which has no participant. A packet attributed to any
+        // participant did not come from the studio, so it is ignored.
+        if (participant) return;
         try {
           const command = JSON.parse(new TextDecoder().decode(payload)) as DirectorCommand;
           if (!command.id) return;
@@ -507,6 +535,17 @@ export default function GuestRoute() {
             if (command.returnAudioBus) setReturnAudioBus(command.returnAudioBus);
           } else {
             setNotice(command);
+            // The studio's cue shows at once; the next heartbeat's cue corrects it after a reload, a reconnect or a missed message.
+            if (command.type === 'cue' && (command.cue === 'live' || command.cue === 'standby' || command.cue === 'wrap')) {
+              cueOrderRef.current = ++orderRef.current;
+              setCue(command.cue);
+              // The studio stores a live cue after it sends it, so a beat about two seconds later reads it settled.
+              if (confirmTimerRef.current !== null) window.clearTimeout(confirmTimerRef.current);
+              confirmTimerRef.current = window.setTimeout(() => {
+                confirmTimerRef.current = null;
+                void heartbeatNowRef.current().catch(() => undefined);
+              }, 2_000);
+            }
             if (command.type === 'message') void acknowledge(command, 'read');
           }
         } catch {
@@ -525,8 +564,7 @@ export default function GuestRoute() {
       announceJoinRef.current = true;
       wentLive = true;
       stopHeartbeat();
-      // Live uses the same 3-second beat as the waiting room, so the studio's cue reaches the guest's page within seconds.
-      heartbeatRef.current = window.setInterval(() => void heartbeat(), 3_000);
+      heartbeatRef.current = window.setInterval(() => void heartbeat(), 20_000);
       void heartbeat();
     } catch (reason) {
       void reportJoinFailure(invitation, reason);
