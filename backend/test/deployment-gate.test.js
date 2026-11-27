@@ -206,6 +206,10 @@ function runDeploy({
   automaticPrograms = '1',
   radioPlays = true,
   radioLive = false,
+  // The host's nginx: the certificate and the installed site, absent on a new host.
+  certificate = false,
+  installedSite = null,
+  repositorySite = '# nginx',
 }) {
   const {
     mkdtempSync,
@@ -241,6 +245,21 @@ case "$args" in
 esac
 exit 0`,
   );
+  // A copy of the script with the host's nginx paths inside the sandbox.
+  const site = join(bin, 'site.conf');
+  const certificateFile = join(bin, 'fullchain.pem');
+  if (certificate) writeFileSync(certificateFile, 'fictional certificate');
+  if (installedSite !== null) writeFileSync(site, installedSite);
+  const script = join(bin, 'cumulus.sh');
+  writeFileSync(
+    script,
+    deployScript
+      .replace('/etc/nginx/conf.d/cumulus-alcantara.conf', site)
+      .replace(
+        '/etc/letsencrypt/live/api.alcantara.gaulatti.com/fullchain.pem',
+        certificateFile,
+      ),
+  );
   stub('curl', 'case "$*" in *write-out*) printf 200 ;; esac\nexit 0');
   // The deploy writes the token to a temp file by redirection (no pipe, so no
   // SIGPIPE under pipefail). mktemp is the one command that must hand back a real,
@@ -258,13 +277,13 @@ exit 0`,
   const result = spawnSync(
     'bash',
     [
-      '../deploy/cumulus.sh',
+      script,
       'fictional-user',
       Buffer.from('fictional-registry-token').toString('base64'),
       'fictional/broadcast',
       'fictional/database',
       'ghcr.io/example/alcantara:fictional',
-      Buffer.from('# nginx').toString('base64'),
+      Buffer.from(repositorySite).toString('base64'),
       'fictional-bucket',
     ],
     {
@@ -273,7 +292,7 @@ exit 0`,
     },
   );
   const log = read(calls, 'utf8').split('\n').filter(Boolean);
-  return { ...result, log };
+  return { ...result, log, site };
 }
 
 test('a candidate that fails its health check leaves the running backend untouched', () => {
@@ -584,6 +603,47 @@ test('a song already on air at the restart extends the wait to its end, within 1
   const result = await runRadioPoll(states, since);
   assert.equal(result.code, 0, result.stdout);
   assert.ok(result.served > 40);
+});
+
+test('writes the nginx site and asks for a certificate only while the host has no TLS', () => {
+  for (const state of [
+    {},
+    { installedSite: 'ssl_certificate /somewhere;' },
+    { certificate: true },
+    { certificate: true, installedSite: 'listen 80;' },
+  ]) {
+    const { status, stdout, log, site } = runDeploy({
+      candidateHealthy: true,
+      ...state,
+    });
+    assert.equal(status, 0, stdout);
+    assert.ok(log.some((line) => line.startsWith('install -m 0644') && line.endsWith(site)));
+    assert.ok(log.includes('systemctl reload nginx'));
+    assert.ok(log.some((line) => line.startsWith('certbot --nginx')));
+    assert.doesNotMatch(stdout, /NGINX_SITE_KEPT/);
+  }
+});
+
+test('never writes the HTTP-only file over a site that serves TLS, and names what it lacks', () => {
+  const repositorySite = readFileSync('../deploy/cumulus.nginx.conf', 'utf8');
+  const installedSite = `${repositorySite}\n    ssl_certificate /etc/letsencrypt/live/x/fullchain.pem; # managed by Certbot\n`;
+  const same = runDeploy({ candidateHealthy: true, certificate: true, installedSite, repositorySite });
+  assert.equal(same.status, 0, same.stdout);
+  assert.match(same.stdout, /NGINX_SITE_KEPT/);
+  assert.doesNotMatch(same.stdout, /NGINX_SITE_DRIFT/);
+  assert.equal(readFileSync(same.site, 'utf8'), installedSite);
+  for (const line of same.log) {
+    assert.doesNotMatch(line, /^(certbot|nginx) |^systemctl reload|^install -m 0644/);
+  }
+  assert.ok(same.log.includes('systemctl enable --now certbot-renew.timer'));
+
+  const changed = runDeploy({
+    candidateHealthy: true,
+    certificate: true,
+    installedSite,
+    repositorySite: repositorySite.replace('210m', '300m'),
+  });
+  assert.match(changed.stdout, /NGINX_SITE_DRIFT: not in the installed site: client_max_body_size 300m;/);
 });
 
 test('the deployed containers do not migrate again; the one migration runs before the swap', () => {

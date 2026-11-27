@@ -201,12 +201,27 @@ if [ "$deployed_ready" != true ]; then
   exit 1
 fi
 
+# The repository's nginx file is the HTTP half only; certbot writes the TLS half into the installed copy. Writing the
+# repository's file over it takes 443 away until certbot puts it back (gaulatti/alcantara#873), so it is written only
+# while there is no certificate, or the installed site does not use one.
+nginx_site='/etc/nginx/conf.d/cumulus-alcantara.conf'
+certificate='/etc/letsencrypt/live/api.alcantara.gaulatti.com/fullchain.pem'
 printf '%s' "$nginx_config_base64" | base64 -d > /tmp/cumulus-alcantara.conf
-install -m 0644 /tmp/cumulus-alcantara.conf /etc/nginx/conf.d/cumulus-alcantara.conf
+if [ -s "$certificate" ] && grep -q '^[[:space:]]*ssl_certificate ' "$nginx_site" 2>/dev/null; then
+  echo 'NGINX_SITE_KEPT: the installed site already serves TLS'
+  # Say so when the repository's file has a setting the installed one lacks: it is not applied by itself.
+  sed -E 's/^[[:space:]]+//' /tmp/cumulus-alcantara.conf \
+    | grep -vE '^(#|$|listen |server \{|location |\})' \
+    | while IFS= read -r directive; do
+        grep -qF -- "$directive" "$nginx_site" || echo "NGINX_SITE_DRIFT: not in the installed site: $directive"
+      done
+else
+  install -m 0644 /tmp/cumulus-alcantara.conf "$nginx_site"
+  nginx -t
+  systemctl reload nginx
+  certbot --nginx --non-interactive --agree-tos --register-unsafely-without-email --redirect -d api.alcantara.gaulatti.com
+fi
 rm -f /tmp/cumulus-alcantara.conf
-nginx -t
-systemctl reload nginx
-certbot --nginx --non-interactive --agree-tos --register-unsafely-without-email --redirect -d api.alcantara.gaulatti.com
 systemctl enable --now certbot-renew.timer
 
 public_status="$(curl --silent --max-time 5 --output /dev/null --write-out '%{http_code}' https://api.alcantara.gaulatti.com/ || true)"
