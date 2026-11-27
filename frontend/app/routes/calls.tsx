@@ -100,6 +100,22 @@ export default function CallsRoute() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [roomReturn, setRoomReturn] = useState<RoomReturn | null>(null);
+  // The show's kind decides what a live cue means, so it is read for the show on screen.
+  const [programType, setProgramType] = useState<'tv' | 'radio' | 'both' | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setProgramType(null);
+    fetch(apiUrl(`/program/${encodeURIComponent(programId)}/state`))
+      .then((response) => (response.ok ? response.json() : null))
+      .then((state: { type?: unknown } | null) => {
+        const type = state?.type;
+        if (!cancelled && (type === 'tv' || type === 'radio' || type === 'both')) setProgramType(type);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [programId]);
   // When the desk last heard from the API, and how many polls in a row have failed since: a waiting guest must never
   // sit unseen behind a desk that silently stopped updating.
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
@@ -545,6 +561,7 @@ export default function CallsRoute() {
                     // "Invited, not joined" only for a guest who never reached the room: a dropped call also leaves the
                     // invitation without a live lease, and must still read "Dropped". An older backend says neither.
                     neverJoined={participant.everJoined === false}
+                    programType={programType}
                     canOperate={canOperate}
                     busy={busy !== null}
                     talking={talkingTo === participant.identity}

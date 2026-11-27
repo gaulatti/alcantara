@@ -791,12 +791,12 @@ it("asks for a second confirmation before talking to a guest cued live", async (
       commands: [{ id: "c9", type: "cue", status: "acknowledged", payload: { cue: "live" }, createdAt: "2026-11-22T12:00:00Z" }],
     }),
   ];
-  serve();
+  serve({ "GET /program/main show/state": () => Response.json({ type: "tv" }) });
   render(<CallsRoute />);
   await screen.findByText("Ada", { selector: "h3" });
   expect(within(card()).getByText("Live · cued")).toBeVisible();
   expect(screen.getByText("1 guest cued live")).toBeVisible();
-  expect(within(card()).getByText(/on the output only through a scene/)).toBeVisible();
+  expect(await within(card()).findByText(/on the output only through a scene/)).toBeVisible();
   expect(button(/Hold · talk/)).toBeDisabled();
   fireEvent.click(within(card()).getByRole("checkbox", { name: "Allow talk while cued live" }));
   expect(button(/Hold · talk/)).toBeEnabled();
@@ -804,6 +804,26 @@ it("asks for a second confirmation before talking to a guest cued live", async (
   await waitFor(() => expect(lk.state.rooms[0]?.published).toEqual(["talkback:inv-1"]));
   fireEvent.pointerUp(button(/Talking/));
   expect(lk.state.rooms[0].disconnected).toBe(true);
+});
+
+// alcantara#875: on a radio show a cued guest is on the air, and the strip must not say otherwise.
+it.each([
+  ["radio", "Cued live: they go out on the radio until you wrap or stand them by."],
+  ["both", "Cued live: they go out on the radio. On television they appear only through a scene that carries them."],
+  [undefined, "Sent the live cue."],
+])("says where a guest cued live goes out on a %s show", async (type, note) => {
+  participants = [
+    participant({
+      commands: [{ id: "c9", type: "cue", status: "acknowledged", payload: { cue: "live" }, createdAt: "2026-11-22T12:00:00Z" }],
+    }),
+  ];
+  serve({
+    "GET /program/main show/state": () => (type ? Response.json({ type }) : new Response(null, { status: 500 })),
+  });
+  render(<CallsRoute />);
+  await screen.findByText("Ada", { selector: "h3" });
+  expect(await within(card()).findByText(note, { exact: true })).toBeVisible();
+  if (type !== "both") expect(within(card()).queryByText(/only through a scene/)).toBeNull();
 });
 
 it("explains talkback that could not be authorized", async () => {

@@ -54,10 +54,23 @@ export interface StripParticipant {
  * the wrap cue needs a hold. Mic meters are not built yet and say
  * so.
  */
+/**
+ * Where a guest cued live goes out. On a radio leg the station mixes them onto the air (alcantara#875); on
+ * television they appear only through a scene that carries them.
+ */
+export function cuedNote(programType: "tv" | "radio" | "both" | null): string {
+  if (programType === "radio") return "Cued live: they go out on the radio until you wrap or stand them by.";
+  if (programType === "both")
+    return "Cued live: they go out on the radio. On television they appear only through a scene that carries them.";
+  if (programType === "tv") return "Sent the live cue. The guest is on the output only through a scene that carries them.";
+  return "Sent the live cue.";
+}
+
 export function GuestStrip({
   participant,
   expiresAt,
   neverJoined = false,
+  programType = null,
   canOperate,
   busy,
   talking,
@@ -75,6 +88,8 @@ export function GuestStrip({
   expiresAt: string;
   /** The invitation was never used: an offline participant is then invited, not dropped. */
   neverJoined?: boolean;
+  /** The show's kind, which says where a cued guest goes out; null until it is known. */
+  programType?: "tv" | "radio" | "both" | null;
   canOperate: boolean;
   busy: boolean;
   talking: boolean;
@@ -200,9 +215,7 @@ export function GuestStrip({
         </p>
       ) : null}
       {state === "cued-live" ? (
-        <p className="guest-strip-note">
-          Sent the live cue. The guest is on the output only through a scene that carries them.
-        </p>
+        <p className="guest-strip-note">{cuedNote(programType)}</p>
       ) : null}
       {confirming ? (
         <div role="group" aria-label="Confirm" className="guest-strip-row">
