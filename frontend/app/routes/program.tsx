@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router';
+import { PodcastPlayer } from '@gaulatti/bleecker';
 import { useSSE } from '../hooks/useSSE';
 import { useTransparentDocument } from '../hooks/useTransparentDocument';
 import { apiUrl } from '../utils/apiBaseUrl';
@@ -19,7 +20,6 @@ import {
   ModoItalianoGiorgiaClock,
   ModoItalianoGiorgiaChyron,
   ModoItalianoBracket,
-  ModoItalianoPodcastPlayer,
   ModoItalianoGiorgiaPodcastPlayer,
   ModoItalianoGiorgiaArtistBumper,
   CronicaChyron,
@@ -1838,9 +1838,8 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                     votingResultStartedAt={props.votingResultStartedAt}
                   />
                 );
+              // The generic player from Bleecker: same id and props as the legacy scene, so stored scenes keep working.
               case 'modoitaliano-podcast-player':
-              case 'modoitaliano-giorgia-podcast-player': {
-                const PodcastPlayer = componentType === 'modoitaliano-giorgia-podcast-player' ? ModoItalianoGiorgiaPodcastPlayer : ModoItalianoPodcastPlayer;
                 return (
                   <PodcastPlayer
                     key={componentType}
@@ -1852,7 +1851,18 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                     masterGain={outputGain}
                   />
                 );
-              }
+              case 'modoitaliano-giorgia-podcast-player':
+                return (
+                  <ModoItalianoGiorgiaPodcastPlayer
+                    key={componentType}
+                    show={typeof props.show === 'boolean' ? props.show : true}
+                    coverUrl={typeof props.coverUrl === 'string' ? props.coverUrl : ''}
+                    episodeTitle={typeof props.episodeTitle === 'string' ? props.episodeTitle : ''}
+                    showName={typeof props.showName === 'string' ? props.showName : ''}
+                    audioUrl={typeof props.audioUrl === 'string' ? props.audioUrl : ''}
+                    masterGain={outputGain}
+                  />
+                );
               case 'modoitaliano-giorgia-artist-bumper':
                 return (
                   <ModoItalianoGiorgiaArtistBumper
