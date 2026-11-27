@@ -317,6 +317,43 @@ describe('read capabilities return what the controller returns', () => {
     same('webrtc_list_participants', { program_id: 'main' }, () =>
       controllers.webrtc.listParticipants('main'),
     ));
+
+  it('webrtc_list_participants carries studio-sound state and who is waiting', async () => {
+    // The desk's "Hears the studio" / "not reaching" line and its waiting-guest state, as the console reads them.
+    const [connected] = participants.participants;
+    s.webrtc.listParticipants.mockResolvedValue({
+      roomName: 'program-main',
+      participants: [
+        {
+          ...connected,
+          invitationId: 'inv-2',
+          identity: 'guest-00000000-0000-0000-0000-000000000002',
+          name: 'Guest two',
+          slotNumber: 2,
+          connectionState: 'connected',
+          returnReaching: 'stalled',
+          screening: false,
+        },
+        {
+          ...connected,
+          invitationId: 'inv-3',
+          identity: 'guest-00000000-0000-0000-0000-000000000003',
+          name: 'Guest three',
+          slotNumber: 3,
+          connectionState: 'offline',
+          returnReaching: null,
+          screening: true,
+        },
+      ],
+    });
+    const result = await same('webrtc_list_participants', { program_id: 'main' }, () =>
+      controllers.webrtc.listParticipants('main'),
+    );
+    const text = JSON.stringify(result);
+    expect(text).toContain('"returnReaching":"stalled"');
+    expect(text).toContain('"screening":true');
+    expect(text).toContain('"returnReaching":null');
+  });
 });
 
 describe('no read capability returns a credential', () => {

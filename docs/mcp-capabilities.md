@@ -878,7 +878,7 @@ records, the change is never blocked: a record that cannot be stored is logged a
 | `webrtc_admit_guest` | `alcantara:webrtc:operate` | A | Admits a waiting guest onto their strip (screening before air); refused for a guest who is not waiting, as the desk offers Admit only to one. |
 | `webrtc_control_participant` | `alcantara:webrtc:operate` | A | Sends one command to a connected guest of a program room: type "media" (device camera or microphone, enabled; disabling mutes the published track), "cue" (standby, live or wrap), "message" (text of up to 500 characters shown to the guest) or "talkback" (enabled). |
 | `webrtc_list_invitations` | `alcantara:webrtc:read` | R | Lists the guest invitations (program, guest name, slot, return feed, gain, expiry, status and the last ten commands sent). |
-| `webrtc_list_participants` | `alcantara:webrtc:read` | R | Lists the guests invited to a program room and whether each is connected, reconnecting or offline, with their tracks and recent commands. |
+| `webrtc_list_participants` | `alcantara:webrtc:read` | R | Lists the guests invited to a program room: whether each is connected, reconnecting or offline; whether each is waiting to be admitted (screening); whether their return feed is reaching them (returnReaching: healthy, stalled or missing, null until their page reports); and their tracks and recent commands. The operator's own "Mic on air" is not in this list and has no tool. |
 | `webrtc_update_return` | `alcantara:webrtc:operate` | A | Sets the return feed of an invitation: the video (program, preview or none), the audio bus (master, monitor or aux-1 to aux-8), the gain from 0 to 1, mute and delay up to 2000 ms. |
 
 ## The radio desk's rotation and guest screening (#788)
@@ -900,4 +900,6 @@ save: a rotation that changed since that read is refused, and nothing is written
 
 Guest screening is `webrtc_admit_guest` (A) and `webrtc_decline_guest` (D) in the guests area above. Pre-listen plays
 on the operator's own device and has no capability; Cue next and Clear cue arm only in the console.
+
+Parity with the desk, as of the MCP parity audit: cue a guest live and wrap them is `webrtc_control_participant` with type `cue` (live, wrap, standby). The on-air list is `get_on_air` and `webrtc_list_participants` gives each guest's studio-sound state (`returnReaching`) and whether they are waiting (`screening`). Host "Mic on air" has no capability: the operator's microphone is published from the browser (`HostMicOnAir`) and no server call starts or stops it, so adding it needs a decision on where that publish would run.
 

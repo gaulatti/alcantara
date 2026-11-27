@@ -95,7 +95,7 @@ export class WebrtcMcpTools {
         name: 'webrtc_list_participants',
         title: 'List the guests in a program room',
         description:
-          'Lists the guests invited to a program room and whether each is connected, reconnecting or offline, with their tracks and recent commands.',
+          'Lists the guests invited to a program room: whether each is connected, reconnecting or offline; whether each is waiting to be admitted (screening); whether their return feed is reaching them (returnReaching: healthy, stalled or missing, null until their page reports); and their tracks and recent commands. The operator\'s own "Mic on air" is not in this list and has no tool.',
         permission: permissions.read,
         shape: { program_id: programIdArg },
         run: (args) => this.webrtc.listParticipants(args.program_id),
