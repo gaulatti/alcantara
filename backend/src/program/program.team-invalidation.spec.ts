@@ -41,6 +41,7 @@ describe('program changes forget the remembered team', () => {
       {
         getOnAirView: () => ({ playbackRequestId: null }),
         renameProgram: jest.fn(),
+        removeProgram: jest.fn(),
       } as never,
       undefined,
       undefined,

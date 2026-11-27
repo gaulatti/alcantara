@@ -271,7 +271,7 @@ it("releases the half-joined room and can retry after the room connection fails"
   await preflight();
   fireEvent.click(joinButton());
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Could not connect to the studio. Try again.",
+    "Could not connect to the studio.",
   );
   // The failed room is closed without its disconnect ending the session.
   expect(lk.state.rooms[0].disconnected).toBe(true);
@@ -292,7 +292,7 @@ it("can retry when the studio's join answer cannot be read", async () => {
   await preflight();
   fireEvent.click(joinButton());
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Could not connect to the studio. Try again.",
+    "Could not connect to the studio.",
   );
   expect(lk.state.rooms).toHaveLength(0);
   fireEvent.click(joinButton());
@@ -303,7 +303,7 @@ it("keeps the join locked when the camera or microphone is refused", async () =>
   getUserMedia.mockRejectedValueOnce(new Error("Permission denied"));
   openPage();
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Camera or microphone permission failed: Permission denied",
+    "The camera or microphone could not start.",
   );
   fireEvent.click(screen.getByText("Speaker test").closest("button")!);
   fireEvent.click(screen.getByLabelText(/I am wearing headphones/));

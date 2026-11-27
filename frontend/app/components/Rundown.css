@@ -486,6 +486,9 @@
   color: var(--console-muted);
   font-size: 11px;
 }
+.rundown-library-none a {
+  color: var(--console-ready);
+}
 .rundown-library-foot {
   margin-top: auto;
 }

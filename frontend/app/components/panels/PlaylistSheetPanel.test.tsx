@@ -28,6 +28,7 @@ function sheet(props: Record<string, unknown> = {}) {
   const onClose = vi.fn();
   render(
     <PlaylistSheetPanel
+        programId="test-program"
       isOpen
       onClose={onClose}
       sequence={sequence}

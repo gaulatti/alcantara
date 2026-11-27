@@ -1,0 +1,15 @@
+{
+  "name": "@gaulatti/alcantara-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end checks that drive a real browser against a running Alcántara: the WebRTC guest call (alcantara#354).",
+  "scripts": {
+    "webrtc": "node webrtc-call.mjs",
+    "browsers": "playwright install chromium"
+  },
+  "devDependencies": {
+    "livekit-client": "2.21.0",
+    "playwright": "1.65.0"
+  }
+}

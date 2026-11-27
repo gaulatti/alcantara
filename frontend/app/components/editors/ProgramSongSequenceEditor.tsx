@@ -2,6 +2,37 @@ import { StatePill } from '../radio-desk/primitives';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Input, Select } from '@gaulatti/bleecker';
 import { Check, ChevronDown, ChevronUp, Clock, GripVertical, Headphones, ListPlus, Music2, Plus, Star } from 'lucide-react';
+
+/** How long Undo offers to put back a song that was removed from a rotation. */
+const UNDO_MS = 8_000;
+
+type PendingUndo = { item: ProgramSongSequenceLeafItem; index: number; expiresAt: number };
+
+// The pending undo lives in sessionStorage, so a reload inside the window still offers it. Storage that cannot be
+// read or written leaves the undo offer off; the removal itself is saved either way.
+function readPendingUndo(key: string): PendingUndo | null {
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PendingUndo;
+    if (typeof parsed.expiresAt !== 'number' || parsed.expiresAt <= Date.now()) {
+      window.sessionStorage.removeItem(key);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writePendingUndo(key: string, value: PendingUndo | null): void {
+  try {
+    if (value) window.sessionStorage.setItem(key, JSON.stringify(value));
+    else window.sessionStorage.removeItem(key);
+  } catch {
+    // Storage unavailable: the undo still works until the page reloads.
+  }
+}
 import {
   createProgramSongSequence,
   createProgramSongSequenceItem,
@@ -53,6 +84,7 @@ export function ProgramSongSequenceEditor({
   depth = 0,
   view = 'full',
   rotationLabel = 'Playlist',
+  undoScope,
   liveItemId = null,
   nextItemId = null
 }: {
@@ -65,6 +97,8 @@ export function ProgramSongSequenceEditor({
   depth?: number;
   view?: 'full' | 'catalog' | 'queue';
   rotationLabel?: string;
+  /** The program the rotation belongs to. A pending Undo is kept per program, so it never lands in another one. */
+  undoScope: string;
   /** The rotation song that is on air, and the one Cue next would cue: marked in the list (#298). */
   liveItemId?: string | null;
   nextItemId?: string | null;
@@ -77,6 +111,21 @@ export function ProgramSongSequenceEditor({
 
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+  const undoKey = `alcantara.rotationUndo.${undoScope}.${rotationLabel}`;
+  const [pendingUndo, setPendingUndo] = useState<PendingUndo | null>(() => readPendingUndo(undoKey));
+  // A different program (or rotation) is a different Undo: take up its own pending offer, never the last one's.
+  useEffect(() => {
+    setPendingUndo(readPendingUndo(undoKey));
+  }, [undoKey]);
+
+  useEffect(() => {
+    if (!pendingUndo) return;
+    const timer = setTimeout(() => {
+      setPendingUndo(null);
+      writePendingUndo(undoKey, null);
+    }, Math.max(0, pendingUndo.expiresAt - Date.now()));
+    return () => clearTimeout(timer);
+  }, [pendingUndo, undoKey]);
   const [addSongValue, setAddSongValue] = useState('');
   const [previewingItemId, setPreviewingItemId] = useState<string | null>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -236,9 +285,24 @@ export function ProgramSongSequenceEditor({
         activeItemId: nextActive,
         startedAt: isAutomatic && !removedCurrent ? resolveAutoplayStartedAt() : Date.now()
       });
+      // The removal is saved at once. Undo puts the song back at its place for UNDO_MS, and survives a reload in that window.
+      const undo = { item: removed, index, expiresAt: Date.now() + UNDO_MS };
+      setPendingUndo(undo);
+      writePendingUndo(undoKey, undo);
     },
-    [applySequence, editorActiveItemId, isAutomatic, resolveAutoplayStartedAt, sequence]
+    [applySequence, editorActiveItemId, isAutomatic, resolveAutoplayStartedAt, sequence, undoKey]
   );
+
+  const undoRemove = useCallback(() => {
+    if (!pendingUndo) return;
+    const { item, index } = pendingUndo;
+    setPendingUndo(null);
+    writePendingUndo(undoKey, null);
+    if (sequence.items.some((i) => i.id === item.id)) return;
+    const nextItems = [...sequence.items];
+    nextItems.splice(Math.min(index, nextItems.length), 0, item);
+    applySequence({ ...sequence, items: nextItems });
+  }, [applySequence, pendingUndo, sequence, undoKey]);
 
   const updateItem = useCallback(
     (index: number, updatedItem: ProgramSongSequenceLeafItem) => {
@@ -304,6 +368,14 @@ export function ProgramSongSequenceEditor({
                 <span className='text-[10px] text-text-secondary'>
                   {sequence.items.length} {sequence.items.length === 1 ? 'song' : 'songs'}
                 </span>
+              </div>
+            ) : null}
+            {pendingUndo ? (
+              <div role='status' className='flex items-center justify-between gap-3 border-b border-sand/30 bg-dark-sand/70 px-4 py-2 text-xs text-text-primary'>
+                <span>Removed {pendingUndo.item.title.trim() || 'song'} from {rotationLabel.toLowerCase()}.</span>
+                <Button type='button' size='xs' variant='secondary' onClick={undoRemove}>
+                  Undo
+                </Button>
               </div>
             ) : null}
             {sequence.items.length === 0 ? (
