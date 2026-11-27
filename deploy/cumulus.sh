@@ -356,17 +356,34 @@ if [ "$handover" = true ]; then
   # The radio check below waits for a song that started after this moment.
   radio_since="$(date +%s)"
   echo "OWNER_RELEASED $(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
-  docker stop -t 15 alcantara-backend
-  # The new one normally holds the lease about a second after the old one's connection closes; activation adopts the
-  # playing song from the database. 20 s bounds the wait.
+  # Stopped in the background and polled meanwhile: the new one holds the lease as soon as the old one frees it,
+  # usually long before the old process has exited (up to 15 s), and OWNER_ACQUIRED must say when it did.
+  docker stop -t 15 alcantara-backend &
+  stop_pid=$!
   active=false
-  for _ in $(seq 1 40); do
+  acquired_at=''
+  while kill -0 "$stop_pid" 2>/dev/null; do
     if [ "$(playout_state "$new_port" || true)" = active ]; then
       active=true
+      acquired_at="$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
       break
     fi
-    sleep 0.5
+    sleep 0.2
   done
+  # The old one is gone before anything else happens; a stop that failed is an exit, so the trap restores it.
+  wait "$stop_pid"
+  # Otherwise the new one normally holds the lease about a second after the old one's connection closes; activation
+  # adopts the playing song from the database. 20 s bounds the wait.
+  if [ "$active" != true ]; then
+    for _ in $(seq 1 40); do
+      if [ "$(playout_state "$new_port" || true)" = active ]; then
+        active=true
+        acquired_at="$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
+        break
+      fi
+      sleep 0.5
+    done
+  fi
   if [ "$active" != true ]; then
     trap - EXIT INT TERM
     echo 'Alcantara standby did not take the playout lease; restoring the previous backend'
@@ -382,7 +399,7 @@ if [ "$handover" = true ]; then
   else
     trap - EXIT INT TERM
     # The poll's time, and the backend's own grant time: the gap is OWNER_GRANTED − OWNER_UNLOCKED.
-    echo "OWNER_ACQUIRED $(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
+    echo "OWNER_ACQUIRED $acquired_at"
     echo "OWNER_GRANTED $(playout_granted "$new_port" || true)"
     # The previous backend's own shutdown times, from its log before it is removed: SIGTERM received, writers
     # stopping, lock released.

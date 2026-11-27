@@ -238,6 +238,8 @@ function runDeploy({
   noLiveBackend = false,
   // How many checks after the reload still find a worker from before it accepting (Infinity: it never stops).
   nginxWorkersLinger = 0,
+  // The old backend takes this long to exit after it frees the lease (held connections), in seconds.
+  slowStop = 0,
 }) {
   const {
     mkdtempSync,
@@ -271,7 +273,7 @@ case "$args" in
   "exec alcantara-backend-candidate"*health/ready*) exit ${leaseImage ? 0 : 3} ;;
   "exec alcantara-backend-candidate"*) exit ${candidateHealthy ? 0 : 1} ;;
   *"Config.Env"*) echo "NODE_ENV=production"; echo "PORT=${livePort}" ;;
-  "stop -t 15 alcantara-backend") ${stopFails ? 'exit 1' : `: > "${'$'}{PLAYOUT_DIR}/${livePort}"; ${activates ? `echo active > "${'$'}{PLAYOUT_DIR}/${livePort === '3006' ? '3007' : '3006'}"` : ':'}`} ;;
+  "stop -t 15 alcantara-backend") ${stopFails ? 'exit 1' : `: > "${'$'}{PLAYOUT_DIR}/${livePort}"; ${activates ? `echo active > "${'$'}{PLAYOUT_DIR}/${livePort === '3006' ? '3007' : '3006'}"` : ':'}; ${slowStop ? `command -p sleep ${slowStop}; echo stop-finished >> "${calls}"` : ':'}`} ;;
   "start alcantara-backend") ${oldRestores ? `echo active > "${'$'}{PLAYOUT_DIR}/${livePort}"` : ':'} ;;
   "logs alcantara-backend-candidate") echo 'Error: fictional start-up failure' ;;
   "logs alcantara-backend")
@@ -992,4 +994,25 @@ test("a handover prints both sides' own times: the previous backend's shutdown a
   // Read before the previous backend is removed.
   const logs = run.log.indexOf('docker logs alcantara-backend');
   assert.ok(logs >= 0 && logs < run.log.lastIndexOf('docker rm -f alcantara-backend'));
+});
+
+// A straggler held the old backend's close for 15 s, and the poll, which only began after `docker stop` returned,
+// reported the takeover 15 s late though the lease moved in 0.64 s (gaulatti/alcantara#873).
+test('the takeover is seen while the old backend is still stopping, and its log is read once it has exited', () => {
+  const run = runDeploy({
+    candidateHealthy: true,
+    leaseImage: true,
+    certificate: true,
+    installedSite: site3006,
+    repositorySite: repositoryHalf,
+    slowStop: 1,
+  });
+  assert.equal(run.status, 0, run.stdout + run.stderr);
+  const stop = run.log.findIndex((line) => line.startsWith('docker stop -t 15 alcantara-backend'));
+  const finished = run.log.indexOf('stop-finished');
+  const seen = run.log.findIndex((line, index) => index > stop && /^curl .*127\.0\.0\.1:3007\/health\/ready/.test(line));
+  assert.ok(stop >= 0 && seen > stop && seen < finished, run.log.join('\n'));
+  assert.ok(run.log.indexOf('docker logs alcantara-backend') > finished);
+  assert.ok(run.log.indexOf('docker rename alcantara-backend-next alcantara-backend') > finished);
+  assert.match(run.stdout, /^OWNER_ACQUIRED \d{4}-\d\d-\d\dT\S+Z$/m);
 });
