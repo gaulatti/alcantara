@@ -36,6 +36,7 @@ import { HoldButton } from "./radio-desk/HoldButton";
 import { OutputReading } from "./radio-desk/OutputReading";
 import type { OnAirInput } from "./radio-desk/onAir";
 import { LiveOnAirStrip } from "./radio-desk/OnAirStrip";
+import type { DeskGuest } from "./radio-desk/guestChip";
 import { PlaySongNow } from "./radio-desk/PlaySongNow";
 import { PlayoutMode } from "./radio-desk/PlayoutMode";
 import { MixerFader } from "./radio-desk/MixerFader";
@@ -541,6 +542,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   // One pre-fade at a time on this device: a guest, a mixer channel (Music, Cartwall) or a cartwall sounder. Starting
   // one stops whichever is active; each component stops itself when another claims the desk (#835).
   const [preFadeOwner, setPreFadeOwner] = useState<string | null>(null);
+  const [callGuests, setCallGuests] = useState<DeskGuest[]>([]);
+  useEffect(() => setCallGuests([]), [programId]);
   const onPreFade = useCallback(
     (channel: string, active: boolean) =>
       setPreFadeOwner((current) => (active ? channel : current === channel ? null : current)),
@@ -690,7 +693,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
 
   return (
     <div className="broadcast-console radio-console" data-console="radio">
-      <LiveOnAirStrip input={onAirInput} output={output} programId={programId} />
+      <LiveOnAirStrip input={onAirInput} output={output} programId={programId} guests={callGuests} />
       <div className="radio-console-scroll">
         <div className="radio-workspace">
           <ConsolePanel
@@ -1318,7 +1321,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   onVolumeChange={onMainVolumeChange}
                 />
               </div>
-              <GuestPreListen programId={programId} onActive={onPreFade} activeOwner={preFadeOwner} />
+              <GuestPreListen programId={programId} onActive={onPreFade} activeOwner={preFadeOwner} onGuests={setCallGuests} />
               {(mixer.error || mixer.saving) && (
                 <p
                   role={mixer.error ? "alert" : "status"}

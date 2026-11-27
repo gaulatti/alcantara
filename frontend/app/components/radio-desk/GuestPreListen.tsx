@@ -3,15 +3,12 @@ import { Room } from "livekit-client";
 import { authFetch } from "../../services/api";
 import { TooltipButton } from "../BleeckerButtons";
 import { createGuestPreListen, type GuestPreListenState } from "./guestPreListenCore";
+import type { DeskGuest } from "./guestChip";
 
 // The guests on the desk and a pre-fade listen button for each connected one (gaulatti/alcantara#835). The operator's
 // room is joined with autoSubscribe off and nothing is published into it: see guestPreListen.ts.
 
-interface GuestRow {
-  identity: string;
-  name: string;
-  connectionState: "connected" | "reconnecting" | "offline";
-}
+type GuestRow = DeskGuest;
 
 /** How often the guest list is read again while the desk is open. */
 const GUEST_REFRESH_MS = 10_000;
@@ -20,11 +17,14 @@ export function GuestPreListen({
   programId,
   onActive,
   activeOwner = null,
+  onGuests,
 }: {
   programId: string;
   onActive: (channel: string, active: boolean) => void;
   /** The pre-fade that holds the desk now: a listened guest stops when another claims it. */
   activeOwner?: string | null;
+  /** The list as it was last read, for the on-air strip. */
+  onGuests?: (guests: DeskGuest[]) => void;
 }) {
   const [guests, setGuests] = useState<GuestRow[]>([]);
   const [state, setState] = useState<GuestPreListenState>({ status: "idle" });
@@ -34,6 +34,8 @@ export function GuestPreListen({
   const switching = useRef(false);
   const report = useRef(onActive);
   report.current = onActive;
+  const share = useRef(onGuests);
+  share.current = onGuests;
 
   const loadGuests = useCallback(async () => {
     try {
@@ -41,6 +43,7 @@ export function GuestPreListen({
       if (!response.ok) return;
       const body = (await response.json()) as { participants?: GuestRow[] };
       setGuests(body.participants ?? []);
+      share.current?.(body.participants ?? []);
     } catch {
       // The list is read again on the next tick; a missed read keeps the last one on screen.
     }

@@ -3,6 +3,7 @@ import { deriveOnAir, formatClock, type OnAirInput, type OnAirView } from "./onA
 import { StatePill } from "./primitives";
 import { useOutputUnverified } from "./useOutputUnverified";
 import { Link } from "react-router";
+import { guestChip, type DeskGuest } from "./guestChip";
 
 /**
  * The strip as the desk mounts it: it reads the output's freshness itself, so the once-a-second tick renders the
@@ -12,13 +13,17 @@ export function LiveOnAirStrip({
   input,
   output,
   programId,
+  guests = [],
 }: {
   input: Omit<OnAirInput, "outputUnverified">;
   output: { state: string; lastSampleAt: string | null } | null;
   programId: string;
+  guests?: DeskGuest[];
 }) {
   const outputUnverified = useOutputUnverified(output);
-  return <OnAirStrip view={deriveOnAir({ ...input, outputUnverified })} programId={programId} />;
+  const view = deriveOnAir({ ...input, outputUnverified });
+  const call = guestChip(guests);
+  return <OnAirStrip view={call ? { ...view, chips: [call, ...view.chips] } : view} programId={programId} />;
 }
 
 /**
@@ -161,7 +166,7 @@ export function OnAirStrip({
         {view.chips.map((chip) => {
           const pill = <StatePill key={chip.id} tone={chip.tone} label={chip.label} title={chip.title} />;
           return chip.href ? (
-            <Link key={chip.id} to={chip.href} aria-label={`${chip.label}. Open radio settings`} className="underline-offset-2 hover:underline">
+            <Link key={chip.id} to={chip.href} aria-label={`${chip.label}. Open ${chip.id === "guests" ? "guest calls" : "radio settings"}`} className="underline-offset-2 hover:underline">
               {pill}
             </Link>
           ) : (

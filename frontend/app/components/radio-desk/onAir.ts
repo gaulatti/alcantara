@@ -31,7 +31,7 @@ export type OnAirState =
   | "unverified";
 
 export interface OnAirChip {
-  id: "output" | "stream" | "engine" | "monitor";
+  id: "output" | "stream" | "engine" | "monitor" | "guests";
   tone: StatePillTone;
   label: string;
   title?: string;
