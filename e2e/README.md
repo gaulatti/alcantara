@@ -69,13 +69,13 @@ docker run --rm --init --ipc=host -e ALCANTARA_INVITATION_PATH -e ALCANTARA_API_
 
 ## Engine and program matrix (`webrtc-matrix.mjs`)
 
-The guest call runs in three engines, one after another, at 375 × 812 with touch: Chromium, WebKit (closest to iPhone Safari) and Firefox. Each engine runs `webrtc-call.mjs` with `WEBRTC_ENGINE` set. The program defaults to the dotted ID `radio-demo.fm`, not `main`, so a dotted program ID is exercised by default. The run prints one JSON line per engine and a summary line, and exits non-zero if any engine fails.
+The guest call runs in three engines, one after another, at 375 × 812 with touch: Chromium, WebKit (closest to iPhone Safari) and Firefox. Each engine runs `webrtc-call.mjs` with `WEBRTC_BROWSER` set. The program defaults to the dotted ID `radio-demo.fm`, not `main`, so a dotted program ID is exercised by default. The run prints one JSON line per engine and a summary line, and exits non-zero if any engine fails.
 
 ```bash
 ALCANTARA_APP_URL=http://localhost:5391 pnpm --filter @gaulatti/alcantara-e2e webrtc:matrix
 ```
 
-Set `ALCANTARA_PROGRAM_ID` to run the matrix against another program. Set `WEBRTC_ENGINE=chromium|webkit|firefox` to run one engine through `webrtc-call.mjs` directly. The other settings are the same as the WebRTC guest call above.
+Set `ALCANTARA_PROGRAM_ID` to run the matrix against another program. Set `WEBRTC_BROWSER=chromium|webkit|firefox` to run one engine through `webrtc-call.mjs` directly. The other settings are the same as the WebRTC guest call above.
 
 Engines use generated media, because a headless engine has no camera or microphone. Chromium and Firefox use their fake-device switches. WebKit has none, so `webrtc-call.mjs` installs an init script that replaces `getUserMedia` with a moving canvas and a steady oscillator tone. The bytes-flowing checks then measure the same path as the other engines.
 

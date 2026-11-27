@@ -53,9 +53,9 @@ const APP = (process.env.ALCANTARA_APP_URL || "http://localhost:5173").replace(
 );
 const PROGRAM = process.env.ALCANTARA_PROGRAM_ID || "radio-demo.fm";
 // The browser engine the guest runs in: chromium (default), webkit (closest to iPhone Safari) or firefox.
-const ENGINE = process.env.WEBRTC_ENGINE || "chromium";
+const ENGINE = process.env.WEBRTC_BROWSER || "chromium";
 const ENGINES = { chromium, firefox, webkit };
-if (!ENGINES[ENGINE]) throw new Error(`WEBRTC_ENGINE must be chromium, webkit or firefox, not ${ENGINE}`);
+if (!ENGINES[ENGINE]) throw new Error(`WEBRTC_BROWSER must be chromium, webkit or firefox, not ${ENGINE}`);
 // A generated camera and microphone for an engine with no fake-device switch (WebKit). A moving canvas and a steady
 // tone reach the guest's peer connection as real tracks, so the bytes-flowing checks measure the same path.
 const SYNTHETIC_MEDIA = `(() => {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The guest call in every engine the matrix covers, against a dotted program ID (not only "main"), at 375 px with touch:
 // chromium, webkit (closest to iPhone Safari) and firefox, one after another. It prints each engine's result and
-// exits non-zero if any engine fails. Each engine runs webrtc-call.mjs with WEBRTC_ENGINE set.
+// exits non-zero if any engine fails. Each engine runs webrtc-call.mjs with WEBRTC_BROWSER set.
 //
 // Configuration: the same environment as webrtc-call.mjs. ALCANTARA_PROGRAM_ID defaults to radio-demo.fm here.
 import { spawnSync } from "node:child_process";
@@ -13,7 +13,7 @@ const ENGINES = ["chromium", "webkit", "firefox"];
 const results = [];
 for (const engine of ENGINES) {
   const run = spawnSync(process.execPath, [join(here, "webrtc-call.mjs")], {
-    env: { ...process.env, WEBRTC_ENGINE: engine, ALCANTARA_PROGRAM_ID: process.env.ALCANTARA_PROGRAM_ID || "radio-demo.fm" },
+    env: { ...process.env, WEBRTC_BROWSER: engine, ALCANTARA_PROGRAM_ID: process.env.ALCANTARA_PROGRAM_ID || "radio-demo.fm" },
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   });
