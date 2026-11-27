@@ -709,7 +709,8 @@ export async function seedLocalDatabase(
 
   const seededProfiles = [
     ['test:alcantara:operator-a', 'desktop', 'director', false, true, 340],
-    ['test:alcantara:operator-a', 'tablet', 'compact', true, false, 300],
+    // A tablet opens on Director, the code default; only a phone is seeded to Remote.
+    ['test:alcantara:operator-a', 'tablet', 'director', true, false, 300],
     ['test:alcantara:operator-a', 'phone', 'compact', true, false, null],
     ['test:alcantara:operator-b', 'desktop', 'audio', false, true, 360],
     ['test:alcantara:viewer', 'desktop', 'director', false, true, 320],
