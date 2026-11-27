@@ -83,15 +83,58 @@ const authenticatedBackendFetch = async (
   }
 };
 
+/** How long a backend request keeps retrying a backend that is handing over before its 503 reaches the caller. */
+export const TAKEOVER_RETRY_WINDOW_MS = 6_000;
+
+/**
+ * The wait a 503 with Retry-After asks for, or null for any other answer. During a backend handover
+ * (gaulatti/alcantara#873) the instance that is stopping, or a standby past its hold, answers 503 with Retry-After
+ * before the request runs, so it is safe to send again, and the next one reaches the instance that took over.
+ */
+const takeoverWait = (response: Response): number | null => {
+  if (response.status !== 503) return null;
+  const header = response.headers.get("Retry-After");
+  if (header === null) return null;
+  const seconds = Number(header);
+  if (!header.trim() || !Number.isFinite(seconds) || seconds < 0) return null;
+  return Math.min(seconds, 5) * 1000;
+};
+
+/** Sends, and sends again quietly while the backend answers a handover's 503, for up to TAKEOVER_RETRY_WINDOW_MS. */
+const retryingTakeover = async (
+  send: (retry: boolean) => Promise<Response>,
+  signal: AbortSignal | null | undefined,
+): Promise<Response> => {
+  const startedAt = Date.now();
+  let response = await send(false);
+  for (;;) {
+    const wait = takeoverWait(response);
+    if (wait === null || signal?.aborted || Date.now() - startedAt + wait > TAKEOVER_RETRY_WINDOW_MS) return response;
+    await new Promise((resolve) => setTimeout(resolve, wait));
+    if (signal?.aborted) return response;
+    response = await send(true);
+  }
+};
+
 export const installAuthenticatedFetch = (): void => {
   if (typeof window === "undefined" || installed) return;
 
   installed = true;
-  globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) =>
-    isBackendRequest(input) &&
-    !isPublicProgramRendererPath(window.location.pathname) &&
-    !isPublicConnectPath(window.location.pathname) &&
-    !isPublicCallPath(window.location.pathname)
-      ? authenticatedBackendFetch(input, init)
-      : nativeFetch(input, init);
+  globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+    if (!isBackendRequest(input)) return nativeFetch(input, init);
+    const publicPage =
+      isPublicProgramRendererPath(window.location.pathname) ||
+      isPublicConnectPath(window.location.pathname) ||
+      isPublicCallPath(window.location.pathname);
+    const sendOnce = (target: RequestInfo | URL) =>
+      publicPage ? nativeFetch(target, init) : authenticatedBackendFetch(target, init);
+    // A streamed body cannot be sent twice.
+    if (init?.body instanceof ReadableStream) return sendOnce(input);
+    // A Request's body is read by the first send, so a retry sends a copy taken before it.
+    const spare = input instanceof Request ? input.clone() : null;
+    return retryingTakeover(
+      (retry) => sendOnce(retry && spare ? spare.clone() : input),
+      init?.signal ?? (input instanceof Request ? input.signal : undefined),
+    );
+  };
 };
