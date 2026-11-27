@@ -184,6 +184,75 @@ export class WebrtcMcpTools {
           ),
       }),
       actionSpec({
+        name: 'webrtc_admit_guest',
+        title: 'Admit a waiting guest',
+        description:
+          'The calls desk’s Admit (screening before air): lets a guest who is waiting onto their strip, from where they can reach returns and the output through a scene. Their page joins the program room by itself.',
+        permission: permissions.operate,
+        tier: 'A',
+        shape: { invitation_id: invitationIdArg },
+        load: (args) => this.invitation(args.invitation_id),
+        id: (args) => args.invitation_id,
+        label: (_args, invitation) =>
+          `${invitation.displayName} (${invitation.status})`,
+        plan: (_args, invitation) => ({
+          summary: `Admits guest ${invitation.displayName} (${invitation.status}) onto slot ${invitation.slotNumber ?? 'none'} of program ${invitation.programId}.`,
+          affects: [
+            {
+              kind: 'invitation',
+              id: invitation.id,
+              name: invitation.displayName,
+            },
+          ],
+          recoverable: true,
+        }),
+        run: (args, _loaded, ctx) =>
+          this.webrtc.admitGuest(identityOf(ctx), args.invitation_id),
+      }),
+      actionSpec({
+        name: 'webrtc_decline_guest',
+        title: 'Decline a waiting guest',
+        description:
+          'The calls desk’s Decline: turns a waiting guest away, revokes their link for good and frees the slot. Refused for a guest already admitted: use webrtc_remove_participant or webrtc_revoke_invitation.',
+        permission: permissions.operate,
+        tier: 'D',
+        shape: { invitation_id: invitationIdArg },
+        load: async (args) => {
+          const invitation = await this.invitation(args.invitation_id);
+          const { participants } = await this.webrtc.listParticipants(
+            invitation.programId,
+          );
+          return {
+            invitation,
+            waiting: participants.some(
+              (guest) =>
+                guest.invitationId === invitation.id && guest.screening,
+            ),
+          };
+        },
+        id: (args) => args.invitation_id,
+        label: (_args, { invitation }) =>
+          `${invitation.displayName} (${invitation.status})`,
+        plan: (_args, { invitation }) => ({
+          summary: `Declines guest ${invitation.displayName}: their link stops working for good and slot ${invitation.slotNumber ?? 'none'} is freed. It cannot be undone.`,
+          affects: [
+            {
+              kind: 'invitation',
+              id: invitation.id,
+              name: invitation.displayName,
+            },
+          ],
+          recoverable: false,
+        }),
+        // The desk offers Decline only to a guest who is waiting.
+        refuse: (args, { waiting }) =>
+          waiting
+            ? null
+            : `guest ${args.invitation_id} is not waiting to be admitted`,
+        run: (args, _loaded, ctx) =>
+          this.webrtc.declineGuest(identityOf(ctx), args.invitation_id),
+      }),
+      actionSpec({
         name: 'webrtc_revoke_invitation',
         title: 'Revoke a guest invitation',
         description:

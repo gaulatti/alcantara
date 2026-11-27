@@ -94,6 +94,27 @@ export function programSongPlayOrder(
   );
 }
 
+/**
+ * A new shuffle order, as the console's Shuffle makes one (frontend programSequence): the cursor song first, the rest
+ * shuffled, and never the rows' own order when there is another. `pick(n)` gives an integer from 0 to n - 1.
+ */
+export function shuffleProgramSongOrder(
+  sequence: ProgramSongSequence,
+  pick: (limit: number) => number,
+): string[] {
+  const ids = sequence.items.map((item) => item.id);
+  const anchor = ids.find((id) => id === sequence.activeItemId);
+  const rest = ids.filter((id) => id !== anchor);
+  for (let index = rest.length - 1; index > 0; index -= 1) {
+    const swap = pick(index + 1);
+    [rest[index], rest[swap]] = [rest[swap], rest[index]];
+  }
+  const order = () => (anchor ? [anchor, ...rest] : rest);
+  if (rest.length > 1 && order().every((id, index) => id === ids[index]))
+    rest.push(rest.shift()!);
+  return order();
+}
+
 type SequenceAdvanceResult = 'advanced' | 'exhausted' | 'not-found';
 
 function resetSequenceCursor(sequence: ProgramSongSequence): void {

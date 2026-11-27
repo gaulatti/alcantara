@@ -410,7 +410,7 @@ capability.
 ## Broadcast, filler, recording, radio, preferences, external sources and guests (#219)
 
 Files: `backend/src/mcp/capabilities/{destinations,filler,recording,radio,preferences,external-sources,webrtc}.ts`,
-each registered in the module of the services it calls. The 57 rows of
+each registered in the module of the services it calls. The 59 rows of
 appendix A that are not excluded and not another ticket's:
 
 | Area | R | W | A | D | Total |
@@ -421,8 +421,8 @@ appendix A that are not excluded and not another ticket's:
 | radio (`radio_*`: settings, Palazzo, recovery, now-playing, manual song and instant) | 7 | 3 | 6 | 0 | 16 |
 | operator preferences (`preference_*`) | 2 | 3 | 0 | 3 | 8 |
 | external sources (`external_source_*`) | 2 | 0 | 4 | 1 | 7 |
-| guests (`webrtc_*`) | 2 | 0 | 2 | 2 | 6 |
-| **Total** | **19** | **13** | **19** | **6** | **57** |
+| guests (`webrtc_*`) | 2 | 0 | 3 | 3 | 8 |
+| **Total** | **19** | **13** | **20** | **7** | **59** |
 
 `backend/src/mcp/capabilities/appendix-a-broadcast.spec.ts` reads these rows
 from `appendix-a.tsv` and asserts, for each, the capability's name, permission
@@ -435,13 +435,15 @@ column `—`) because they return or produce a credential:
 `POST /program/:programId/recording/download-ticket`,
 `POST /external-sources/:id/credentials/rotate`, `POST /webrtc/operator-token`,
 `POST /webrtc/desktop-program-feed-token`,
+`POST /webrtc/invitations/:id/screening-token`,
 `POST /broadcast/destinations/:destinationId/ingest` (a destination's ingest key),
 `POST /broadcast/destinations` (adds one with its stream key) and
 `PUT /broadcast/destinations/:destinationId/key` (replaces the key),
 and the two routes whose whole product is a guest link,
 `POST /webrtc/invitations` (create) and
 `POST /webrtc/invitations/:id/replace` (replace; it also disconnects the
-guest). A guest link is created and replaced in the console only. The four
+guest). A guest link is created and replaced in the console only, and a private
+talk with a waiting guest is the operator's own microphone. The four
 `radio_similarity_*` rows belong to #218. `auth_get_me` is not in these areas.
 
 ### What differs from the console's answer
@@ -509,6 +511,7 @@ guest). A guest link is created and replaced in the console only. The four
 |---|---|---|
 | `external_source_revoke` | Revokes every credential, marks the source revoked and unavailable and clears its ingress and participant, whatever is on air. A scene whose `externalSourceId` points at it keeps pointing at it and shows nothing. There is no restore. | `on_air` while a scene that points at the source is on air or staged on any program. Not recoverable: a new source must be created and its scenes pointed at it. The dry run lists the programs that have such a scene. |
 | `webrtc_revoke_invitation` | Revokes the invitation (its link dies, its slot is freed) and removes the guest from the room if connected, whatever is on air. | `on_air` while the guest is connected (status `active`) and the program has a scene or fade to black on air (the guest may be in the picture; which scene shows which guest is not recorded). Not recoverable: a new invitation needs a new link, made in the console. |
+| `webrtc_decline_guest` | Declines a waiting guest: revokes the invitation and frees the slot. Offered only for a guest who is waiting. | `on_air` refusal for a guest who is not waiting. Not recoverable. |
 | `webrtc_remove_participant` | Disconnects the guest at once and clears their session; the invitation stays valid, so the guest can rejoin with the same link. Never looks at what is on air. | `on_air` while the guest is connected and the program is on air. Recoverable (rejoin). |
 | `preference_retire` | Marks the shared layout retired and bumps its version; it stops being listed and loadable. Copies operators already loaded are plain profile copies and stay. A layout is not an on-air object. | Never `on_air`. Recoverable: publishing the same name again clears the retirement. `not_found` for a layout that is not there. |
 | `preference_reset_class` | Deletes the caller's saved profile for the class (the default applies again). Only the caller's own row. | Never `on_air`. The dry run says the version that is lost; not recoverable unless nothing was saved. |
@@ -869,7 +872,26 @@ records, the change is never blocked: a record that cannot be stored is logged a
 | `song_request_reanalysis` | `alcantara:song:manage` | W | Queues up to 25 songs for a new audio analysis (cue points and loudness), taken one at a time by the media-analysis job at low priority (#235). A song keeps its current cue points until its new result replaces them; a song that is playing on a program or announced there as the next song is refused `on_air` (per song in the dry run), checked again when queued. Console route `POST /songs/reanalysis`. `rule` is `C2` (the default, the current cue rule: a quiet tail beyond the 1.5 s bound is cut 1.5 s before the old cue-out), `C` (the rule before the clamp, which keeps the old cue-out there) or `previous` (the rule before #235): `C` and `previous` are a way back for a bad batch that needs no deploy; the rule that ran is the song's `ruleVersion`. |
 | `song_update` | `alcantara:song:manage` | W | Changes the given fields of a song; a field left out stays, null clears cover_url, duration, the chart values and the intro. |
 | `stinger_list_stingers` | `alcantara:stinger:read` | R | Lists every stinger (a transition video played between scenes) with its cut point, enabled flag and times, newest change first. |
+| `webrtc_admit_guest` | `alcantara:webrtc:operate` | A | Admits a waiting guest onto their strip (screening before air). |
 | `webrtc_control_participant` | `alcantara:webrtc:operate` | A | Sends one command to a connected guest of a program room: type "media" (device camera or microphone, enabled; disabling mutes the published track), "cue" (standby, live or wrap), "message" (text of up to 500 characters shown to the guest) or "talkback" (enabled). |
 | `webrtc_list_invitations` | `alcantara:webrtc:read` | R | Lists the guest invitations (program, guest name, slot, return feed, gain, expiry, status and the last ten commands sent). |
 | `webrtc_list_participants` | `alcantara:webrtc:read` | R | Lists the guests invited to a program room and whether each is connected, reconnecting or offline, with their tracks and recent commands. |
 | `webrtc_update_return` | `alcantara:webrtc:operate` | A | Sets the return feed of an invitation: the video (program, preview or none), the audio bus (master, monitor or aux-1 to aux-8), the gain from 0 to 1, mute and delay up to 2000 ms. |
+
+## The radio desk's rotation and guest screening (#788)
+
+File: `backend/src/mcp/capabilities/rotation.ts`, registered in the MCP module. These have no route of their own: each
+reads the rotation as `GET /program/:programId/audio-bus` gives it and writes it back with the console's own save and
+rotation version, so a rotation that changed meanwhile is refused with `conflict`.
+
+| Capability | Desk action | Tier |
+|---|---|---|
+| `radio_get_rotation` | the rotation: mode, loop, cursor, ended, rows with `item_id`, play order | R |
+| `radio_set_rotation_mode` | Manual, Autoplay, Shuffle (a new play order, rows untouched), Loop | A |
+| `radio_take_rotation_song` | Take on air on a rotation row; refused while the engine is off or playout is down | A |
+| `radio_move_rotation_song` | Move up, Move down, drag | A |
+| `radio_add_rotation_song` | Add fillers, and undoing a removal | A |
+
+Guest screening is `webrtc_admit_guest` (A) and `webrtc_decline_guest` (D) in the guests area above. Pre-listen plays
+on the operator's own device and has no capability; Cue next and Clear cue arm only in the console.
+

@@ -12,6 +12,7 @@ import { McpOAuthProxyService } from './mcp-oauth-proxy.service';
 import { McpRegistry } from './mcp-registry.service';
 import { McpChangeFeed } from './tools/mcp-change.feed';
 import { McpRadioReadTools } from './tools/radio-read.tools';
+import { RotationMcpTools } from './capabilities/rotation';
 
 /**
  * gaulatti/alcantara#211: the /mcp endpoint, its OAuth discovery documents
@@ -32,6 +33,7 @@ import { McpRadioReadTools } from './tools/radio-read.tools';
     McpActionExecutor,
     McpChangeFeed,
     McpRadioReadTools,
+    RotationMcpTools,
     { provide: MCP_ACTION_EXECUTOR, useExisting: McpActionExecutor },
   ],
   exports: [McpRegistry],

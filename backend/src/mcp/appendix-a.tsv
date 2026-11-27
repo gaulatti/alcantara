@@ -169,8 +169,8 @@ webrtc	GET	/webrtc/invitations	webrtc.read	listInvitations	webrtc_list_invitatio
 webrtc	POST	/webrtc/invitations	webrtc.operate	createInvitation	—	excluded: produces a guest link (a credential)
 webrtc	POST	/webrtc/invitations/:id/replace	webrtc.operate	replaceInvitation	—	excluded: produces a guest link (a credential)
 webrtc	DELETE	/webrtc/invitations/:id	webrtc.operate	revokeInvitation	webrtc_revoke_invitation	D
-webrtc	POST	/webrtc/invitations/:id/admit	webrtc.operate	admitGuest	—	excluded: the operator screens guests in the console
-webrtc	POST	/webrtc/invitations/:id/decline	webrtc.operate	declineGuest	—	excluded: the operator screens guests in the console
+webrtc	POST	/webrtc/invitations/:id/admit	webrtc.operate	admitGuest	webrtc_admit_guest	A
+webrtc	POST	/webrtc/invitations/:id/decline	webrtc.operate	declineGuest	webrtc_decline_guest	D
 webrtc	POST	/webrtc/invitations/:id/screening-token	webrtc.operate	screeningToken	—	excluded: returns a credential
 webrtc	PATCH	/webrtc/invitations/:id/return	webrtc.operate	updateReturn	webrtc_update_return	A
 webrtc	GET	/webrtc/rooms/:programId/participants	webrtc.read	listParticipants	webrtc_list_participants	R

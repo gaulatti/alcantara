@@ -61,6 +61,12 @@ const EXTRA_CAPABILITIES: Record<string, [string, McpTier]> = {
   // gaulatti/alcantara#300: read-only radio capabilities with no route of their own.
   // gaulatti/alcantara#327: remove playlist leaves by id against the live cursor.
   program_remove_program_song_leaves_by_id: ['program.operate', 'A'],
+  // gaulatti/alcantara#788: the radio desk's rotation actions, which share the audio-bus save route.
+  radio_get_rotation: ['radio.read', 'R'],
+  radio_set_rotation_mode: ['program.operate', 'A'],
+  radio_take_rotation_song: ['program.operate', 'A'],
+  radio_move_rotation_song: ['program.operate', 'A'],
+  radio_add_rotation_song: ['program.operate', 'A'],
   radio_get_playback_state: ['radio.read', 'R'],
   radio_get_audio_levels: ['radio.read', 'R'],
   // gaulatti/alcantara#424: add one use of a rundown recipe to a rundown, which has no route of its own.
@@ -139,10 +145,10 @@ describe('MCP registry against appendix A', () => {
   // The three bracket rows keep their capability names; their path and
   // handler columns are written neutrally, so this file carries no brand
   // literal (the brand-literal ratchet). Only name, permission and tier are read.
-  it('reads all of appendix A: capabilities, covered rows and the 16 exclusions', () => {
+  it('reads all of appendix A: capabilities, covered rows and the 14 exclusions', () => {
     const { rows, excluded, covered } = appendix();
-    expect(rows.size + covered.size).toBe(178);
-    expect(excluded).toBe(16);
+    expect(rows.size + covered.size).toBe(180);
+    expect(excluded).toBe(14);
     // auth_get_me is whoami (same permission, same tier, the caller's own
     // identity), as is access_my_permissions (the caller's own keys); the
     // five uploads are import_media_from_url's kinds.

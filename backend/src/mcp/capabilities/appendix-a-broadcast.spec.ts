@@ -117,7 +117,7 @@ const controllerOf = (area: string, path: string) =>
 
 describe('appendix A rows of ticket #219', () => {
   it('has a row for every route of its areas that is not excluded', () => {
-    expect(ROWS).toHaveLength(57);
+    expect(ROWS).toHaveLength(59);
     const count = (area: string) =>
       ROWS.filter((row) => row[0] === area).length;
     expect([...AREAS].map((area) => [area, count(area)])).toEqual([
@@ -127,7 +127,7 @@ describe('appendix A rows of ticket #219', () => {
       ['radio', 16],
       ['operator-preferences', 8],
       ['external-sources', 7],
-      ['webrtc', 6],
+      ['webrtc', 8],
     ]);
   });
 
@@ -169,8 +169,8 @@ describe('appendix A rows of ticket #219', () => {
     for (const [tier, n] of [
       ['R', 19],
       ['W', 12],
-      ['A', 20],
-      ['D', 6],
+      ['A', 21],
+      ['D', 7],
     ] as const)
       expect(tiers.filter((t) => t === tier)).toHaveLength(n);
   });
@@ -195,9 +195,7 @@ describe('appendix A rows of ticket #219', () => {
     // a destination's ingest key.
     expect(excludedRows.map((row) => row[4]).sort()).toEqual([
       'addDestination',
-      'admitGuest',
       'createInvitation',
-      'declineGuest',
       'desktopProgramFeedToken',
       'issue',
       'issue',
