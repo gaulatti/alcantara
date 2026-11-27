@@ -106,6 +106,13 @@ export class AlcantaraInfrastructureStack extends Stack {
       domainName: "helix.gaulatti.com",
       ttl: Duration.minutes(5),
     });
+    // TURN over TLS on 443 needs a name of its own, which nginx on Helix routes to LiveKit's TURN.
+    new CnameRecord(this, "LivekitTurnRecord", {
+      zone,
+      recordName: "turn.alcantara",
+      domainName: "helix.gaulatti.com",
+      ttl: Duration.minutes(5),
+    });
 
     const runtimeConfigSecretArn = Arn.format(
       {

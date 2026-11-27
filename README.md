@@ -179,7 +179,7 @@ all be present or all absent:
 - `livekitApiSecret`: at least 32 characters;
 - `webrtcSessionSecret`: at least 32 characters.
 
-`webrtcRendererKey` is optional.
+`webrtcRendererKey` is optional. So is `livekitTurnTlsDomain`, which turns on TURN over TLS on 443; only the LiveKit configuration renderer reads it ([infra/README.md](infra/README.md#turn-over-tls-on-443)).
 
 The backend copies them into `LIVEKIT_WS_URL`, `LIVEKIT_API_KEY`,
 `LIVEKIT_API_SECRET`, `WEBRTC_SESSION_SECRET` and `WEBRTC_RENDERER_KEY` at

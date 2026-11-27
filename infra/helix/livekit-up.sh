@@ -48,7 +48,8 @@ remote "umask 077 && mkdir -p $remote_dir/livekit-redis"
 printf '%s\n' "$config" |
   remote "umask 077 && cat > $remote_dir/livekit.yaml.new && mv -f $remote_dir/livekit.yaml.new $remote_dir/livekit.yaml"
 config=
-scp -q -o BatchMode=yes "$here/compose.livekit.yml" "$here/nginx-livekit.conf" "$target:.alcantara-livekit/"
+scp -q -o BatchMode=yes "$here/compose.livekit.yml" "$here/nginx-livekit.conf" \
+  "$here/nginx-turn-stream.conf" "$here/nginx-behind-stream.conf" "$target:.alcantara-livekit/"
 
 remote "cd $remote_dir && ALCANTARA_SERVICE_DIR=$remote_dir docker compose -f compose.livekit.yml up -d"
 remote "i=0; until [ \"\$(docker inspect -f {{.State.Health.Status}} alcantara-livekit)\" = healthy ]; do i=\$((i + 1)); [ \$i -lt 60 ] || exit 1; sleep 2; done" || {

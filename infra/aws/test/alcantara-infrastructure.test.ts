@@ -68,7 +68,12 @@ test("points the LiveKit name at Helix", () => {
     TTL: "300",
     Type: "CNAME",
   });
-  rendered.resourceCountIs("AWS::Route53::RecordSet", 2);
+  rendered.hasResourceProperties("AWS::Route53::RecordSet", {
+    Name: "turn.alcantara.gaulatti.com.",
+    ResourceRecords: ["helix.gaulatti.com"],
+    Type: "CNAME",
+  });
+  rendered.resourceCountIs("AWS::Route53::RecordSet", 3);
 });
 
 test("owns the API record and main-branch deployment role", () => {
