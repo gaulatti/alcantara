@@ -1,3 +1,4 @@
+import { McpRegistry } from '../mcp-registry.service';
 import { WebrtcController } from '../../webrtc/webrtc.controller';
 import { callerWith } from './broadcast.testing';
 import { specNamed } from './capabilities.testing';
@@ -68,3 +69,39 @@ describe('the route that takes the host microphone off air', () => {
     expect(service.muteHostMic).toHaveBeenCalledWith('main');
   });
 });
+
+describe('the permission and the no-console case', () => {
+  it('refuses the host microphone action for a principal without the operate permission, before it reads the room', async () => {
+    const { webrtc, spec } = fixtures();
+    // The registry's own gate: a principal that lacks the spec's permission is refused, and nothing runs.
+    const registry = new McpRegistry({} as never, {} as never, {} as never, { recordMcpRequest: jest.fn() } as never) as unknown as {
+      specs: unknown[];
+      call: (spec: unknown, args: unknown, ctx: unknown) => Promise<unknown>;
+    };
+    registry.specs = [spec];
+    const readOnly = {
+      principal: { permissions: new Set(['alcantara:webrtc:read']), subject: 's', principalId: 'p', client: 'c' },
+      reauthorize: async () => ({ permissions: new Set(['alcantara:webrtc:read']) }),
+    };
+    const result = (await registry.call(spec, { program_id: 'main' }, readOnly)) as { isError: boolean; content: Array<{ text: string }> };
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0].text)).toEqual({ error: 'forbidden', message: 'requires alcantara:webrtc:operate' });
+    expect(webrtc.hostMicTracks).not.toHaveBeenCalled();
+    expect(webrtc.muteHostMic).not.toHaveBeenCalled();
+  });
+
+  it('with no console open, the action finds nothing, mutes nothing and leaves no intent behind', async () => {
+    const webrtc = {
+      hostMicTracks: jest.fn(async () => []),
+      muteHostMic: jest.fn(async () => ({ status: 'no-host-mic' as const, muted: 0 })),
+    };
+    const outcome = await specNamed(
+      new WebrtcMcpTools(webrtc as never, {} as never, {} as never).specs(),
+      'webrtc_host_mic_off',
+    ).run({ program_id: 'main' } as never, ctx);
+    expect(JSON.stringify(outcome)).toContain('"status":"no-host-mic"');
+    // The design keeps no intent: the action only acts on tracks LiveKit reports now, so nothing is stored to fire later.
+    expect(Object.keys(webrtc)).toEqual(['hostMicTracks', 'muteHostMic']);
+  });
+});
+
