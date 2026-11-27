@@ -82,8 +82,9 @@ vi.mock("livekit-client", () => ({
 vi.mock("../hooks/useFeatures", () => ({
   useFeatures: () => ({ hasPermission: () => permissions.operate, loading: permissions.loading }),
 }));
+const shown = vi.hoisted(() => ({ program: "main show" }));
 vi.mock("../utils/globalProgram", () => ({
-  useGlobalProgramId: () => ["main show"],
+  useGlobalProgramId: () => [shown.program],
 }));
 const api = vi.hoisted(() => ({
   handler: null as
@@ -199,6 +200,7 @@ const bodyOf = (
   );
 
 beforeEach(() => {
+  shown.program = "main show";
   permissions.operate = true;
   config = { enabled: true };
   invitations = [
@@ -1041,4 +1043,66 @@ it("says in one line that part of the call chain is down", async () => {
   });
   render(<CallsRoute />);
   expect(await screen.findByTestId("call-health")).toHaveTextContent("Guests can't hear the studio right now.");
+});
+
+// Seen in production: one show's guest listed under another show's header, while the stored show arrived after the
+// page had loaded. An operator could have admitted, cued or revoked a guest of the wrong show.
+const other = () => {
+  invitations = [invitation(), invitation({ id: "inv-x", programId: "other show", displayName: "Bea" })];
+};
+
+it("drops the previous show's late answer when the show changes", async () => {
+  other();
+  let release!: (response: Response) => void;
+  serve();
+  const answer = api.handler!;
+  api.handler = (url, init) =>
+    decodeURIComponent(url).endsWith("/webrtc/rooms/main show/participants")
+      ? new Promise<Response>((resolve) => (release = resolve))
+      : decodeURIComponent(url).endsWith("/webrtc/rooms/other show/participants")
+        ? Promise.resolve(Response.json({ room, participants: [] }))
+        : answer(url, init);
+  const view = render(<CallsRoute />);
+  await waitFor(() => expect(release).toBeDefined());
+  shown.program = "other show";
+  view.rerender(<CallsRoute />);
+  await screen.findByText("Bea · Left");
+  await act(async () => release(Response.json({ room, participants: [participant()] })));
+  expect(screen.getByText("Bea · Left")).toBeVisible();
+  expect(screen.queryByText("Ada", { selector: "h3" })).toBeNull();
+  expect(screen.queryByText(/Ada/)).toBeNull();
+});
+
+it("starts empty on a switch, with nothing of the previous show to act on", async () => {
+  other();
+  serve();
+  const view = render(<CallsRoute />);
+  await screen.findByText("Ada", { selector: "h3" });
+  fireEvent.change(within(card()).getByLabelText("Message Ada"), { target: { value: "for Ada" } });
+  // The next show's reads never answer.
+  api.handler = () => new Promise<Response>(() => {});
+  vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+  shown.program = "other show";
+  view.rerender(<CallsRoute />);
+  expect(screen.getByText(/slots for other show/)).toBeVisible();
+  expect(screen.queryByRole("article")).toBeNull();
+  expect(screen.queryByText(/Ada/)).toBeNull();
+});
+
+it("does not open the microphone for a talkback still connecting when the show changes", async () => {
+  other();
+  let release!: (response: Response) => void;
+  serve();
+  const answer = api.handler!;
+  api.handler = (url, init) => (url.endsWith("/webrtc/operator-token") ? new Promise<Response>((resolve) => (release = resolve)) : answer(url, init));
+  const view = render(<CallsRoute />);
+  await screen.findByText("Ada", { selector: "h3" });
+  fireEvent.pointerDown(button(/Hold · talk/));
+  await waitFor(() => expect(release).toBeDefined());
+  shown.program = "other show";
+  view.rerender(<CallsRoute />);
+  await act(async () => release(Response.json({ serverUrl: "wss://livekit.example", token: "t" })));
+  await waitFor(() => expect(lk.state.tracks.every((track) => track.stopped)).toBe(true));
+  expect(lk.state.rooms.flatMap((made) => made.published)).toEqual([]);
+  expect(lk.state.rooms.every((made) => made.disconnected)).toBe(true);
 });

@@ -176,6 +176,10 @@ server unreachable**. They read `GET /webrtc/health?programId=` every 10 s and
 say nothing when all is well, when a part is unknown, or when the endpoint cannot
 be read (#875).
 
+Guest calls belongs to the show in its header: switching shows starts a fresh
+desk, dropping the previous show's lists, drafts, link and open microphones, and
+anything still being read for it.
+
 Guest calls is a caller desk. A strip cued live says where the guest goes out:
 on a radio show, on the air until wrapped or stood by; on television, only through
 a scene that carries them (#875). A status strip counts the guests sent the live cue

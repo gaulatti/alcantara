@@ -98,6 +98,13 @@ const CONTROL_PLANE_UNREACHABLE = "The guest-call control plane can't be reached
 
 export default function CallsRoute() {
   const [programId] = useGlobalProgramId();
+  // One desk per show. Its lists, drafts, links and open microphones belong to the show in its header, and a switch
+  // (including the stored show arriving after the page loads) starts a new desk, so a read or an action still in
+  // flight for the previous show has nowhere to land.
+  return <CallsDesk key={programId} programId={programId} />;
+}
+
+function CallsDesk({ programId }: { programId: string }) {
   const { hasPermission, loading: featuresLoading } = useFeatures();
   // Until the permissions are read, the page does not know what the operator may do: it says so, not "no permission".
   const canOperate = !featuresLoading && hasPermission('alcantara:webrtc:operate');
@@ -138,6 +145,8 @@ export default function CallsRoute() {
     room: Room;
     track: Awaited<ReturnType<typeof createLocalAudioTrack>>;
   } | null>(null);
+  // The guest a talkback is wanted for, from the press until the release.
+  const talkWanted = useRef<string | null>(null);
 
   const refresh = useCallback(async () => {
     // A network failure names the missing control plane, not "fetch failed".
@@ -200,6 +209,8 @@ export default function CallsRoute() {
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', poll);
+      // A talkback still connecting closes itself instead of opening the microphone after the desk is gone.
+      talkWanted.current = null;
       const talkback = talkbackRef.current;
       if (talkback) {
         talkback.track.stop();
@@ -322,7 +333,6 @@ export default function CallsRoute() {
   // Hold-to-talk (alcantara#301): releasing always closes the microphone, even
   // when the release comes before the connection is up.
   const [talkingTo, setTalkingTo] = useState<string | null>(null);
-  const talkWanted = useRef<string | null>(null);
   const closeTalkback = () => {
     const talkback = talkbackRef.current;
     talkbackRef.current = null;

@@ -194,3 +194,14 @@ describe("GuestPreListen", () => {
     expect(lk.state.subscribed).toEqual([true, false]);
   });
 });
+
+// A show switch replaces the list; a read still in flight for the previous show reaches neither it nor the strip.
+it("drops a read that answers after the desk it was made for is gone", async () => {
+  let release!: (response: Response) => void;
+  authFetch.mockImplementation(() => new Promise<Response>((resolve) => (release = resolve)));
+  const onGuests = vi.fn();
+  const view = render(<GuestPreListen programId="one" onActive={() => {}} onGuests={onGuests} />);
+  view.unmount();
+  await act(async () => release(new Response(JSON.stringify({ participants: [{ identity: "guest-1", name: "Ada", connectionState: "connected" }] }))));
+  expect(onGuests).not.toHaveBeenCalled();
+});

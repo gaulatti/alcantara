@@ -1323,7 +1323,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   onVolumeChange={onMainVolumeChange}
                 />
               </div>
-              <GuestPreListen programId={programId} onActive={onPreFade} activeOwner={preFadeOwner} onGuests={setCallGuests} />
+              <GuestPreListen key={programId} programId={programId} onActive={onPreFade} activeOwner={preFadeOwner} onGuests={setCallGuests} />
               {(mixer.error || mixer.saving) && (
                 <p
                   role={mixer.error ? "alert" : "status"}

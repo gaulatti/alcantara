@@ -36,12 +36,21 @@ export function GuestPreListen({
   report.current = onActive;
   const share = useRef(onGuests);
   share.current = onGuests;
+  const live = useRef(true);
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
 
   const loadGuests = useCallback(async () => {
     try {
       const response = await authFetch(`/webrtc/rooms/${encodeURIComponent(programId)}/participants`);
       if (!response.ok) return;
       const body = (await response.json()) as { participants?: GuestRow[] };
+      // A read that outlives the desk it was made for (a show switch) is dropped.
+      if (!live.current) return;
       setGuests(body.participants ?? []);
       share.current?.(body.participants ?? []);
     } catch {
