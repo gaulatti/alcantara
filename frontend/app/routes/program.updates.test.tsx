@@ -17,10 +17,15 @@ import { SCENE_TRANSITIONS } from "../utils/sceneTransitions";
 
 const sse = vi.hoisted(() => ({
   onMessage: null as null | ((data: unknown) => void),
+  onConnection: null as null | ((state: string) => void),
 }));
 vi.mock("../hooks/useSSE", () => ({
-  useSSE: (options: { onMessage: (data: unknown) => void }) => {
+  useSSE: (options: {
+    onMessage: (data: unknown) => void;
+    onConnectionStateChange?: (state: string) => void;
+  }) => {
     sse.onMessage = options.onMessage;
+    sse.onConnection = options.onConnectionStateChange ?? null;
     return { isConnected: false };
   },
 }));
@@ -673,4 +678,24 @@ describe("a reload", () => {
     await advance(10);
     expect(replaced).toEqual([]);
   });
+});
+
+// A restarted backend counts its versions from zero (alcantara#873).
+it("applies a restarted backend's updates after the event stream reconnects, and not before", async () => {
+  open();
+  await advance(10);
+  const connection = (state: string) => act(() => sse.onConnection?.(state));
+  connection("connected");
+  emit(snapshot(scene(1, "Before the restart"), { version: 40 }));
+  await advance(10);
+  expect(screen.getByText("Before the restart")).toBeTruthy();
+  emit(snapshot(scene(2, "From the new backend"), { version: 1 }));
+  await advance(10);
+  expect(screen.queryByText("From the new backend")).toBeNull();
+
+  connection("disconnected");
+  connection("connected");
+  emit(snapshot(scene(2, "From the new backend"), { version: 1 }));
+  await advance(2000);
+  expect(screen.getByText("From the new backend")).toBeTruthy();
 });

@@ -34,10 +34,18 @@ import {
 
 const sse = vi.hoisted(() => ({
   onMessage: null as null | ((data: unknown) => void),
+  onConnection: null as null | ((state: string) => void),
 }));
 vi.mock("../hooks/useSSE", () => ({
-  useSSE: ({ onMessage }: { onMessage: (data: unknown) => void }) => {
+  useSSE: ({
+    onMessage,
+    onConnectionStateChange,
+  }: {
+    onMessage: (data: unknown) => void;
+    onConnectionStateChange?: (state: string) => void;
+  }) => {
     sse.onMessage = onMessage;
+    sse.onConnection = onConnectionStateChange ?? null;
     return { isConnected: true, error: null };
   },
 }));
@@ -480,4 +488,30 @@ it("follows live runtime, activation and scene updates for this program only", a
 
   send({ type: "flight_update", programId: "main", activeSequenceId: null });
   expect(screen.getByText("No active rundown.")).toBeVisible();
+});
+
+// Events sent while the stream was down are lost, and the backend may have restarted (alcantara#873).
+it("reads the rundown again when the event stream reconnects, not on its first connection", async () => {
+  await openRundown({ activeFlightSequenceId: 1 });
+  const connection = (state: string) => act(async () => sse.onConnection?.(state));
+  vi.mocked(fetchFlightSequences).mockClear();
+  await connection("connected");
+  expect(fetchFlightSequences).not.toHaveBeenCalled();
+
+  // While the stream was down, the rundown started running on the server.
+  store = [{ ...SHOW, isRunning: true, activeItemId: "music", loop: true }, SPARE];
+  await connection("disconnected");
+  await connection("connected");
+  expect(fetchFlightSequences).toHaveBeenCalledTimes(1);
+  expect(await screen.findByText("Cue 2 of 3 (looping)")).toBeVisible();
+
+  // A failed reload keeps what is shown.
+  vi.mocked(fetchFlightSequences).mockRejectedValueOnce(new Error("offline"));
+  await connection("disconnected");
+  await connection("connected");
+  expect(screen.getByText("Cue 2 of 3 (looping)")).toBeVisible();
+  expect(console.error).toHaveBeenCalledWith(
+    "Failed to reload the rundown:",
+    expect.any(Error),
+  );
 });

@@ -81,3 +81,13 @@ Measured on the local stack, with a stream whose every response took 800 ms (as
 a remote CDN might), cutting to the staged stream scene:
 - the first stream frame arrived 1,099 ms after the cut before this change;
 - with this change it arrived 37 ms after the cut, with no black frame in between.
+
+## Reconnecting after a backend restart
+
+Events sent while a stream was down are not sent again, and the backend counts update versions in memory, so a restarted one counts from zero (gaulatti/alcantara#873). A page therefore reads state again when its stream or socket reconnects:
+
+- The console forgets the versions it saw and fetches the program state, audio bus, meter, playback and scene clip.
+- The program output page forgets the versions it saw; its socket snapshots and five-second polls then apply. Without this it ignored every update from a restarted backend until the new counter passed the old one.
+- The operator-cue rundown fetches its sequences, what is running and the scenes.
+
+A new stream consumer must do the same.

@@ -193,9 +193,9 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
     sceneInstant: -1,
     broadcastSettings: -1
   });
-  const stingerVideoRefs = useRef<Map<number, HTMLVideoElement>>(new Map());
-  const programStingersRef = useRef<Array<{ id: number; name: string; videoUrl: string; cutPointMs: number }>>([]);
-  useEffect(() => {
+  // The backend counts update versions in memory, so one that restarted counts from zero again: after a reconnect
+  // the versions seen are forgotten, or every update from the new backend would read as old (alcantara#873).
+  const forgetProgramVersions = useCallback(() => {
     latestProgramVersionByTopicRef.current = {
       state: -1,
       audioBus: -1,
@@ -204,7 +204,14 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       sceneInstant: -1,
       broadcastSettings: -1
     };
-  }, [programId]);
+  }, []);
+  const eventStreamConnectedRef = useRef(false);
+  const stingerVideoRefs = useRef<Map<number, HTMLVideoElement>>(new Map());
+  const programStingersRef = useRef<Array<{ id: number; name: string; videoUrl: string; cutPointMs: number }>>([]);
+  useEffect(() => {
+    forgetProgramVersions();
+    eventStreamConnectedRef.current = false;
+  }, [programId, forgetProgramVersions]);
   const programMixerSettings = useMemo(
     () => (audioBusSettings?.mixerSettings ? normalizeProgramAudioMixerSettings(audioBusSettings.mixerSettings) : normalizeProgramAudioMixerSettings(null)),
     [audioBusSettings?.mixerSettings]
@@ -1423,6 +1430,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
 
     let disposed = false;
     let reconnectTimer: number | null = null;
+    let openedBefore = false;
 
     const connect = () => {
       /* v8 ignore start -- connect is called synchronously by its effect, and the cleanup clears the reconnect timer, so disposed is false on entry */
@@ -1448,6 +1456,8 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
           return;
         }
         programSocketReadyRef.current = true;
+        if (openedBefore) forgetProgramVersions();
+        openedBefore = true;
       });
 
       socket.addEventListener('close', () => {
@@ -1514,6 +1524,11 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
   useSSE({
     url: apiUrl(`/program/${encodeURIComponent(programId)}/events`),
     onMessage: handleProgramEvent,
+    onConnectionStateChange: (connection) => {
+      if (connection !== 'connected') return;
+      if (eventStreamConnectedRef.current) forgetProgramVersions();
+      eventStreamConnectedRef.current = true;
+    },
     enabled: true
   });
 

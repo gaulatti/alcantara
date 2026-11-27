@@ -158,30 +158,27 @@ export default function ManualRundown() {
     }
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
+  // The rundown, what is running and the scenes, as the server has them.
+  const readRundown = useCallback(
+    async (cancelled: () => boolean) => {
+      const [seqData, stateRes] = await Promise.all([
+        fetchFlightSequences(activeProgramId),
+        fetch(
+          apiUrl(`/program/${encodeURIComponent(activeProgramId)}/state`),
+        ).then((res) => (res.ok ? res.json() : null)),
+      ]);
 
-    const bootstrap = async () => {
-      setIsLoading(true);
-      try {
-        const [seqData, stateRes] = await Promise.all([
-          fetchFlightSequences(activeProgramId),
-          fetch(
-            apiUrl(`/program/${encodeURIComponent(activeProgramId)}/state`),
-          ).then((res) => (res.ok ? res.json() : null)),
-        ]);
+      if (cancelled()) return;
 
-        if (cancelled) return;
+      setSequences(seqData.filter((sequence) => !sequence.scheduledAt));
+      setActiveSequenceId(stateRes?.activeFlightSequenceId ?? null);
 
-        setSequences(seqData.filter((sequence) => !sequence.scheduledAt));
-        setActiveSequenceId(stateRes?.activeFlightSequenceId ?? null);
-
-        if (stateRes?.activeFlightSequenceId) {
-          const active = seqData.find(
-            (seq: FlightSequence) => seq.id === stateRes.activeFlightSequenceId,
-          );
-          if (active?.isRunning) {
-            setRuntime({
+      const active = seqData.find(
+        (seq: FlightSequence) => seq.id === stateRes?.activeFlightSequenceId,
+      );
+      setRuntime(
+        active?.isRunning
+          ? {
               sequenceId: active.id,
               activeIndex: active.items.findIndex(
                 (cue) => cue.id === active.activeItemId,
@@ -191,16 +188,27 @@ export default function ManualRundown() {
               activeItemId: active.activeItemId,
               totalItems: active.items.length,
               loop: active.loop,
-            });
-          }
-        }
+            }
+          : null,
+      );
 
-        const entries = Array.isArray(stateRes?.scenes) ? stateRes.scenes : [];
-        setScenes(
-          entries
-            .map((entry: any) => entry.scene)
-            .filter((scene: unknown): scene is Scene => Boolean(scene)),
-        );
+      const entries = Array.isArray(stateRes?.scenes) ? stateRes.scenes : [];
+      setScenes(
+        entries
+          .map((entry: any) => entry.scene)
+          .filter((scene: unknown): scene is Scene => Boolean(scene)),
+      );
+    },
+    [activeProgramId],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const bootstrap = async () => {
+      setIsLoading(true);
+      try {
+        await readRundown(() => cancelled);
       } catch (err) {
         console.error("Failed to bootstrap flight mode:", err);
         showAlert("Failed to load rundown data.", "error");
@@ -260,9 +268,24 @@ export default function ManualRundown() {
     [activeProgramId],
   );
 
+  // Events sent while the stream was down are not sent again, and the backend may be a new one (alcantara#873): a
+  // reconnect reads the rundown again.
+  const streamConnectedFor = useRef<string | null>(null);
+  const shownProgramRef = useRef(activeProgramId);
+  shownProgramRef.current = activeProgramId;
   useSSE({
     url: apiUrl(`/program/${encodeURIComponent(activeProgramId)}/events`),
     onMessage: handleSSE,
+    onConnectionStateChange: (connection) => {
+      if (connection !== "connected") return;
+      if (streamConnectedFor.current === activeProgramId)
+        void readRundown(
+          () => shownProgramRef.current !== activeProgramId,
+        ).catch((err) =>
+          console.error("Failed to reload the rundown:", err),
+        );
+      streamConnectedFor.current = activeProgramId;
+    },
     enabled: true,
   });
 
