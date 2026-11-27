@@ -883,12 +883,6 @@
   },
   {
     "method": "POST",
-    "path": "/program/:programId/song-playback",
-    "public": false,
-    "permission": "alcantara:program:operate"
-  },
-  {
-    "method": "POST",
     "path": "/program/:programId/song-queue",
     "public": false,
     "permission": "alcantara:program:operate"

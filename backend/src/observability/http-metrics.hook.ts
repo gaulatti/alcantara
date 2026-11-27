@@ -6,12 +6,6 @@ import { ManagedMetricsService } from './managed-metrics.service';
 type MetricRequest = { method: string; routeOptions?: { url?: string } };
 type MetricReply = { statusCode: number; elapsedTime: number };
 
-/**
- * The write route that is to be retired (gaulatti/alcantara#612). It is counted here, from the response, because a
- * call a guard refuses never reaches the controller.
- */
-export const SONG_PLAYBACK_WRITE_ROUTE = '/program/:programId/song-playback';
-
 /** A request that matched no route (a 404, or a scanner's path): one fixed label. */
 export const UNMATCHED_ROUTE = 'unmatched';
 
@@ -71,14 +65,6 @@ export class HttpMetricsHook implements OnModuleInit {
         reply.statusCode,
         reply.elapsedTime / 1000,
       );
-      if (
-        request.method === 'POST' &&
-        request.routeOptions?.url === SONG_PLAYBACK_WRITE_ROUTE
-      ) {
-        this.metrics.recordSongPlaybackWrite(
-          reply.statusCode < 300 ? 'accepted' : 'refused',
-        );
-      }
       done();
     });
   }

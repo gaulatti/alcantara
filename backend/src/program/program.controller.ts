@@ -252,23 +252,6 @@ export class ProgramController {
     return this.programService.removeQueuedProgramSong(programId, entryId);
   }
 
-  @Post(':programId/song-playback')
-  @RequirePermission(ALCANTARA_PERMISSIONS.program.operate)
-  async updateProgramSongPlaybackById(
-    @Param('programId') programId: string,
-    @Body()
-    data: {
-      token?: string;
-      audioUrl?: string;
-      progress?: number;
-      currentTimeMs?: number;
-      durationMs?: number | null;
-      isPlaying?: boolean;
-    },
-  ) {
-    return this.programService.updateProgramSongPlayback(data, programId);
-  }
-
   @Get('audio-proxy')
   @Public()
   async proxyAudio(@Query('url') url: string): Promise<StreamableFile> {

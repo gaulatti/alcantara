@@ -50,7 +50,6 @@ describe('ProgramRealtimeService actual WebSocket boundary', () => {
         .fn()
         .mockResolvedValue({ version: 6, token: 'instant-1' }),
       updateProgramAudioMeter: jest.fn(),
-      updateProgramSongPlayback: jest.fn(),
     };
     flights = { handleSongEnded: jest.fn() };
     tickets = new RealtimeTicketService();
@@ -221,7 +220,6 @@ describe('ProgramRealtimeService actual WebSocket boundary', () => {
       'news',
     );
     // A client's song playback report is ignored; playback comes from the engine.
-    expect(programs.updateProgramSongPlayback).not.toHaveBeenCalled();
     expect(flights.handleSongEnded).toHaveBeenCalledWith('news');
     expect(renderer.packets).toEqual([]);
   });
@@ -230,9 +228,6 @@ describe('ProgramRealtimeService actual WebSocket boundary', () => {
     const renderer = await connect('program', '');
     programs.updateProgramAudioMeter.mockRejectedValueOnce(
       new Error('invalid meter'),
-    );
-    programs.updateProgramSongPlayback.mockRejectedValueOnce(
-      new Error('invalid playback'),
     );
     flights.handleSongEnded.mockRejectedValueOnce(
       new Error('flight unavailable'),
@@ -258,7 +253,6 @@ describe('ProgramRealtimeService actual WebSocket boundary', () => {
       { type: 'audio_meter_update', levels: null, main: { vu: 1 } },
       'main',
     );
-    expect(programs.updateProgramSongPlayback).not.toHaveBeenCalled();
     expect(console.error).toHaveBeenCalledWith('[WS] song_ended handler threw');
     expect(renderer.socket.readyState).toBe(WebSocket.OPEN);
   });
@@ -284,7 +278,6 @@ describe('ProgramRealtimeService actual WebSocket boundary', () => {
       ),
     );
     expect(programs.updateProgramAudioMeter).not.toHaveBeenCalled();
-    expect(programs.updateProgramSongPlayback).not.toHaveBeenCalled();
     expect(flights.handleSongEnded).not.toHaveBeenCalled();
   });
 
