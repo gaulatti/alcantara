@@ -202,9 +202,12 @@ export function RadioTransport({
         {armed ? (
           <span className="inline-flex items-center gap-2 text-accent-yellow">
             <StatePill tone="arm" label="Cued" />
-            {armed.title} — {armed.artist}. Take
-            <span className="pointer-coarse:hidden"> or press Space</span> within 5 s
-            <span className="pointer-coarse:hidden">; Esc clears it</span>.
+            {/* One flex item: as separate ones the row's gap opened holes inside the sentence (#875). */}
+            <span>
+              {armed.title} — {armed.artist}. Take
+              <span className="pointer-coarse:hidden"> or press Space</span> within 5 s
+              <span className="pointer-coarse:hidden">; Esc clears it</span>.
+            </span>
           </span>
         ) : waitingFor ? (
           <span className="inline-flex items-center gap-2 text-accent-yellow">
