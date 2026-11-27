@@ -6,6 +6,8 @@
   "description": "End-to-end checks that drive a real browser against a running Alc\u00e1ntara: the WebRTC guest call (alcantara#354).",
   "scripts": {
     "webrtc": "node webrtc-call.mjs",
+    "return-proof": "node return-proof-all.mjs",
+    "test": "node --test return-proof-all.test.mjs",
     "browsers": "playwright install chromium",
     "touch": "node touch-regressions.mjs",
     "webrtc:matrix": "node webrtc-matrix.mjs",

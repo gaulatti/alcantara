@@ -81,6 +81,18 @@ Engines use generated media, because a headless engine has no camera or micropho
 
 Install the three engines once with `pnpm --filter @gaulatti/alcantara-e2e browsers:all`. The plain `browsers` script installs Chromium only.
 
+## Program return proof (`return-proof-all.mjs`)
+
+A guest joins the real guest page in Chromium, WebKit and Firefox, one after another, and the level of the return that page plays is measured. Nothing else is opened, so sound means the server's return router delivered it. It defaults to production and `modoitaliano.fm`.
+
+```bash
+ALCANTARA_INVITATION_PATH=/guest/<token> pnpm --filter @gaulatti/alcantara-e2e return-proof
+```
+
+Make the invitation in `/calls`. Each time `WAITING FOR ADMIT <browser>` is printed, press **Admit** within 120 seconds. Between browsers it waits 70 seconds for the previous guest session to expire. It prints how far each browser got and its return peak, then the last 40 `[return-router]` lines of the run from the runner's host (`RETURN_RUNNER_SSH`, default `helix.gaulatti.com`; empty skips them). It exits 0 only when all three have a peak above 0. With `ALCANTARA_OPERATOR_TOKEN`, each run makes, admits and revokes its own invitation instead. Revoke a console invitation yourself afterwards.
+
+Install the three engines once with `browsers:all`. `return-proof.mjs` runs a single engine (`WEBRTC_BROWSER`).
+
 ## Touch regressions (`touch-regressions.mjs`)
 
 Browser checks at 375 × 812 with touch emulation, for the touch fixes that shipped on the frontend (#851, #853, #854, #856, #826). Each check prints one JSON line, and the last line is a summary.
