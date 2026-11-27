@@ -43,6 +43,23 @@ describe('guest screening capabilities', () => {
     expect(webrtc.admitGuest).toHaveBeenCalledWith(expect.anything(), 'inv-1');
   });
 
+  it('admits only a guest who is waiting, as the desk does', async () => {
+    const { webrtc, tool } = setup(false);
+    await expect(tool('webrtc_admit_guest').run(args, ctx)).rejects.toThrow(
+      'is not waiting to be admitted',
+    );
+    expect(webrtc.admitGuest).not.toHaveBeenCalled();
+  });
+
+  it('names the guest in a summary by the invitation id, never by the name they typed', async () => {
+    const { tool } = setup(true);
+    for (const name of ['webrtc_admit_guest', 'webrtc_decline_guest']) {
+      const { summary } = await tool(name).dryRun!(args, ctx);
+      expect(summary).toContain('inv-1');
+      expect(summary).not.toContain('Ada');
+    }
+  });
+
   it('declines only a guest who is waiting', async () => {
     const waiting = setup(true);
     const decline = waiting.tool('webrtc_decline_guest');

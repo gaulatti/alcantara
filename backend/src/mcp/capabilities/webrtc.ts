@@ -187,16 +187,16 @@ export class WebrtcMcpTools {
         name: 'webrtc_admit_guest',
         title: 'Admit a waiting guest',
         description:
-          'The calls desk’s Admit (screening before air): lets a guest who is waiting onto their strip, from where they can reach returns and the output through a scene. Their page joins the program room by itself.',
+          'The calls desk’s Admit (screening before air): lets a guest who is waiting onto their strip, from where they can reach returns and the output through a scene. Their page joins the program room by itself. Refused for a guest who is not waiting, as the desk offers Admit only to one.',
         permission: permissions.operate,
         tier: 'A',
         shape: { invitation_id: invitationIdArg },
-        load: (args) => this.invitation(args.invitation_id),
+        load: (args) => this.screened(args.invitation_id),
         id: (args) => args.invitation_id,
-        label: (_args, invitation) =>
+        label: (_args, { invitation }) =>
           `${invitation.displayName} (${invitation.status})`,
-        plan: (_args, invitation) => ({
-          summary: `Admits guest ${invitation.displayName} (${invitation.status}) onto slot ${invitation.slotNumber ?? 'none'} of program ${invitation.programId}.`,
+        plan: (_args, { invitation }) => ({
+          summary: `Admits guest ${invitation.id} (${invitation.status}) onto slot ${invitation.slotNumber ?? 'none'} of program ${invitation.programId}.`,
           affects: [
             {
               kind: 'invitation',
@@ -206,6 +206,11 @@ export class WebrtcMcpTools {
           ],
           recoverable: true,
         }),
+        // The desk offers Admit only to a guest who is waiting.
+        refuse: (args, { waiting }) =>
+          waiting
+            ? null
+            : `guest ${args.invitation_id} is not waiting to be admitted`,
         run: (args, _loaded, ctx) =>
           this.webrtc.admitGuest(identityOf(ctx), args.invitation_id),
       }),
@@ -217,24 +222,12 @@ export class WebrtcMcpTools {
         permission: permissions.operate,
         tier: 'D',
         shape: { invitation_id: invitationIdArg },
-        load: async (args) => {
-          const invitation = await this.invitation(args.invitation_id);
-          const { participants } = await this.webrtc.listParticipants(
-            invitation.programId,
-          );
-          return {
-            invitation,
-            waiting: participants.some(
-              (guest) =>
-                guest.invitationId === invitation.id && guest.screening,
-            ),
-          };
-        },
+        load: (args) => this.screened(args.invitation_id),
         id: (args) => args.invitation_id,
         label: (_args, { invitation }) =>
           `${invitation.displayName} (${invitation.status})`,
         plan: (_args, { invitation }) => ({
-          summary: `Declines guest ${invitation.displayName}: their link stops working for good and slot ${invitation.slotNumber ?? 'none'} is freed. It cannot be undone.`,
+          summary: `Declines guest ${invitation.id}: their link stops working for good and slot ${invitation.slotNumber ?? 'none'} is freed. It cannot be undone.`,
           affects: [
             {
               kind: 'invitation',
@@ -339,6 +332,20 @@ export class WebrtcMcpTools {
     );
     if (!found) throw new McpToolError('not_found', 'Invitation not found.');
     return found;
+  }
+
+  /** An invitation and whether its guest is waiting in screening, as the desk's Admit and Decline read it. */
+  private async screened(id: string) {
+    const invitation = await this.invitation(id);
+    const { participants } = await this.webrtc.listParticipants(
+      invitation.programId,
+    );
+    return {
+      invitation,
+      waiting: participants.some(
+        (guest) => guest.invitationId === invitation.id && guest.screening,
+      ),
+    };
   }
 
   private async participant(programId: string, identity: string) {
