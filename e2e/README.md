@@ -142,3 +142,22 @@ docker run --rm --init --ipc=host -e ALCANTARA_APP_URL=https://alcantara.gaulatt
 ```
 
 `SMOKE_TIMEOUT_MS` (default 60000) bounds each route.
+
+## Console layout pass (`console-layout.mjs`, run by `console-smoke.mjs --layout`)
+
+A signed-in layout check for the console, against the **local** Compose stack only. It refuses any origin that is not `localhost` or `127.0.0.1`, so it cannot run against production, and it signs in with the local test auth of the seeded operator (`/__test/session?identity=operator-a`), never with production credentials.
+
+It joins one stand-in guest through the guest page with fake media, admits it, and then:
+
+- **`/calls`** at 1440×900, 1280×800 and 1024×768: fails if any column of the caller desk is more than 60% empty above the fold, or if two guest slots overlap. One screenshot per size, in `SMOKE_SHOTS` (default `console-smoke-shots`).
+- **The radio desk** (`radio-demo.fm`) at 1440×900 and 1024×768: at 1440, fails if the Guests strip, the mixer or the cartwall is not visible without scrolling. One screenshot per size.
+
+Running it changes only the local stack's data: one invitation, one guest joined and admitted (both removed at the end), and the operator's selected show.
+
+Start the local stack with its test auth and seeded data (see the Compose notes in the repository README), then:
+
+```bash
+ALCANTARA_APP_URL=http://localhost:5173 ALCANTARA_API_URL=http://localhost:3000 pnpm --filter @gaulatti/alcantara-e2e console-smoke -- --layout
+```
+
+Use the stack's own ports in both URLs if they differ. The default smoke run (no flag) is unchanged and still runs against production.

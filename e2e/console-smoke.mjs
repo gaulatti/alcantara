@@ -18,6 +18,7 @@
 
 import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
+import { runLayoutPass } from "./console-layout.mjs";
 
 const APP = (process.env.ALCANTARA_APP_URL || "https://alcantara.gaulatti.com").replace(/\/$/, "");
 const TIMEOUT = Number(process.env.SMOKE_TIMEOUT_MS || 60_000);
@@ -31,6 +32,11 @@ export const ROUTES = [
   { path: "/guest/console-smoke-no-such-token", name: "guest page (unknown token)", signIn: false },
 ];
 
+const API = (process.env.ALCANTARA_API_URL || "http://localhost:3000").replace(/\/$/, "");
+const SHOTS = process.env.SMOKE_SHOTS || "console-smoke-shots";
+const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(new URL(APP).hostname);
+// The stand-in guest's camera and microphone, and no permission prompt: fake media, for the layout pass only.
+const FAKE_MEDIA = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"];
 const SIGN_IN = /Welcome back|Sign in with Google/;
 const CHUNK = /\.(?:js|css)(?:[?#]|$)/;
 
@@ -60,7 +66,8 @@ export async function checkRoute(browser, route) {
     if (blank) problems.push("blank page: nothing rendered");
 
     let detail = "content rendered";
-    if (route.signIn) {
+    // On the local stack the seeded operator is signed in by the test auth, so a protected route shows its content.
+    if (route.signIn && !LOCAL) {
       const shown = await page
         .waitForFunction((pattern) => new RegExp(pattern).test(document.body.innerText), SIGN_IN.source, { timeout: TIMEOUT })
         .then(() => true)
@@ -81,18 +88,38 @@ export async function checkRoute(browser, route) {
 }
 
 async function main() {
-  const browser = await chromium.launch({ headless: true });
+  const layout = process.argv.includes("--layout") || process.env.SMOKE_LAYOUT === "1";
+  const browser = await chromium.launch({ headless: true, args: layout ? FAKE_MEDIA : [] });
+  // The local dev server optimises its dependencies on the first load, which fails that load: warm it once, unmeasured.
+  if (LOCAL && layout) {
+    const warm = await browser.newContext();
+    const page = await warm.newPage();
+    for (const path of ["/", "/calls", "/flight"]) await page.goto(`${APP}${path}`, { waitUntil: "load", timeout: 120_000 }).catch(() => undefined);
+    await page.waitForTimeout(5000);
+    await warm.close();
+  }
   let failed = 0;
+  let checks = ROUTES.length;
   try {
     for (const route of ROUTES) {
       const result = await checkRoute(browser, route);
       if (!result.ok) failed += 1;
       console.log(JSON.stringify({ route: route.path, name: route.name, status: result.ok ? "ok" : "fail", detail: result.detail }));
     }
+    // The signed-in layout pass runs only against the local stack, with the seeded operator's test session.
+    if (layout) {
+      const session = await fetch(`${API}/__test/session?identity=operator-a`).then((r) => r.json());
+      const results = await runLayoutPass(browser, { app: APP, api: API, token: session.accessToken, shots: SHOTS });
+      for (const result of results) {
+        if (!result.ok) failed += 1;
+        checks += 1;
+        console.log(JSON.stringify({ layout: result.check, status: result.ok ? "ok" : "fail", detail: result.detail }));
+      }
+    }
   } finally {
     await browser.close();
   }
-  console.log(JSON.stringify({ summary: { routes: ROUTES.length, failed } }));
+  console.log(JSON.stringify({ summary: { checks, failed, layout } }));
   process.exitCode = failed ? 1 : 0;
 }
 
