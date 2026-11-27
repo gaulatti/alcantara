@@ -450,6 +450,19 @@ configurable via `.env`:
   sequencing, and exact selection acknowledgement without AWS or public output;
   it is not a deployment or a substitute for production Alana/Croccante proof.
 
+**Port overrides.** `docker compose up` publishes LiveKit on the host's 7880, 7881 and 7882/udp, and it does not read `LIVEKIT_SIGNAL_PORT` from `.env`. If another process holds those ports, create a `compose.override.yml` beside `compose.yml` (do not commit it):
+
+```yaml
+services:
+  livekit:
+    ports: !override
+      - "17880:7880"
+      - "17881:7881"
+      - "17882:7882/udp"
+```
+
+Compose's `!override` tag replaces the port list. Only the host side moves. The backend still advertises `ws://localhost:7880` (`LIVEKIT_WS_URL` in `compose.yml`), so a browser cannot reach LiveKit through the moved port until that value follows the mapping. Keep the other ports in `.env` matched to what you publish, and set `VITE_API_BASE_URL` in `frontend/.env` to `http://localhost:<BACKEND_PORT>`.
+
 Source directories are mounted so changes are reflected immediately. On Colima a
 host edit reaches the container without a file event, so the backend's TypeScript
 watcher polls in Compose (`TSC_WATCHFILE` and `TSC_WATCHDIRECTORY` on the `backend`
