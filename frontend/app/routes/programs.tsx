@@ -545,7 +545,8 @@ export default function ProgramsAdmin() {
                             tone='info'
                             label={program.type === 'radio' ? 'Radio' : program.type === 'both' ? 'Simulcast' : 'TV'}
                           />
-                          {isSelected ? <StatePill tone='live' label='Active' /> : null}
+                          {/* The console's active show, not on air: the live tone is kept for what airs. */}
+                          {isSelected ? <StatePill tone='info' label='Active' /> : null}
                         </div>
                         {program.type === 'radio' ? (
                           <p className='mt-2 text-sm text-text-secondary dark:text-text-secondary'>Audio-only show · Songs, audio clips, mixer, and Radio distribution</p>
@@ -616,7 +617,7 @@ export default function ProgramsAdmin() {
         <Modal isOpen={pendingDelete !== null} onClose={() => setPendingDelete(null)} title='Confirm delete'>
           <div className='space-y-4'>
             <p className='text-sm text-text-secondary'>
-              Delete show &ldquo;{pendingDelete}&rdquo;? This removes its scene assignments and active scene state.
+              Delete show &ldquo;{pendingDelete}&rdquo;? This removes its rotation and Play Next queue, its rundown blocks and recipes, its radio settings and now-playing consumers, its branding, and its scene, stinger and source assignments. Songs, media and scenes in the library stay.
             </p>
             <div className='flex justify-end gap-2'>
               <Button variant='ghost' onClick={() => setPendingDelete(null)}>Cancel</Button>
@@ -695,7 +696,7 @@ export default function ProgramsAdmin() {
                     setTemplatePreview(null);
                     setTemplateError('');
                   }}
-                  placeholder='https://cdn.fifthbell.com/html/program-releases/0.1.65/live-program-manifest.json'
+                  placeholder='Optional: https://…/live-program-manifest.json'
                   aria-describedby='template-url-help'
                   error={!!templateError}
                 />

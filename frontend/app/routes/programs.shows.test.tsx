@@ -206,6 +206,8 @@ it("lists shows by id with their type, assets, renderer and selection", async ()
   const news = card("news");
   expect(news).toHaveTextContent("TV");
   expect(news).toHaveTextContent("Active");
+  // The active show is the console's selection, not on air: never the live tone.
+  expect(within(news).getByText("Active").closest("[data-tone]")).toHaveAttribute("data-tone", "info");
   expect(news).toHaveTextContent(
     "Scenes assigned: 1 · Media labels are available globally · Stingers assigned: 1 · Active scene: 1",
   );
@@ -735,6 +737,9 @@ it("deletes a show after confirmation and moves the selection off it", async () 
   fireEvent.click(within(card("news")).getByText("Delete show"));
   const dialog = await screen.findByRole("dialog", { name: "Confirm delete" });
   expect(dialog).toHaveTextContent('Delete show “news”?');
+  // It says what goes with the show and what stays: the delete cascades far beyond scenes.
+  expect(dialog).toHaveTextContent("its rotation and Play Next queue, its rundown blocks and recipes, its radio settings");
+  expect(dialog).toHaveTextContent("Songs, media and scenes in the library stay.");
   expect(calls("DELETE")).toEqual([]);
   fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Confirm delete" })).toBeNull());
