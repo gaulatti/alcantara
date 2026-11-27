@@ -57,6 +57,16 @@ describe("the console's rotation version", () => {
     expect(await send(version)).toBe("theirs");
   });
 
+  it("sends the version now held when the rotation returns to one it already saved from", async () => {
+    const version = createRotationVersion();
+    version.read({ sequenceVersion: "manual" });
+    await version.save(async () => ({ sequenceVersion: "autoplay" }));
+    version.read({ sequenceVersion: "autoplay" });
+    // The rotation ran out, or was stopped: the engine left it manual again and said so.
+    version.read({ sequenceVersion: "manual" });
+    expect(await send(version)).toBe("manual");
+  });
+
   it("goes on after a refused save", async () => {
     const version = createRotationVersion();
     version.read({ sequenceVersion: "v1" });

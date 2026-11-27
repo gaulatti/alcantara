@@ -7,6 +7,8 @@ export function createRotationVersion() {
   // The versions this console's own saves started from, and what the last of them stored.
   const own = new Set<string>();
   let latest: string | undefined;
+  // Saves made and not yet answered.
+  let unanswered = 0;
   // Whether the backend plays a shuffle order of its own (gaulatti/alcantara#834), as its load said.
   let shuffleKeepsRows = false;
   let queue: Promise<unknown> = Promise.resolve();
@@ -38,9 +40,17 @@ export function createRotationVersion() {
     /**
      * Runs one save at a time. A save sends the version the console held when the edit was made, except that an edit
      * made before this console's own earlier save was answered follows that save.
+     *
+     * A version names what a rotation holds, so a Stop or a rotation that ran out brings back one this console already
+     * saved from: with nothing unanswered, an edit follows no earlier save and sends the version it was made on.
      */
     save<T>(run: (version: string | null | undefined) => Promise<T>): Promise<T> {
       const made = held;
+      if (unanswered === 0) {
+        own.clear();
+        latest = undefined;
+      }
+      unanswered += 1;
       const next = queue.then(async () => {
         const version =
           typeof made === "string" && own.has(made) ? latest : made;
@@ -55,7 +65,10 @@ export function createRotationVersion() {
         }
         return answer;
       });
-      queue = next.catch(() => {});
+      const answered = () => {
+        unanswered -= 1;
+      };
+      queue = next.then(answered, answered);
       return next;
     },
   };
