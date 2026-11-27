@@ -9,6 +9,7 @@ import { isProgramFeed, preferredProgramFeed } from '../utils/programFeed';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { mediaErrorHelp, type MediaHelp } from '../utils/guestMediaHelp';
 import { GUEST_RETURN_COPY, RETURN_STALL_MS, guestReturnState, returnFeedHealthFor } from '../components/guest/guestReturnCopy';
+import { GuestOnAirState, type GuestCue } from '../components/guest/GuestOnAirState';
 import { GuestReturnLevel } from '../components/guest/GuestReturnLevel';
 import type { Route } from './+types/guest';
 
@@ -98,6 +99,8 @@ export default function GuestRoute() {
   // The return participant whose audio is playing, read for the level meter.
   const returnLevelSource = useRef<RemoteParticipant | null>(null);
   const [displayName, setDisplayName] = useState('Guest');
+  // The studio's cue for this guest's session: live is on air. Null until the studio has said, so nothing is guessed.
+  const [cue, setCue] = useState<GuestCue | null>(null);
   const [programId, setProgramId] = useState('');
   const [returnVideo, setReturnVideo] = useState('program');
   const [returnAudioBus, setReturnAudioBus] = useState('master');
@@ -150,18 +153,22 @@ export default function GuestRoute() {
     });
     if (response.ok && dropped) pendingDropRef.current = false;
     if (response.ok) lastHeardRef.current = Date.now();
-    if (response.ok && waitingRef.current) {
-      const answer = (await response.json().catch(() => null)) as { admission?: string } | null;
-      // Another heartbeat may have seen it first.
-      if (answer?.admission === 'admitted' && waitingRef.current) {
-        waitingRef.current = false;
-        stopHeartbeat();
-        intentionalEndRef.current = true;
-        roomRef.current?.disconnect();
-        roomRef.current = null;
-        void joinRef.current();
+    if (response.ok) {
+      // The studio's cue for this session is kept current on every heartbeat, so a missed message never leaves the page wrong.
+      const answer = (await response.json().catch(() => null)) as { admission?: string; cue?: GuestCue } | null;
+      if (answer?.cue) setCue(answer.cue);
+      if (waitingRef.current) {
+        // Another heartbeat may have seen it first.
+        if (answer?.admission === 'admitted' && waitingRef.current) {
+          waitingRef.current = false;
+          stopHeartbeat();
+          intentionalEndRef.current = true;
+          roomRef.current?.disconnect();
+          roomRef.current = null;
+          void joinRef.current();
+        }
+        return;
       }
-      return;
     }
     if (response.status === 401 || response.status === 403) {
       const declined = waitingRef.current;
@@ -347,8 +354,10 @@ export default function GuestRoute() {
         returnAudioBus: string;
         // Absent from a backend without screening: the guest goes straight in.
         admission?: 'waiting' | 'admitted';
+        cue?: GuestCue;
       };
       window.sessionStorage.setItem(storageKey, credentials.sessionToken);
+      setCue(credentials.cue ?? null);
       sessionTokenRef.current = credentials.sessionToken;
       // The join itself is the studio hearing from this page.
       lastHeardRef.current = Date.now();
@@ -644,6 +653,7 @@ export default function GuestRoute() {
           </div>
           <StatusBadge className='ml-auto' label={status} variant={status === 'live' ? 'live' : status === 'reconnecting' ? 'offline' : 'default'} />
         </header>
+        {cue && (status === 'live' || status === 'reconnecting') ? <GuestOnAirState cue={cue} /> : null}
         <div className='relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black [@media(max-height:500px)]:aspect-auto [@media(max-height:500px)]:h-[calc(100dvh-11.5rem)] [@media(max-height:500px)]:min-h-40'>
           {status === 'live' || status === 'reconnecting' ? <video ref={returnVideoRef} autoPlay playsInline className='h-full w-full object-contain' /> : null}
           <audio ref={returnAudioRef} autoPlay playsInline />

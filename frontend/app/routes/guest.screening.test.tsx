@@ -65,6 +65,9 @@ let admission: 'waiting' | 'admitted';
 let refused: boolean;
 let beats: Array<Record<string, unknown>>;
 let poll: (() => void) | null;
+let scheduledBeat: (() => void) | null;
+// The studio's cue for the guest's session, as the join and heartbeat responses carry it.
+let cueState: 'live' | 'standby' | 'wrap' | undefined;
 
 const track = () => ({ enabled: true, stop() {}, getSettings: () => ({}) });
 
@@ -74,6 +77,8 @@ beforeEach(() => {
   refused = false;
   beats = [];
   poll = null;
+  scheduledBeat = null;
+  cueState = 'standby';
   window.sessionStorage.clear();
   const video = [track()];
   const audio = [track()];
@@ -92,7 +97,10 @@ beforeEach(() => {
       poll = handler;
       return 0;
     }
-    if (delay === 20_000) return 0;
+    if (delay === 20_000) {
+      scheduledBeat = handler;
+      return 0;
+    }
     return realSetInterval(handler, delay);
   }) as typeof window.setInterval);
   vi.stubGlobal(
@@ -123,11 +131,12 @@ beforeEach(() => {
           participantIdentity: 'guest-ada',
           returnVideo: 'program',
           returnAudioBus: 'master',
-          admission
+          admission,
+          cue: cueState
         });
       if (url.endsWith('/webrtc/session/heartbeat')) {
         beats.push((JSON.parse(String(init!.body)) as { telemetry: Record<string, unknown> }).telemetry);
-        return refused ? new Response(null, { status: 401 }) : Response.json({ admission });
+        return refused ? new Response(null, { status: 401 }) : Response.json({ admission, cue: cueState });
       }
       return new Response(null, { status: 204 });
     })
@@ -210,4 +219,42 @@ it('lets a waiting guest leave', async () => {
   expect(await screen.findByText('You left the studio.')).toBeVisible();
   expect(lk.state.rooms).toHaveLength(1);
   await waitFor(() => expect(beats.at(-1)).toEqual({ left: true }));
+});
+
+// The guest's own on-air state, from the studio's cue for their session: the banner follows the server's value.
+async function joinAdmitted() {
+  render(
+    <MemoryRouter initialEntries={['/guest/inv-1.secret']}>
+      <Routes>
+        <Route path='/guest/:invitation' element={<GuestRoute />} />
+      </Routes>
+    </MemoryRouter>
+  );
+  expect(await screen.findByText('Browser network check ready')).toBeVisible();
+  fireEvent.click(screen.getByText('Speaker test').closest('button')!);
+  fireEvent.click(screen.getByLabelText(/I am wearing headphones/));
+  fireEvent.click(screen.getByRole('button', { name: /Join studio/ }));
+}
+
+it('shows You\'re on air when the studio has cued the guest live, and Off air when it stands them by', async () => {
+  admission = 'admitted';
+  cueState = 'live';
+  await joinAdmitted();
+  await live();
+  expect(screen.getByText("You're on air")).toBeVisible();
+  expect(screen.getByText("You're on air").closest('[role="status"]')).toHaveAttribute('data-on-air', 'true');
+
+  cueState = 'standby';
+  await act(async () => scheduledBeat!());
+  expect(await screen.findByText('Off air')).toBeVisible();
+  expect(screen.queryByText("You're on air")).toBeNull();
+});
+
+it('shows no on-air state until the studio has said, rather than guessing Off air', async () => {
+  admission = 'admitted';
+  cueState = undefined;
+  await joinAdmitted();
+  await live();
+  expect(screen.queryByText("You're on air")).toBeNull();
+  expect(screen.queryByText('Off air')).toBeNull();
 });
