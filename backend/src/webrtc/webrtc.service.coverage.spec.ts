@@ -1403,7 +1403,7 @@ describe('WebrtcService coverage', () => {
       });
     });
 
-    it('mints a hidden operator token keyed by principal id', async () => {
+    it('mints an operator token keyed by principal id, visible so its talkback is received', async () => {
       const { service } = setup();
       const result = await service.createOperatorToken(operator, 'main');
       const claims = jwtGrant(result.token);
@@ -1416,7 +1416,7 @@ describe('WebrtcService coverage', () => {
       );
       expect(JSON.parse(claims.metadata)).toEqual({ role: 'operator' });
       expect(claims.video).toMatchObject({
-        hidden: true,
+        hidden: false,
         canPublish: true,
         canPublishSources: ['microphone'],
       });

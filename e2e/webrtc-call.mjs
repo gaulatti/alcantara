@@ -350,6 +350,34 @@ async function main() {
       .getByRole("button", { name: /Leave/ })
       .waitFor({ timeout: TIMEOUT });
     report("guest-joined", { ok: true });
+    // The producer talks to the waiting guest privately, off air, with the screening token the console uses.
+    if (!GUEST_ONLY_PATH) {
+      const producer = await livekitPage(context);
+      pages.push(producer);
+      await producer.evaluate(
+        async ({ serverUrl, token }) => {
+          const { Room, createLocalAudioTrack } = window.LivekitClient;
+          const room = new Room();
+          await room.connect(serverUrl, token);
+          await room.localParticipant.publishTrack(await createLocalAudioTrack(), { name: "talkback:check" });
+          window.__room = room;
+        },
+        await api(`/webrtc/invitations/${encodeURIComponent(invitation.id)}/screening-token`, { method: "POST", token }),
+      );
+      // Bytes arrive even when the page never gets the track, so the check is that it is playing it.
+      const playing = () =>
+        guest.evaluate(() =>
+          [...document.querySelectorAll("audio")].some(
+            (a) => !a.paused && a.srcObject?.getAudioTracks().some((track) => track.readyState === "live"),
+          ),
+        );
+      const deadline = Date.now() + TIMEOUT;
+      while (!(await playing()) && Date.now() < deadline) await guest.waitForTimeout(500);
+      const heard = await playing();
+      await leave(producer);
+      if (!heard) fail("waiting-guest-hears-producer", {});
+      report("waiting-guest-hears-producer", { ok: true });
+    }
     // Screening before air: the guest waits until the operator admits them. A guest-only run leaves that to the
     // operator in the console; a backend without screening has no such route and the guest is already in.
     if (!GUEST_ONLY_PATH)

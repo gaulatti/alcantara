@@ -288,7 +288,8 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       canPublishSources: [TrackSource.MICROPHONE],
       canSubscribe: true,
       canPublishData: false,
-      hidden: true,
+      // Visible: LiveKit does not hand a hidden participant's microphone to anyone, so the guest heard nothing.
+      hidden: false,
     });
     return {
       serverUrl: this.wsUrl,
@@ -808,7 +809,8 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       canPublishSources: [TrackSource.MICROPHONE],
       canSubscribe: true,
       canPublishData: true,
-      hidden: true,
+      // Visible, or the return router never receives the talkback. Guests subscribe only their own mix.
+      hidden: false,
     });
     return {
       serverUrl: this.wsUrl,

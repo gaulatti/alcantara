@@ -771,7 +771,7 @@ describe('WebrtcService invitation/session and LiveKit boundary', () => {
       expect.objectContaining({
         room: 'alcantara-news',
         canPublishSources: ['microphone'],
-        hidden: true,
+        hidden: false,
       }),
     );
     expect(

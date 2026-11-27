@@ -509,7 +509,18 @@ export default function GuestRoute() {
     });
     // Admitting or declining ends this connection: ask at once which it was.
     room.on(RoomEvent.Disconnected, () => {
-      if (roomRef.current === room && !intentionalEndRef.current) void heartbeat().catch(() => undefined);
+      if (roomRef.current !== room || intentionalEndRef.current) return;
+      void heartbeat()
+        .catch(() => undefined)
+        .finally(() => {
+          // Neither: the connection itself is gone. Nobody can see or hear the guest, so offer to rejoin.
+          if (!waitingRef.current || roomRef.current !== room) return;
+          waitingRef.current = false;
+          stopHeartbeat();
+          intentionalEndRef.current = true;
+          setError(DROPPED);
+          setStatus('ended');
+        });
     });
     await room.connect(serverUrl, token);
     await room.localParticipant.setCameraEnabled(cameraEnabled, cameraId ? { deviceId: cameraId } : undefined);

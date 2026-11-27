@@ -196,6 +196,14 @@ it('says the studio did not let the guest in when declined', async () => {
   expect(await screen.findByText(/The studio did not let you in/)).toBeVisible();
 });
 
+it('offers to rejoin when the screening connection is lost while still waiting', async () => {
+  await join();
+  await act(async () => lk.state.rooms[0].emit('disconnected', 3));
+  expect(await screen.findByText(/Your connection to the studio dropped/)).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Rejoin the studio' })).toBeVisible();
+  expect(lk.state.rooms).toHaveLength(1);
+});
+
 it('lets a waiting guest leave', async () => {
   await join();
   fireEvent.click(screen.getByRole('button', { name: /Leave/ }));

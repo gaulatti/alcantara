@@ -170,7 +170,7 @@ describe('screening before air', () => {
     );
   });
 
-  it('gives the operator a hidden, off-air token for one waiting guest', async () => {
+  it('gives the operator an off-air token for one waiting guest, visible so the guest can hear it', async () => {
     const { service } = setup();
     const credentials = await service.createScreeningToken(operator, id);
     expect(credentials).toMatchObject({
@@ -179,7 +179,7 @@ describe('screening before air', () => {
     });
     expect(claims(credentials.token).video).toMatchObject({
       room: screening,
-      hidden: true,
+      hidden: false,
       canSubscribe: true,
       canPublishData: false,
     });
