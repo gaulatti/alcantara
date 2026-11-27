@@ -135,6 +135,12 @@ export function ProgramSongSequenceEditor({
   const [previewingItemId, setPreviewingItemId] = useState<string | null>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const previewRelease = useRef<(() => void) | null>(null);
+  // Wherever the preview element is forgotten, it also stops being held for the microphone's mute.
+  const forgetPreview = useCallback(() => {
+    previewAudioRef.current = null;
+    previewRelease.current?.();
+    previewRelease.current = null;
+  }, []);
   const isNested = depth > 0;
   const showQueue = view !== 'catalog';
   const showCatalog = view !== 'queue';
@@ -180,7 +186,7 @@ export function ProgramSongSequenceEditor({
   useEffect(() => {
     return () => {
       previewAudioRef.current?.pause();
-      previewAudioRef.current = null;
+      forgetPreview();
     };
   }, []);
 
@@ -195,7 +201,7 @@ export function ProgramSongSequenceEditor({
 
     if (previewingItemId === item.id) {
       previewAudioRef.current?.pause();
-      previewAudioRef.current = null;
+      forgetPreview();
       setPreviewingItemId(null);
       return;
     }
@@ -203,18 +209,18 @@ export function ProgramSongSequenceEditor({
     previewAudioRef.current?.pause();
     const audio = new Audio(audioUrl);
     // Muted while the host microphone is open without headphones.
-    previewRelease.current?.();
+    forgetPreview();
     previewRelease.current = holdLocalAudio(audio);
     previewAudioRef.current = audio;
     audio.onended = () => {
       if (previewAudioRef.current === audio) {
-        previewAudioRef.current = null;
+        forgetPreview();
         setPreviewingItemId(null);
       }
     };
     audio.onerror = () => {
       if (previewAudioRef.current === audio) {
-        previewAudioRef.current = null;
+        forgetPreview();
         setPreviewingItemId(null);
       }
     };
@@ -224,7 +230,7 @@ export function ProgramSongSequenceEditor({
       if (previewAudioRef.current === audio) setPreviewingItemId(item.id);
     } catch (error) {
       if (previewAudioRef.current === audio) {
-        previewAudioRef.current = null;
+        forgetPreview();
         setPreviewingItemId(null);
       }
       console.error('Failed to play local song preview:', error);

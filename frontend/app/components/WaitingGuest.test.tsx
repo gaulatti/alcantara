@@ -1,6 +1,10 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { WaitingGuest } from './WaitingGuest';
+import { resetLocalAudio, setHostMicLive, setOnHeadphones } from '../utils/localAudio';
+
+const mic = vi.hoisted(() => ({ value: null as null | { state: 'off' | 'on' } }));
+vi.mock('./HostMicOnAir', () => ({ useHostMic: () => mic.value }));
 
 // Screening before air: the operator's private link to a waiting guest, and Admit or Decline.
 
@@ -46,7 +50,12 @@ beforeEach(() => {
   lk.state.holding = false;
   api.fetch.mockReset().mockImplementation(async () => Response.json({ serverUrl: 'wss://livekit.example', token: 'fictional' }));
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetLocalAudio();
+  window.localStorage.clear();
+  mic.value = null;
+});
 
 const admit = vi.fn();
 const decline = vi.fn();
@@ -104,4 +113,26 @@ it('says why the link could not be opened', async () => {
   fireEvent.click(talk());
   expect(await screen.findByRole('alert')).toHaveTextContent('The private link could not be opened.');
   expect(talk()).toHaveAttribute('aria-pressed', 'false');
+});
+
+// gaulatti/alcantara#879: a waiting guest's voice from speakers would reach the open host microphone.
+it('plays the waiting guest aloud only with the mic off, or on headphones, and says which', async () => {
+  mic.value = { state: 'on' };
+  setHostMicLive(true);
+  mount();
+  fireEvent.click(talk());
+  await waitFor(() => expect(lk.state.rooms[0].published).toEqual(['talkback:inv-1']));
+  const attach = vi.fn();
+  act(() => lk.state.rooms[0].subscribed!({ kind: 'audio', attach }));
+  const audio = document.querySelector('audio')!;
+  expect(attach).toHaveBeenCalledWith(audio);
+  expect(audio.muted).toBe(true);
+  expect(screen.getByRole('status')).toHaveTextContent('PFL muted');
+  act(() => setOnHeadphones(true));
+  expect(audio.muted).toBe(false);
+  expect(screen.getByRole('status')).toHaveTextContent('PFL on headphones');
+  act(() => setOnHeadphones(false));
+  expect(audio.muted).toBe(true);
+  act(() => setHostMicLive(false));
+  expect(audio.muted).toBe(false);
 });

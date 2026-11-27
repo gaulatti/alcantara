@@ -2,6 +2,9 @@ import { Button } from '@gaulatti/bleecker';
 import { Room, RoomEvent, Track, createLocalAudioTrack, type RemoteTrack } from 'livekit-client';
 import { useEffect, useRef, useState } from 'react';
 import { authFetch } from '../services/api';
+import { holdLocalAudio } from '../utils/localAudio';
+import { useHostMic } from './HostMicOnAir';
+import { usePreFadeMuted } from './LocalAudioGuard';
 
 /**
  * A guest who has joined and is not yet admitted. They are in a room of their own: Talk opens a private two-way link
@@ -28,12 +31,19 @@ export function WaitingGuest({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   // The open link, or the attempt that is still connecting; replaced or cleared to cancel it.
   const linkRef = useRef<{ room: Room; track: { stop: () => void } | null } | null>(null);
+  // Their voice is held with the pre-listens: muted while the host microphone is open without headphones (#879).
+  const release = useRef<(() => void) | null>(null);
+  const hostMic = useHostMic();
+  const micLive = hostMic !== null && hostMic.state !== 'off';
+  const muted = usePreFadeMuted();
   const [talking, setTalking] = useState(false);
   const [error, setError] = useState('');
 
   const close = () => {
     const link = linkRef.current;
     linkRef.current = null;
+    release.current?.();
+    release.current = null;
     link?.track?.stop();
     link?.room.disconnect();
     setTalking(false);
@@ -52,7 +62,13 @@ export function WaitingGuest({
       const credentials = (await response.json()) as { serverUrl: string; token: string };
       link.room.on(RoomEvent.TrackSubscribed, (remote: RemoteTrack) => {
         const element = remote.kind === Track.Kind.Video ? videoRef.current : audioRef.current;
-        if (element) remote.attach(element);
+        if (!element) return;
+        remote.attach(element);
+        // After attach, which sets the element's own mute.
+        if (remote.kind !== Track.Kind.Video) {
+          release.current?.();
+          release.current = holdLocalAudio(element);
+        }
       });
       await link.room.connect(credentials.serverUrl, credentials.token);
       const microphone = await createLocalAudioTrack();
@@ -82,6 +98,11 @@ export function WaitingGuest({
           <video ref={videoRef} autoPlay playsInline muted aria-label={`${name}, off air`} className='aspect-video w-full rounded-lg bg-black object-cover' />
           <audio ref={audioRef} autoPlay />
           <p className='mt-1 text-xs text-text-secondary'>Private: you see and hear {name}, and your microphone goes only to them.</p>
+          {micLive ? (
+            <p role='status' className='text-xs text-accent-yellow'>
+              {muted ? `PFL muted · your mic is live, so ${name} is not played aloud` : 'PFL on headphones'}
+            </p>
+          ) : null}
         </div>
       ) : null}
       {error ? (

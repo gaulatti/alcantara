@@ -6,11 +6,11 @@ import { expect, it } from 'vitest';
 // localAudio, which mutes it while the host microphone is open without headphones.
 const read = (name: string) => readFileSync(join(__dirname, '..', 'components', name), 'utf8');
 
-it.each(['radio-desk/usePreListen.ts', 'radio-desk/ChannelPreListen.tsx', 'radio-desk/guestPreListenCore.ts', 'editors/ProgramSongSequenceEditor.tsx'])(
+it.each(['radio-desk/usePreListen.ts', 'radio-desk/ChannelPreListen.tsx', 'radio-desk/guestPreListenCore.ts', 'editors/ProgramSongSequenceEditor.tsx', 'WaitingGuest.tsx'])(
   '%s holds what it plays',
   (name) => {
     const source = read(name);
-    const sounds = source.match(/new Audio\(|\.attach\(\)/g)?.length ?? 0;
+    const sounds = source.match(/new Audio\(|\.attach\(\)|remote\.attach\(element\)/g)?.length ?? 0;
     expect(sounds).toBeGreaterThan(0);
     expect(source.match(/holdLocalAudio\(/g)?.length).toBe(sounds);
   }

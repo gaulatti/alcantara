@@ -1,7 +1,8 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProgramSongSequenceEditor } from "./ProgramSongSequenceEditor";
+import { resetLocalAudio, setHostMicLive } from "../../utils/localAudio";
 
 // The radio desk's walk 4: a selected row must not look like a playing one, and a row's length is shown when the
 // library or the playback knows it.
@@ -68,4 +69,34 @@ it("marks the song behind a jingle After jingle, not On air", () => {
   view("b", { token: "b:x", isPlaying: true, jingle: { name: "CUÑA 1" } });
   expect(screen.getByText("After jingle")).toBeInTheDocument();
   expect(screen.queryByText("On air")).toBeNull();
+});
+
+// gaulatti/alcantara#879: a preview that ended or whose editor closed must not stay held for the microphone's mute.
+it("lets go of the preview element when it ends, is stopped, or the editor closes", async () => {
+  const made: { muted: boolean; onended: null | (() => void) }[] = [];
+  vi.stubGlobal(
+    "Audio",
+    class {
+      muted = false;
+      onended: null | (() => void) = null;
+      onerror = null;
+      constructor() {
+        made.push(this);
+      }
+      play = () => Promise.resolve();
+      pause = () => {};
+    },
+  );
+  const editor = view();
+  const preview = () => screen.getAllByRole("button", { name: /Preview locally/ })[0];
+  await act(async () => void fireEvent.click(preview()));
+  act(() => made[0].onended!());
+  await act(async () => void fireEvent.click(preview()));
+  await act(async () => void fireEvent.click(screen.getAllByRole("button", { name: /Preview locally|Stop preview/ })[0]));
+  await act(async () => void fireEvent.click(preview()));
+  editor.unmount();
+  setHostMicLive(true);
+  expect(made.map((audio) => audio.muted)).toEqual(made.map(() => false));
+  resetLocalAudio();
+  vi.unstubAllGlobals();
 });

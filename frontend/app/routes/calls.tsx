@@ -12,6 +12,7 @@ import { CallHealthBanner } from '../components/CallHealthBanner';
 import { GuestStrip } from '../components/GuestStrip';
 import { WaitingGuest } from '../components/WaitingGuest';
 import { HostMicOnAir } from '../components/HostMicOnAir';
+import { HeadphonesToggle } from '../components/LocalAudioGuard';
 import { callFailureReason, roomIcePath, type CallFailure, type IcePath } from '../utils/callTelemetry';
 import { currentCue, deskSlots, emptySlotLabel, stripState, type Cue, type CueState } from '../utils/callerDesk';
 import '../components/CallerDesk.css';
@@ -456,6 +457,7 @@ function CallsDesk({ programId }: { programId: string }) {
           <span>{livekitEnabled ? 'LiveKit connected' : 'Checking LiveKit…'}</span>
           {updatedAt ? <span>Updated {updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span> : null}
           <HostMicOnAir programId={programId} canOperate={canOperate} />
+          <HeadphonesToggle />
         </section>
         <CallHealthBanner programId={programId} className='mb-5' />
         {failedPolls >= 2 ? (
