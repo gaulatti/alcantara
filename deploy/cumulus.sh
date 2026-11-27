@@ -155,12 +155,15 @@ rollback_backend() {
   fi
 }
 
+# Node runs the server directly, without pnpm's start-up time, under Docker's init: as the first process Node would
+# not exit on SIGTERM, and every stop would wait out the grace period and kill it.
 # The live container starts the server only (gaulatti/alcantara#873): the migrations ran above, from this same image,
 # before the running backend was touched, and a second run here only lengthened the time with no backend.
 # The radio check below waits for a song that started after this moment.
 radio_since="$(date +%s)"
 
 if ! docker run -d --name alcantara-backend \
+  --init \
   --network broadcast-control \
   -p 127.0.0.1:3006:3006 \
   -e NODE_ENV=production \
@@ -181,7 +184,7 @@ if ! docker run -d --name alcantara-backend \
   --log-opt max-size=10m \
   --log-opt max-file=3 \
   "$image" \
-  pnpm start:prod; then
+  node dist/src/main; then
   rollback_backend
   exit 1
 fi

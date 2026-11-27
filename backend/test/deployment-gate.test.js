@@ -662,7 +662,11 @@ test('the deployed containers do not migrate again; the one migration runs befor
   // The live container is told to start the server only.
   const { log } = runDeploy({ candidateHealthy: true });
   const live = log.find((line) => line.startsWith('docker run -d --name alcantara-backend '));
-  assert.match(live, /ghcr\.io\/example\/alcantara:fictional pnpm start:prod$/);
+  assert.match(live, /ghcr\.io\/example\/alcantara:fictional node dist\/src\/main$/);
+  // Node as the first process ignores SIGTERM, so Docker's init stands in front of it.
+  assert.match(live, / --init /);
+  const scripts = JSON.parse(readFileSync('./package.json', 'utf8')).scripts;
+  assert.equal(scripts['start:prod'], 'node dist/src/main', 'the deploy starts what start:prod starts');
 });
 
 test('a candidate that stayed up but did not answer says so instead of claiming an exit', () => {

@@ -4,11 +4,11 @@ A new backend image is started once as a throwaway **candidate** and must answer
 
 ## Start-up after the swap
 
-The port opens once every start-up hook has returned, and the API is down until then. The media asset reconciliation and team fill therefore run in the background after start-up (gaulatti/alcantara#873): the API serves while they run, a failure is logged and counted as `media-asset-reconciliation` `failure` without stopping the backend, and a row saved while the pass reads it makes the pass run again (three attempts), so the pass never overwrites that save. The rotation engine starts where it did before.
+The port opens once every start-up hook has returned, and the API is down until then. The media asset reconciliation and team fill therefore run in the background after start-up (gaulatti/alcantara#873): the API serves while they run, a failure is logged and counted as `media-asset-reconciliation` `failure` without stopping the backend, and a row saved while the pass reads it makes the pass run again (three attempts), so the pass never overwrites that save. The rotation engine starts where it did before. The similarity index load, the media analysis tool check and scheduling, and the first read of the team gauges do not hold the port either; the engine already waits for the similarity index before it picks from it.
 
 ## Migrations and nginx
 
-The migrations run once, as their own step before the running backend is touched; the live container then starts the server only (`pnpm start:prod`), so a deploy does not migrate twice (gaulatti/alcantara#873). A container restart does not migrate either. Elsewhere the image's default command still migrates at start.
+The migrations run once, as their own step before the running backend is touched; the live container then starts the server only (`node dist/src/main`, under Docker's `--init` so that a stop is immediate), so a deploy does not migrate twice (gaulatti/alcantara#873). A container restart does not migrate either. Elsewhere the image's default command still migrates at start.
 
 The installed nginx site is written, and `certbot --nginx` run, only while the host has no certificate or the installed site does not use one. A site that serves TLS is never overwritten (`NGINX_SITE_KEPT`), so a change to `deploy/cumulus.nginx.conf` is **not** applied by a deploy: the deploy prints `NGINX_SITE_DRIFT: ...` for each setting the installed site lacks, and it has to be added on the host.
 
