@@ -356,6 +356,11 @@ command that repeats one is answered `duplicate: true` and airs nothing. So:
 Walk part 4 (2026-11-26) found the gap: after a Take now over a Play Next song, the engine re-sent the claim's ID at
 the next end, Palazzo aired nothing while the desk said On air with Dead air, and every watchdog resume re-sent it.
 
+In manual mode the watchdog otherwise never acts, so a claim restored after a restart whose command Palazzo answers as
+a duplicate is judged by it until Palazzo confirms the song: after Palazzo has reported nothing on the air for the
+watchdog's bound, the song is taken off air and its entry dropped, counted `restart-duplicate-dropped`. Nothing else is
+started. A duplicate answer for a song Palazzo reports playing changes nothing.
+
 ## Gapless handoff: announcing the next song
 
 Contract: gaulatti/palazzo#40. When Palazzo accepts the active song's start in
