@@ -77,3 +77,24 @@ it("keeps the sequence's own active song when none is passed, and shuffles from 
   fireEvent.click(screen.getByRole("button", { name: "Shuffle playlist" }));
   expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ mode: "shuffle" }));
 });
+
+// Walk part 4, GM's call: Autoplay's job is starting the rotation, so while nothing is on air the desk says so beside
+// it; the note goes once something plays or the rotation is already automatic, and an empty rotation has none.
+it("says Autoplay and Shuffle start the rotation now while nothing is on air", () => {
+  const { rerender } = render(
+    <PlayoutMode sequence={sequence()} activeItemId="s1" playing={false} onChange={vi.fn()} />,
+  );
+  const hint = screen.getByText("Starts the rotation now");
+  expect(screen.getByRole("button", { name: "Autoplay" })).toHaveAttribute("aria-describedby", hint.id);
+  expect(screen.getByRole("button", { name: "Shuffle playlist" })).toHaveAttribute("aria-describedby", hint.id);
+  expect(screen.getByRole("button", { name: /Loop playlist/ })).not.toHaveAttribute("aria-describedby");
+  for (const [props, why] of [
+    [{ sequence: sequence(), playing: true }, "playing"],
+    [{ sequence: sequence(undefined, { mode: "autoplay" }), playing: false }, "already automatic"],
+    [{ sequence: sequence([]), playing: false }, "empty"],
+  ] as const) {
+    rerender(<PlayoutMode {...props} activeItemId="s1" onChange={vi.fn()} />);
+    expect(screen.queryByText("Starts the rotation now"), why).toBeNull();
+    expect(screen.getByRole("button", { name: "Autoplay" })).not.toHaveAttribute("aria-describedby");
+  }
+});
