@@ -186,8 +186,12 @@ it is heard again when the microphone goes off. Every pre-listen
 and local preview on the desk (Music, Cartwall, a sounder, a guest, **Preview
 locally**) is muted too: the browser cannot tell speakers from headphones. An
 operator on headphones ticks **I'm on headphones: keep pre-fade** beside Mic on
-air, which this device remembers; the header chip says **PFL muted** or **PFL on
-headphones**.
+air (also on Guest calls), which this device remembers; the header chip says
+**PFL muted** or **PFL on headphones**. A waiting guest's private talk follows
+the same rule: while the mic is live they are not played aloud unless
+headphones are ticked, and their row says which. Only one host microphone is on
+air per show: pressing it in another tab or on another device takes it over.
+
 When a new build of the console is deployed, an open console's header offers
 **New version** with **Reload** and **Later** (it checks every minute and when
 the tab comes back). It never reloads by itself and blocks nothing, and it is
@@ -225,7 +229,7 @@ disappears, so none moves between the two presses.
 Cue live a beat before the guest speaks; air follows about 6 s later (on a radio show, the station's live input takes
 that long to come up after the cue).
 **Mic on air** in the status strip puts the operator's own microphone on the radio's air (red **ON AIR** while it is on;
-off by default, and leaving the page turns it off). While a guest or the host mic is on air with the music up, the
+off by default; it stays on while you move between console pages, and switching shows or signing out turns it off). While a guest or the host mic is on air with the music up, the
 radio desk says "Guest on air, music at full level" beside the Mixer faders: pull Music down by hand.
 A waiting guest can be admitted to their strip (**Admit**), spoken to without
 going on air (**Talk privately**, which ends with **End private talk**), or turned

@@ -14,7 +14,7 @@ For one operator running a show alone. Labels are the words on screen, spelled a
 
 2. **The guest waits.** They join from their phone, play the test tone, confirm headphones and press **Join studio**. Their page says **Waiting for the producer to let you in** and shows **Off air**. On `/calls` they appear under **Waiting**. On the console, the top strip reads "<name>: waiting".
 
-3. **Pre-fade listen.** On the console, in **Guests**, press **PFL** beside them. You hear them on this device only.
+3. **Pre-fade listen.** On the console, in **Guests**, press **PFL** beside them. You hear them on this device only. If your own mic is live you hear nothing unless you are on headphones (see step 7).
 
 4. **Admit.** On `/calls`, press **Admit** on their row. They become a live strip.
 
@@ -22,11 +22,15 @@ For one operator running a show alone. Labels are the words on screen, spelled a
 
 6. **Cue live.** Press **Cue live**, then press it again (or Space). The button keeps its place while armed. The cue line reads **Cue · live**, and the guest's page shows **You're on air** in a large red banner. Air follows about **6 seconds** after the cue (measured at 5.67 to 6.15 s), so cue a beat early.
 
-7. **Mic on air for yourself.** On `/calls`, press **Mic on air**; it turns to **ON AIR · Mic on air** while you are on air. Press it again to come off air. Leaving the page also takes you off air.
-   - If the studio takes your microphone off air (the operator action `webrtc_host_mic_off`), the page drops you off air at once, the button returns to **Mic on air**, and the message **The studio muted the host microphone. It is off air.** appears under it.
+7. **Mic on air for yourself.** Press **Mic on air**, on the radio desk's top strip or on `/calls`. It turns to **ON AIR · Mic on air**, and every page's header shows **Mic on air** with an **Off** button, so you can go back to the desk and watch the clock while you talk.
+   - It comes off air when you press it again or press **Off**, when you switch shows, or when you sign out. Moving between console pages does not turn it off.
+   - **While your mic is live the desk is quiet.** **Listen** is muted and says **Muted while your mic is live**. Every **PFL**, sounder pre-listen, **Preview locally** and waiting guest's **Talk privately** audio is muted too, because speakers would feed back into your mic.
+   - **On headphones?** Tick **I'm on headphones: keep pre-fade** beside the mic button. PFL and previews play again, this device remembers it, and the header says **PFL on headphones** instead of **PFL muted**. **Listen** stays muted either way. Untick it before you use speakers.
+   - Only one host mic is on air for a show. If you press **Mic on air** in another tab or on another device, that one takes over.
+   - If the studio takes your microphone off air (the operator action `webrtc_host_mic_off`), the console drops you off air at once, and the header shows **Mic is off air**; under the button it says **The studio muted the host microphone. It is off air.**
    - Turning your microphone on from the studio side is **not yet** possible.
 
-8. **Talkback, which never reaches air.** Hold **Hold · talk (T)** on a guest's strip (or hold T) to speak to that guest alone. It says **Talking… release to stop** while held. Only that guest hears you, in their own return. Talk never reaches the radio's air or the program. **Allow private talk while live (never on air)** only lets the button work while the guest is cued live; it does not put talk on air. For a guest not yet admitted, use **Talk privately** on their waiting row.
+8. **Talkback, which never reaches air.** Hold **Hold · talk (T)** on a guest's strip (or hold T) to speak to that guest alone. It says **Talking… release to stop** while held. Only that guest hears you, in their own return. Talk never reaches the radio's air or the program. **Allow private talk while live (never on air)** only lets the button work while the guest is cued live; it does not put talk on air. For a guest not yet admitted, use **Talk privately** on their waiting row; with your mic live you only hear them if headphones are ticked.
 
 9. **Standby and wrap.** **Standby** takes a guest off air and keeps them on the call; the cue line reads **Cue · standby** and their page shows **Off air**. To end a guest's air time, hold **Hold · cue wrap** until it says **Keep holding…** and let go; the line reads **Cue · wrap sent** and their page shows **Off air**. If a live guest drops and rejoins, the server takes them off air: the line reads **Off air · rejoined, cue again**. Cue them again when you want them back.
 
