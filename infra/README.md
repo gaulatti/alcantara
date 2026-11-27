@@ -78,6 +78,16 @@ infra/helix/return-runner-up.sh --from-container <backend-ssh-target> <ssh-targe
 
 `e2e/return-proof.mjs` proves the return from the guest's side alone: a guest joins the real page and the level of what it plays is measured (`RETURN_EXPECT=sound`, or `silence` when nothing but the guest is in the room, so its own voice would be the only thing to hear).
 
+## On-air contribution worker (cumulus)
+
+`cumulus/compose.contribution.yml` runs the station's one producer for Palazzo's live input beside Palazzo: it mixes the guests cued live and the host's `onair:host` mic from the program's call room and pushes them to Palazzo over RTMP on the `broadcast-control` network, only while someone is on air. It publishes nothing on the host and is capped at 256 MB and half a core. Palazzo must already listen on the address (its `RTMP_URL`, `rtmp://0.0.0.0:1935/live/contribution` inside its container); that is a Palazzo deploy, done once in the low-listener window.
+
+```bash
+infra/cumulus/contribution-up.sh <cumulus-ssh-target>
+```
+
+It renders the renderer key inside the running `alcantara-backend` container on the same host into a 0600 `contribution.env` (never printed, never written locally), copies the worker, builds and starts it, and waits for it to report healthy. `CONTRIBUTION_PROGRAM_ID` (default `modoitaliano.fm`), `CONTRIBUTION_RTMP_URL` (default `rtmp://palazzo:1935/live/contribution`) and `ALCANTARA_BACKEND_DOCKER` (for example `sudo docker`) change its defaults. Stop it with `docker compose -f compose.contribution.yml down` in `~/.alcantara-contribution` on cumulus; Palazzo then simply has no live input.
+
 ## Network Ports: Public vs. Private
 
 ### Public Ports (forwarded by the router to Helix)

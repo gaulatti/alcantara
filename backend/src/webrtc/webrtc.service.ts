@@ -27,6 +27,7 @@ import {
 import type { CanonicalIdentity } from '../identity/principals';
 import { PrismaService } from '../prisma.service';
 import {
+  type GuestCue,
   ManagedMetricsService,
   WEBRTC_ICE_PATHS,
   WEBRTC_JOIN_RESULTS,
@@ -716,6 +717,10 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
     const identity = this.normalizeGuestIdentity(identityValue);
     const invitation = await this.invitationForIdentity(programId, identity);
     const command = this.normalizeCommand(body);
+    // Taking a guest off air never waits on the guest's page: standby and wrap are stored before delivery, so a
+    // delivery that fails still leaves the guest off air. Live is stored only once the guest was told.
+    if (command.type === 'cue' && command.cue !== 'live')
+      await this.storeCue(invitation, command.cue);
     const persisted = await this.prisma.guestCommand.create({
       data: {
         invitationId: invitation.id,
@@ -753,6 +758,8 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
           sentAt: persisted.createdAt.toISOString(),
         });
       }
+      if (command.type === 'cue' && command.cue === 'live')
+        await this.storeCue(invitation, command.cue);
       return this.prisma.guestCommand.update({
         where: { id: persisted.id },
         data: { status: 'delivered', deliveredAt: new Date() },
@@ -806,8 +813,14 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
     this.requireConfiguration();
     this.requireRendererKey(rendererKey);
     const programId = this.normalizeProgramId(programIdValue);
-    if (roleValue !== undefined && roleValue !== 'return-router')
+    if (
+      roleValue !== undefined &&
+      roleValue !== 'return-router' &&
+      roleValue !== 'contribution'
+    )
       throw new BadRequestException('Invalid renderer role.');
+    if (roleValue === 'contribution')
+      return this.createContributionToken(programId);
     // The server-run return router has one fixed identity per program: a second instance replaces the first in
     // LiveKit, so a room never gets two sets of return mixes. Guests already accept a `return-router-` publisher.
     const identity =
@@ -839,6 +852,58 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       token: await token.toJwt(),
       roomName: this.roomName(programId),
     };
+  }
+
+  /**
+   * The on-air contribution worker (one per radio station, beside Palazzo) listens to the room: hidden, and it
+   * can neither publish nor send data. It mixes the guests cued live and the host's `onair:host` track.
+   */
+  private async createContributionToken(programId: string) {
+    const token = new AccessToken(this.apiKey, this.apiSecret, {
+      identity: `contribution-${programId}`,
+      name: `Alcantara on-air contribution ${programId}`,
+      ttl: '5m',
+      metadata: JSON.stringify({ role: 'contribution', programId }),
+    });
+    token.addGrant({
+      room: this.roomName(programId),
+      roomJoin: true,
+      canPublish: false,
+      canSubscribe: true,
+      canPublishData: false,
+      hidden: true,
+    });
+    return {
+      serverUrl: this.wsUrl,
+      token: await token.toJwt(),
+      roomName: this.roomName(programId),
+    };
+  }
+
+  /**
+   * The guests of a program who are on air right now: cued live for the session they are in, admitted, with an
+   * open invitation. Anyone else is off air, including a guest who rejoined in a new session after being cued.
+   */
+  async onAirGuests(rendererKey: string | undefined, programIdValue: unknown) {
+    this.authorizeRenderer(rendererKey);
+    const programId = this.normalizeProgramId(programIdValue);
+    const rows = await this.prisma.guestInvitation.findMany({
+      where: {
+        programId,
+        cue: 'live',
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+        admittedAt: { not: null },
+        activeSessionId: { not: null },
+      },
+      select: { id: true, activeSessionId: true, cueSessionId: true },
+    });
+    const guests = rows
+      .filter((row) => row.cueSessionId === row.activeSessionId)
+      .map((row) => this.guestIdentity(row.id))
+      .sort();
+    this.metrics.setOnAirGuests(guests.length);
+    return { programId, guests };
   }
 
   /** The program id rule every call endpoint applies, for the return router's endpoints. */
@@ -909,6 +974,11 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
         sourceGain: invitation.sourceGain,
         sourceMuted: invitation.sourceMuted,
         sourceDelayMs: invitation.sourceDelayMs,
+        onAir:
+          invitation.cue === 'live' &&
+          invitation.admittedAt !== null &&
+          invitation.activeSessionId !== null &&
+          invitation.cueSessionId === invitation.activeSessionId,
       })),
     };
   }
@@ -1406,6 +1476,18 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       )
         throw this.livekitUnavailable(error);
     }
+  }
+
+  /** Stores the operator's cue for the guest's current session; live reaches air for that session only. */
+  private async storeCue(
+    invitation: { id: string; activeSessionId: string | null },
+    cue: string,
+  ) {
+    await this.prisma.guestInvitation.update({
+      where: { id: invitation.id },
+      data: { cue, cueSessionId: invitation.activeSessionId },
+    });
+    this.metrics.recordGuestCue(cue as GuestCue);
   }
 
   private async invitationForIdentity(programId: string, identity: string) {

@@ -180,6 +180,41 @@ again every minute. For a return grant the relay drops Icecast's opening burst
 time through LiveKit; only the program bed is late. Radio guests are not in
 Palazzo's output, so the bed never carries a guest's own voice back to them.
 
+#### Putting a call on air (radio)
+
+A guest the operator cues live, and the host's own microphone, reach the station's air through Palazzo's single
+live input. The contribution worker on the station's host (`infra/cumulus/compose.contribution.yml`, started by
+`infra/cumulus/contribution-up.sh`) is the only producer for that input. It joins the program's call room as the
+hidden listener `contribution-<programId>` (`POST /webrtc/renderer-token` with `role: "contribution"`), asks
+`GET /webrtc/on-air?programId=…` (renderer key) every second which guests are on air, mixes their audio and every
+operator track named `onair:host` into one mono feed, and pushes it as AAC to Palazzo's `RTMP_URL` on the internal
+broadcast-control network. It connects to Palazzo only while someone is on air: Palazzo counts a connected input as
+live even when it is silent, and a live input holds the filler off. Talkback (`talkback:*`) never reaches air. It is
+capped at 256 MB and half a core; if it stops, Palazzo loses only the live input and music and filler carry on.
+
+The cue is stored on the invitation (`cue`, `cueSessionId`). Live reaches air only for the session it was given
+to, so a guest who rejoins in a new session starts off air, as they start unadmitted. Standby and wrap are stored
+before the guest's page is told, so a delivery that fails still takes the guest off air; live is stored only once
+the guest was told. If the backend stops answering, the worker keeps the last list for 30 seconds, then takes
+everybody off air.
+
+The desk's **Mic on air** (on `/calls`, off by default, red ON AIR while on) publishes the operator's microphone
+as `onair:host`, receivable only by the contribution worker and the return router. Switching it off, leaving the
+page or losing the room unpublishes it. Palazzo mixes the live input over the music at the music's own level
+(ducking is not automatic yet), so while its live input is on air and the music is up the radio desk shows
+"Guest on air, music at full level" beside the Mixer faders.
+
+While anyone is on air (a connected guest cued live, or `onair:host`), the return router takes the program bed out
+of every guest's return: the bed carries their voices a few seconds late. Guests keep hearing each other, their
+talkback and the host in real time through the room. Talkback is receivable only by its guest and the program's
+return router, which builds that guest's mix.
+
+Metrics: `alcantara_webrtc_guest_cues_total{cue}` and `alcantara_webrtc_on_air_guests` on the backend; on the
+worker (`:8091/metrics`, internal): `alcantara_contribution_polls_total{result}`,
+`alcantara_contribution_pushes_total{result}` (`started`, `stopped`, `failed`),
+`alcantara_contribution_room_connections_total{result}`, `alcantara_contribution_on_air_sources`,
+`alcantara_contribution_pushing` and `alcantara_contribution_room_connected`. None carries a program or guest label.
+
 Metrics: `alcantara_webrtc_return_router_polls_total{result}` (`ok`, `rejected`,
 `failure`), `alcantara_webrtc_return_routers_wanted`,
 `alcantara_webrtc_return_routers_running` (as the runner reports it, capped at 64),

@@ -30,7 +30,7 @@ describe('return router metadata', () => {
         'design:paramtypes',
         controller!.ReturnRouterController,
       ),
-    ).toEqual([Object]);
+    ).toEqual([Object, Object]);
   });
 
   it('reflects the ticket body as Record when a global Record exists', () => {

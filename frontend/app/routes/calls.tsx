@@ -10,6 +10,7 @@ import type { Route } from './+types/calls';
 import { AppPage } from '../components/AppPage';
 import { GuestStrip } from '../components/GuestStrip';
 import { WaitingGuest } from '../components/WaitingGuest';
+import { HostMicOnAir } from '../components/HostMicOnAir';
 import { callFailureReason, roomIcePath, type CallFailure, type IcePath } from '../utils/callTelemetry';
 import { deskSlots, emptySlotLabel, latestCue, stripState } from '../utils/callerDesk';
 import '../components/CallerDesk.css';
@@ -327,10 +328,12 @@ export default function CallsRoute() {
         closeTalkback();
         return;
       }
-      // Only the guest this talkback is for may receive it: LiveKit enforces subscription permissions on the server,
-      // so no other guest, and no renderer, can subscribe to it whatever their page asks for.
+      // Only the guest this talkback is for may receive it, through the return router that builds that guest's mix:
+      // LiveKit enforces subscription permissions on the server, so no other guest, no renderer and not the on-air
+      // contribution can subscribe to it whatever their page asks for.
       room.localParticipant.setTrackSubscriptionPermissions(false, [
-        { participantIdentity: participant.identity, allowAll: true }
+        { participantIdentity: participant.identity, allowAll: true },
+        { participantIdentity: `return-router-${programId}`, allowAll: true }
       ]);
       await room.localParticipant.publishTrack(track, {
         name: `talkback:${participant.invitationId}`
@@ -395,6 +398,7 @@ export default function CallsRoute() {
           <span>Room {programId}</span>
           <span>{activeInvitations.length} of 6 slots in use</span>
           <span>{livekitEnabled ? 'LiveKit connected' : 'Checking LiveKit…'}</span>
+          <HostMicOnAir programId={programId} canOperate={canOperate} />
         </section>
         {notice ? (
           <div role='status' aria-live='polite' className='mb-5 rounded-[var(--radius-ui)] border border-sea/20 bg-sea/[0.06] px-4 py-3 text-sm'>

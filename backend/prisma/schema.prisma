@@ -769,6 +769,10 @@ model GuestInvitation {
   liveSince          DateTime?
   /// Screening before air: set when the operator admits the guest; until then they wait in a room of their own.
   admittedAt         DateTime?
+  /// The operator's last cue (standby, live, wrap). Live reaches air only for the session it was given to
+  /// (cueSessionId): a new session starts off air, as it starts unadmitted.
+  cue                String         @default("standby")
+  cueSessionId       String?
   createdByIdentity  String
   /// Canonical Pompeii principal of the operator who created this invitation.
   /// Audit only. createdByIdentity is never rewritten, so historical actor

@@ -11,12 +11,16 @@ import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { Public } from '../auth/public.decorator';
 import { RequirePermission } from '../auth/require-permission.decorator';
 import { ReturnRouterService } from './return-router.service';
+import { WebrtcService } from './webrtc.service';
 
 /** The server-run return router's endpoints. Both take only the renderer key (`X-Renderer-Key`). */
 @Controller('webrtc')
 @RequirePermission(ALCANTARA_PERMISSIONS.webrtc.read)
 export class ReturnRouterController {
-  constructor(private readonly returns: ReturnRouterService) {}
+  constructor(
+    private readonly returns: ReturnRouterService,
+    private readonly webrtc: WebrtcService,
+  ) {}
 
   @Get('return-routers')
   @Public()
@@ -36,5 +40,16 @@ export class ReturnRouterController {
     @Body() body: Record<string, unknown>,
   ) {
     return this.returns.audioTicket(rendererKey, body?.programId);
+  }
+
+  /** The guests on air, for the on-air contribution worker beside Palazzo. */
+  @Get('on-air')
+  @Public()
+  @Header('Cache-Control', 'no-store')
+  onAir(
+    @Headers('x-renderer-key') rendererKey: string | undefined,
+    @Query('programId') programId: unknown,
+  ) {
+    return this.webrtc.onAirGuests(rendererKey, programId);
   }
 }

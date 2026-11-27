@@ -155,6 +155,8 @@ interface PalazzoStatus {
    * an older backend, null until Palazzo has said.
    */
   playout?: "up" | "down" | null;
+  /** Palazzo's live input (call guests and the host's mic) is on air; absent until a Palazzo that reports it. */
+  live?: { onAir: boolean };
 }
 
 interface OutputConfidence {
@@ -1281,6 +1283,13 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
               </div>
             </ConsolePanel>
             <ConsolePanel title="Mixer">
+              {/* Live voices are mixed over the music at its own level (ducking is not automatic yet), so the desk
+                  says so while the live input is on air and the music is up. */}
+              {palazzo?.live?.onAir === true && !mixer.song.muted && mixer.song.volume > 0 ? (
+                <p role="status" className="radio-live-over-music text-sm font-semibold text-terracotta">
+                  Guest on air, music at full level
+                </p>
+              ) : null}
               <div className="console-mixer">
                 <RadioMixerChannel
                   label="Music"

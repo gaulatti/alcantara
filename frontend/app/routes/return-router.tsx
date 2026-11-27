@@ -12,6 +12,8 @@ type RouteState = {
   sourceGain: number;
   sourceMuted: boolean;
   sourceDelayMs: number;
+  /** Cued live in the guest's current session (absent from an older backend: off air). */
+  onAir?: boolean;
 };
 
 type InputTrack = {
@@ -162,6 +164,11 @@ export default function ReturnRouterRoute() {
           .map((input) => input.participantIdentity)
           .filter((identity) => isProgramFeed(identity, programId))
       );
+      // While anyone is on air (a connected guest cued live, or the host's `onair:host` mic) the program bed carries
+      // their voices a few seconds late, so it leaves every return: guests hear each other and the host in real
+      // time through the room instead (mix-minus by muting the late program bed).
+      const hostOnAir = Array.from(inputs.values()).some((input) => input.participantIdentity.startsWith('operator-') && input.trackName === 'onair:host');
+      const anyoneOnAir = hostOnAir || routes.some((route) => route.onAir === true && connectedGuests.has(route.participantIdentity));
       const wanted = routes.filter((item) => connectedGuests.has(item.participantIdentity));
       const wantedNames = new Map(wanted.map((route) => [route.participantIdentity, `mixminus:${route.participantIdentity}:${route.returnAudioBus}`]));
       await Promise.all(
@@ -201,10 +208,11 @@ export default function ReturnRouterRoute() {
           const isSelectedBus = programBus
             ? input.participantIdentity === preferredProgramFeed(programId, programFeedsWithAudio)
             : input.participantIdentity === `${route.returnAudioBus}-feed-${programId}`;
+          const isHost = input.participantIdentity.startsWith('operator-') && input.trackName === 'onair:host';
           const isTargetedTalkback =
             input.participantIdentity.startsWith('operator-') &&
             (input.trackName === `talkback:${route.participantIdentity.replace(/^guest-/, '')}` || input.trackName === 'talkback:all');
-          if (isSelectedBus || isTargetedTalkback) {
+          if ((isSelectedBus && !(programBus && anyoneOnAir)) || isTargetedTalkback || isHost) {
             input.source.connect(destination);
           } else if (isOtherGuest) {
             const sourceRoute = routes.find((candidate) => candidate.participantIdentity === input.participantIdentity);
@@ -219,7 +227,7 @@ export default function ReturnRouterRoute() {
         }
         // No program feed carries audio: the program bus is the program's own audio, when the program has it.
         const programBus = route.returnAudioBus === 'master' || route.returnAudioBus === 'program';
-        if (programBus && programFeedsWithAudio.size === 0 && programAudio) programAudio.source.connect(destination);
+        if (programBus && !anyoneOnAir && programFeedsWithAudio.size === 0 && programAudio) programAudio.source.connect(destination);
       }
       if (!cancelled) {
         setMixCount(mixes.size);

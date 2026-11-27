@@ -64,6 +64,9 @@ export const WEBRTC_JOIN_RESULTS = [
 ] as const;
 /** The selected ICE path: direct over UDP or TCP, or relayed by TURN. */
 export const WEBRTC_ICE_PATHS = ['udp', 'tcp', 'relay'] as const;
+/** Operator cues stored on guests (alcantara_webrtc_guest_cues_total). */
+export const GUEST_CUES = ['standby', 'live', 'wrap'] as const;
+export type GuestCue = (typeof GUEST_CUES)[number];
 /** Return runner polls (alcantara_webrtc_return_router_polls_total). */
 export const RETURN_ROUTER_POLL_RESULTS = [
   'ok',
@@ -287,7 +290,10 @@ const SOURCE_RESULTS = new Set(['success', 'rejected', 'not-found', 'failure']);
 const PROGRAM_SSE_SNAPSHOT_RESULTS = new Set(['success', 'failure']);
 /** How a confirmed playing track's cover lookup ended (gaulatti/alcantara#179). */
 export type PlayingTrackCoverLookupResult =
-  'included' | 'absent' | 'rejected' | 'error';
+  | 'included'
+  | 'absent'
+  | 'rejected'
+  | 'error';
 /** How a filler version's preparation ended (gaulatti/alcantara#126). */
 export type FillerPreparationResult =
   | 'ready'
@@ -306,7 +312,10 @@ const FILLER_PREPARATION_RESULTS: readonly FillerPreparationResult[] = [
 ];
 /** What a television Start did with the program filler (gaulatti/alcantara#126). */
 export type FillerStartBindingResult =
-  'bound' | 'mismatch' | 'not-configured' | 'legacy-executor';
+  | 'bound'
+  | 'mismatch'
+  | 'not-configured'
+  | 'legacy-executor';
 /**
  * A template manifest member Alcantara does not know and leaves out instead of
  * refusing the template (gaulatti/ariston#217). The label is the member kind,
@@ -419,6 +428,8 @@ export class ManagedMetricsService {
   private readonly returnRoutersRunning: Gauge;
   private readonly returnRunnerLastPoll: Gauge;
   private readonly returnAudioTickets: Counter;
+  private readonly guestCues: Counter;
+  private readonly onAirGuests: Gauge;
   private readonly mcpAuth: Counter<string>;
   private readonly mcpOAuth: Counter<string>;
   private readonly mcpRequests: Counter<string>;
@@ -688,6 +699,18 @@ export class ManagedMetricsService {
       labelNames: ['result'],
       registers: [this.registry],
     });
+    this.guestCues = new Counter({
+      name: 'alcantara_webrtc_guest_cues_total',
+      help: 'Operator cues stored on call guests, by bounded cue.',
+      labelNames: ['cue'],
+      registers: [this.registry],
+    });
+    this.onAirGuests = new Gauge({
+      name: 'alcantara_webrtc_on_air_guests',
+      help: 'Call guests on air (cued live in their current session) at the last on-air contribution poll.',
+      registers: [this.registry],
+    });
+    for (const cue of GUEST_CUES) this.guestCues.labels(cue).inc(0);
     for (const result of RETURN_ROUTER_POLL_RESULTS)
       this.returnRouterPolls.labels(result).inc(0);
     for (const result of RETURN_AUDIO_TICKET_RESULTS)
@@ -1107,6 +1130,14 @@ export class ManagedMetricsService {
 
   recordReturnAudioTicket(result: ReturnAudioTicketResult): void {
     this.returnAudioTickets.labels(result).inc();
+  }
+
+  recordGuestCue(cue: GuestCue): void {
+    this.guestCues.labels(cue).inc();
+  }
+
+  setOnAirGuests(count: number): void {
+    this.onAirGuests.set(count);
   }
 
   recordProgramSseConnection(delta: 1 | -1): void {

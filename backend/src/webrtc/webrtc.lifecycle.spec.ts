@@ -823,6 +823,7 @@ describe('WebrtcService invitation/session and LiveKit boundary', () => {
           sourceGain: 1,
           sourceMuted: false,
           sourceDelayMs: 0,
+          onAir: false,
         },
       ],
     });

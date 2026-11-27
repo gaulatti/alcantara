@@ -218,6 +218,7 @@ interface RouteState {
   sourceGain: number;
   sourceMuted: boolean;
   sourceDelayMs: number;
+  onAir?: boolean;
 }
 const guestRoute = (
   identity: string,
@@ -1041,5 +1042,66 @@ describe("the router's diagnostics", () => {
     } finally {
       info.mockRestore();
     }
+  });
+});
+
+// On air: the program bed carries the voices on air a few seconds late, so it leaves every return while anyone is
+// on air; the host's on-air mic reaches every guest in real time.
+describe("while someone is on air", () => {
+  const reaches = (from: Node, to: Node, seen = new Set<Node>()): boolean =>
+    from === to || (!seen.has(from) && (seen.add(from), from.feeds.some((next) => reaches(next, to, seen))));
+
+  it("takes the program bed out of every return while a connected guest is cued live, and puts it back after", async () => {
+    routes = [guestRoute("guest-anna", { returnAudioBus: "program", onAir: true }), guestRoute("guest-cy", { returnAudioBus: "program" })];
+    await openRouter();
+    await settle();
+    room().remoteParticipants.set("guest-anna", { identity: "guest-anna" });
+    room().remoteParticipants.set("guest-cy", { identity: "guest-cy" });
+    emit("trackSubscribed", ...audioTrack("alana-feed", "t1", "program", "program-feed-main"));
+    emit("trackSubscribed", ...audioTrack("anna-mic", "t2", "mic", "guest-anna"));
+    await settle();
+    expect(reaches(sourceOf("alana-feed"), mixFor("guest-cy")!)).toBe(false);
+    expect(reaches(sourceOf("alana-feed"), mixFor("guest-anna")!)).toBe(false);
+    // Cy still hears Anna live through the room.
+    expect(reaches(sourceOf("anna-mic"), mixFor("guest-cy")!)).toBe(true);
+
+    routes = [guestRoute("guest-anna", { returnAudioBus: "program", onAir: false }), guestRoute("guest-cy", { returnAudioBus: "program" })];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    await settle();
+    expect(reaches(sourceOf("alana-feed"), mixFor("guest-cy")!)).toBe(true);
+  });
+
+  it("ignores a cue for a guest who is not connected", async () => {
+    routes = [guestRoute("guest-anna", { returnAudioBus: "program" }), guestRoute("guest-gone", { onAir: true })];
+    await openRouter();
+    await settle();
+    room().remoteParticipants.set("guest-anna", { identity: "guest-anna" });
+    emit("trackSubscribed", ...audioTrack("alana-feed", "t1", "program", "program-feed-main"));
+    await settle();
+    expect(reaches(sourceOf("alana-feed"), mixFor("guest-anna")!)).toBe(true);
+  });
+
+  it("puts the host's on-air mic in every guest's return and takes the program bed and the program audio out", async () => {
+    audioTicket = () => Response.json({ streamPath: "/radio/main/monitor-audio?ticket=t" });
+    routes = [guestRoute("guest-anna", { returnAudioBus: "master" }), guestRoute("guest-cy", { returnAudioBus: "monitor" })];
+    await openRouter();
+    await settle();
+    room().remoteParticipants.set("guest-anna", { identity: "guest-anna" });
+    room().remoteParticipants.set("guest-cy", { identity: "guest-cy" });
+    emit("participantConnected");
+    await settle();
+    const element = nodes.find((n) => n.label.startsWith("element:"))!;
+    expect(reaches(element, mixFor("guest-anna")!)).toBe(true);
+    emit("trackSubscribed", ...audioTrack("host-mic", "t9", "onair:host", "operator-desk"));
+    await settle();
+    expect(reaches(sourceOf("host-mic"), mixFor("guest-anna")!)).toBe(true);
+    expect(reaches(sourceOf("host-mic"), mixFor("guest-cy")!)).toBe(true);
+    expect(reaches(element, mixFor("guest-anna")!)).toBe(false);
+    // An operator's talkback is still only for its guest; a track named onair:host from a guest is a guest's mic.
+    emit("trackSubscribed", ...audioTrack("fake-host", "t10", "onair:host", "guest-cy"));
+    await settle();
+    expect(reaches(sourceOf("fake-host"), mixFor("guest-cy")!)).toBe(false);
   });
 });

@@ -288,7 +288,17 @@ describe('ReturnRouterController', () => {
       wantedRouters: jest.fn().mockResolvedValue({ programs: [] }),
       audioTicket: jest.fn().mockResolvedValue({}),
     };
-    const controller = new ReturnRouterController(returns as never);
+    const webrtc = {
+      onAirGuests: jest
+        .fn()
+        .mockResolvedValue({ programId: 'main', guests: [] }),
+    };
+    const controller = new ReturnRouterController(
+      returns as never,
+      webrtc as never,
+    );
+    await controller.onAir(KEY, 'main');
+    expect(webrtc.onAirGuests).toHaveBeenCalledWith(KEY, 'main');
     await controller.wanted(KEY, 'a,b');
     expect(returns.wantedRouters).toHaveBeenCalledWith(KEY, 'a,b');
     await controller.audioTicket(KEY, { programId: 'main' });

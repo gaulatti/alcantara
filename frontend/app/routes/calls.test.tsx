@@ -739,8 +739,9 @@ it("talks privately only while held, and releases the microphone when the page c
   const talk = button(/Hold · talk/);
   fireEvent.pointerDown(talk);
   await waitFor(() => expect(lk.state.rooms[0]?.published).toEqual(["talkback:inv-1"]));
-  // Only Ada may receive this talkback, set before the track is published.
-  expect(lk.state.rooms[0].allowed).toEqual([{ all: false, identities: ["guest-ada"], beforePublish: true }]);
+  // Only Ada may receive this talkback, through the program's return router that builds her mix, set before the
+  // track is published.
+  expect(lk.state.rooms[0].allowed).toEqual([{ all: false, identities: ["guest-ada", "return-router-main show"], beforePublish: true }]);
   expect(bodyOf(calls, "/webrtc/operator-token")).toEqual({ programId: "main show" });
   expect(lk.state.rooms[0].connectedTo).toEqual(["wss://livekit.example", "fictional-operator-token"]);
   expect(button(/Talking… release to stop/)).toHaveAttribute("aria-pressed", "true");

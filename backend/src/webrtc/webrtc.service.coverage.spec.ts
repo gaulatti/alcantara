@@ -1462,6 +1462,7 @@ describe('WebrtcService coverage', () => {
             sourceGain: 0.7,
             sourceMuted: true,
             sourceDelayMs: 15,
+            onAir: false,
           },
         ],
       });

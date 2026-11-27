@@ -2558,3 +2558,39 @@ it("keeps Stop the song on air working while the rotation-load error is shown", 
   await hold(screen.getByRole("button", { name: "Stop the song on air" }));
   await waitFor(() => expect(p.onTakeOffAir).toHaveBeenCalledOnce());
 });
+
+// Calls on air: a live voice is mixed over the music at its own level, so the desk says so beside the faders.
+describe("a live voice over the music", () => {
+  const withLive = (onAir: boolean | undefined) => {
+    const p = props();
+    p.fixtureData = {
+      ...p.fixtureData!,
+      palazzo: { ...p.fixtureData!.palazzo, ...(onAir === undefined ? {} : { live: { onAir } }) },
+    };
+    return p;
+  };
+  const banner = () => screen.queryByText("Guest on air, music at full level");
+
+  it("says a guest is on air over the music while Palazzo's live input is on air and the music is up", () => {
+    mount(withLive(true));
+    expect(banner()).toBeVisible();
+    expect(banner()).toHaveAttribute("role", "status");
+  });
+
+  it("says nothing when the live input is off air, unreported, or the music is already down or muted", () => {
+    for (const p of [withLive(false), withLive(undefined)]) {
+      mount(p);
+      expect(banner()).toBeNull();
+      cleanup();
+    }
+    const muted = withLive(true);
+    muted.mixer = { ...muted.mixer, song: { ...muted.mixer.song, muted: true } };
+    mount(muted);
+    expect(banner()).toBeNull();
+    cleanup();
+    const down = withLive(true);
+    down.mixer = { ...down.mixer, song: { ...down.mixer.song, volume: 0 } };
+    mount(down);
+    expect(banner()).toBeNull();
+  });
+});
