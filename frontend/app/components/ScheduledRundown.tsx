@@ -318,36 +318,11 @@ export default function ScheduledRundown({
     }
   };
 
-  // ⌘↵: save, Check on that revision, and publish only when Check passes.
-  const checkAndPublish = async () => {
-    /* v8 ignore next -- checkAndPublish() is reached only from the ⌘↵ shortcut and the check button, both gated on canPublish, which requires a selected log; this guard is defensive. */
-    if (!selected) return;
-    setBusy(true);
-    setError(null);
-    let updated: FlightSequence;
-    try {
-      updated = dirty ? await save() : selected;
-      const result = await preflightFlightSequence(programId, updated.id);
-      setPreflight({
-        ...result,
-        forRevision: `${updated.id}:${updated.revision}`,
-      });
-      if (!result.ready) return;
-    } catch (cause) {
-      setError(message(cause));
-      return;
-    } finally {
-      setBusy(false);
-    }
-    await publish(updated);
-  };
   // Publishing a block that overruns a fixed start asks first, naming the loss.
-  const [overrunAsk, setOverrunAsk] = useState<"publish" | "check" | null>(
-    null,
-  );
-  const requestPublish = (mode: "publish" | "check") => {
-    if (layout.overrunMs > 0) setOverrunAsk(mode);
-    else void (mode === "check" ? checkAndPublish() : publish());
+  const [overrunAsk, setOverrunAsk] = useState(false);
+  const requestPublish = () => {
+    if (layout.overrunMs > 0) setOverrunAsk(true);
+    else void publish();
   };
 
   const updateItem = (index: number, patch: Partial<FlightCue>) => {
@@ -422,7 +397,7 @@ export default function ScheduledRundown({
     const shortcut = (event: KeyboardEvent) => {
       if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey)) return;
       event.preventDefault();
-      if (canPublish) requestPublish("check");
+      if (selected && !busy && !fixtureData) void check();
     };
     window.addEventListener("keydown", shortcut);
     return () => window.removeEventListener("keydown", shortcut);
@@ -448,7 +423,6 @@ export default function ScheduledRundown({
       <header className="rundown-toolbar">
         <div>
           <h1>Rundown</h1>
-          <p>{programId} · Scheduled content and fillers</p>
         </div>
         <div className="rundown-hour-select">
           <div>
@@ -489,12 +463,7 @@ export default function ScheduledRundown({
         <div>
           <span className="console-eyebrow">24/7</span>
           <strong>Continuous fillers</strong>
-          <p>
-            {rotationCount === null
-              ? "Your saved rotation runs independently of timed blocks."
-              : `${rotationCount} saved songs · runs independently of timed blocks.`}{" "}
-            No hourly schedules required.
-          </p>
+          {rotationCount !== null && <p>{rotationCount} saved songs</p>}
         </div>
         <Link to="/control" className="max-sm:inline-flex max-sm:min-h-11 max-sm:items-center max-sm:-my-[13px]">Manage rotation & live controls</Link>
       </section>
@@ -506,7 +475,7 @@ export default function ScheduledRundown({
               <p>
                 {selected
                   ? `${selected.isRunning ? "ON AIR" : selected.lastStartedAt ? "AIRED / INTERRUPTED" : selected.publishedAt ? "PUBLISHED" : "DRAFT"} · Revision ${selected.revision} · ${items.length} events${dirty ? " · Unsaved changes" : ""}`
-                  : "Continuous fillers run independently. Create a block only for timed content."}
+                  : ""}
               </p>
               {!!selected && (
                 <p>
@@ -554,19 +523,9 @@ export default function ScheduledRundown({
                 size="xs"
                 variant="secondary"
                 disabled={!canPublish}
-                onClick={() => requestPublish("publish")}
+                onClick={() => requestPublish()}
               >
                 Publish
-              </Button>
-              <Button
-                size="xs"
-                // Disabled, the primary blue still read as the action to take (the walk's polish).
-                variant={canPublish ? "primary" : "secondary"}
-                disabled={!canPublish}
-                title="Save, check this revision and publish only if the check passes"
-                onClick={() => requestPublish("check")}
-              >
-                Check &amp; publish <kbd className="rundown-kbd">⌘↵</kbd>
               </Button>
             </div>
           </div>
@@ -663,11 +622,7 @@ export default function ScheduledRundown({
           ) : (
             <div className="rundown-empty">
               <Clock3 size={28} className="mx-auto mb-3" />
-              <strong>Timed content interrupts continuous fillers</strong>
-              <p>
-                Your filler rotation needs no scheduled blocks. Add a block for
-                news, a show, or other timed content.
-              </p>
+              <strong>No timed block selected</strong>
             </div>
           )}
           <div className="rundown-insert">
@@ -695,7 +650,7 @@ export default function ScheduledRundown({
               [
                 ["event", "Event"],
                 ["fillers", "Fillers"],
-                ["build", "Build block"],
+                ["build", "Build"],
               ] as const
             ).map(([id, label]) => (
               <TooltipButton
@@ -920,14 +875,6 @@ export default function ScheduledRundown({
               ) : (
                 <>
                   <h2 className="mt-2">Select an event</h2>
-                  <p className="rundown-inspector-note">
-                    Read the block in the log. Select a row to change its
-                    source, fixed start, clip duration, or voice track.
-                  </p>
-                  <p className="rundown-inspector-note">
-                    Fixed starts are marked with a clock. Estimated starts
-                    follow the previous event’s actual end.
-                  </p>
                 </>
               ))}
           </div>
@@ -957,8 +904,8 @@ export default function ScheduledRundown({
         </Button>
       </Modal>
       <Modal
-        isOpen={overrunAsk !== null}
-        onClose={() => setOverrunAsk(null)}
+        isOpen={overrunAsk}
+        onClose={() => setOverrunAsk(false)}
         title="This block overruns a fixed start"
       >
         <p className="rundown-inspector-note" role="alert">
@@ -970,7 +917,7 @@ export default function ScheduledRundown({
           <Button
             size="xs"
             variant="secondary"
-            onClick={() => setOverrunAsk(null)}
+            onClick={() => setOverrunAsk(false)}
           >
             Keep editing
           </Button>
@@ -979,9 +926,8 @@ export default function ScheduledRundown({
             variant="destructive"
             disabled={busy}
             onClick={() => {
-              const mode = overrunAsk;
-              setOverrunAsk(null);
-              void (mode === "check" ? checkAndPublish() : publish());
+              setOverrunAsk(false);
+              void publish();
             }}
           >
             Publish anyway

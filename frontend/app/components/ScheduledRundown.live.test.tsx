@@ -263,7 +263,7 @@ it("loads the scheduled block, every page of the song catalog and the rotation s
     fetchMock.mock.calls.some(([url]) => String(url).includes("/songs?page=2")),
   ).toBe(true);
   expect(
-    await screen.findByText(/3 saved songs · runs independently/),
+    await screen.findByText("3 saved songs"),
   ).toBeVisible();
   expect(eventRows(table)[0]).toHaveTextContent("Harbor Light");
   expect(eventRows(table)[1]).toHaveTextContent("Station ident");
@@ -275,9 +275,6 @@ it("loads the scheduled block, every page of the song catalog and the rotation s
   expect(within(blocks).getAllByRole("option")[1].textContent).not.toMatch(/\b(AM|PM)\b/);
   expect(screen.getByText(/DRAFT · Revision 3 · 2 events/)).toBeVisible();
   expect(screen.getByText(/0 fillers · 00:00 unfilled/)).toBeVisible();
-  expect(screen.getByRole("button", { name: /Check & publish/ })).toHaveClass(
-    "bg-sea",
-  );
 });
 
 it("tolerates an empty rotation and library payloads that are not lists", async () => {
@@ -285,7 +282,7 @@ it("tolerates an empty rotation and library payloads that are not lists", async 
   renderRundown();
   const table = await openBlock();
   expect(
-    await screen.findByText(/0 saved songs · runs independently/),
+    await screen.findByText("0 saved songs"),
   ).toBeVisible();
   // Without the catalog the song is unknown and the clip cannot be resolved.
   expect(eventRows(table)[0]).toHaveTextContent("Choose song");
@@ -314,19 +311,12 @@ it("shows how to start when the program has no scheduled block", async () => {
   stubLibrary();
   vi.mocked(fetchFlightSequences).mockResolvedValue([]);
   renderRundown();
-  expect(
-    await screen.findByText("Timed content interrupts continuous fillers"),
-  ).toBeVisible();
+  expect(await screen.findByText("No timed block selected")).toBeVisible();
   expect(
     screen.queryByRole("listbox", { name: "Library items" }),
   ).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Check" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
-  // Disabled, Check & publish no longer wears the primary styling (the walk's polish).
-  const checkAndPublish = screen.getByRole("button", { name: /Check & publish/ });
-  expect(checkAndPublish).toBeDisabled();
-  expect(checkAndPublish).not.toHaveClass("bg-sea");
-  expect(checkAndPublish).toHaveClass("bg-white");
 });
 
 it("creates a draft block only for a future start", async () => {
@@ -913,7 +903,7 @@ it("applies filler previews and built blocks from the inspector tools", async ()
     "true",
   );
 
-  fireEvent.click(screen.getByRole("button", { name: "Build block" }));
+  fireEvent.click(screen.getByRole("button", { name: "Build" }));
   fireEvent.click(
     screen.getByRole("button", { name: "Generate for Morning news" }),
   );
@@ -975,9 +965,7 @@ it("opens fixture data without a block", async () => {
       <ScheduledRundown fixtureData={{ logs: [], songs: [], clips: [] }} />
     </MemoryRouter>,
   );
-  expect(
-    await screen.findByText("Timed content interrupts continuous fillers"),
-  ).toBeVisible();
+  expect(await screen.findByText("No timed block selected")).toBeVisible();
   expect(fetchFlightSequences).not.toHaveBeenCalled();
 });
 
@@ -1001,7 +989,7 @@ it("gives the fillers and build tools the fixture's own tag without loading any"
   ).toBeInTheDocument();
   // A fixture block is never sent to the filler service.
   expect(screen.getByRole("combobox", { name: "Filler tag" })).toBeDisabled();
-  fireEvent.click(screen.getByRole("button", { name: "Build block" }));
+  fireEvent.click(screen.getByRole("button", { name: "Build" }));
   expect(
     screen.getByRole("button", { name: "Generate for nothing" }),
   ).toBeVisible();

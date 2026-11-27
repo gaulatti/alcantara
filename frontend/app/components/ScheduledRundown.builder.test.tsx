@@ -532,7 +532,7 @@ it("warns before publishing a block whose content overruns a fixed start", async
   expect(preflightFlightSequence).toHaveBeenCalledWith("radio-demo", 7);
 });
 
-it("checks and publishes with ⌘↵ only when the check passes on the saved revision", async () => {
+it("Check and the ⌘↵ shortcut only check the saved revision; Publish is the one control that publishes", async () => {
   stubLibrary();
   vi.mocked(updateFlightSequence).mockImplementation(
     async (_program, id, body) => block({ id, revision: 4, items: body.items }),
@@ -556,30 +556,28 @@ it("checks and publishes with ⌘↵ only when the check passes on the saved rev
   expect(preflightFlightSequence).toHaveBeenCalledWith("radio-demo", 7);
   expect(publishFlightSequence).not.toHaveBeenCalled();
 
-  fireEvent.keyDown(window, { key: "Enter" });
-  expect(preflightFlightSequence).toHaveBeenCalledTimes(1);
-  fireEvent.click(screen.getByRole("button", { name: /Check & publish/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Check" }));
+  await waitFor(() => expect(preflightFlightSequence).toHaveBeenCalledTimes(2));
+  expect(publishFlightSequence).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole("button", { name: "Publish" }));
   expect(
     await screen.findByText("Rundown published for automatic start."),
   ).toBeVisible();
-  // The saved revision is checked and published; nothing is saved twice.
   expect(updateFlightSequence).toHaveBeenCalledTimes(1);
   expect(publishFlightSequence).toHaveBeenCalledWith("radio-demo", 7, 4);
   expect(screen.getByText(/PUBLISHED · Revision 5/)).toBeVisible();
-  // A published block that has aired can no longer be published.
-  fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
-  expect(publishFlightSequence).toHaveBeenCalledTimes(1);
 });
 
-it("checks and publishes an overrunning block only after the warning, and reports a failure", async () => {
+it("publishes an overrunning block only after the warning, and reports a failure", async () => {
   stubLibrary();
   vi.mocked(fetchFlightSequences).mockResolvedValue([overrunning()]);
-  vi.mocked(preflightFlightSequence).mockRejectedValue(
+  vi.mocked(publishFlightSequence).mockRejectedValueOnce(
     new Error("Palazzo unavailable"),
   );
   renderRundown();
   await openBlock();
-  fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
+  fireEvent.click(screen.getByRole("button", { name: "Publish" }));
   fireEvent.click(
     within(await screen.findByRole("dialog")).getByRole("button", {
       name: "Publish anyway",
@@ -588,7 +586,7 @@ it("checks and publishes an overrunning block only after the warning, and report
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Palazzo unavailable",
   );
-  expect(publishFlightSequence).not.toHaveBeenCalled();
+  expect(publishFlightSequence).toHaveBeenCalledTimes(1);
 });
 
 it("edits raw cue parameters behind Advanced and removes an emptied one", async () => {
@@ -711,10 +709,11 @@ it("pins an event with no estimated start at 00:00", async () => {
   expect(screen.getByText(/Unsaved changes/)).toBeVisible();
 });
 
-it("runs the Check shortcut on Ctrl+Enter, and dismisses the overrun warning with Escape", async () => {
+it("dismisses the overrun warning with Escape, and Ctrl+Enter only checks", async () => {
   stubLibrary();
   vi.mocked(fetchFlightSequences).mockResolvedValue([overrunning()]);
   vi.mocked(publishFlightSequence).mockClear();
+  vi.mocked(preflightFlightSequence).mockClear();
   renderRundown();
   await openBlock();
 
@@ -725,11 +724,9 @@ it("runs the Check shortcut on Ctrl+Enter, and dismisses the overrun warning wit
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(publishFlightSequence).not.toHaveBeenCalled();
 
-  // Ctrl+Enter asks the same warning first, for a check rather than a publish.
+  // Ctrl+Enter runs the check straight away: no warning, no publish.
   fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
-  const checkDialog = await screen.findByRole("dialog");
-  expect(within(checkDialog).getByRole("alert")).toHaveTextContent(
-    "00:30 of content is cut at the next fixed start",
-  );
+  await waitFor(() => expect(preflightFlightSequence).toHaveBeenCalledTimes(1));
+  expect(screen.queryByRole("dialog")).toBeNull();
   expect(publishFlightSequence).not.toHaveBeenCalled();
 });
