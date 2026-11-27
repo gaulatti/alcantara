@@ -153,6 +153,13 @@ export async function resetFlight(
   return res.json();
 }
 
+/** The event a preflight issue or warning is about: its 1-based place, the name the desk shows, and why. */
+export interface PreflightEvent {
+  item: number;
+  name: string;
+  reason: string;
+}
+
 export async function preflightFlightSequence(
   targetProgramId: string,
   sequenceId: number,
@@ -160,6 +167,9 @@ export async function preflightFlightSequence(
   ready: boolean;
   issues: string[];
   warnings: string[];
+  /** One per issue and per warning, in order: the event it is about, or null for the whole block; absent from an older backend. */
+  issueEvents?: Array<PreflightEvent | null>;
+  warningEvents?: Array<PreflightEvent | null>;
   /** Whether the show's radio can air the block; absent from an older backend. */
   engine?: "ready" | "not-configured" | "disabled" | "not-radio";
 }> {

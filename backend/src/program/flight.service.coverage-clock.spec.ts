@@ -612,15 +612,23 @@ describe('FlightService clocked preflight', () => {
       ready: true,
       issues: [],
       warnings: [],
+      issueEvents: [],
+      warningEvents: [],
       engine: 'ready',
     });
     expect(prisma.song.findMany).toHaveBeenCalledWith({
       where: { id: { in: [1] } },
-      select: { id: true, enabled: true, audioUrl: true, durationMs: true },
+      select: {
+        id: true,
+        enabled: true,
+        audioUrl: true,
+        durationMs: true,
+        title: true,
+      },
     });
     expect(prisma.instant.findMany).toHaveBeenCalledWith({
       where: { id: { in: [7] } },
-      select: { id: true, enabled: true, audioUrl: true },
+      select: { id: true, enabled: true, audioUrl: true, name: true },
     });
   });
 
@@ -672,6 +680,8 @@ describe('FlightService clocked preflight', () => {
       ready: false,
       issues: ['Item 2: audio clip unavailable'],
       warnings: [],
+      issueEvents: [null],
+      warningEvents: [],
       engine: 'ready',
     });
   });
@@ -688,6 +698,8 @@ describe('FlightService clocked preflight', () => {
       ready: true,
       issues: [],
       warnings: ['Item 1: song duration unknown'],
+      issueEvents: [],
+      warningEvents: [null],
       engine: 'ready',
     });
   });
@@ -727,8 +739,78 @@ describe('FlightService clocked preflight', () => {
       ready: true,
       issues: [],
       warnings: [],
+      issueEvents: [],
+      warningEvents: [],
       engine: 'ready',
     });
+  });
+});
+
+describe('FlightService clocked preflight event names', () => {
+  it('names the event of each issue and warning by its label, else its song or clip, in the same order', async () => {
+    const { internals, prisma } = harness();
+    prisma.song.findMany.mockResolvedValue([
+      { ...playable, durationMs: null, title: ' Harbor Light ' },
+      { ...playable, id: 2, enabled: false, title: 'Gone' },
+    ]);
+    prisma.instant.findMany.mockResolvedValue([
+      { id: 7, enabled: false, audioUrl: 'x', name: 'Station ident' },
+    ]);
+    const result = await internals.preflightClockItems(
+      'radio-1',
+      [
+        { id: 'a', kind: 'playSong', songId: 1, clockOffsetSeconds: 0 },
+        { id: 'b', kind: 'playSong', songId: 2, label: '  Top story  ' },
+        { id: 'c', kind: 'instant', instantId: 7 },
+        { id: 'd', kind: 'playSong', songId: 1, clockOffsetSeconds: 300 },
+      ],
+      {
+        scheduledAt: new Date('2026-11-26T18:00:00Z'),
+        rotationMode: null,
+        hasFollowingBlock: false,
+      },
+    );
+    // The strings stay as they were; the events sit beside them, one per entry.
+    expect(result.issues).toEqual([
+      'Item 2: song unavailable',
+      'Item 3: audio clip unavailable',
+    ]);
+    expect(result.issueEvents).toEqual([
+      { item: 2, name: 'Top story', reason: 'song unavailable' },
+      { item: 3, name: 'Station ident', reason: 'audio clip unavailable' },
+    ]);
+    expect(result.warnings).toEqual([
+      'Item 1: song duration unknown',
+      'Item 4: song duration unknown',
+      'May be cut by the fixed start at 18:05.',
+    ]);
+    expect(result.warningEvents).toEqual([
+      { item: 1, name: 'Harbor Light', reason: 'song duration unknown' },
+      { item: 4, name: 'Harbor Light', reason: 'song duration unknown' },
+      {
+        item: 4,
+        name: 'Harbor Light',
+        reason: 'May be cut by the fixed start at 18:05.',
+      },
+    ]);
+  });
+
+  it('gives a warning about the whole block no event', async () => {
+    const { internals, prisma } = harness();
+    prisma.song.findMany.mockResolvedValue([
+      { ...playable, durationMs: 180_000, title: 'Harbor Light' },
+    ]);
+    const result = await internals.preflightClockItems(
+      'radio-1',
+      [{ id: 'a', kind: 'playSong', songId: 1, clockOffsetSeconds: 0 }],
+      {
+        scheduledAt: new Date('2026-11-26T18:00:00Z'),
+        rotationMode: 'manual',
+        hasFollowingBlock: false,
+      },
+    );
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warningEvents).toEqual([null]);
   });
 });
 

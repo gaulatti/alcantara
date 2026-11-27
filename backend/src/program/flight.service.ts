@@ -272,6 +272,13 @@ function deepPatch(
   return result;
 }
 
+/** The event a preflight issue or warning is about: its 1-based place, the name the desk shows, and why. */
+export interface PreflightEvent {
+  item: number;
+  name: string;
+  reason: string;
+}
+
 @Injectable()
 export class FlightService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(FlightService.name);
@@ -806,6 +813,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
               enabled: true,
               audioUrl: true,
               durationMs: true,
+              title: true,
             },
           })
         : [];
@@ -813,7 +821,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       readSongs(),
       this.prisma.instant.findMany({
         where: { id: { in: instantIds } },
-        select: { id: true, enabled: true, audioUrl: true },
+        select: { id: true, enabled: true, audioUrl: true, name: true },
       }),
       radioEngineReadiness(this.prisma, programId),
     ]);
@@ -825,34 +833,75 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     // Warnings never block a start: a song of unknown length still plays, but
     // the block's later times are estimates around it.
     const warnings: string[] = [];
+    // Additive, one entry per issue and per warning in the same order: the event it is about, by the name the desk
+    // shows (its label, else the song or clip), or null for one about the whole block. The strings are unchanged.
+    const issueEvents: Array<PreflightEvent | null> = [];
+    const warningEvents: Array<PreflightEvent | null> = [];
+    const eventOf = (index: number, reason: string): PreflightEvent | null => {
+      const cue = items[index];
+      const name =
+        cue.label?.trim() ||
+        (cue.songId ? playableSongs.get(cue.songId)?.title?.trim() : '') ||
+        (cue.instantId
+          ? playableInstants.get(cue.instantId)?.name?.trim()
+          : '') ||
+        '';
+      return name ? { item: index + 1, name, reason } : null;
+    };
+    const issue = (index: number, reason: string) => {
+      issues.push(`Item ${index + 1}: ${reason}`);
+      issueEvents.push(eventOf(index, reason));
+    };
     for (const [index, cue] of items.entries()) {
       if (cue.songId) {
         const song = playableSongs.get(cue.songId);
         if (!song?.enabled || !song.audioUrl.trim())
-          issues.push(`Item ${index + 1}: song unavailable`);
-        else if (song.durationMs == null)
+          issue(index, 'song unavailable');
+        else if (song.durationMs == null) {
           warnings.push(`Item ${index + 1}: song duration unknown`);
+          warningEvents.push(eventOf(index, 'song duration unknown'));
+        }
       }
       for (const id of [cue.instantId, cue.voiceTrackInstantId]) {
         if (!id) continue;
         const instant = playableInstants.get(id);
         if (!instant?.enabled || !instant.audioUrl.trim())
-          issues.push(`Item ${index + 1}: audio clip unavailable`);
+          issue(index, 'audio clip unavailable');
       }
     }
     if (timing)
-      warnings.push(...this.clockTimingWarnings(items, playableSongs, timing));
+      for (const timed of this.clockTimingWarnings(
+        items,
+        playableSongs,
+        timing,
+      )) {
+        warnings.push(timed.message);
+        warningEvents.push(
+          timed.index === null ? null : eventOf(timed.index, timed.message),
+        );
+      }
     // A block whose show's radio is not set up, or is off, would air nothing: say so, without blocking, since the
     // engine may be set up before the block starts (the rundown-building walk; GM's decision D1).
-    if (engine === 'not-configured')
+    if (engine === 'not-configured') {
       warnings.push(
         "Radio isn't set up for this show: set it up in Radio distribution before the block starts",
       );
-    else if (engine === 'disabled')
+      warningEvents.push(null);
+    } else if (engine === 'disabled') {
       warnings.push(
         'Radio is off for this show: turn it on in Radio distribution before the block starts',
       );
-    return { programId, ready: issues.length === 0, issues, warnings, engine };
+      warningEvents.push(null);
+    }
+    return {
+      programId,
+      ready: issues.length === 0,
+      issues,
+      warnings,
+      issueEvents,
+      warningEvents,
+      engine,
+    };
   }
 
   /**
@@ -868,21 +917,22 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       rotationMode: string | null;
       hasFollowingBlock: boolean;
     },
-  ): string[] {
+  ): Array<{ message: string; index: number | null }> {
     const clock = (seconds: number) =>
       new Date(timing.scheduledAt.getTime() + seconds * 1000)
         .toISOString()
         .slice(11, 16);
-    const warnings: string[] = [];
+    const warnings: Array<{ message: string; index: number | null }> = [];
     let cursor = 0;
     let endKnown = true;
     const unknownBefore: boolean[] = [];
-    for (const cue of items) {
+    for (const [index, cue] of items.entries()) {
       const start = cue.clockOffsetSeconds ?? cursor;
       if (cue.clockOffsetSeconds !== undefined && unknownBefore.some(Boolean)) {
-        warnings.push(
-          `May be cut by the fixed start at ${clock(cue.clockOffsetSeconds)}.`,
-        );
+        warnings.push({
+          message: `May be cut by the fixed start at ${clock(cue.clockOffsetSeconds)}.`,
+          index,
+        });
       }
       let duration: number | null = 0;
       if (cue.songId) {
@@ -902,9 +952,10 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       timing.rotationMode === 'manual' &&
       !timing.hasFollowingBlock
     ) {
-      warnings.push(
-        `After this block nothing is scheduled and the rotation is Manual: the station goes silent at ${clock(cursor)}.`,
-      );
+      warnings.push({
+        message: `After this block nothing is scheduled and the rotation is Manual: the station goes silent at ${clock(cursor)}.`,
+        index: null,
+      });
     }
     return warnings;
   }

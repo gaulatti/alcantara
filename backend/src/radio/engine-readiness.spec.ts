@@ -95,6 +95,9 @@ describe('clock preflight and the show radio', () => {
         ready: true,
         issues: [],
         warnings: [warning],
+        issueEvents: [],
+        // A warning about the whole show names no event.
+        warningEvents: [null],
         engine,
       });
     },
@@ -108,6 +111,8 @@ describe('clock preflight and the show radio', () => {
       ready: true,
       issues: [],
       warnings: [],
+      issueEvents: [],
+      warningEvents: [],
       engine: 'ready',
     });
   });

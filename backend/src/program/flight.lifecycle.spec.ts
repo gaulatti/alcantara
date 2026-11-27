@@ -894,6 +894,8 @@ describe('FlightService public lifecycle and clock boundary', () => {
       ready: true,
       issues: [],
       warnings: [],
+      issueEvents: [],
+      warningEvents: [],
       engine: 'ready',
     });
     const published = await f.service.publishFlightSequence('news', 7, 1);
@@ -936,6 +938,9 @@ describe('FlightService public lifecycle and clock boundary', () => {
         'Item 2: audio clip unavailable',
       ],
       warnings: [],
+      // The rows carry no label and the catalog rows no name, so no event can be named.
+      issueEvents: [null, null, null],
+      warningEvents: [],
       engine: 'ready',
     });
     await expect(f.service.publishFlightSequence('news', 7, 1)).rejects.toThrow(

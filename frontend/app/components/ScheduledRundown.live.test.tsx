@@ -456,6 +456,36 @@ it("reports a save failure and keeps the edits", async () => {
   expect(screen.getByText(/Unsaved changes/)).toBeVisible();
 });
 
+it("names the event of each preflight line, and keeps the backend's text for one about the whole block", async () => {
+  stubLibrary();
+  vi.mocked(preflightFlightSequence).mockResolvedValueOnce({
+    ready: false,
+    issues: ["Item 1: song unavailable"],
+    warnings: [
+      "Item 2: song duration unknown",
+      "Radio is off for this show: turn it on in Radio distribution before the block starts",
+    ],
+    issueEvents: [{ item: 1, name: "Harbor Light", reason: "song unavailable" }],
+    warningEvents: [
+      { item: 2, name: "Station ident", reason: "song duration unknown" },
+      null,
+    ],
+  });
+  renderRundown();
+  await openBlock();
+  fireEvent.click(screen.getByRole("button", { name: "Check" }));
+  const warnings = await screen.findByRole("list", { name: "Preflight warnings" });
+  expect(within(warnings).getAllByRole("listitem")[0]).toHaveTextContent(
+    /^Station ident: song duration unknown$/,
+  );
+  expect(within(warnings).getAllByRole("listitem")[1]).toHaveTextContent(
+    "Radio is off for this show",
+  );
+  expect(
+    screen.getByText("Harbor Light", { selector: "strong" }).closest("li"),
+  ).toHaveTextContent(/^Harbor Light: song unavailable$/);
+});
+
 it("shows preflight warnings without blocking a ready block (unknown song durations)", async () => {
   stubLibrary();
   vi.mocked(preflightFlightSequence).mockResolvedValueOnce({

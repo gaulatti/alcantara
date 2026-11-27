@@ -49,6 +49,7 @@ import {
   preflightFlightSequence,
   publishFlightSequence,
   updateFlightSequence,
+  type PreflightEvent,
 } from "../services/flight";
 import { apiUrl } from "../utils/apiBaseUrl";
 import { useGlobalProgramId } from "../utils/globalProgram";
@@ -95,6 +96,8 @@ export default function ScheduledRundown({
     ready: boolean;
     issues: string[];
     warnings: string[];
+    issueEvents?: Array<PreflightEvent | null>;
+    warningEvents?: Array<PreflightEvent | null>;
     engine?: "ready" | "not-configured" | "disabled" | "not-radio";
     forRevision?: string;
   } | null>(null);
@@ -254,7 +257,7 @@ export default function ScheduledRundown({
       if (result.ready) {
         const notSetUp =
           result.engine === "not-configured" || result.engine === "disabled";
-        // The warnings sit below the block; the toast says they are there (B2).
+        // The warnings sit under the block actions; the toast says they are there (B2).
         const others = result.warnings.length - (notSetUp ? 1 : 0);
         const more =
           others > 0
@@ -584,8 +587,13 @@ export default function ScheduledRundown({
                     <AlertTriangle size={13} /> Needs attention
                   </span>
                   <ul>
-                    {preflight.issues.map((issue) => (
-                      <li key={issue}>{issue}</li>
+                    {preflight.issues.map((issue, index) => (
+                      <li key={issue}>
+                        <PreflightLine
+                          text={issue}
+                          event={preflight.issueEvents?.[index]}
+                        />
+                      </li>
                     ))}
                   </ul>
                 </div>
@@ -596,8 +604,13 @@ export default function ScheduledRundown({
                     <AlertTriangle size={13} /> Check before air
                   </span>
                   <ul aria-label="Preflight warnings">
-                    {preflight.warnings.map((warning) => (
-                      <li key={warning}>{warning}</li>
+                    {preflight.warnings.map((warning, index) => (
+                      <li key={warning}>
+                        <PreflightLine
+                          text={warning}
+                          event={preflight.warningEvents?.[index]}
+                        />
+                      </li>
                     ))}
                   </ul>
                 </div>
@@ -1004,5 +1017,21 @@ export default function ScheduledRundown({
         ) : null}
       </Modal>
     </main>
+  );
+}
+
+/** A preflight line by the event's name, as the log shows it; the backend's text when it names no event. */
+function PreflightLine({
+  text,
+  event,
+}: {
+  text: string;
+  event?: PreflightEvent | null;
+}) {
+  if (!event) return <>{text}</>;
+  return (
+    <span title={text}>
+      <strong>{event.name}</strong>: {event.reason}
+    </span>
   );
 }
