@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { proven, toneReport } from "./onair-proof.mjs";
+import { DECODE_ATTEMPTS, proven, toneReport, withRetries } from "./onair-proof.mjs";
 
 const RATE = 44_100;
 // Music-like material: several moving partials and noise, some of them near the tone.
@@ -57,3 +57,31 @@ test("passes only on absent, then present, then absent", () => {
   assert.equal(proven(no, yes, no), false);
   assert.equal(toneReport(new Float32Array(0), RATE, 1000).absent, false);
 });
+
+test("a stream chunk that does not decode is retried with a fresh capture, and only every try failing fails", async () => {
+  let calls = 0;
+  const failures = [];
+  const value = await withRetries(
+    async () => {
+      calls += 1;
+      if (calls < 2) throw new Error("EncodingError: Unable to decode audio data");
+      return "measured";
+    },
+    DECODE_ATTEMPTS,
+    (error, attempt) => failures.push([attempt, error.message]),
+  );
+  assert.equal(value, "measured");
+  assert.equal(calls, 2);
+  assert.deepEqual(failures, [[1, "EncodingError: Unable to decode audio data"]]);
+
+  let tries = 0;
+  await assert.rejects(
+    withRetries(async () => {
+      tries += 1;
+      throw new Error("EncodingError: Unable to decode audio data");
+    }),
+    /Unable to decode audio data/,
+  );
+  assert.equal(tries, DECODE_ATTEMPTS, "three tries, then the last failure");
+});
+

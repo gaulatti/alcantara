@@ -86,6 +86,26 @@ const bannerShown = (page, text, timeout = 5_000) =>
     .waitFor({ timeout })
     .then(() => true, () => false);
 
+/** How many times a stream capture is tried when the audio does not decode: each try fetches a fresh chunk. */
+export const DECODE_ATTEMPTS = 3;
+
+/**
+ * Runs `attempt` until it succeeds, up to `attempts` times. The last failure is thrown only when every try failed, so a
+ * single undecodable chunk from the live stream does not end the proof.
+ */
+export async function withRetries(attempt, attempts = DECODE_ATTEMPTS, onFailure = () => undefined) {
+  let last;
+  for (let i = 1; i <= attempts; i += 1) {
+    try {
+      return await attempt(i);
+    } catch (error) {
+      last = error;
+      onFailure(error, i);
+    }
+  }
+  throw last;
+}
+
 const report = (step, details = {}) => console.log(JSON.stringify({ step, at: new Date().toISOString(), ...details }));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -181,10 +201,20 @@ async function main() {
   const guestPage = { liveShown: null, offShown: null };
   try {
     const decoder = await browser.newPage();
-    const listen = async (seconds) => {
-      const { rate, samples } = await decode(decoder, await capture(STREAM, seconds));
-      return toneReport(samples, rate, HZ);
-    };
+    // A chunk that does not decode is retried with a fresh capture; only every try failing ends the proof.
+    let decodeRetries = 0;
+    const listen = async (seconds) =>
+      withRetries(
+        async () => {
+          const { rate, samples } = await decode(decoder, await capture(STREAM, seconds));
+          return toneReport(samples, rate, HZ);
+        },
+        DECODE_ATTEMPTS,
+        (error, attempt) => {
+          decodeRetries += 1;
+          report("decode-retry", { attempt, of: DECODE_ATTEMPTS, error: String(error?.message ?? error).split("\n")[0] });
+        },
+      );
     // Listens in short pieces until the tone is in the wanted state, then measures it properly.
     const measureWhen = async (wanted, since) => {
       for (;;) {
@@ -257,6 +287,7 @@ async function main() {
       line("after wrap", after),
       guestLine('"You\'re on air" after the live cue', guestPage.liveShown),
       guestLine('"Off air" after standby or wrap', guestPage.offShown),
+      decodeRetries ? `stream chunks retried after failing to decode: ${decodeRetries}` : "no stream chunk needed a retry",
       ok ? "ON-AIR PROOF PASSED" : "ON-AIR PROOF FAILED",
     ].join("\n"),
   );
