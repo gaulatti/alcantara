@@ -458,7 +458,7 @@ export default function ScheduledRundown({
                 { value: "", label: "Choose a block" },
                 ...scheduledLogs.map((log) => ({
                   value: String(log.id),
-                  label: `${new Date(log.scheduledAt!).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} · ${log.isRunning ? "On air" : log.lastStartedAt ? "Aired" : log.publishedAt ? "Published" : "Draft"}`,
+                  label: `${new Date(log.scheduledAt!).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })} · ${log.isRunning ? "On air" : log.lastStartedAt ? "Aired" : log.publishedAt ? "Published" : "Draft"}`,
                 })),
               ]}
             />
@@ -567,6 +567,43 @@ export default function ScheduledRundown({
               </Button>
             </div>
           </div>
+          {/* Check's result sits under the actions that produced it, not below the whole log. */}
+          {preflight && (
+            <div className="rundown-sequence-heading" role="status">
+              {preflight.ready && radioNotSetUp ? (
+                <span className="console-status" data-tone="warning">
+                  <AlertTriangle size={13} /> Audio checked · radio not set up
+                </span>
+              ) : preflight.ready ? (
+                <span className="console-status" data-tone="ready">
+                  <CheckCircle2 size={13} /> Audio checked · ready for air
+                </span>
+              ) : (
+                <div>
+                  <span className="console-status" data-tone="warning">
+                    <AlertTriangle size={13} /> Needs attention
+                  </span>
+                  <ul>
+                    {preflight.issues.map((issue) => (
+                      <li key={issue}>{issue}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {preflight.warnings.length > 0 && (
+                <div>
+                  <span className="console-status" data-tone="warning">
+                    <AlertTriangle size={13} /> Check before air
+                  </span>
+                  <ul aria-label="Preflight warnings">
+                    {preflight.warnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
           {selected && (
             <div className="rundown-builder">
               <RundownLibrary
@@ -630,42 +667,6 @@ export default function ScheduledRundown({
               Fill gaps
             </Button>
           </div>
-          {preflight && (
-            <div className="rundown-sequence-heading" role="status">
-              {preflight.ready && radioNotSetUp ? (
-                <span className="console-status" data-tone="warning">
-                  <AlertTriangle size={13} /> Audio checked · radio not set up
-                </span>
-              ) : preflight.ready ? (
-                <span className="console-status" data-tone="ready">
-                  <CheckCircle2 size={13} /> Audio checked · ready for air
-                </span>
-              ) : (
-                <div>
-                  <span className="console-status" data-tone="warning">
-                    <AlertTriangle size={13} /> Needs attention
-                  </span>
-                  <ul>
-                    {preflight.issues.map((issue) => (
-                      <li key={issue}>{issue}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {preflight.warnings.length > 0 && (
-                <div>
-                  <span className="console-status" data-tone="warning">
-                    <AlertTriangle size={13} /> Check before air
-                  </span>
-                  <ul aria-label="Preflight warnings">
-                    {preflight.warnings.map((warning) => (
-                      <li key={warning}>{warning}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
         </section>
         <aside
           ref={inspectorRef}

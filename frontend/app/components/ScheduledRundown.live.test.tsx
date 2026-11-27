@@ -271,6 +271,8 @@ it("loads the scheduled block, every page of the song catalog and the rotation s
   const blocks = screen.getByRole("combobox", { name: "Scheduled block" });
   expect(within(blocks).getAllByRole("option")).toHaveLength(2);
   expect(within(blocks).getAllByRole("option")[1]).toHaveTextContent("Draft");
+  // The block's clock is 24-hour, like the log and the timeline beside it.
+  expect(within(blocks).getAllByRole("option")[1].textContent).not.toMatch(/\b(AM|PM)\b/);
   expect(screen.getByText(/DRAFT · Revision 3 · 2 events/)).toBeVisible();
   expect(screen.getByText(/0 fillers · 00:00 unfilled/)).toBeVisible();
   expect(screen.getByRole("button", { name: /Check & publish/ })).toHaveClass(
@@ -474,6 +476,14 @@ it("shows preflight warnings without blocking a ready block (unknown song durati
   expect(
     screen.getByRole("list", { name: "Preflight warnings" }),
   ).toHaveTextContent("Item 2: song duration unknown");
+  // The result sits under the actions that ran the check, above the timeline and the log.
+  const status = screen.getByRole("list", { name: "Preflight warnings" });
+  expect(
+    status.compareDocumentPosition(screen.getByRole("table")) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(
+    status.compareDocumentPosition(screen.getByRole("button", { name: "Check" })) & Node.DOCUMENT_POSITION_PRECEDING,
+  ).toBeTruthy();
 });
 
 it("checks the saved block's audio and lists what needs attention", async () => {
