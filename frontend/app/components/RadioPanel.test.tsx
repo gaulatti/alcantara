@@ -1974,6 +1974,47 @@ it("takes the next song with N then Space, and never on one key press", async ()
   );
 });
 
+// Walk part 5: a take of the Play Next head left its entry queued, and the engine armed the same song again as next,
+// so it aired twice. The take now consumes the entry, after the take itself.
+it("takes the Play Next head and removes its entry, after the take", async () => {
+  const p = deskProps();
+  p.songQueue = [{ id: "queue-9", itemId: "song-2", enqueuedAt: 1 }];
+  const order: string[] = [];
+  p.onTakeSelection = vi.fn(async () => {
+    order.push("take");
+  });
+  p.onRemoveQueuedSong = vi.fn(async () => {
+    order.push("remove");
+  });
+  mount(p);
+  fireEvent.keyDown(window, { key: "n" });
+  fireEvent.keyDown(window, { key: " " });
+  await waitFor(() => expect(p.onRemoveQueuedSong).toHaveBeenCalledWith("queue-9"));
+  expect(p.onTakeSelection).toHaveBeenCalledWith(expect.objectContaining({ activeItemId: "song-2" }));
+  expect(order).toEqual(["take", "remove"]);
+});
+
+it("says a taken Play Next song will play again when its entry cannot be removed", async () => {
+  const p = deskProps();
+  p.songQueue = [{ id: "queue-9", itemId: "song-2", enqueuedAt: 1 }];
+  p.onRemoveQueuedSong = vi.fn().mockRejectedValueOnce(new Error("locked"));
+  mount(p);
+  fireEvent.keyDown(window, { key: "n" });
+  fireEvent.keyDown(window, { key: " " });
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    /is on air, but it is still in Play Next and will play again: remove it there\./,
+  );
+});
+
+it("removes no queue entry when the take comes from the rotation", async () => {
+  const p = deskProps();
+  mount(p);
+  fireEvent.keyDown(window, { key: "n" });
+  fireEvent.keyDown(window, { key: " " });
+  await waitFor(() => expect(p.onTakeSelection).toHaveBeenCalledTimes(1));
+  expect(p.onRemoveQueuedSong).not.toHaveBeenCalled();
+});
+
 it("opens the song search from its on-screen button, the same dialog as /", async () => {
   const p = deskProps();
   mount(p);

@@ -611,7 +611,19 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     if (onTakeSelection) await onTakeSelection(selection);
     else await onSaveSongSequence(selection);
   };
-  const takeNext = (song: NextUpSong) => takeRotationSong(song.itemId);
+  // A take of the Play Next head consumes its entry: left queued, the engine armed the same song again as next and it
+  // aired twice (walk part 5). The take goes first, so the air never waits on the queue.
+  const takeNext = async (song: NextUpSong) => {
+    await takeRotationSong(song.itemId);
+    if (song.via !== "queue" || !song.entryId) return;
+    try {
+      await onRemoveQueuedSong(song.entryId);
+    } catch {
+      throw new Error(
+        `${song.title} is on air, but it is still in Play Next and will play again: remove it there.`,
+      );
+    }
+  };
 
   useEffect(() => {
     const onSlash = (event: KeyboardEvent) => {

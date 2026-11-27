@@ -22,12 +22,14 @@ describe("nextUp and the queue entry on air", () => {
       { id: "q1", itemId: "c", enqueuedAt: 1 },
       { id: "q2", itemId: "b", enqueuedAt: 2 },
     ];
-    expect(nextUp({ sequence, queue, playback: airing("q1", "c:playback") })).toMatchObject({ itemId: "b", via: "queue" });
+    // It names the entry, so a take of it can consume that entry (walk part 5).
+    expect(nextUp({ sequence, queue, playback: airing("q1", "c:playback") })).toMatchObject({ itemId: "b", via: "queue", entryId: "q2" });
   });
 
   it("falls back to the rotation after the song on air when only that entry is queued", () => {
     const queue = [{ id: "q1", itemId: "b", enqueuedAt: 1 }];
     expect(nextUp({ sequence, queue, playback: airing("q1", "b:playback") })).toMatchObject({ itemId: "c", via: "rotation" });
+    expect(nextUp({ sequence, queue, playback: airing("q1", "b:playback") })).not.toHaveProperty("entryId");
   });
 
   it("still names a queued song when nothing from the queue is on air", () => {

@@ -52,6 +52,8 @@ export function onAirLeaf(
 export interface NextUpSong extends NextUp {
   itemId: string;
   via: "queue" | "rotation";
+  /** The Play Next entry this song comes from (via "queue"): a take of it must consume the entry. */
+  entryId?: string;
 }
 
 /**
@@ -80,10 +82,10 @@ export function nextUp({
       : current && queue[0]?.itemId === current.id
         ? queue[0].id
         : null;
-  const queued = queue
-    .filter((entry) => entry.id !== onAirEntryId)
-    .map((entry) => byId.get(entry.itemId))
-    .find(Boolean);
+  const queuedEntry = queue.find(
+    (entry) => entry.id !== onAirEntryId && byId.has(entry.itemId),
+  );
+  const queued = queuedEntry ? byId.get(queuedEntry.itemId) : undefined;
   const describe = (
     leaf: SongLeaf,
     via: "queue" | "rotation",
@@ -96,7 +98,7 @@ export function nextUp({
     durationMs: typeof leaf.durationMs === "number" ? leaf.durationMs : null,
     ...(sameSong ? { sameSong: true } : {}),
   });
-  if (queued) return describe(queued, "queue");
+  if (queued) return { ...describe(queued, "queue"), entryId: queuedEntry!.id };
   if (leaves.length === 0) return null;
 
   const anchor =
