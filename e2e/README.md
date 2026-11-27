@@ -89,7 +89,7 @@ A guest joins the real guest page in Chromium, WebKit and Firefox, one after ano
 ALCANTARA_INVITATION_PATH=/guest/<token> pnpm --filter @gaulatti/alcantara-e2e return-proof
 ```
 
-Make the invitation in `/calls`. Each time `WAITING FOR ADMIT <browser>` is printed, press **Admit** within 120 seconds. Between browsers it waits 70 seconds for the previous guest session to expire. It prints how far each browser got and its return peak, then the last 40 `[return-router]` lines of the run from the runner's host (`RETURN_RUNNER_SSH`, default `helix.gaulatti.com`; empty skips them). It exits 0 only when all three have a peak above 0. With `ALCANTARA_OPERATOR_TOKEN`, each run makes, admits and revokes its own invitation instead. Revoke a console invitation yourself afterwards.
+Make the invitation in `/calls`. Each time `WAITING FOR ADMIT <browser>` is printed, press **Admit** within 120 seconds. Between browsers it waits 70 seconds for the previous guest session to expire. It prints how far each browser got and its return peak, then the last 40 `[return-router]` lines of the run from the runner's host (`RETURN_RUNNER_SSH`, default `helix.gaulatti.com`; empty skips them, and they are also skipped where that host cannot be reached). It exits 0 only when all three have a peak above 0. With `ALCANTARA_OPERATOR_TOKEN`, each run makes, admits and revokes its own invitation instead. Revoke a console invitation yourself afterwards.
 
 Install the three engines once with `browsers:all`. `return-proof.mjs` runs a single engine (`WEBRTC_BROWSER`).
 

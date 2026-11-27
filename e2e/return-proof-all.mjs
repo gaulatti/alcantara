@@ -100,13 +100,13 @@ async function main() {
       // The host's login shell may be fish, so the command runs in sh.
       const { stdout } = await promisify(execFile)(
         "ssh",
-        ["-o", "BatchMode=yes", host, `sh -c 'docker logs --timestamps --since ${started} alcantara-return-runner 2>&1'`],
+        ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", host, `sh -c 'docker logs --timestamps --since ${started} alcantara-return-runner 2>&1'`],
         { maxBuffer: 16 * 1024 * 1024, timeout: 60_000 },
       );
       const lines = routerLines(stdout);
       console.log(lines.length ? lines.join("\n") : "(none since this run started)");
     } catch (error) {
-      console.log(`(the log could not be read: ${String(error.message).split("\n")[0]})`);
+      console.log(`(skipped: ${host} cannot be reached from here: ${String(error.message).split("\n")[0]})`);
     }
   }
   console.log("--- summary");
