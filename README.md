@@ -82,6 +82,10 @@ revoked, expired or invalid (401 or 403) ends the guest's session; any other
 refusal (the invitation in use in another window, the studio not ready, a
 network or room-connection failure) keeps the preflight and lets the guest
 press Join again. A refused camera or microphone permission keeps Join locked.
+The console's authenticated fetch leaves this page and the machine-only
+`/return-router/:programId` alone: neither has a session (the guest
+authenticates with its invitation, the router with its renderer key), so their
+backend requests go out as they are.
 
 Operator mute is immediate. Camera/microphone enable is delivered as a request
 that the guest accepts or rejects. A media command that names no camera or
@@ -146,7 +150,11 @@ may be used for repeatable automated media UAT. Verify all six show as connected
 without appearing on Preview/Program, assign slots to a reusable layout, then
 exercise Preview and TAKE deliberately. Restart one guest and verify its slot
 is held for 60 seconds. The machine-only return router requires the local
-`WEBRTC_RENDERER_KEY` from Compose.
+`WEBRTC_RENDERER_KEY` from Compose. [`e2e/webrtc-call.mjs`](e2e/README.md) runs
+the call path as one repeatable check: an operator invitation, a fake-device
+guest on the real guest page, the operator and program receiving the guest, and
+the guest receiving the program return. It also has a guest-only mode for a
+production invitation.
 
 In production, LiveKit runs on Helix, the on-premises host, not on the backend's
 service host (#354). `infra/helix/livekit-up.sh` starts it there, and
@@ -154,6 +162,14 @@ service host (#354). `infra/helix/livekit-up.sh` starts it there, and
 the one-time host setup. Validate TURN from a restrictive external network
 before scheduling remote guests. Never use the committed local credentials
 outside Compose.
+
+To prove media flows through production LiveKit from outside the studio's
+network, run [`infra/livekit-load-probe.sh`](infra/livekit-load-probe.sh) on a
+host outside the LAN that can read the runtime secret (cumulus). It loads
+LiveKit's URL, key and secret inside the backend image into a 0600 file, never
+printed, and runs the LiveKit CLI's load test (1 audio and 1 simulcast video
+publisher, 2 subscribers) in a probe room of its own. Then it prints the CLI's
+packet, bitrate and loss table and removes the file and the images it pulled.
 
 In production, LiveKit is configured only by the runtime secret
 (`broadcast/production/config`, #354). The secret holds four fields that must
@@ -163,7 +179,7 @@ all be present or all absent:
 - `livekitApiSecret`: at least 32 characters;
 - `webrtcSessionSecret`: at least 32 characters.
 
-`webrtcRendererKey` is optional.
+`webrtcRendererKey` is optional. So is `livekitTurnTlsDomain`, which turns on TURN over TLS on 443; only the LiveKit configuration renderer reads it ([infra/README.md](infra/README.md#turn-over-tls-on-443)).
 
 The backend copies them into `LIVEKIT_WS_URL`, `LIVEKIT_API_KEY`,
 `LIVEKIT_API_SECRET`, `WEBRTC_SESSION_SECRET` and `WEBRTC_RENDERER_KEY` at

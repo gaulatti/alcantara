@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { Repeat2, Shuffle } from "lucide-react";
 import {
   shuffleProgramSongSequence,
@@ -27,6 +28,12 @@ export function PlayoutMode({
       activeItemId: activeItemId ?? sequence.activeItemId,
       startedAt: Date.now(),
     });
+  // Autoplay and Shuffle start the rotation at once when nothing is on air (walk part 4): say so beside them, so the
+  // press is not a surprise. Loop gets no such note: it only decides what happens at the end of the list.
+  const hintId = useId();
+  const startsNow =
+    !playing && sequence.mode === "manual" && sequence.items.length > 0;
+  const describedBy = startsNow ? hintId : undefined;
   const button = (pressed: boolean) =>
     `inline-flex h-7 items-center gap-1 rounded-[6px] px-2.5 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${pressed ? "bg-accent-blue/20 text-accent-blue" : "text-text-secondary hover:text-text-primary"}`;
   return (
@@ -47,6 +54,7 @@ export function PlayoutMode({
         <button
           type="button"
           aria-pressed={sequence.mode === "autoplay"}
+          aria-describedby={describedBy}
           onClick={() => setMode("autoplay")}
           className={button(sequence.mode === "autoplay")}
         >
@@ -56,6 +64,7 @@ export function PlayoutMode({
           type="button"
           aria-label="Shuffle playlist"
           aria-pressed={sequence.mode === "shuffle"}
+          aria-describedby={describedBy}
           disabled={sequence.items.length < 2}
           title={
             sequence.mode === "shuffle"
@@ -74,6 +83,11 @@ export function PlayoutMode({
           <Shuffle size={11} /> Shuffle
         </button>
       </div>
+      {startsNow ? (
+        <span id={hintId} className="text-[11px] text-text-secondary">
+          Starts the rotation now
+        </span>
+      ) : null}
       <button
         type="button"
         aria-label={`Loop playlist: ${sequence.loop !== false ? "on" : "off"}`}

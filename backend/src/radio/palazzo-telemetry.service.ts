@@ -134,6 +134,12 @@ export class PalazzoRadioTelemetryService
     );
   }
 
+  removeProgram(programId: string): void {
+    this.rejectedPrograms.delete(programId);
+    this.stopClient(programId);
+    this.refreshAggregateMetrics();
+  }
+
   /**
    * Moves a renamed program's telemetry to its new id. Synchronous: the old client stops and the new one starts with
    * nothing in between, so there is never a moment with both consuming Palazzo, or with neither.

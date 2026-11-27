@@ -14,6 +14,7 @@ const {
 } = require('../src/config/runtime-secret-contract.js');
 const {
   renderLivekitServerConfig,
+  turnTlsDomainFrom,
 } = require('../src/config/livekit-server-config.js');
 
 const secretId = process.env.ALCANTARA_CONFIG_SECRET_ID?.trim();
@@ -24,11 +25,18 @@ if (!secretId || !region) {
 }
 
 let selected;
+// Read apart from the backend's contract: only this renderer uses it, and the backend ignores it.
+let turnTlsDomain;
 try {
   const response = await new SecretsManagerClient({ region }).send(
     new GetSecretValueCommand({ SecretId: secretId }),
   );
   selected = parseRuntimeSecretPayload(response.SecretString);
+  if (selected.livekitWsUrl !== undefined)
+    turnTlsDomain = turnTlsDomainFrom(
+      JSON.parse(response.SecretString).livekitTurnTlsDomain,
+      selected.livekitWsUrl,
+    );
 } catch (error) {
   // The contract's messages name fields, never values.
   console.error(
@@ -42,4 +50,4 @@ if (selected.livekitWsUrl === undefined) {
   console.error('LiveKit is not configured in the runtime secret');
   process.exit(3);
 }
-process.stdout.write(renderLivekitServerConfig(selected));
+process.stdout.write(renderLivekitServerConfig(selected, { turnTlsDomain }));

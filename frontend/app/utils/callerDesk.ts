@@ -39,12 +39,18 @@ export function stripState(
   return cue === "live" ? "cued-live" : "connected";
 }
 
+/** The owner's four states, in plain words: connecting, live, dropped, left (with the live cue shown as "Live · cued"). */
 export const STRIP_LABEL: Record<StripState, string> = {
-  "cued-live": "Cued live",
-  connected: "Connected",
-  reconnecting: "Reconnecting",
-  offline: "Not joined",
+  "cued-live": "Live · cued",
+  connected: "Live",
+  reconnecting: "Connecting",
+  offline: "Dropped",
 };
+
+/** A slot with no one connected: a link waiting to be used, or a guest who was in the call and left. */
+export function emptySlotLabel(invitationStatus: string): "Invited" | "Left" {
+  return invitationStatus === "active" ? "Left" : "Invited";
+}
 
 export interface DeskSlot<TInvitation, TParticipant> {
   slot: number;

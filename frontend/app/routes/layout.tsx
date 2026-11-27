@@ -176,6 +176,10 @@ function ConsoleShell() {
   };
   const { hasPermission } = useFeatures();
   const [knownPrograms, setKnownPrograms] = useState<ProgramSummary[]>([]);
+  // The show list could not be loaded: the operator's show stays selected and Retry asks again (the recovery walk).
+  const [programsFailed, setProgramsFailed] = useState(false);
+  // The selection a reload that answered still did not list: only then is the show gone and the first one taken.
+  const [missingAfterReload, setMissingAfterReload] = useState<string | null>(null);
   const [knownScenes, setKnownScenes] = useState<SceneSummary[]>([]);
   const [knownInstants, setKnownInstants] = useState<InstantSummary[]>([]);
   const [selectedProgramId, setSelectedProgramId] = useGlobalProgramId();
@@ -223,11 +227,13 @@ function ConsoleShell() {
       const payload = await res.json();
       if (Array.isArray(payload)) {
         setKnownPrograms(payload);
+        setProgramsFailed(false);
         return true;
       }
     } catch (err) {
       console.error('Failed to fetch programs for site header selector:', err);
     }
+    setProgramsFailed(true);
     return false;
   }, []);
 
@@ -237,7 +243,8 @@ function ConsoleShell() {
 
   // The show the operator selects may be newer than the list loaded with the page: one created on the Shows
   // page, or selected there. Reload the list once for it before deciding it is gone, so a new show is not
-  // silently swapped for the first one.
+  // silently swapped for the first one. Only a list that loaded and still lacks it moves the selection: a list
+  // that cannot load never does, so an outage never switches or stores another show (the recovery walk).
   const recheckedProgramId = useRef<string | null>(null);
   useEffect(() => {
     if (knownPrograms.length === 0) {
@@ -251,15 +258,16 @@ function ConsoleShell() {
 
     if (recheckedProgramId.current !== selectedProgramId) {
       recheckedProgramId.current = selectedProgramId;
-      const fallback = knownPrograms[0].programId;
+      const rechecked = selectedProgramId;
       void loadPrograms().then((answered) => {
-        if (!answered) setSelectedProgramId(fallback);
+        if (answered) setMissingAfterReload(rechecked);
       });
       return;
     }
 
+    if (missingAfterReload !== selectedProgramId) return;
     setSelectedProgramId(knownPrograms[0].programId);
-  }, [knownPrograms, loadPrograms, selectedProgramId, setSelectedProgramId]);
+  }, [knownPrograms, loadPrograms, missingAfterReload, selectedProgramId, setSelectedProgramId]);
 
   useEffect(() => {
     const loadScenes = async () => {
@@ -941,6 +949,23 @@ function ConsoleShell() {
           <div className='flex min-h-0 flex-1 flex-col pt-16 xl:pt-0'>
             <div className='flex min-h-13 shrink-0 items-center gap-2 border-b border-white/[0.08] bg-deep-sea px-3 py-2 sm:px-4'>
               <div className='min-w-0 flex-1 sm:max-w-[260px]'>{renderHeaderProgramSelector()}</div>
+              {programsFailed ? (
+                <p role='alert' className='flex items-center gap-2 text-xs text-terracotta'>
+                  The show list could not be loaded; {selectedProgramId} stays selected.
+                  <Button
+                    size='xs'
+                    variant='secondary'
+                    onClick={() => {
+                      const rechecked = selectedProgramId;
+                      void loadPrograms().then((answered) => {
+                        if (answered) setMissingAfterReload(rechecked);
+                      });
+                    }}
+                  >
+                    Retry
+                  </Button>
+                </p>
+              ) : null}
               <span className='hidden shrink-0 items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.05] px-2.5 py-1 text-xs font-semibold text-text-secondary sm:inline-flex'>
                 {programModeIcon} {programModeLabel}
               </span>

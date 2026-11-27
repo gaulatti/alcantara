@@ -36,6 +36,7 @@ it("takes a song on air through the console, and queues it next", async () => {
   const onQueueItem = vi.fn();
   render(
     <PlaylistPanel
+      programId="test-program"
       sequence={sequence}
       songCatalog={[]}
       programSongPlayback={null}
@@ -64,6 +65,7 @@ it("saves the take as a plain change when the console takes nothing", () => {
   const onChange = vi.fn();
   render(
     <PlaylistPanel
+      programId="test-program"
       sequence={sequence}
       songCatalog={[]}
       programSongPlayback={null}

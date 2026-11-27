@@ -27,6 +27,7 @@ export function RundownLibrary({
   recipes,
   onAddRecipe,
   footnote = "Drag onto the timeline, or select and press Enter to add at the end.",
+  initialFilter = "all",
 }: {
   songs: SongCatalogItem[];
   clips: InstantItem[];
@@ -36,9 +37,11 @@ export function RundownLibrary({
   recipes?: { id: number; name: string }[] | null;
   onAddRecipe?: (recipeId: number, songId: number) => void;
   footnote?: string;
+  /** The tab selected first; the visual fixture opens on an empty Clips tab. */
+  initialFilter?: "all" | "song" | "clip";
 }) {
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "song" | "clip" | "recipe">("all");
+  const [filter, setFilter] = useState<"all" | "song" | "clip" | "recipe">(initialFilter);
   const [active, setActive] = useState(0);
   const [recipeId, setRecipeId] = useState<number | null>(null);
   const search = useRef<HTMLInputElement>(null);
@@ -191,7 +194,17 @@ export function RundownLibrary({
         ))}
         {!rows.length && (
           <li className="rundown-library-none" role="presentation">
-            Nothing matches “{query}”.
+            {query.trim() ? (
+              <>Nothing matches “{query}”.</>
+            ) : filter === "clip" ? (
+              <>
+                No audio clips yet: upload one in <a href="/media">Media</a>.
+              </>
+            ) : (
+              <>
+                No songs yet: add one in <a href="/songs">Songs</a>.
+              </>
+            )}
           </li>
         )}
       </ul>

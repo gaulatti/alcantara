@@ -270,6 +270,9 @@ Audio clips, and Main meters show the appliance's actual output. Playback
 updates retain the `telemetryStale` flag, and natural or manual off-air events
 replace the stored playback state with `isPlaying: false` before fan-out.
 
+A song promoted at a gapless handoff is not marked stale while its start is on its way: Palazzo accepted it and starts
+it itself. It is marked stale if neither a start nor a position has arrived 15 seconds after the promotion.
+
 The control console keeps `GET /program/:programId/events` SSE connected as its
 authoritative feedback channel. Palazzo samples levels at 10 Hz by default and
 Alcantara forwards each accepted sample immediately through that stream. The

@@ -1429,6 +1429,14 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     return { activeSequenceId: sequenceId };
   }
 
+  /** A deleted program: any armed rundown timer is cleared and what was held for it is dropped. */
+  removeProgram(programId: string): void {
+    const runtime = this.runtimes.get(programId);
+    if (runtime) this.clearTimer(runtime);
+    this.runtimes.delete(programId);
+    this.enginesDown.delete(programId);
+  }
+
   async deactivateFlightSequence(
     programId: string,
   ): Promise<{ activeSequenceId: null }> {

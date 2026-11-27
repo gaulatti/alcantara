@@ -98,6 +98,14 @@ describeWithDatabase('the local seed and team-scoped reads (PostgreSQL e2e)', ()
     }
   });
 
+  it("gives the seeded radio show's 24/7 rotation Loop on for a fresh seed", async () => {
+    const radio = await prisma.programState.findUniqueOrThrow({
+      where: { programId: 'radio-demo' },
+      select: { songSequence: true },
+    });
+    expect((radio.songSequence as { loop?: boolean }).loop).toBe(true);
+  });
+
   it("passes Check for a block of the seeded radio show's songs", async () => {
     const items = DEMO_SONG_IDS.slice(0, 3).map((songId, index) => ({
       id: `seed-check-${index}`,

@@ -5,9 +5,10 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import GuestRoute, { meta } from "./guest";
 
 // The remote guest's call page: preflight checks, joining the studio room,
@@ -333,11 +334,8 @@ it("describes a partial network report and no devices at all", async () => {
 });
 
 it.each([
-  [
-    new Error("Permission denied"),
-    "Camera or microphone permission failed: Permission denied",
-  ],
-  ["blocked", "Camera or microphone permission failed."],
+  [new Error("Permission denied"), "The camera or microphone could not start."],
+  ["blocked", "The camera or microphone could not start."],
 ])(
   "explains a camera or microphone that cannot be opened (%s)",
   async (failure, message) => {
@@ -702,7 +700,7 @@ it("explains a join whose room connection fails, for an invitation without a key
     await preflight();
     fireEvent.click(joinButton());
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Could not connect to the studio. Try again.",
+      "Could not connect to the studio.",
     );
   } finally {
     lk.Room.prototype.connect = original;
@@ -877,7 +875,7 @@ it("lets the guest try again when the camera fails after the room connected", as
     await preflight();
     fireEvent.click(joinButton());
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Could not connect to the studio. Try again.",
+      "Could not connect to the studio.",
     );
   } finally {
     lk.Room.prototype.connect = original;
@@ -1034,4 +1032,96 @@ it("asks for any camera when the microphone is switched before a camera was chos
       audio: { deviceId: { exact: "mic-2" }, echoCancellation: true },
     }),
   );
+});
+
+describe("the guest page on a phone", () => {
+  const IPHONE_SAFARI =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+  const ANDROID_CHROME =
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36";
+  const named = (name: string) => Object.assign(new Error(name), { name });
+
+  it("explains a blocked camera in iOS Safari's own words, and tries again once allowed", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(IPHONE_SAFARI);
+    getUserMedia.mockRejectedValueOnce(named("NotAllowedError"));
+    openPage();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Camera or microphone access is blocked.");
+    expect(alert).toHaveTextContent("Settings app, then Safari, then Camera and Microphone.");
+    fireEvent.click(within(alert).getByRole("button", { name: "Try again" }));
+    await screen.findByText("4g · 12 Mbps · 40 ms RTT");
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("explains a blocked camera in Android Chrome's own words", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(ANDROID_CHROME);
+    getUserMedia.mockRejectedValueOnce(named("NotAllowedError"));
+    openPage();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Tap Permissions, then set Camera and Microphone to Allow.");
+  });
+
+  it.each([
+    ["NotFoundError", "No camera or microphone was found."],
+    ["NotReadableError", "The camera or microphone is in use."],
+  ])("says what is wrong when the device fails with %s", async (name, title) => {
+    getUserMedia.mockRejectedValueOnce(named(name));
+    openPage();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(title);
+    expect(within(alert).getByRole("button", { name: "Try again" })).toBeEnabled();
+  });
+
+  it("names a connection that cannot reach the studio, and keeps the join ready to try again", async () => {
+    const original = lk.Room.prototype.connect;
+    lk.Room.prototype.connect = async () => {
+      throw new Error("ICE failed");
+    };
+    try {
+      openPage();
+      await preflight();
+      fireEvent.click(joinButton());
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "Could not connect to the studio. Check your Wi-Fi or mobile data, then try again.",
+      );
+    } finally {
+      lk.Room.prototype.connect = original;
+    }
+    expect(joinButton()).toBeEnabled();
+  });
+
+  it("says an invitation that was replaced or revoked needs a new link, and offers no rejoin", async () => {
+    joinAnswer = () =>
+      new Response(JSON.stringify({ message: "This invitation was revoked." }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      });
+    openPage();
+    await preflight();
+    fireEvent.click(joinButton());
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "This invitation was revoked. Ask the studio for a new link.",
+    );
+    expect(screen.queryByRole("button", { name: "Rejoin the studio" })).toBeNull();
+  });
+
+  it("names a dropped connection and rejoins with the kept session", async () => {
+    await joined();
+    act(() => room().emit("connectionStateChanged", "disconnected"));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Your connection to the studio dropped. Check your Wi-Fi or mobile data, then rejoin.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Rejoin the studio" }));
+    await screen.findByText("Ada · main · program video · aux-2 mix-minus");
+    const joins = fetchCalls.filter((call) => call.url.endsWith("/webrtc/join"));
+    expect(joins).toHaveLength(2);
+    expect(joins[1].body).toEqual({ invitation: "inv-1.secret", sessionToken: "session-1" });
+  });
+
+  it("does not report leaving the call as a dropped connection", async () => {
+    await joined();
+    fireEvent.click(screen.getByRole("button", { name: /Leave/ }));
+    expect(await screen.findByText("You left the studio.")).toBeVisible();
+    expect(screen.queryByText(/dropped/)).toBeNull();
+  });
 });

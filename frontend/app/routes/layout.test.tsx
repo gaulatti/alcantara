@@ -466,17 +466,40 @@ it("falls back to the first show once the reloaded list still lacks the selected
   expect(listed).toBe(2);
 });
 
-it("falls back to the first show when the reload of the list fails", async () => {
+// The recovery walk: a list that cannot load must never move or store the operator's show. It stays selected, the
+// header says so with Retry, and once the list loads again the stored selection is unchanged.
+it("keeps the stored show when the reload of the list fails, and keeps it once the list recovers", async () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   let listed = 0;
+  let failing = true;
   routes["GET /program"] = () => {
     listed += 1;
-    return listed === 1 ? json(programs) : json({}, 500);
+    if (listed === 1) return json(programs);
+    return failing ? json({}, 500) : json([...programs, { programId: "gone" }]);
   };
   shell.program = "gone";
   open("/");
-  await waitFor(() => expect(shell.program).toBe(programs[0].programId));
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("The show list could not be loaded; gone stays selected.");
   expect(listed).toBe(2);
+  expect(shell.program).toBe("gone");
+  failing = false;
+  fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  expect(listed).toBe(3);
+  expect(shell.program).toBe("gone");
+  await waitFor(() => expect(programSelects()[0]).toHaveValue("gone"));
+});
+
+it("says when the first show list cannot load, and never selects another show", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  routes["GET /program"] = () => json({}, 503);
+  shell.program = "radio-demo";
+  open("/");
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "The show list could not be loaded; radio-demo stays selected.",
+  );
+  expect(shell.program).toBe("radio-demo");
 });
 
 it("keeps a show it cannot find, and logs catalogs that fail to load", async () => {
