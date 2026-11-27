@@ -121,9 +121,21 @@ export async function seedLocalDatabase(
     },
   });
 
+  // A show with a dotted ID, as real shows have (modoitaliano.fm). The guest call room and the program's routes must
+  // take such an ID; the guest e2e runs against it by default. Create-only.
+  await prisma.programState.upsert({
+    where: { programId: 'radio-demo.fm' },
+    update: {},
+    create: {
+      programId: 'radio-demo.fm',
+      type: 'radio',
+      audioMixer: defaultAudioMixer as any,
+    },
+  });
+
   // Each seeded show is registered with the local team, as a show created in the Shows admin is: the program's
   // song reads (Check, logs, recipes) resolve the team from this row, and a show without one reads no songs.
-  for (const programId of ['main', 'tv-demo', 'radio-demo']) {
+  for (const programId of ['main', 'tv-demo', 'radio-demo', 'radio-demo.fm']) {
     await prisma.program.upsert({
       where: { programId },
       update: { ...team },
