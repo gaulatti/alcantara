@@ -1,6 +1,7 @@
 import { useId } from "react";
 import { Repeat2, Shuffle } from "lucide-react";
 import {
+  programSongPlayOrder,
   shuffleProgramSongSequence,
   type ProgramSongSequence,
 } from "../../utils/programSequence";
@@ -21,11 +22,19 @@ export function PlayoutMode({
   playing: boolean;
   onChange: (next: ProgramSongSequence) => void;
 }) {
+  // A Stop leaves the rotation with no cursor. The engine starts nothing from no cursor, so Autoplay off air names the
+  // song the desk shows as next: the first in the order that plays (walk part 5: it aired nothing). Shuffle already
+  // falls back to the first of its order.
   const setMode = (mode: "manual" | "autoplay") =>
     onChange({
       ...sequence,
       mode,
-      activeItemId: activeItemId ?? sequence.activeItemId,
+      activeItemId:
+        activeItemId ??
+        sequence.activeItemId ??
+        (mode === "autoplay"
+          ? (programSongPlayOrder({ ...sequence, mode })[0]?.id ?? null)
+          : null),
       startedAt: Date.now(),
     });
   // Autoplay and Shuffle start the rotation at once when nothing is on air (walk part 4): say so beside them, so the

@@ -98,3 +98,21 @@ it("says Autoplay and Shuffle start the rotation now while nothing is on air", (
     expect(screen.getByRole("button", { name: "Autoplay" })).not.toHaveAttribute("aria-describedby");
   }
 });
+
+// Walk part 5: after a Stop the rotation has no cursor, and the engine starts nothing from no cursor. Autoplay off air
+// aired nothing while the desk named the first song as next; it now names that song.
+it("starts Autoplay at the first song when a Stop left no cursor, and leaves Manual without one", () => {
+  const onChange = vi.fn();
+  render(
+    <PlayoutMode
+      sequence={sequence(undefined, { activeItemId: null })}
+      activeItemId={null}
+      playing={false}
+      onChange={onChange}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Autoplay" }));
+  expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ mode: "autoplay", activeItemId: "s1" }));
+  fireEvent.click(screen.getByRole("button", { name: "Manual" }));
+  expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ mode: "manual", activeItemId: null }));
+});
