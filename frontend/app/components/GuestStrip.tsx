@@ -9,12 +9,9 @@ import {
   Video,
   VideoOff,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
-  ARM_TIMEOUT_MS,
-  HOLD_MS,
   STRIP_LABEL,
-  CUE_LINE,
   currentCue,
   stripState,
   type Cue,
@@ -23,6 +20,7 @@ import {
 } from "../utils/callerDesk";
 import type { CallFailure, IcePath } from "../utils/callTelemetry";
 import { CallPathLine } from "./CallPathLine";
+import { GuestCueButtons, useGuestCue } from "./GuestCueControls";
 
 export type ReturnField =
   | "returnVideo"
@@ -113,29 +111,13 @@ export function GuestStrip({
   const microphone = participant.tracks.find((track) => track.source.includes("microphone"));
   const camera = participant.tracks.find((track) => track.source.includes("camera"));
   const latest = participant.commands[0];
-  const [armed, setArmed] = useState(false);
-  const [holding, setHolding] = useState(false);
   const [talkOnAir, setTalkOnAir] = useState(false);
   // Mute and remove are confirmed in plain words before they are sent; a request to turn a device back on is not.
   const [confirming, setConfirming] = useState<'mic' | 'camera' | 'remove' | null>(null);
-  const holdTimer = useRef<number | null>(null);
   const talkHeld = useRef(false);
 
   // Talking to a guest who was cued live needs a second, explicit confirmation.
   const canTalk = canOperate && connected && !busy && (cue !== "live" || talkOnAir);
-
-  useEffect(() => {
-    if (!armed) return;
-    const timer = window.setTimeout(() => setArmed(false), ARM_TIMEOUT_MS);
-    return () => window.clearTimeout(timer);
-  }, [armed]);
-
-  useEffect(
-    () => () => {
-      if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
-    },
-    [],
-  );
 
   const startTalk = () => {
     if (!canTalk || talkHeld.current) return;
@@ -147,29 +129,7 @@ export function GuestStrip({
     talkHeld.current = false;
     onTalkStop();
   };
-  const sendCue = (next: Cue) => onCommand({ type: "cue", cue: next });
-  const cueLive = () => {
-    if (!armed) {
-      setArmed(true);
-      return;
-    }
-    setArmed(false);
-    sendCue("live");
-  };
-  const startHold = () => {
-    if (holdTimer.current !== null) return;
-    setHolding(true);
-    holdTimer.current = window.setTimeout(() => {
-      holdTimer.current = null;
-      setHolding(false);
-      sendCue("wrap");
-    }, HOLD_MS);
-  };
-  const cancelHold = () => {
-    if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
-    holdTimer.current = null;
-    setHolding(false);
-  };
+  const cueControls = useGuestCue((next: Cue) => onCommand({ type: "cue", cue: next }));
   const cueDisabled = !canOperate || !connected || busy;
 
   return (
@@ -181,10 +141,7 @@ export function GuestStrip({
       onKeyDown={(event) => {
         if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
         if ((event.key === "t" || event.key === "T") && !event.repeat) startTalk();
-        if (event.key === " " && armed) {
-          event.preventDefault();
-          cueLive();
-        }
+        cueControls.spaceWhileArmed(event);
       }}
       onKeyUp={(event) => {
         if (event.key === "t" || event.key === "T") stopTalk();
@@ -207,45 +164,7 @@ export function GuestStrip({
       </header>
       {/* The cue row sits above everything that appears and disappears, so a button never moves under a finger
           between the two presses of Cue live. */}
-      <div className="guest-strip-row">
-        <span className="guest-strip-cue">{cue ? CUE_LINE[cue] : "Cue · none sent"}</span>
-        <Button size="xs" variant="secondary" disabled={cueDisabled} onClick={() => sendCue("standby")}>
-          Standby
-        </Button>
-        <Button
-          size="xs"
-          variant={armed ? "destructive" : "secondary"}
-          disabled={cueDisabled}
-          aria-pressed={armed}
-          // One width for both states, so arming does not widen the button or push the next one to another line.
-          className="min-w-[13rem] whitespace-nowrap"
-          onClick={cueLive}
-        >
-          {armed ? "Press again or Space: cue live" : "Cue live"}
-        </Button>
-        <Button
-          size="xs"
-          variant="secondary"
-          disabled={cueDisabled}
-          data-holding={holding}
-          className="whitespace-nowrap"
-          onPointerDown={startHold}
-          onPointerUp={cancelHold}
-          onPointerLeave={cancelHold}
-          onKeyDown={(event) => {
-            if ((event.key === "Enter" || event.key === " ") && !event.repeat) {
-              event.preventDefault();
-              startHold();
-            }
-          }}
-          onKeyUp={(event) => {
-            if (event.key === "Enter" || event.key === " ") cancelHold();
-          }}
-          title="Hold to send the wrap cue"
-        >
-          {holding ? "Keep holding…" : "Hold · cue wrap"}
-        </Button>
-      </div>
+      <GuestCueButtons cue={cue} disabled={cueDisabled} controls={cueControls} />
       <CallPathLine participant={participant} />
       {/* What the producer needs to see: the guest hears the studio, or it has not reached them for 15 s. Nothing
           extra while the guest is still connecting. */}

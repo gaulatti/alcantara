@@ -1,4 +1,4 @@
-import { currentCue, stripState, type DeskCommand } from "../../utils/callerDesk";
+import { currentCue, stripState, type CueState, type DeskCommand } from "../../utils/callerDesk";
 import type { OnAirChip } from "./onAir";
 
 export interface DeskGuest {
@@ -8,6 +8,10 @@ export interface DeskGuest {
   /** Joined and not yet admitted. */
   screening?: boolean;
   commands?: DeskCommand[];
+  /** The cue that holds now; absent from a backend that does not send it. */
+  cueState?: CueState | null;
+  /** The guest's invitation, which Admit acts on. */
+  invitationId?: string;
 }
 
 /**

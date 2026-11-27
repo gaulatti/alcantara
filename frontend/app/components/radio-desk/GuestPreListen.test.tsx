@@ -101,6 +101,53 @@ afterEach(() => {
 });
 
 describe("GuestPreListen", () => {
+  // gaulatti/alcantara#879: a guest is let in and cued from the desk, not only from Guest calls.
+  it("lists a waiting guest with Admit and no PFL, and gives each guest on the call the cue controls", async () => {
+    authFetch.mockImplementation(async (url: string) => {
+      if (url.startsWith("/webrtc/rooms/"))
+        return Response.json({
+          participants: [
+            { identity: "guest-1", name: "Ada", connectionState: "connected", cueState: "standby" },
+            { identity: "guest-3", name: "Lin", connectionState: "offline", screening: true, invitationId: "inv-3" },
+          ],
+        });
+      throw new Error(`unexpected ${url}`);
+    });
+    render(<GuestPreListen programId="main" onActive={() => undefined} />);
+    expect(await screen.findByText("Lin")).toBeVisible();
+    expect(screen.getByText("Waiting to be let in")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Admit Lin" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Pre-listen Lin" })).toBeNull();
+    expect(screen.getByRole("group", { name: "Cue Ada" })).toBeVisible();
+    expect(screen.getByText("Cue · standby")).toBeVisible();
+    expect(screen.queryByText("No guest is connected.")).toBeNull();
+  });
+
+  it("reads the guest list again right after an Admit or a cue from the desk", async () => {
+    vi.doMock("../../hooks/useFeatures", () => ({ useFeatures: () => ({ loading: false, hasPermission: () => true }) }));
+    vi.resetModules();
+    const { GuestPreListen: Fresh } = await import("./GuestPreListen");
+    const reads = () => authFetch.mock.calls.filter(([url]) => String(url).startsWith("/webrtc/rooms/") && !String(url).includes("/control")).length;
+    authFetch.mockImplementation(async (url: string) => {
+      if (url.startsWith("/webrtc/rooms/") && !url.includes("/control"))
+        return Response.json({
+          participants: [
+            { identity: "guest-1", name: "Ada", connectionState: "connected", cueState: "standby" },
+            { identity: "guest-3", name: "Lin", connectionState: "offline", screening: true, invitationId: "inv-3" },
+          ],
+        });
+      return Response.json({});
+    });
+    render(<Fresh programId="main" onActive={() => undefined} />);
+    await screen.findByText("Lin");
+    const before = reads();
+    fireEvent.click(screen.getByRole("button", { name: "Admit Lin" }));
+    await waitFor(() => expect(reads()).toBe(before + 1));
+    fireEvent.click(screen.getByRole("button", { name: "Standby" }));
+    await waitFor(() => expect(reads()).toBe(before + 2));
+    vi.doUnmock("../../hooks/useFeatures");
+  });
+
   it("lists the connected guests only, with a PFL button for each", async () => {
     render(<GuestPreListen programId="main" onActive={() => undefined} />);
     expect(await screen.findByText("Ada")).toBeVisible();

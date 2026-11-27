@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Room } from "livekit-client";
 import { authFetch } from "../../services/api";
 import { TooltipButton } from "../BleeckerButtons";
+import { DeskGuestCue } from "./DeskGuestCue";
 import { createGuestPreListen, type GuestPreListenState } from "./guestPreListenCore";
 import type { DeskGuest } from "./guestChip";
 
@@ -147,27 +148,38 @@ export function GuestPreListen({
     [],
   );
 
-  const connected = guests.filter((guest) => guest.connectionState === "connected");
+  const connected = guests.filter((guest) => guest.connectionState === "connected" && !guest.screening);
+  // A guest waiting to be let in is listed too, with Admit; they are not in the room, so there is nothing to listen to.
+  const waiting = guests.filter((guest) => guest.screening);
 
   return (
     <section aria-label="Guest pre-fade listen" className="space-y-2">
       <h3 className="text-sm font-medium">Guests</h3>
-      {connected.length === 0 ? <p className="text-xs text-text-secondary">No guest is connected.</p> : null}
-      <ul className="space-y-1">
+      {connected.length === 0 && waiting.length === 0 ? <p className="text-xs text-text-secondary">No guest is connected.</p> : null}
+      <ul className="space-y-2">
+        {waiting.map((guest) => (
+          <li key={guest.identity} className="space-y-1">
+            <span className="block truncate text-sm">{guest.name}</span>
+            <DeskGuestCue guest={guest} programId={programId} onChanged={() => void loadGuests()} />
+          </li>
+        ))}
         {connected.map((guest) => {
           const on = state.status === "listening" && state.identity === guest.identity;
           return (
-            <li key={guest.identity} className="flex items-center gap-2">
-              <span className="flex-1 truncate text-sm">{guest.name}</span>
-              <TooltipButton
-                type="button"
-                aria-label={`Pre-listen ${guest.name}`}
-                aria-pressed={on}
-                title={`Hear ${guest.name} on this device only; nothing goes to air or to the guest`}
-                onClick={() => void toggle(guest.identity)}
-              >
-                PFL
-              </TooltipButton>
+            <li key={guest.identity} className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="flex-1 truncate text-sm">{guest.name}</span>
+                <TooltipButton
+                  type="button"
+                  aria-label={`Pre-listen ${guest.name}`}
+                  aria-pressed={on}
+                  title={`Hear ${guest.name} on this device only; nothing goes to air or to the guest`}
+                  onClick={() => void toggle(guest.identity)}
+                >
+                  PFL
+                </TooltipButton>
+              </div>
+              <DeskGuestCue guest={guest} programId={programId} onChanged={() => void loadGuests()} />
             </li>
           );
         })}
