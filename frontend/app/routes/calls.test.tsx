@@ -810,7 +810,8 @@ it("asks for a second confirmation before talking to a guest cued live", async (
   expect(screen.getByText("1 guest cued live")).toBeVisible();
   expect(await within(card()).findByText(/on the output only through a scene/)).toBeVisible();
   expect(button(/Hold · talk/)).toBeDisabled();
-  fireEvent.click(within(card()).getByRole("checkbox", { name: "Allow talk while cued live" }));
+  expect(within(card()).getByText("Allow private talk while live (never on air)").closest("label")).toHaveAttribute("title", "Talkback reaches only this guest. It never goes to air.");
+  fireEvent.click(within(card()).getByRole("checkbox", { name: "Allow private talk while live (never on air)" }));
   expect(button(/Hold · talk/)).toBeEnabled();
   fireEvent.pointerDown(button(/Hold · talk/));
   await waitFor(() => expect(lk.state.rooms[0]?.published).toEqual(["talkback:inv-1"]));

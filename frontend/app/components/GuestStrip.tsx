@@ -396,14 +396,14 @@ export function GuestStrip({
           <Headphones size={13} /> {talking ? "Talking… release to stop" : "Hold · talk (T)"}
         </Button>
         {cue === "live" ? (
-          <label className="guest-strip-confirm">
+          <label className="guest-strip-confirm" title="Talkback reaches only this guest. It never goes to air.">
             <input
               type="checkbox"
               checked={talkOnAir}
               disabled={!canOperate}
               onChange={(event) => setTalkOnAir(event.target.checked)}
             />
-            Allow talk while cued live
+            Allow private talk while live (never on air)
           </label>
         ) : null}
       </div>
