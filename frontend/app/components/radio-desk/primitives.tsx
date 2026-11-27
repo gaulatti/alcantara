@@ -65,7 +65,7 @@ export function KeyCap({
       {caps.map((cap, index) => (
         <kbd
           key={index}
-          className="inline-flex h-5 min-w-5 items-center justify-center rounded-[5px] border border-b-2 border-sand/50 bg-dark-sand px-1.5 font-mono text-[11px] font-semibold text-text-secondary"
+          className="inline-flex pointer-coarse:hidden h-5 min-w-5 items-center justify-center rounded-[5px] border border-b-2 border-sand/50 bg-dark-sand px-1.5 font-mono text-[11px] font-semibold text-text-secondary"
         >
           {cap}
         </kbd>

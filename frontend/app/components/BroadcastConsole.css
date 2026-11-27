@@ -118,6 +118,19 @@
   letter-spacing: -0.04em;
   line-height: 1.2;
 }
+/* On a phone the radio strip's clock is one short line beside its chips; its label stays for screen readers. */
+@media (max-width: 767px) {
+  .radio-console section[aria-label="On air"] .console-clock .console-eyebrow {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .radio-console section[aria-label="On air"] .console-clock time {
+    font-size: 13px;
+  }
+}
 .console-toolbar {
   display: flex;
   flex-wrap: wrap;

@@ -1460,7 +1460,7 @@ it("never names the queued song on air as next, in the strip or the transport", 
   mount(p);
   const strip = screen.getByRole("region", { name: "On air" });
   expect(within(strip).getByText("Harbour morning")).toBeVisible();
-  expect(screen.getByText("Next: Harbour morning. Cue next (N), then Take (Space).")).toBeVisible();
+  expect(screen.getByText((_, el) => el?.tagName === "SPAN" && el.textContent === "Next: Harbour morning. Cue next (N), then Take (Space).")).toBeVisible();
   expect(screen.queryByText(/Next: City lights/)).toBeNull();
 });
 
@@ -1473,7 +1473,7 @@ it("says the next song is the same song in a looping rotation of one", () => {
   const strip = screen.getByRole("region", { name: "On air" });
   expect(within(strip).getByText(/same song \(loop of one\)/)).toBeVisible();
   expect(
-    screen.getByText("Next: City lights, same song (loop of one). Cue next (N), then Take (Space)."),
+    screen.getByText((_, el) => el?.tagName === "SPAN" && el.textContent === "Next: City lights, same song (loop of one). Cue next (N), then Take (Space)."),
   ).toBeVisible();
 });
 

@@ -85,7 +85,7 @@ export function ProgramSongSequenceEditor({
   view = 'full',
   rotationLabel = 'Playlist',
   undoScope,
-  liveItemId = null,
+  liveItemId,
   nextItemId = null
 }: {
   sequence: ProgramSongSequence;
@@ -417,7 +417,15 @@ export function ProgramSongSequenceEditor({
                       const selectedCatalogSongValue = selectedCatalogSong ? String(selectedCatalogSong.id) : '';
                       const titleText = displayItem.title.trim();
                       const artistText = displayItem.artist.trim();
-                      const rowDuration = formatDurationFromMs(displayItem.durationMs);
+                      // A stored item may carry no length; the library song and, for the song on air, the playback do.
+                      const rowDuration = formatDurationFromMs(
+                        displayItem.durationMs ||
+                          selectedCatalogSong?.durationMs ||
+                          (displayItem.id === liveItemId ? programSongPlayback?.durationMs : undefined)
+                      );
+                      // Bars say "this is playing". The radio desk says which item is on air (`liveItemId`); a console
+                      // that does not keeps them on the selected item.
+                      const showsBars = liveItemId === undefined ? isActive : displayItem.id === liveItemId;
                       const coverUrl = displayItem.coverUrl.trim();
 
                       return (
@@ -456,11 +464,17 @@ export function ProgramSongSequenceEditor({
                               aria-label='Take on air'
                             >
                               <span
-                                className={`text-xs tabular-nums transition-opacity ${isActive ? 'opacity-0' : 'text-text-secondary group-hover:opacity-0'}`}
+                                className={`text-xs tabular-nums transition-opacity ${isActive || showsBars ? 'opacity-0' : 'text-text-secondary group-hover:opacity-0'}`}
                               >
                                 {index + 1}
                               </span>
-                              {isActive && (
+                              {isActive && !showsBars && (
+                                // The selected item that is not on air shows what pressing it does.
+                                <span data-testid='take-icon' className='absolute inset-0 flex items-center justify-center text-sea group-hover:opacity-0'>
+                                  <PlayIcon />
+                                </span>
+                              )}
+                              {showsBars && (
                                 <span className='absolute inset-0 flex items-end justify-center gap-0.5 pb-0.5 group-hover:opacity-0'>
                                   <span className='w-0.75 rounded-sm bg-sea opacity-100' style={{ animation: 'eq-bar1 0.8s ease-in-out infinite alternate' }} />
                                   <span
