@@ -27,6 +27,8 @@
 //   ALCANTARA_INVITATION_PATH  guest only: join this /guest/<token> path (an invitation an operator created in the
 //                          console) without any operator token. Only the guest side is checked, and the invitation is
 //                          left for the operator to revoke.
+//   WEBRTC_HOLD_SECONDS    keep the joined guest in the room this long, reporting what it sends every 15 s
+//                          (default 0)
 //   WEBRTC_TIMEOUT_MS      per wait                               (default 45000)
 //   WEBRTC_HEADED          set to 1 to watch the browser
 
@@ -57,6 +59,31 @@ const GUEST_ONLY_PATH = process.env.ALCANTARA_INVITATION_PATH || "";
 const SYNTHETIC_FEED =
   !GUEST_ONLY_PATH && process.env.WEBRTC_SYNTHETIC_FEED !== "0";
 const EXPECT_RETURN = process.env.WEBRTC_EXPECT_RETURN !== "0";
+const HOLD_SECONDS = Number(process.env.WEBRTC_HOLD_SECONDS || 0);
+
+/** What the guest page's own connections send, and the ICE pair they use: no address, only the candidate types. */
+const guestSends = (page) =>
+  page.evaluate(async () => {
+    const out = { audioBytes: 0, videoBytes: 0, pairs: [] };
+    for (const pc of window.__guestPcs ?? []) {
+      if (pc.connectionState === "closed") continue;
+      const report = await pc.getStats();
+      const byId = new Map();
+      report.forEach((stat) => byId.set(stat.id, stat));
+      report.forEach((stat) => {
+        if (stat.type === "outbound-rtp") out[`${stat.kind}Bytes`] += stat.bytesSent || 0;
+        if (stat.type === "candidate-pair" && stat.nominated && stat.state === "succeeded") {
+          const local = byId.get(stat.localCandidateId);
+          const remote = byId.get(stat.remoteCandidateId);
+          out.pairs.push(
+            `${local?.candidateType}/${local?.protocol} -> ${remote?.candidateType}/${remote?.protocol}:${remote?.port}` +
+              (stat.currentRoundTripTime ? ` rtt ${Math.round(stat.currentRoundTripTime * 1000)} ms` : ""),
+          );
+        }
+      });
+    }
+    return out;
+  });
 
 const report = (step, details = {}) =>
   console.log(
@@ -296,6 +323,17 @@ async function main() {
       }),
     );
     const guest = await guestContext.newPage();
+    // Keeps the guest page's peer connections, to report what it sends.
+    await guest.addInitScript(() => {
+      const Native = window.RTCPeerConnection;
+      window.__guestPcs = [];
+      window.RTCPeerConnection = function (config, ...rest) {
+        const pc = new Native(config, ...rest);
+        window.__guestPcs.push(pc);
+        return pc;
+      };
+      window.RTCPeerConnection.prototype = Native.prototype;
+    });
     pages.push(guest);
     await guest.goto(`${APP}${invitation.invitationPath}`);
     await guest
@@ -312,6 +350,17 @@ async function main() {
       .getByRole("button", { name: /Leave/ })
       .waitFor({ timeout: TIMEOUT });
     report("guest-joined", { ok: true });
+    if (HOLD_SECONDS > 0) {
+      let last = await guestSends(guest);
+      for (let held = 15; held <= HOLD_SECONDS; held += 15) {
+        await guest.waitForTimeout(15_000);
+        const now = await guestSends(guest);
+        // Audio always flows from a joined guest; video can pause while nobody subscribes to it.
+        if (now.audioBytes <= last.audioBytes) fail("guest-sends", { seconds: held, ...now });
+        report("guest-sends", { ok: true, seconds: held, ...now });
+        last = now;
+      }
+    }
 
     if (!GUEST_ONLY_PATH) {
       const operatorPage = await livekitPage(context);

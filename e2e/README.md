@@ -40,6 +40,7 @@ Chromium's Local Network Access check would hold a page's connection to LiveKit 
 | `WEBRTC_EXPECT_RETURN=0` | Skip the guest's return check when no program feed is in the room. |
 | `ALCANTARA_INVITATION_PATH` | **Guest only:** join an invitation an operator made in the console. No operator token is needed; only the guest side is checked, and the invitation is left for the operator to revoke. |
 | `WEBRTC_EXPECT_ICE_URL` | An ICE server URL LiveKit must hand out, for example the TURN-over-TLS `turns:…:443?transport=tcp`. Only scheme and port are printed. |
+| `WEBRTC_HOLD_SECONDS` | Keep the joined guest in the room this long, reporting every 15 s what it sends (`guest-sends`: audio and video bytes, and the selected ICE pair by candidate type and port). It fails if the guest's audio stops. Video can pause while nobody subscribes to it. |
 | `WEBRTC_TIMEOUT_MS`, `WEBRTC_HEADED=1` | The per-wait timeout, and watching the browser. |
 
 ### Against production
@@ -53,3 +54,13 @@ pnpm --filter @gaulatti/alcantara-e2e webrtc
 ```
 
 The operator watches the guest appear in `/calls` with picture and sound, then revokes the invitation. A full run (`ALCANTARA_OPERATOR_TOKEN`) would also check the operator side automatically. Never run it with the synthetic feed against a program whose pilot Feed is connected.
+
+### From outside the studio's network, with Docker only
+
+A host with Docker can run the guest-only check from the official Playwright image (the same Playwright version as
+`package.json`). Nothing else is installed on the host. Set `ALCANTARA_INVITATION_PATH` in the shell first; it is
+passed by name and never printed:
+
+```bash
+docker run --rm --init --ipc=host -e ALCANTARA_INVITATION_PATH -e ALCANTARA_API_URL=https://api.alcantara.gaulatti.com -e ALCANTARA_APP_URL=https://alcantara.gaulatti.com -e WEBRTC_EXPECT_RETURN=0 -e WEBRTC_HOLD_SECONDS=60 mcr.microsoft.com/playwright:v1.65.0-noble bash -c 'set -e; mkdir /w && cd /w && curl -fsSL https://codeload.github.com/gaulatti/alcantara/tar.gz/main | tar xz --strip-components=1 && npx -y pnpm@9 install --frozen-lockfile --filter @gaulatti/alcantara-e2e >/dev/null && npx -y pnpm@9 --filter @gaulatti/alcantara-e2e webrtc'
+```
