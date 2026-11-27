@@ -87,6 +87,17 @@ interface BroadcastSettings {
   updatedAt: string;
 }
 
+/**
+ * The program's mode, as the header names it. Until the program list has loaded the type is unknown, so the header says
+ * so rather than naming a mode it does not know (it said Television for a radio show).
+ */
+export function programModeLabelFor(type: ProgramType | undefined): string {
+  if (type === 'radio') return 'Radio';
+  if (type === 'both') return 'Simulcast';
+  if (type === 'tv') return 'Television';
+  return 'Loading program…';
+}
+
 // One icon per item where possible: the collapsed rail shows only these, so a repeated icon reads as the same place.
 export const NAVIGATION_ICONS: Record<string, ReactNode> = {
   control: <SlidersHorizontal size={17} />,
@@ -865,7 +876,7 @@ function ConsoleShell() {
     setSelectedTransitionId
   ]);
 
-  const programModeLabel = selectedProgramType === 'radio' ? 'Radio' : selectedProgramType === 'both' ? 'Simulcast' : 'Television';
+  const programModeLabel = programModeLabelFor(resolvedSelectedProgram?.type as ProgramType | undefined);
   const programModeIcon =
     selectedProgramType === 'radio' ? (
       <Radio size={14} />
