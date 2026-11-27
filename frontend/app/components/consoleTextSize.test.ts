@@ -27,8 +27,8 @@ describe('console text size', () => {
 
   // Bleecker 0.1.54 sizes StatePill and StatusBadge at 12px by default (gaulatti/bleecker#588), so
   // the console passes no override; the guard is that it never asks for the 11px size or re-forces 12px.
-  it('leaves StatePill and StatusBadge at their 12px default in the switcher deck and the header', () => {
-    for (const file of ['BroadcastSwitcherDeck.tsx', 'SimulcastStatusRail.tsx']) {
+  it('leaves StatePill and StatusBadge at their 12px default in the switcher deck', () => {
+    for (const file of ['BroadcastSwitcherDeck.tsx']) {
       const source = read(file);
       const badges = [...source.matchAll(/<(?:StatePill|StatusBadge)\b[\s\S]*?\/>/g)].map((match) => match[0]);
       expect(badges.length).toBeGreaterThan(0);

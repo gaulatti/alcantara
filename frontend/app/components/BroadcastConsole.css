@@ -583,7 +583,7 @@
   border: 1px solid var(--console-border);
   border-radius: 4px;
   padding: 0 6px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
   color: var(--console-muted);
@@ -1417,6 +1417,7 @@
    could not be read. Below 1280 px the header drops what it says elsewhere ("local render" is also on the picture)
    and Listen keeps its icon. */
 @media (max-width: 1279px) {
+  .switcher-monitor header .switcher-return-local,
   .switcher-monitor header .switcher-return-listen-label {
     display: none;
   }

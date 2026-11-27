@@ -54,7 +54,7 @@ export function SimulcastStatusRail({ programId }: SimulcastStatusRailProps) {
   return (
     <section aria-label='Simulcast output status' className='mx-3 mt-3 rounded-[var(--radius-ui)] border border-accent-yellow/40 bg-accent-yellow/10 px-3 py-2 text-sm font-semibold text-accent-yellow' title={palazzo?.detail ?? undefined}>
       Radio {reasonText || 'needs attention'} ·{' '}
-      <a href='/radio-settings' className='underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue'>
+      <a href='/radio-settings' className='underline'>
         Setup
       </a>
     </section>
