@@ -176,6 +176,11 @@ server unreachable**. They read `GET /webrtc/health?programId=` every 10 s and
 say nothing when all is well, when a part is unknown, or when the endpoint cannot
 be read (#875).
 
+**Mic on air** is on the radio desk's on-air strip as well as on Guest calls. The
+microphone belongs to the console: it stays live while the operator moves
+between pages, every page's header says **Mic on air** with an **Off** button
+while it is on, and switching shows or signing out switches it off (#879).
+
 Guest calls belongs to the show in its header: switching shows starts a fresh
 desk, dropping the previous show's lists, drafts, link and open microphones, and
 anything still being read for it.

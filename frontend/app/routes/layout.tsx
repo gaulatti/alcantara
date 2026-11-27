@@ -2,6 +2,8 @@ import { getDesktopHost } from '../platform/desktopHost';
 import { Tooltip } from '@gaulatti/bleecker/components/tooltip';
 import { BrandLockup, IconButton, CommandSpotlight, HeaderSelect, Input, Button, Modal, Sidebar, type CommandSpotlightAction, type SidebarItem } from '@gaulatti/bleecker';
 import {
+  Mic,
+  MicOff,
   Blend,
   BookOpen,
   Boxes,
@@ -52,6 +54,7 @@ import { useGlobalTransitionId } from '../utils/globalTransition';
 import { SCENE_TRANSITIONS, getSceneTransitionPreset } from '../utils/sceneTransitions';
 import { useLogout } from '../hooks/useAuth';
 import { RadioMonitorProvider, useRadioMonitor } from '../components/RadioMonitor';
+import { HostMicProvider, useHostMic } from '../components/HostMicOnAir';
 import { useFeatures } from '../hooks/useFeatures';
 import { isTestAuth } from '../services/session';
 import { getAppNavigationSections, isNavigationItemActive, sidebarSectionsKey, type ProgramType } from '../utils/appNavigation';
@@ -181,7 +184,9 @@ export default function Layout() {
   const [selectedProgramId] = useGlobalProgramId();
   return (
     <RadioMonitorProvider programId={selectedProgramId}>
-      <ConsoleShell />
+      <HostMicProvider programId={selectedProgramId}>
+        <ConsoleShell />
+      </HostMicProvider>
     </RadioMonitorProvider>
   );
 }
@@ -191,7 +196,9 @@ function ConsoleShell() {
   const location = useLocation();
   const { logout: signOut } = useLogout();
   const radioMonitor = useRadioMonitor();
+  const hostMic = useHostMic();
   const logout = () => {
+    hostMic?.stop();
     radioMonitor?.stop();
     signOut();
   };
@@ -1030,6 +1037,28 @@ function ConsoleShell() {
                 {/* What the live desk does; on any other page it described a screen that is not there (#875). */}
                 {location.pathname !== '/' && location.pathname !== '/control' ? null : selectedProgramType === 'radio' ? 'Continuous audio playout' : selectedProgramType === 'both' ? 'Television and radio legs' : 'Preview and Program switching'}
               </span>
+              {/* A live microphone is said on every page, with its off switch (#879). */}
+              {hostMic && hostMic.state !== 'off' ? (
+                <span role='status' className='inline-flex shrink-0 items-center gap-1.5 rounded-full border border-accent-red bg-accent-red py-0.5 pl-2.5 pr-1 text-xs font-bold text-white'>
+                  <Mic size={14} />
+                  <span className='max-w-32 truncate'>
+                    {hostMic.state === 'on' ? 'Mic on air' : 'Mic starting…'} · {hostMic.programId}
+                  </span>
+                  <Button size='xs' variant='ghost' className='text-white' onClick={() => hostMic.stop()} aria-label='Switch the microphone off air'>
+                    Off
+                  </Button>
+                </span>
+              ) : null}
+              {/* Off air without a press here (the studio muted it, the room closed, the show changed): said on whatever page. */}
+              {hostMic && hostMic.state === 'off' && hostMic.error ? (
+                <span role='status' title={hostMic.error} className='inline-flex shrink-0 items-center gap-1.5 rounded-full border border-terracotta/60 py-0.5 pl-2.5 pr-1 text-xs font-semibold text-terracotta'>
+                  <MicOff size={14} />
+                  <span>Mic is off air</span>
+                  <Button size='xs' variant='ghost' onClick={hostMic.dismissError} aria-label={`Dismiss: ${hostMic.error}`}>
+                    OK
+                  </Button>
+                </span>
+              ) : null}
               {radioMonitor && radioMonitor.state !== 'stopped' ? (
                 <span
                   role='status'

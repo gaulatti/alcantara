@@ -65,6 +65,12 @@ vi.mock("../utils/globalTransition", async () => {
     },
   };
 });
+// A live microphone, as the console's provider would report it; null leaves the real provider.
+const hostMic = vi.hoisted(() => ({ live: null as null | { state: "on" | "off" | "starting"; programId: string; error?: string; stop: () => void; dismissError?: () => void } }));
+vi.mock("../components/HostMicOnAir", async (original) => {
+  const actual = await original<typeof import("../components/HostMicOnAir")>();
+  return { ...actual, useHostMic: () => hostMic.live ?? actual.useHostMic() };
+});
 vi.mock("../hooks/useAuth", () => ({
   useLogout: () => ({ logout: shell.logout }),
 }));
@@ -852,6 +858,39 @@ it.each([
   shell.program = program;
   open("/");
   expect(await screen.findByText(description)).toBeInTheDocument();
+});
+
+// Never a moment it can go on air unseen: a press followed by navigation shows it while it is still opening.
+it("shows the microphone while it is still starting, with its off switch", async () => {
+  hostMic.live = { state: "starting", programId: "news", stop: vi.fn() };
+  shell.program = "news";
+  open("/media/library");
+  expect(await screen.findByText("Mic starting… · news")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Switch the microphone off air" })).toBeEnabled();
+  hostMic.live = null;
+});
+
+// #879: the microphone stays live across pages, so every page says so and can switch it off.
+it("says a live microphone on any page, with its off switch", async () => {
+  const stop = vi.fn();
+  hostMic.live = { state: "on", programId: "news", stop };
+  shell.program = "news";
+  open("/media/library");
+  expect(await screen.findByText("Mic on air · news")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Switch the microphone off air" }));
+  expect(stop).toHaveBeenCalled();
+  hostMic.live = null;
+});
+
+it("says on any page that the microphone went off air by itself, until dismissed", async () => {
+  const dismissError = vi.fn();
+  hostMic.live = { state: "off", programId: "news", error: "The studio muted the host microphone. It is off air.", stop: vi.fn(), dismissError };
+  shell.program = "news";
+  open("/media/library");
+  expect(await screen.findByText("Mic is off air")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss: The studio muted the host microphone. It is off air." }));
+  expect(dismissError).toHaveBeenCalled();
+  hostMic.live = null;
 });
 
 it("sets, validates and disables the global broadcast time override", async () => {

@@ -1,18 +1,23 @@
 import { Button } from '@gaulatti/bleecker';
 import { Mic, MicOff } from 'lucide-react';
 import { createLocalAudioTrack, Room, RoomEvent, Track } from 'livekit-client';
-import { useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { authFetch } from '../services/api';
 
 /**
  * The host's own microphone on air (gaulatti/alcantara calls): published into the program's call room as
  * `onair:host`, which the station's contribution worker puts on air and the return router plays to every guest. Off
- * by default; switching it off, leaving the page or losing the room unpublishes it. Talkback stays separate and
+ * by default; switching it off, leaving the console or losing the room unpublishes it. Talkback stays separate and
  * never reaches air.
+ *
+ * The microphone belongs to the console, not to a page (gaulatti/alcantara#879): under HostMicProvider it stays live
+ * while the operator moves between pages, and goes off when they switch shows.
  */
-export function HostMicOnAir({ programId, canOperate }: { programId: string; canOperate: boolean }) {
+function useHostMicController() {
   const [state, setState] = useState<'off' | 'starting' | 'on'>('off');
   const [error, setError] = useState('');
+  // The show the microphone was opened for.
+  const [programId, setProgramId] = useState<string | null>(null);
   const link = useRef<{ room: Room; track: { stop: () => void } | null } | null>(null);
 
   const close = () => {
@@ -23,12 +28,16 @@ export function HostMicOnAir({ programId, canOperate }: { programId: string; can
   };
   useEffect(() => close, []);
 
-  const stop = () => {
+  const stop = (reason = '') => {
     close();
     setState('off');
+    setError(reason);
   };
 
-  const start = async () => {
+  const start = async (programId: string) => {
+    // One microphone: a press while one is open or opening changes nothing.
+    if (link.current) return;
+    setProgramId(programId);
     setError('');
     setState('starting');
     const current: { room: Room; track: { stop: () => void } | null } = { room: new Room(), track: null };
@@ -79,6 +88,36 @@ export function HostMicOnAir({ programId, canOperate }: { programId: string; can
       setError(reason instanceof Error ? reason.message : 'The host microphone could not go on air.');
     }
   };
+
+  const dismissError = () => setError('');
+
+  return { state, error, programId, start, stop, dismissError };
+}
+
+type HostMic = ReturnType<typeof useHostMicController>;
+const HostMicContext = createContext<HostMic | null>(null);
+
+/** The console's one microphone, above the pages. `programId` is the show selected in the header. */
+export function HostMicProvider({ programId, children }: { programId: string; children: ReactNode }) {
+  const mic = useHostMicController();
+  const opened = mic.state === 'off' ? null : mic.programId;
+  useEffect(() => {
+    // Never on air for a show the console is no longer showing.
+    if (opened !== null && opened !== programId) mic.stop('The microphone was switched off because the show changed.');
+  }, [opened, programId]);
+  return <HostMicContext.Provider value={mic}>{children}</HostMicContext.Provider>;
+}
+
+export const useHostMic = () => useContext(HostMicContext);
+
+/** The button, from the console's microphone when there is one; on its own (a page outside the console) otherwise. */
+export function HostMicOnAir({ programId, canOperate }: { programId: string; canOperate: boolean }) {
+  const shared = useHostMic();
+  const own = useHostMicController();
+  const mic = shared ?? own;
+  const { state, error } = mic;
+  const stop = () => mic.stop();
+  const start = () => mic.start(programId);
 
   return (
     <span className='host-mic-on-air' data-on-air={state === 'on'}>

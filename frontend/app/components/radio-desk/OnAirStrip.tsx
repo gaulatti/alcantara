@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { ConsoleClock } from "../ConsoleSurface";
 import { deriveOnAir, formatClock, type OnAirInput, type OnAirView } from "./onAir";
 import { StatePill } from "./primitives";
@@ -14,16 +15,19 @@ export function LiveOnAirStrip({
   output,
   programId,
   guests = [],
+  controls,
 }: {
   input: Omit<OnAirInput, "outputUnverified">;
   output: { state: string; lastSampleAt: string | null } | null;
   programId: string;
   guests?: DeskGuest[];
+  /** What the operator works from the strip itself, in view at every size. */
+  controls?: ReactNode;
 }) {
   const outputUnverified = useOutputUnverified(output);
   const view = deriveOnAir({ ...input, outputUnverified });
   const call = guestChip(guests);
-  return <OnAirStrip view={call ? { ...view, chips: [call, ...view.chips] } : view} programId={programId} />;
+  return <OnAirStrip view={call ? { ...view, chips: [call, ...view.chips] } : view} programId={programId} controls={controls} />;
 }
 
 /**
@@ -34,9 +38,11 @@ export function LiveOnAirStrip({
 export function OnAirStrip({
   view,
   programId,
+  controls,
 }: {
   view: OnAirView;
   programId: string;
+  controls?: ReactNode;
 }) {
   // A song's title and clock; audio with no song commanded has neither (D7), so it gets its own line.
   const fallback = view.state === "fallback";
@@ -176,6 +182,7 @@ export function OnAirStrip({
           );
         })}
       </div>
+      {controls}
       <ConsoleClock />
     </section>
   );
