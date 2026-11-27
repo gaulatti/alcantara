@@ -518,7 +518,7 @@ export default function CallsRoute() {
           </aside>
           <section className='caller-desk-strips' aria-label='Guest slots'>
             {loadState !== 'loading' ? (
-              <p className='text-sm font-medium' data-return-sending={roomReturn ? String(roomReturn.returnSending) : 'unknown'}>
+              <p className='col-span-full text-sm font-medium' data-return-sending={roomReturn ? String(roomReturn.returnSending) : 'unknown'}>
                 {roomReturn === null
                   ? 'Return to guests: unknown'
                   : roomReturn.returnSending

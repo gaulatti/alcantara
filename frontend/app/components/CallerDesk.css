@@ -49,6 +49,9 @@
 .caller-desk-strips {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  /* Each slot keeps its own height: a tall guest card no longer stretches the free slots beside it, or leaves a dead
+     column (#875, the empty middle column at 1440). */
+  align-items: start;
   gap: 12px;
 }
 .guest-strip {
