@@ -858,6 +858,42 @@ it("ends the call when the studio revokes the session", async () => {
   ).toBeInTheDocument();
 });
 
+// A phone that slept past the reconnect window: nobody ended or revoked anything, and the page must not say so.
+it("says the guest was away too long when the session lapsed while the phone slept", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  await joined();
+  // The phone wakes ninety seconds later; the next heartbeat is refused.
+  vi.setSystemTime(Date.now() + 90_000);
+  heartbeatStatus = 401;
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(20_000);
+  });
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "You were away too long, so the studio let go of the call. Rejoin to come back.",
+  );
+  expect(screen.queryByText(/ended or revoked/)).toBeNull();
+  expect(screen.getByRole("button", { name: "Rejoin the studio" })).toBeVisible();
+});
+
+it("asks the studio at once when the phone wakes, without waiting for the next beat", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  await joined();
+  const beats = () => fetchCalls.filter((call) => call.url.includes("/webrtc/session/heartbeat")).length;
+  const visibility = vi.spyOn(document, "visibilityState", "get");
+  visibility.mockReturnValue("hidden");
+  const before = beats();
+  await act(async () => {
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  expect(beats()).toBe(before);
+  visibility.mockReturnValue("visible");
+  await act(async () => {
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await waitFor(() => expect(beats()).toBe(before + 1));
+  visibility.mockRestore();
+});
+
 it("ends the call when the studio no longer recognizes the session", async () => {
   heartbeatStatus = 401;
   openPage();
@@ -975,6 +1011,20 @@ it("toggles media in the room and leaves the studio", async () => {
   fireEvent.click(screen.getByRole("button", { name: /Leave/ }));
   expect(screen.getByText("You left the studio.")).toBeVisible();
   expect(room().disconnected).toBe(true);
+});
+
+// Most guests are on phones: a director's note must not hide the status, be cut off, or outlive the call.
+it("shows a director's note under the picture, and drops it once the guest has left", async () => {
+  await joined();
+  director({ id: "c7", type: "message", text: "Thirty seconds, then you are on." });
+  const note = await screen.findByText("Thirty seconds, then you are on.");
+  expect(note.closest(".aspect-video")).toBeNull();
+  expect(screen.getByRole("main").className).toContain("[&_button]:min-h-11");
+  fireEvent.click(screen.getByRole("button", { name: /Leave/ }));
+  expect(screen.getByText("You left the studio.")).toBeVisible();
+  // Over the "left" panel it covered Rejoin.
+  expect(screen.queryByText("Thirty seconds, then you are on.")).toBeNull();
+  expect(screen.getByRole("button", { name: /Rejoin the studio/ })).toBeVisible();
 });
 
 it("lets the guest try again when the camera fails after the room connected", async () => {

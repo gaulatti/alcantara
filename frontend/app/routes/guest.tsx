@@ -46,6 +46,8 @@ const CONNECT_FAILED = 'Could not connect to the studio. Check your Wi-Fi or mob
 const DROPPED = 'Your connection to the studio dropped. Check your Wi-Fi or mobile data, then rejoin.';
 // The studio removed this guest from the room: not a network drop, and the same link can join again.
 const REMOVED = 'The studio removed you from the call. You can rejoin with the same link.';
+// A phone that slept or switched apps past the reconnect window: nobody ended the call, and saying so would be untrue.
+const AWAY_TOO_LONG = 'You were away too long, so the studio let go of the call. Rejoin to come back.';
 
 export default function GuestRoute() {
   const { invitation = '' } = useParams();
@@ -64,6 +66,9 @@ export default function GuestRoute() {
   const announceJoinRef = useRef(false);
   // A lost call is reported by the next heartbeat that gets through.
   const pendingDropRef = useRef(false);
+  // When the studio last heard from this page, and how long it keeps a silent session.
+  const lastHeardRef = useRef(0);
+  const reconnectWindowRef = useRef(60_000);
   const [status, setStatus] = useState<GuestStatus>('preflight');
   const [error, setError] = useState('');
   // The plain-words help for a refused camera or microphone, and the attempt number that re-runs the preflight.
@@ -144,6 +149,7 @@ export default function GuestRoute() {
       })
     });
     if (response.ok && dropped) pendingDropRef.current = false;
+    if (response.ok) lastHeardRef.current = Date.now();
     if (response.ok && waitingRef.current) {
       const answer = (await response.json().catch(() => null)) as { admission?: string } | null;
       // Another heartbeat may have seen it first.
@@ -164,9 +170,22 @@ export default function GuestRoute() {
       intentionalEndRef.current = true;
       roomRef.current?.disconnect();
       setStatus('ended');
-      setError(declined ? 'The studio did not let you in. Ask them for a new link if this was a mistake.' : 'The studio ended or revoked this guest session.');
+      const away = lastHeardRef.current > 0 && Date.now() - lastHeardRef.current > reconnectWindowRef.current;
+      setError(away ? AWAY_TOO_LONG : declined ? 'The studio did not let you in. Ask them for a new link if this was a mistake.' : 'The studio ended or revoked this guest session.');
     }
   };
+
+  // A phone that slept or switched apps does not wait for the next beat to learn whether the call is still there:
+  // until it asks, the page would go on saying the guest hears the studio.
+  const heartbeatNowRef = useRef(heartbeat);
+  heartbeatNowRef.current = heartbeat;
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && heartbeatRef.current !== null) void heartbeatNowRef.current().catch(() => undefined);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
 
   const acknowledge = async (command: DirectorCommand, commandStatus: 'accepted' | 'rejected' | 'read' | 'acknowledged') => {
     // Without a session token no receipt can be sent, but the guest's own answer still clears the notice.
@@ -320,6 +339,7 @@ export default function GuestRoute() {
         serverUrl: string;
         token: string;
         sessionToken: string;
+        reconnectWindowSeconds?: number;
         displayName: string;
         programId: string;
         participantIdentity: string;
@@ -330,6 +350,9 @@ export default function GuestRoute() {
       };
       window.sessionStorage.setItem(storageKey, credentials.sessionToken);
       sessionTokenRef.current = credentials.sessionToken;
+      // The join itself is the studio hearing from this page.
+      lastHeardRef.current = Date.now();
+      if (credentials.reconnectWindowSeconds) reconnectWindowRef.current = credentials.reconnectWindowSeconds * 1000;
       setDisplayName(credentials.displayName);
       setProgramId(credentials.programId);
       setReturnVideo(credentials.returnVideo);
@@ -604,9 +627,11 @@ export default function GuestRoute() {
   const readyToJoin = status === 'ready' && speakerChecked && headphonesConfirmed;
   const joinBlockedBy = !speakerChecked ? 'Play the test tone first.' : !headphonesConfirmed ? 'Confirm you are wearing headphones.' : '';
   return (
-    <main className='min-h-screen bg-zinc-950 px-4 py-8 text-white'>
+    // Guests are mostly on phones: every control is at least 44 px, and a phone on its side (a short screen) gets a
+    // tighter header and a shorter picture so the call controls stay on screen.
+    <main className='min-h-screen bg-zinc-950 px-4 py-8 text-white [&_button]:min-h-11 [&_[role=combobox]]:min-h-11 [@media(max-height:500px)]:py-3'>
       <div className='mx-auto max-w-5xl'>
-        <header className='mb-7 flex items-center gap-4'>
+        <header className='mb-7 flex items-center gap-4 [@media(max-height:500px)]:mb-3'>
           <span className='flex h-11 w-11 items-center justify-center rounded-xl bg-sky-400/10 text-sky-300'>
             <Radio size={20} />
           </span>
@@ -619,7 +644,7 @@ export default function GuestRoute() {
           </div>
           <StatusBadge className='ml-auto' label={status} variant={status === 'live' ? 'live' : status === 'reconnecting' ? 'offline' : 'default'} />
         </header>
-        <div className='relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black'>
+        <div className='relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black [@media(max-height:500px)]:aspect-auto [@media(max-height:500px)]:h-[calc(100dvh-11.5rem)] [@media(max-height:500px)]:min-h-40'>
           {status === 'live' || status === 'reconnecting' ? <video ref={returnVideoRef} autoPlay playsInline className='h-full w-full object-contain' /> : null}
           <audio ref={returnAudioRef} autoPlay playsInline />
           <video
@@ -629,7 +654,7 @@ export default function GuestRoute() {
             muted
             className={
               status === 'live' || status === 'reconnecting'
-                ? 'absolute bottom-4 right-4 z-10 aspect-video w-1/4 rounded-lg border-2 border-white/40 bg-black object-cover'
+                ? 'absolute right-3 top-3 z-10 aspect-video w-1/4 rounded-lg border-2 border-white/40 bg-black object-cover'
                 : 'h-full w-full object-cover'
             }
           />
@@ -664,28 +689,30 @@ export default function GuestRoute() {
               {invitationClosed ? null : <Button onClick={() => void join()}>Rejoin the studio</Button>}
             </div>
           ) : null}
-          {notice ? (
-            <div className='absolute inset-x-4 bottom-5 z-20 mx-auto max-w-xl rounded-xl border border-amber-300/50 bg-zinc-950/95 p-5 text-center shadow-2xl'>
-              <strong className={notice.type === 'cue' ? 'text-xl uppercase tracking-widest text-amber-300' : ''}>
-                {notice.type === 'cue' ? notice.cue : notice.type === 'message' ? notice.text : `Studio requests your ${notice.device}.`}
-              </strong>
-              <div className='mt-4 flex justify-center gap-2'>
-                {notice.type === 'media' ? (
-                  <>
-                    <Button onClick={() => void respondToEnable(true)}>Accept</Button>
-                    <Button variant='secondary' onClick={() => void respondToEnable(false)}>
-                      Decline
-                    </Button>
-                  </>
-                ) : (
-                  <Button onClick={() => void acknowledge(notice, 'acknowledged')}>
-                    <CheckCircle2 size={15} /> Acknowledge
-                  </Button>
-                )}
-              </div>
-            </div>
-          ) : null}
         </div>
+        {/* Under the picture, never over it; pinned to the top on a phone held sideways. Nothing is asked of a guest
+          who has left. */}
+        {notice && status !== 'left' && status !== 'ended' ? (
+          <div className='mx-auto mt-3 max-w-xl rounded-xl border border-amber-300/50 bg-zinc-950 p-4 text-center shadow-2xl [@media(max-height:500px)]:fixed [@media(max-height:500px)]:inset-x-4 [@media(max-height:500px)]:top-2 [@media(max-height:500px)]:z-30 [@media(max-height:500px)]:mt-0'>
+            <strong className={notice.type === 'cue' ? 'text-xl uppercase tracking-widest text-amber-300' : ''}>
+              {notice.type === 'cue' ? notice.cue : notice.type === 'message' ? notice.text : `Studio requests your ${notice.device}.`}
+            </strong>
+            <div className='mt-4 flex justify-center gap-2'>
+              {notice.type === 'media' ? (
+                <>
+                  <Button onClick={() => void respondToEnable(true)}>Accept</Button>
+                  <Button variant='secondary' onClick={() => void respondToEnable(false)}>
+                    Decline
+                  </Button>
+                </>
+              ) : (
+                <Button onClick={() => void acknowledge(notice, 'acknowledged')}>
+                  <CheckCircle2 size={15} /> Acknowledge
+                </Button>
+              )}
+            </div>
+          </div>
+        ) : null}
         {mediaHelp && status === 'error' ? (
           <div role='alert' className='mt-4 rounded-xl border border-amber-300/40 bg-amber-300/10 p-4 text-sm text-amber-100'>
             <p className='font-semibold'>{mediaHelp.title}</p>
@@ -706,7 +733,7 @@ export default function GuestRoute() {
           </div>
         ) : null}
         {/* Phones get two equal columns the thumb can reach; the join and leave controls take a full row. */}
-        <div className='mt-6 grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-center sm:justify-center'>
+        <div className='mt-6 grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-center sm:justify-center [@media(max-height:500px)]:mt-3'>
           <Button variant='secondary' onClick={() => void toggleMedia('camera')}>
             {cameraEnabled ? <Camera size={18} /> : <CameraOff size={18} />} {cameraEnabled ? 'Camera on' : 'Camera off'}
           </Button>

@@ -87,6 +87,8 @@ The console's authenticated fetch leaves this page and the machine-only
 authenticates with its invitation, the router with its renderer key), so their
 backend requests go out as they are.
 
+A phone that sleeps or switches apps recovers by itself within that window. Past it, the page says the guest was away too long (not that the studio ended the call), asks the studio the moment it is visible again, and **Rejoin the studio** takes an already admitted guest straight back in. On phones every control of the guest page is at least 44 px, a director's note sits under the picture (pinned to the top on a phone held sideways) and goes once the guest has left, and a sideways phone keeps the call controls on screen.
+
 Operator mute is immediate. Camera/microphone enable is delivered as a request
 that the guest accepts or rejects. A media command that names no camera or
 microphone is ignored. Standby/live/wrap cues and private messages
