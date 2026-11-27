@@ -22,14 +22,17 @@ export const RUNS = [
   { name: "android", engine: "chromium", device: "Pixel 7" },
   // An office or hotel Wi-Fi that blocks UDP: media has to go over TCP or a relay.
   { name: "chromium-tcp", engine: "chromium", ice: "tcp" },
+  // A network that leaves only TCP 443: nothing but TURN over TLS can carry the call. Run it by name: it fails until
+  // that is set up (infra/README.md, "TURN over TLS").
+  { name: "chromium-relay", engine: "chromium", ice: "relay", onRequest: true },
 ];
 
-/** The runs asked for by name, or all of them. */
+/** The runs asked for by name, or all but the ones that are only run by name. */
 export function selectRuns(names = "") {
   const wanted = names.split(",").map((name) => name.trim()).filter(Boolean);
   const unknown = wanted.filter((name) => !RUNS.some((run) => run.name === name));
   if (unknown.length) throw new Error(`unknown runs: ${unknown.join(", ")}`);
-  return wanted.length ? RUNS.filter((run) => wanted.includes(run.name)) : RUNS;
+  return wanted.length ? RUNS.filter((run) => wanted.includes(run.name)) : RUNS.filter((run) => !run.onRequest);
 }
 /** A guest session keeps the invitation for 60 s after the guest leaves; the next browser waits it out. */
 const SESSION_PAUSE_SECONDS = 70;
@@ -72,10 +75,10 @@ export function summaryLine({ browser, joined, admitted, track, copy = "none", c
   const yes = (value) => (value ? "yes" : "NO");
   const quiet = peak > 0 && peak < 0.01 ? " (below the 0.01 audible level)" : "";
   const copyNote = track ? `, guest copy "${copy}"${copyOk ? "" : " (NOT playing while audio flows)"}` : "";
-  return `${browser}: joined ${yes(joined)}, admitted ${yes(admitted)}, return track ${yes(track)}, return peak ${peak}${quiet}${copyNote}${ice ? `, path: ${ice}${iceOk ? "" : " (used UDP)"}` : ""}${error ? `, error: ${error}` : ""}${error && offered ? `, server offered: ${offered}` : ""}`;
+  return `${browser}: joined ${yes(joined)}, admitted ${yes(admitted)}, return track ${yes(track)}, return peak ${peak}${quiet}${copyNote}${ice ? `, path: ${ice}${iceOk ? "" : " (not the path this run demands)"}` : ""}${error ? `, error: ${error}` : ""}${error && offered ? `, server offered: ${offered}` : ""}`;
 }
 
-export const passed = (results, runs = RUNS.length) => results.length === runs && results.every((r) => r.track && r.peak > 0 && r.copyOk && r.iceOk !== false);
+export const passed = (results, runs = selectRuns().length) => results.length === runs && results.every((r) => r.track && r.peak > 0 && r.copyOk && r.iceOk !== false);
 
 /** The last 40 lines the router page wrote. */
 export const routerLines = (log) => log.split("\n").filter((line) => line.includes("[return-router] ")).slice(-40);

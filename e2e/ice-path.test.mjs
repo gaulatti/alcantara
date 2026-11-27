@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { avoidsUdp, describePath, offeredCandidate, selectedPath } from "./ice-path.mjs";
+import { avoidsUdp, describePath, failureReason, iceSatisfied, offeredCandidate, selectedPath } from "./ice-path.mjs";
 
 const reports = (local, extra = []) => [
   { id: "L", type: "local-candidate", ...local },
@@ -35,4 +35,26 @@ test("names an offered candidate without its address", () => {
   assert.equal(offeredCandidate("candidate:1 1 TCP 1671430143 203.0.113.9 7881 typ host tcptype passive"), "host tcp :7881");
   assert.equal(offeredCandidate("a=candidate:2 1 udp 1 203.0.113.9 7882 typ host"), "host udp :7882");
   assert.equal(offeredCandidate("a=mid:0"), null);
+});
+
+test("a relay run passes only through a relay over TLS", () => {
+  const tls = { local: "relay", protocol: "udp", relayProtocol: "tls" };
+  assert.equal(iceSatisfied("relay", [tls, tls]), true);
+  assert.equal(iceSatisfied("relay", [{ local: "relay", protocol: "udp", relayProtocol: "udp" }]), false);
+  assert.equal(iceSatisfied("relay", [tls, { local: "host", protocol: "tcp" }]), false);
+  assert.equal(iceSatisfied("relay", []), false);
+  assert.equal(iceSatisfied("tcp", [{ local: "host", protocol: "tcp" }]), true);
+  assert.equal(iceSatisfied("", []), true);
+});
+
+test("says plainly that no relay candidate could be had", () => {
+  assert.equal(
+    failureReason("relay", { attempts: 2, turnServers: ["turn:livekit.example:3478?transport=udp"], gathered: [] }, "Timeout"),
+    "no relay candidates offered (TURN servers given to the page: turn:livekit.example:3478?transport=udp; Timeout)",
+  );
+  assert.match(failureReason("relay", { attempts: 1, turnServers: [], gathered: [] }, "Timeout"), /^no relay candidates offered \(TURN servers given to the page: none/);
+  assert.equal(failureReason("relay", { attempts: 1, turnServers: [], gathered: ["relay udp"] }, "Timeout"), "Timeout");
+  // A page that never tried to connect failed for another reason.
+  assert.equal(failureReason("relay", { attempts: 0, turnServers: [], gathered: [] }, "Timeout"), "Timeout");
+  assert.equal(failureReason("tcp", { attempts: 1, turnServers: [], gathered: [] }, "Timeout"), "Timeout");
 });

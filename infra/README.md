@@ -112,115 +112,104 @@ TURN over TLS is on only when the runtime secret names `livekitTurnTlsDomain`. n
 
 ## TURN over TLS on 443
 
-For guests whose networks block UDP and `7881/tcp`. LiveKit tells clients to use `turns:<domain>:443`, always on 443, so nginx must share that port between the web sites and TURN. It does that by the name a client asks for (`ssl_preread`), ends TLS for the TURN name with its own certificate, and passes the plain stream to LiveKit (`turn.external_tls`).
+For guests whose networks block UDP and `7881/tcp`. Without it, a network that allows only TCP 443 cannot join: the TCP proof on 2026-11-27 connected over `7881/tcp` and the only TURN offered is UDP `3478`. LiveKit tells clients to use `turns:<domain>:443`, always on 443, so nginx must share that port between the web sites and TURN. It does that by the name a client asks for (`ssl_preread`), ends TLS for the TURN name with its own certificate, and passes the plain stream to LiveKit (`turn.external_tls`).
 
-**This changes every HTTPS site on Helix, not only Alcantara's.** nginx cannot have both a `stream` listener and `http` server blocks on 443, so every HTTPS server block moves to `127.0.0.1:8443`. Pick a moment when a short interruption of all of them is acceptable and nothing is on air or in a call.
+### What it changes
 
-No router change is needed: 443 already reaches Helix. UDP 443 (HTTP/3), if any site uses it, is not affected.
+- **Every HTTPS site on Helix**, not only Alcantara's: nginx cannot have both a `stream` listener and `http` server blocks on 443, so every HTTPS server block moves to `127.0.0.1:8443` behind the stream block. All sites are interrupted for the nginx restart.
+- Installs `nginx-mod-stream` 1.26.3 from Fedora's build system, labels port 5350 for nginx, and gets a certificate for `turn.alcantara.gaulatti.com`.
+- Adds `livekitTurnTlsDomain` to `broadcast/production/config` and restarts LiveKit twice (**calls in progress drop**).
+- No router change (443 already reaches Helix), no DNS change (the name already resolves to Helix), no backend deploy. UDP 443, if a site uses it, is not affected.
 
-1. **DNS.** Deploy the `infra/aws` stack, which adds `turn.alcantara.gaulatti.com` as a CNAME to `helix.gaulatti.com`. Check: `dig +short turn.alcantara.gaulatti.com`.
-2. **Backend image.** Deploy the backend, so that `ghcr.io/gaulatti/alcantara:latest` has the new renderer.
-3. **Copy the files.** Run `livekit-up.sh` as above. With no `livekitTurnTlsDomain` yet, LiveKit's configuration does not change. The compose file gains the loopback port, so LiveKit restarts and calls in progress drop.
-4. **The stream module, without upgrading nginx** (on Helix). **Do not run `dnf install nginx-mod-stream`:** Helix has nginx 1.26.3, the repositories only carry the module for 1.26.2 or 1.28.0, and Fedora 41's 1.28.0 stream module **segfaults on any TLS server block**. Take the 1.26.3 module from Fedora's build system. It installs one package and does not touch the running nginx. The build is unsigned there, so check its hash; every command below stops if a check fails.
+Pick a moment with nothing on air and nobody in a call.
 
-   ```bash
-   rpm -q nginx-core
-   ```
+### The owner's step: one block
 
-   It must print `nginx-core-1.26.3-1.fc41.x86_64`. If it does not, stop: these steps were proven on that version.
+Run it from a checkout of this repository, in **zsh or bash** (not fish), on a machine with `aws`, `jq`, `docker` and SSH to Helix. It asks for the sudo password on Helix once. It stops at the first failure; if nginx or any site misbehaves after the change, it puts nginx back by itself and stops.
 
-   ```bash
-   curl -fsSLo /tmp/nginx-mod-stream.rpm https://kojipkgs.fedoraproject.org/packages/nginx/1.26.3/1.fc41/x86_64/nginx-mod-stream-1.26.3-1.fc41.x86_64.rpm && echo "37b251d5c35d70ae7308d4921168939d40e1f51004d407ef55535524b3050e1b  /tmp/nginx-mod-stream.rpm" | sha256sum -c && sudo dnf install -y /tmp/nginx-mod-stream.rpm
-   ```
+```bash
+(
+set -euo pipefail
+H=helix.gaulatti.com
+export AWS_REGION=us-east-1 ALCANTARA_CONFIG_SECRET_ID=broadcast/production/config
+test -n "$(dig +short turn.alcantara.gaulatti.com)"
+infra/helix/livekit-up.sh "$H"                      # copies the nginx files; LiveKit's configuration is unchanged
+ssh "$H" 'cat > /tmp/alcantara-turn.sh' <<'ROOT'
+set -euo pipefail
+files=$(getent passwd "$SUDO_USER" | cut -d: -f6)/.alcantara-livekit
+test -f "$files/nginx-turn-stream.conf" -a -f "$files/nginx-behind-stream.conf"
+if ! rpm -q nginx-mod-stream >/dev/null; then
+  # Never `dnf install nginx-mod-stream`: Fedora 41's 1.28.0 module segfaults on any TLS server block.
+  test "$(rpm -q nginx-core)" = nginx-core-1.26.3-1.fc41.x86_64
+  curl -fsSLo /tmp/nginx-mod-stream.rpm https://kojipkgs.fedoraproject.org/packages/nginx/1.26.3/1.fc41/x86_64/nginx-mod-stream-1.26.3-1.fc41.x86_64.rpm
+  echo "37b251d5c35d70ae7308d4921168939d40e1f51004d407ef55535524b3050e1b  /tmp/nginx-mod-stream.rpm" | sha256sum -c
+  dnf install -y /tmp/nginx-mod-stream.rpm
+fi
+dnf install -y policycoreutils-python-utils
+semanage port -a -t http_port_t -p tcp 5350 || semanage port -m -t http_port_t -p tcp 5350
+certbot certonly --nginx --keep-until-expiring -d turn.alcantara.gaulatti.com --deploy-hook "systemctl reload nginx"
+if test -e /etc/nginx/stream.d/alcantara-turn.conf; then echo "nginx is already changed"; exit 0; fi
+names=$(grep -hE '^[[:space:]]*server_name[[:space:]]' /etc/nginx/sites-available/* | sed -E 's/^[[:space:]]*server_name[[:space:]]+//; s/;.*//' | tr ' ' '\n' | grep -E '^[a-z0-9.-]+\.[a-z]+$' | sort -u)
+probe() { for n in $names; do echo "$n $(curl -s -o /dev/null -m 10 -w '%{http_code}' --resolve "$n:443:127.0.0.1" "https://$n/" || true)"; done; }
+before=$(probe)
+rm -rf /etc/nginx.before-turn && cp -a /etc/nginx /etc/nginx.before-turn
+undo() { echo "FAILED: putting nginx back" >&2; rm -rf /etc/nginx && cp -a /etc/nginx.before-turn /etc/nginx && nginx -t && systemctl restart nginx; exit 1; }
+trap undo ERR
+sed -i -E -e 's/^([[:space:]]*)listen 443 ssl([^;]*);/\1listen 127.0.0.1:8443 ssl proxy_protocol\2;/' -e '/^[[:space:]]*listen \[::\]:443 ssl[^;]*;/d' /etc/nginx/sites-available/*
+if grep -rnE '^[[:space:]]*listen[^;#]*\b443\b' /etc/nginx/sites-available /etc/nginx/conf.d; then false; fi
+mkdir -p /etc/nginx/stream.d
+cp "$files/nginx-turn-stream.conf" /etc/nginx/stream.d/alcantara-turn.conf
+cp "$files/nginx-behind-stream.conf" /etc/nginx/conf.d/behind-stream.conf
+grep -qF 'include /etc/nginx/stream.d/*.conf;' /etc/nginx/nginx.conf || echo 'include /etc/nginx/stream.d/*.conf;' >> /etc/nginx/nginx.conf
+nginx -t
+systemctl restart nginx
+sleep 3
+after=$(probe)
+if [ "$before" != "$after" ]; then echo "sites changed (before, after):"; diff <(echo "$before") <(echo "$after") || true; false; fi
+trap - ERR
+echo "nginx changed; $(echo "$after" | wc -l) site names answer as before"
+ROOT
+ssh -t "$H" 'sudo bash /tmp/alcantara-turn.sh'
+new=$(aws secretsmanager get-secret-value --secret-id "$ALCANTARA_CONFIG_SECRET_ID" --query SecretString --output text | jq -ce '. + {livekitTurnTlsDomain: "turn.alcantara.gaulatti.com"}')
+printf '%s' "$new" | aws secretsmanager put-secret-value --secret-id "$ALCANTARA_CONFIG_SECRET_ID" --secret-string file:///dev/stdin >/dev/null
+unset new
+infra/helix/livekit-up.sh "$H"
+ssh "$H" docker restart alcantara-livekit >/dev/null   # Compose does not restart it when only livekit.yaml changed
+sleep 15
+echo "--- check: both lines must be right"
+echo | openssl s_client -connect turn.alcantara.gaulatti.com:443 -servername turn.alcantara.gaulatti.com 2>/dev/null | openssl x509 -noout -subject
+curl -s https://livekit.alcantara.gaulatti.com; echo
+)
+```
 
-5. **SELinux port and certificate** (no interruption):
+**Check.** The last two lines must be `subject=CN=turn.alcantara.gaulatti.com` and `OK`. Run it from outside Helix's network. Then prove a guest gets in over TURN alone: the `chromium-relay` run of the return proof (`e2e/README.md`) fails with `no relay candidates offered` before this step and must pass with `relay over tls` after it.
 
-   ```bash
-   sudo dnf install -y policycoreutils-python-utils
-   ```
+### Undo
 
-   ```bash
-   sudo semanage port -a -t http_port_t -p tcp 5350 || sudo semanage port -m -t http_port_t -p tcp 5350
-   ```
+nginx back as it was (the module and certificate can stay):
 
-   ```bash
-   sudo certbot certonly --nginx -d turn.alcantara.gaulatti.com --deploy-hook "systemctl reload nginx"
-   ```
+```bash
+ssh -t helix.gaulatti.com "sudo sh -c 'rm -rf /etc/nginx && cp -a /etc/nginx.before-turn /etc/nginx && nginx -t && systemctl restart nginx'"
+```
 
-6. **Move the web sites and add the stream block.** Sites are the files in `/etc/nginx/sites-available`. Nothing changes for visitors until the restart.
+LiveKit back to UDP TURN only (from the checkout):
 
-   Back up. This copy is what the rollback restores, so run it once, before editing:
+```bash
+(
+set -euo pipefail
+export AWS_REGION=us-east-1 ALCANTARA_CONFIG_SECRET_ID=broadcast/production/config
+new=$(aws secretsmanager get-secret-value --secret-id "$ALCANTARA_CONFIG_SECRET_ID" --query SecretString --output text | jq -ce 'del(.livekitTurnTlsDomain)')
+printf '%s' "$new" | aws secretsmanager put-secret-value --secret-id "$ALCANTARA_CONFIG_SECRET_ID" --secret-string file:///dev/stdin >/dev/null
+infra/helix/livekit-up.sh helix.gaulatti.com
+ssh helix.gaulatti.com docker restart alcantara-livekit
+)
+```
 
-   ```bash
-   sudo test ! -e /etc/nginx.before-turn && sudo cp -a /etc/nginx /etc/nginx.before-turn
-   ```
+### What was proven, and what was not
 
-   Check that only nginx holds TCP 443:
+Proven (2026-11-26, a Fedora 41 container with nginx 1.26.3, a copy of Helix's configuration, self-signed certificates and stand-in backends, aarch64): after these nginx edits every site name answered exactly as before (status, HTTP version, certificate, redirect, and the client address the application sees), TURN over TLS on 443 reached LiveKit 1.13.4, and the rollback restored the original behaviour. **Not proven:** SELinux, certbot, the firewall, x86_64 for the whole matrix, and the block above run as one piece. Its automatic check compares each site's status code only; after it, also confirm a site's access log shows client addresses, not `127.0.0.1`, and run `sudo certbot renew --dry-run`.
 
-   ```bash
-   sudo ss -ltnp 'sport = :443'
-   ```
-
-   Move every HTTPS server block to `127.0.0.1:8443` and drop its IPv6 `443` line (the stream block listens on IPv6):
-
-   ```bash
-   sudo sed -i -E -e 's/^([[:space:]]*)listen 443 ssl([^;]*);/\1listen 127.0.0.1:8443 ssl proxy_protocol\2;/' -e '/^[[:space:]]*listen \[::\]:443 ssl[^;]*;/d' /etc/nginx/sites-available/*
-   ```
-
-   This must print nothing:
-
-   ```bash
-   sudo grep -rnE '^[[:space:]]*listen[^;#]*\b443\b' /etc/nginx/sites-available /etc/nginx/conf.d
-   ```
-
-   Install the two files and include the stream directory:
-
-   ```bash
-   sudo mkdir -p /etc/nginx/stream.d && sudo cp ~/.alcantara-livekit/nginx-turn-stream.conf /etc/nginx/stream.d/alcantara-turn.conf && sudo cp ~/.alcantara-livekit/nginx-behind-stream.conf /etc/nginx/conf.d/behind-stream.conf
-   ```
-
-   ```bash
-   grep -qF 'include /etc/nginx/stream.d/*.conf;' /etc/nginx/nginx.conf || echo 'include /etc/nginx/stream.d/*.conf;' | sudo tee -a /etc/nginx/nginx.conf
-   ```
-
-   Test, then restart (`restart`, not `reload`, because 443 passes from one context to the other):
-
-   ```bash
-   sudo nginx -t && sudo systemctl restart nginx
-   ```
-
-   **Rollback, one command.** If the test or the restart fails, or a site misbehaves, this puts nginx back as it was and starts it (a break-glass for the host's configuration; the module and certificate can stay):
-
-   ```bash
-   sudo sh -c 'rm -rf /etc/nginx && cp -a /etc/nginx.before-turn /etc/nginx && nginx -t && systemctl restart nginx'
-   ```
-
-   Then check certificate renewal still works with the new layout:
-
-   ```bash
-   sudo certbot renew --dry-run
-   ```
-
-   **What was proven** (2026-11-26, a Fedora 41 container with nginx 1.26.3, a copy of Helix's configuration, self-signed certificates and stand-in backends, aarch64): after these edits every site name answered exactly as before (status, HTTP version, certificate, redirect, and the client address the application sees), TURN over TLS on 443 reached LiveKit 1.13.4, and the rollback restored the original behaviour. **Not proven there:** SELinux, certbot, the firewall and x86_64 for the whole matrix.
-
-7. **Check the sites** before going on: open each HTTPS site, `curl https://livekit.alcantara.gaulatti.com` (answers `OK`), and confirm that a site's access log shows client addresses, not `127.0.0.1`. If something is wrong, run the rollback above, or fix the nginx file and restart.
-
-8. **Name it in the secret.** Add `"livekitTurnTlsDomain": "turn.alcantara.gaulatti.com"` to `broadcast/production/config`. Only the renderer reads it. It must differ from the signalling host.
-9. **Render and restart LiveKit.** Run `livekit-up.sh` again, then restart the container, which Compose does not do when only `livekit.yaml` changed (calls in progress drop):
-
-   ```bash
-   ssh <helix ssh target> docker restart alcantara-livekit
-   ```
-
-10. **Verify.** From outside Helix's network, the certificate below must be the TURN name's:
-
-   ```bash
-   openssl s_client -connect turn.alcantara.gaulatti.com:443 -servername turn.alcantara.gaulatti.com </dev/null 2>/dev/null | openssl x509 -noout -subject -enddate
-   ```
-
-   Then join a call from a network that allows only TCP 443 (or with UDP and 7881 blocked on the guest's machine). In `chrome://webrtc-internals` the selected candidate pair is `relay` with relay protocol `tls`.
-
-Certbot renews the TURN certificate and the hook reloads nginx. A site added later with `certbot --nginx` may get a `listen 443 ssl` line, which `nginx -t` rejects as already in use; change it as in step 5.
+Certbot renews the TURN certificate and the hook reloads nginx. A site added later with `certbot --nginx` may get a `listen 443 ssl` line, which `nginx -t` rejects as already in use; change it to `listen 127.0.0.1:8443 ssl proxy_protocol` and drop its `[::]:443` line.
 
 ## Protocol Gates & Enablement Requirements
 

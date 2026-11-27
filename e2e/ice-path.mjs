@@ -34,3 +34,16 @@ export function offeredCandidate(line) {
   if (!parts[0]?.startsWith("candidate:") || parts[6] !== "typ") return null;
   return `${parts[7]} ${parts[2].toLowerCase()} :${parts[5]}`;
 }
+
+/** Whether the pairs used meet what the run demands: "tcp" no plain UDP, "relay" a relay reached over TLS. */
+export function iceSatisfied(ice, used) {
+  if (!ice) return true;
+  return used.length > 0 && used.every(ice === "relay" ? (path) => path.local === "relay" && path.relayProtocol === "tls" : avoidsUdp);
+}
+
+/** What a failed run says. A relay run that tried to connect and could gather no relay candidate says that, not a timeout. */
+export function failureReason(ice, own, error) {
+  if (ice !== "relay" || !own?.attempts || own.gathered.some((candidate) => candidate.startsWith("relay "))) return error;
+  const given = own.turnServers.length ? own.turnServers.join(", ") : "none";
+  return `no relay candidates offered (TURN servers given to the page: ${given}; ${error})`;
+}

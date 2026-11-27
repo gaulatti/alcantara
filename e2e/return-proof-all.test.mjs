@@ -48,7 +48,7 @@ test("keeps the last 40 router lines", () => {
 test("runs the three engines, the two phones and the TCP run, and can be told which", () => {
   assert.deepEqual(
     RUNS.map((r) => [r.name, r.engine, r.device ?? ""]),
-    [["chromium", "chromium", ""], ["webkit", "webkit", ""], ["firefox", "firefox", ""], ["iphone", "webkit", "iPhone 15"], ["android", "chromium", "Pixel 7"], ["chromium-tcp", "chromium", ""]],
+    [["chromium", "chromium", ""], ["webkit", "webkit", ""], ["firefox", "firefox", ""], ["iphone", "webkit", "iPhone 15"], ["android", "chromium", "Pixel 7"], ["chromium-tcp", "chromium", ""], ["chromium-relay", "chromium", ""]],
   );
   assert.deepEqual(selectRuns("iphone, android").map((r) => r.name), ["iphone", "android"]);
   assert.equal(selectRuns("").length, 6);
@@ -68,5 +68,10 @@ test("has a run with UDP forbidden, and fails it if UDP was used anyway", () => 
     ]);
   assert.equal(passed([lines(true, "host tcp -> host :7881")], 1), true);
   assert.equal(passed([lines(false, "host udp -> host :7882")], 1), false);
-  assert.match(summaryLine(lines(false, "host udp -> host :7882")), /path: host udp -> host :7882 \(used UDP\)/);
+  assert.match(summaryLine(lines(false, "host udp -> host :7882")), /path: host udp -> host :7882 \(not the path this run demands\)/);
+});
+
+test("runs the relay proof only when it is asked for by name", () => {
+  assert.equal(selectRuns("").some((r) => r.name === "chromium-relay"), false);
+  assert.deepEqual(selectRuns("chromium-relay"), [{ name: "chromium-relay", engine: "chromium", ice: "relay", onRequest: true }]);
 });

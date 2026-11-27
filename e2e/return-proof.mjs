@@ -8,7 +8,9 @@
 // ADMIT_SECONDS (how long to wait for admission, default the timeout), RETURN_DEVICE (a Playwright device name, such
 // as "iPhone 15" or "Pixel 7": its viewport, user agent and touch), RETURN_LABEL (the run's name in the output),
 // RETURN_ICE=tcp (Chromium only: WebRTC may not use plain UDP, as behind an office or hotel Wi-Fi that blocks it; the
-// run then also fails if the pair it used was UDP).
+// run then also fails if the pair it used was UDP) or RETURN_ICE=relay (as tcp, and only relayed paths are allowed,
+// which is a network that leaves nothing but TURN: it must connect through a relay over TLS). The relay restriction is
+// put on the page's connections here, by the harness; the product has no switch for it.
 // return-proof-all.mjs runs the engines and the phones.
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,7 +18,7 @@ import { join } from "node:path";
 import { chromium, devices, firefox, webkit } from "playwright";
 import { SYNTHETIC_MEDIA } from "./synthetic-media.mjs";
 import { PLAYING_COPY, waitForGuestCopy } from "./guest-copy.mjs";
-import { avoidsUdp, describePath, offeredCandidate, selectedPath } from "./ice-path.mjs";
+import { describePath, failureReason, iceSatisfied, offeredCandidate, selectedPath } from "./ice-path.mjs";
 
 const APP = (process.env.ALCANTARA_APP_URL || "http://localhost:5173").replace(/\/$/, "");
 const API = (process.env.ALCANTARA_API_URL || "http://localhost:3000").replace(/\/$/, "");
@@ -27,7 +29,7 @@ const DEVICE = process.env.RETURN_DEVICE || "";
 if (DEVICE && !devices[DEVICE]) throw new Error(`RETURN_DEVICE is not a Playwright device: ${DEVICE}`);
 const LABEL = process.env.RETURN_LABEL || ENGINE;
 const ICE = process.env.RETURN_ICE || "";
-if (ICE && (ICE !== "tcp" || ENGINE !== "chromium")) throw new Error("RETURN_ICE takes only tcp, and only with Chromium.");
+if (ICE && (!["tcp", "relay"].includes(ICE) || ENGINE !== "chromium")) throw new Error("RETURN_ICE takes tcp or relay, and only with Chromium.");
 const SECONDS = Number(process.env.RETURN_SECONDS || 20);
 const EXPECT = process.env.RETURN_EXPECT || "sound";
 const TIMEOUT = Number(process.env.WEBRTC_TIMEOUT_MS || 60_000);
@@ -143,7 +145,7 @@ const options = {
         "--autoplay-policy=no-user-gesture-required",
         "--disable-features=LocalNetworkAccessChecks,BlockInsecurePrivateNetworkRequests",
         // No UDP unless a proxy carries it, and there is none: ICE over TCP or a TURN relay is all that is left.
-        ...(ICE === "tcp" ? ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp", "--webrtc-ip-handling-policy=disable_non_proxied_udp"] : []),
+        ...(ICE ? ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp", "--webrtc-ip-handling-policy=disable_non_proxied_udp"] : []),
       ],
       ...(process.env.WEBRTC_EXECUTABLE ? { executablePath: process.env.WEBRTC_EXECUTABLE } : {}),
     },
@@ -170,6 +172,15 @@ async function icePaths(page) {
 async function offeredByServer(page) {
   const lines = await page.evaluate(() => window.__offered ?? []);
   return [...new Set(lines.map(offeredCandidate).filter(Boolean))];
+}
+/** The TURN servers the page was told about and the kinds of candidate it could gather itself. */
+async function iceOfPage(page) {
+  const { servers, gathered, attempts } = await page.evaluate(() => ({ servers: window.__iceServers ?? [], gathered: window.__gathered ?? [], attempts: window.__guestPcs?.length ?? 0 }));
+  return {
+    attempts,
+    turnServers: [...new Set(servers.filter((url) => url.startsWith("turn")))],
+    gathered: [...new Set(gathered.map(offeredCandidate).filter(Boolean).map((candidate) => candidate.replace(/ :\d+$/, "")))],
+  };
 }
 let browser;
 let guestPage = null;
@@ -214,14 +225,25 @@ try {
     }),
   );
   // Keeps the page's peer connections, to read what each one receives.
-  await context.addInitScript(() => {
+  await context.addInitScript((relayOnly) => {
+    const restrict = (configuration) => (relayOnly ? { ...configuration, iceTransportPolicy: "relay" } : configuration);
+    // The TURN servers the page was given (addresses only, never their credentials) and the candidates it gathered.
+    window.__iceServers = [];
+    window.__gathered = [];
+    const noteServers = (configuration) => window.__iceServers.push(...(configuration?.iceServers ?? []).flatMap((server) => [server.urls].flat()));
     window.__guestPcs = [];
     // The server's candidates are noted as they arrive: a connection that fails is closed before anyone can ask it.
     window.__offered = [];
     window.RTCPeerConnection = class extends window.RTCPeerConnection {
-      constructor(...args) {
-        super(...args);
+      constructor(configuration, ...rest) {
+        super(restrict(configuration), ...rest);
+        noteServers(configuration);
         window.__guestPcs.push(this);
+        this.addEventListener("icecandidate", (event) => event.candidate?.candidate && window.__gathered.push(event.candidate.candidate));
+      }
+      setConfiguration(configuration) {
+        noteServers(configuration);
+        return super.setConfiguration(restrict(configuration));
       }
       addIceCandidate(candidate, ...rest) {
         if (candidate?.candidate) window.__offered.push(candidate.candidate);
@@ -232,7 +254,7 @@ try {
         return super.setRemoteDescription(description, ...rest);
       }
     };
-  });
+  }, ICE === "relay");
   const guest = await context.newPage();
   guestPage = guest;
   await guest.goto(`${APP}${invitation.invitationPath}`);
@@ -263,8 +285,8 @@ try {
   report("return-stats", { inbound: receive });
   const connections = await icePaths(guest);
   const used = connections.map((connection) => connection.path).filter(Boolean);
-  const iceOk = ICE !== "tcp" || (used.length > 0 && used.every(avoidsUdp));
-  report("ice-path", { ok: iceOk, used: [...new Set(used.map(describePath))], offered: await offeredByServer(guest), connections });
+  const iceOk = iceSatisfied(ICE, used);
+  report("ice-path", { ok: iceOk, used: [...new Set(used.map(describePath))], offered: await offeredByServer(guest), ...(await iceOfPage(guest)), connections });
   ok = arrived && copyOk && iceOk && (EXPECT === "silence" ? level.peak < AUDIBLE : level.peak >= AUDIBLE);
   report("return-level", { ok, expect: EXPECT, ...level });
   await press(guest.getByRole("button", { name: /Leave/ }));
@@ -272,7 +294,9 @@ try {
 } catch (error) {
   // A run that cannot connect still says what the server offered and how far each connection got.
   const offered = guestPage ? await offeredByServer(guestPage).catch(() => []) : [];
-  report("error", { ok: false, error: String(error?.message ?? error).split("\n")[0], page: await describeGuest(guestPage), offered });
+  const own = guestPage ? await iceOfPage(guestPage).catch(() => null) : null;
+  const timedOut = String(error?.message ?? error).split("\n")[0];
+  report("error", { ok: false, error: failureReason(ICE, own, timedOut), page: await describeGuest(guestPage), offered, ...own });
 } finally {
   await browser?.close();
   if (invitation.id) await api(`/webrtc/invitations/${encodeURIComponent(invitation.id)}`, { method: "DELETE", token }).catch(() => undefined);
