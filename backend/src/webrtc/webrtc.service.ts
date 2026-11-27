@@ -1110,7 +1110,7 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Who can be on air through calls now, for the dead-air watchdog: the guests cued live in their current session and
-   * the host microphone tracks published. Both zero where calls are not configured. Throws when LiveKit cannot be read,
+   * the tracks published by the program's host-mic identity, the only operator connection that reaches air. Both zero where calls are not configured. Throws when LiveKit cannot be read,
    * so the watchdog holds rather than act under a live voice.
    */
   async onAirPresence(
@@ -1121,7 +1121,11 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       this.onAirList(programId),
       this.hostMicTracks(programId),
     ]);
-    return { guestsLive: guests.length, hostMics: mics.length };
+    const identity = hostMicIdentity(programId);
+    return {
+      guestsLive: guests.length,
+      hostMics: mics.filter((mic) => mic.identity === identity).length,
+    };
   }
 
   private async onAirList(programId: string) {

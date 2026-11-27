@@ -62,31 +62,14 @@ export function isHostMicTrack(track, programId) {
 }
 
 /**
- * Transitional, removed by gaulatti/alcantara#880: a console opened before the host-mic token publishes `onair:host`
- * from an ordinary operator connection. It goes on air only while the program's host mic is not in the room, so the
- * two are never on air together, and a console that has not reloaded is not silently off air.
+ * Whether a track goes on air: an on-air guest's audio, or the host's microphone, `onair:host` from the program's one
+ * host-mic identity (gaulatti/alcantara#879). Never talkback.
  */
-export function isLegacyHostMicTrack(track, programId) {
-  return (
-    track.kind === "audio" &&
-    track.name === "onair:host" &&
-    track.identity.startsWith("operator-") &&
-    // No host-mic identity is a legacy one, the program's own or another's.
-    !track.identity.startsWith("operator-host-mic-")
-  );
-}
-
-/**
- * Whether a track goes on air: an on-air guest's audio, or the host's microphone. Never talkback. The host's microphone
- * is `onair:host` from the program's one host-mic identity (gaulatti/alcantara#879), or, while that is absent, from a
- * console that predates it (`hostMicPresent` says whether the program's host mic is in the room).
- */
-export function isOnAirTrack(track, onAirGuests, programId, hostMicPresent = false) {
+export function isOnAirTrack(track, onAirGuests, programId) {
   if (track.kind !== "audio") return false;
   if (track.name.startsWith("talkback:")) return false;
   if (track.identity.startsWith("guest-")) return onAirGuests.has(track.identity);
-  if (isHostMicTrack(track, programId)) return true;
-  return !hostMicPresent && isLegacyHostMicTrack(track, programId);
+  return isHostMicTrack(track, programId);
 }
 
 /** Sums the on-air sources into one mono 48 kHz feed. Each source queues what it receives; a pull drains them all. */
@@ -203,14 +186,9 @@ export function createWorker({ config, fetch, connectRoom, spawn, now = Date.now
 
   const headers = { "X-Renderer-Key": config.key, "Content-Type": "application/json" };
   const backoff = (failures) => BACKOFF_MS[Math.min(failures - 1, BACKOFF_MS.length - 1)];
-  /** Whether the program's host mic is in the room: while it is, no older console's onair:host goes on air. */
-  const hostMicPresent = () => [...tracks.values()].some((track) => isHostMicTrack(track, config.programId));
 
   /** The tracks that may reach air: the host's microphone and guests, as LiveKit and the on-air list name them now. */
-  const eligible = () => {
-    const present = hostMicPresent();
-    return [...tracks.values()].filter((track) => isOnAirTrack(track, onAirGuests, config.programId, present));
-  };
+  const eligible = () => [...tracks.values()].filter((track) => isOnAirTrack(track, onAirGuests, config.programId));
   /** Only the tracks that could ever air are logged: talkback and other operator audio are not. */
   const worthLogging = (track) => track.kind === "audio" && (track.name === "onair:host" || track.identity.startsWith("guest-"));
   const facts = (track) => ({
@@ -289,7 +267,7 @@ export function createWorker({ config, fetch, connectRoom, spawn, now = Date.now
             // The push opens on the first audio, not on the next pass up to a poll interval later.
             if (!push) evaluate();
           }
-          if (push && isOnAirTrack(track, onAirGuests, config.programId, hostMicPresent())) mixer.push(key, samples);
+          if (push && isOnAirTrack(track, onAirGuests, config.programId)) mixer.push(key, samples);
         },
         disconnected: () => {
           room = null;

@@ -92,9 +92,11 @@ describe('taking the host microphone off air', () => {
 // The dead-air watchdog asks who can be on air through calls before it acts: it holds on any guest cued live or host
 // microphone published, and on a LiveKit it cannot read.
 describe('who is on air through calls, for the dead-air watchdog', () => {
-  it('counts the host microphone tracks and the guests cued live', async () => {
+  // Only the program's host-mic identity reaches air (#880): another operator's onair:host does not hold the watchdog.
+  it('counts the host microphone tracks that reach air and the guests cued live', async () => {
     const { service } = serviceWith([
-      { identity: OPERATOR, tracks: [track('onair:host', 'TR_mic')] },
+      { identity: 'operator-host-mic-main', tracks: [track('onair:host', 'TR_mic')] },
+      { identity: OPERATOR, tracks: [track('onair:host', 'TR_old')] },
       { identity: 'guest-1', tracks: [track('onair:host', 'TR_guest')] },
     ]);
     Object.defineProperty(service, 'onAirList', {
