@@ -692,7 +692,7 @@ export default function ManualRundown() {
                       onAddRecipe={(recipeId, songId) =>
                         void handleAddRecipeUse(recipeId, songId)
                       }
-                      footnote="Select an item and press Enter, or double-click it, to add it at the end."
+                      footnote="Select an item and press Enter, double-click it, or tap Add, to add it at the end."
                     />
                   </div>
                 )}
