@@ -1441,6 +1441,42 @@ it("shows the filler rotation with its Play Next queue, shuffle note and next ti
   expect(screen.getByRole("button", { name: "Done adding" })).toBeVisible();
 });
 
+// Walk part 4: the song on air came from Play Next and stays queued, marked Playing, until it ends. The strip's Next
+// and the transport's note named it again, so Cue next and Take would have re-taken the song on air.
+it("never names the queued song on air as next, in the strip or the transport", () => {
+  const p = props();
+  p.fixtureData!.logs = [];
+  p.songSequence = {
+    ...p.songSequence,
+    mode: "autoplay",
+    loop: true,
+    items: [
+      ...p.songSequence.items,
+      { ...p.songSequence.items[0], id: "song-2", title: "Harbour morning", audioUrl: "https://example.test/two.mp3" },
+    ],
+  };
+  p.songQueue = [{ id: "queue-1", itemId: "song-1", enqueuedAt: 1 }];
+  p.programSongPlayback = { ...p.programSongPlayback!, queueEntryId: "queue-1" };
+  mount(p);
+  const strip = screen.getByRole("region", { name: "On air" });
+  expect(within(strip).getByText("Harbour morning")).toBeVisible();
+  expect(screen.getByText("Next: Harbour morning. Cue next (N), then Take (Space).")).toBeVisible();
+  expect(screen.queryByText(/Next: City lights/)).toBeNull();
+});
+
+// GM's call on #816: in a looping rotation of one song, Next is the song on air again and says so.
+it("says the next song is the same song in a looping rotation of one", () => {
+  const p = props();
+  p.fixtureData!.logs = [];
+  p.songSequence = { ...p.songSequence, mode: "autoplay", loop: true };
+  mount(p);
+  const strip = screen.getByRole("region", { name: "On air" });
+  expect(within(strip).getByText(/same song \(loop of one\)/)).toBeVisible();
+  expect(
+    screen.getByText("Next: City lights, same song (loop of one). Cue next (N), then Take (Space)."),
+  ).toBeVisible();
+});
+
 it("falls back to an empty rotation when the saved one is malformed", () => {
   const p = props();
   p.fixtureData!.logs = [];
