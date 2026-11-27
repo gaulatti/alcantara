@@ -747,6 +747,16 @@
   .rundown-builder {
     grid-template-columns: minmax(0, 1fr);
   }
+  /* Stacked, the block's own events come first; the add-audio catalog follows them and is reached by scrolling, so it
+     cannot push the events off the screen on a tablet (#875). */
+  .rundown-builder > .rundown-timeline {
+    order: 0;
+  }
+  .rundown-builder > .rundown-library {
+    order: 1;
+    border-right: 0;
+    border-top: 1px solid var(--console-border);
+  }
   .rundown-library {
     border-right: 0;
     border-bottom: 1px solid var(--console-border);
