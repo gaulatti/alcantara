@@ -381,6 +381,15 @@ it("opens the single-component fixtures", () => {
   press("fillers: filled");
   cleanup();
 
+  open("?state=rundown-library-empty");
+  expect(screen.getByRole("link", { name: "Media" })).toHaveAttribute("href", "/media");
+  expect(screen.getByText(/No audio clips yet/)).toBeInTheDocument();
+  // The fixture's library adds nothing: the Stop still double-clicks without effect.
+  fireEvent.click(screen.getByRole("button", { name: "All" }));
+  fireEvent.doubleClick(screen.getByRole("option", { name: /Stop program audio/ }));
+  expect(screen.getByRole("option", { name: /Stop program audio/ })).toBeInTheDocument();
+  cleanup();
+
   // #688: plain links in the app and in a console, for the global focus-visible ring.
   open("?state=focus-ring");
   for (const name of ["App link", "App route link", "Console link", "Configure"]) {
