@@ -27,6 +27,7 @@ import {
   type ProgramSongSequence,
 } from "../utils/programSequence";
 import { RadioOutputPlayer } from "./RadioOutputPlayer";
+import { usePreListen } from "./radio-desk/usePreListen";
 import { PlaybackBar } from "./PlaybackBar";
 import { useRadioMonitor } from "./RadioMonitor";
 import { HoldButton } from "./radio-desk/HoldButton";
@@ -533,6 +534,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     palazzo?.connection === "connected" || palazzo?.connection === "polling";
 
   const monitor = useRadioMonitor();
+  const preListen = usePreListen(monitor?.setPreListening);
   const [findingSong, setFindingSong] = useState(false);
   // The engine coming back (#707): a command failure from while it was away no longer describes the desk.
   // Only a known "not connected" turning into "connected" counts: before the first status answer the engine's
@@ -1204,8 +1206,21 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                 )}
                 {/* A failed reload keeps the pads that loaded; the error is
                     shown alone only when there is nothing to play. */}
+                {preListen.playing ? (
+                  <p role="status" className="radio-cartwall-alert flex flex-wrap items-center gap-2 text-sm text-amber-200">
+                    <span>PFL · {preListen.playing.name} · this device only</span>
+                    <Button type="button" size="xs" variant="secondary" onClick={preListen.stop}>
+                      Stop PFL
+                    </Button>
+                  </p>
+                ) : preListen.error ? (
+                  <p role="alert" className="radio-cartwall-alert text-sm text-terracotta">
+                    {preListen.error}
+                  </p>
+                ) : null}
                 {!(instantsLoadError && instants.length === 0) && (
                   <InstantsPanel
+                    preListen={{ activeId: preListen.playing?.id ?? null, onToggle: preListen.toggle }}
                     isLoading={false}
                     instants={instants}
                     search={instantSearch}

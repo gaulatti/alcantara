@@ -1,7 +1,7 @@
 import { TooltipButton } from "../BleeckerButtons";
 import { Input } from "@gaulatti/bleecker";
 import { useEffect, useState } from "react";
-import { Play } from "lucide-react";
+import { Headphones, Play } from "lucide-react";
 import type { InstantItem, InstantPlaybackState } from "../../models/broadcast";
 import { cartChordLabel, platformIsMac } from "../../utils/cartModifier";
 import {
@@ -23,6 +23,8 @@ interface InstantsPanelProps {
   playback: Record<number, InstantPlaybackState>;
   onSearchChange: (value: string) => void;
   onTrigger: (id: number) => void;
+  /** Pre-fade listen per pad (the radio desk): plays here only, never triggers the pad (#835). */
+  preListen?: { activeId: number | null; onToggle: (instant: InstantItem) => void };
 }
 
 export function InstantsPanel({
@@ -32,6 +34,7 @@ export function InstantsPanel({
   playback,
   onSearchChange,
   onTrigger,
+  preListen,
 }: InstantsPanelProps) {
   // The time left of a playing sounder, redrawn each second while any plays (#298).
   const anyPlaying = Object.keys(playback).length > 0;
@@ -80,7 +83,7 @@ export function InstantsPanel({
                 const isPlaying = playbackState !== null;
                 const shortcutLetter = getInstantShortcutLetter(originalIndex, isMac);
 
-                return (
+                const pad = (
                   <TooltipButton
                     key={instant.id}
                     type="button"
@@ -134,6 +137,23 @@ export function InstantsPanel({
                       </div>
                     ) : null}
                   </TooltipButton>
+                );
+                if (!preListen) return pad;
+                // Beside the pad, not inside it: a button cannot hold another, and pressing it must not fire the pad.
+                return (
+                  <div key={instant.id} className="console-cart-slot">
+                    {pad}
+                    <button
+                      type="button"
+                      className="console-cart-pfl"
+                      aria-label={`Pre-listen ${instant.name}`}
+                      title="Pre-listen on this device only; not on air"
+                      aria-pressed={preListen.activeId === instant.id}
+                      onClick={() => preListen.onToggle(instant)}
+                    >
+                      <Headphones size={13} />
+                    </button>
+                  </div>
                 );
               })}
             </div>

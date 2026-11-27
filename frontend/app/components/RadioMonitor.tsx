@@ -180,6 +180,8 @@ export function useRadioListener({
 
 export type RadioListener = ReturnType<typeof useRadioListener>;
 type RadioMonitorValue = RadioListener & {
+  /** Mutes the monitor while something is being pre-listened on this device (#835). */
+  setPreListening: (active: boolean) => void;
   /** A player view calls this while it is on screen; the grant is prepared only then. */
   attachPlayer: () => () => void;
 };
@@ -207,10 +209,11 @@ export function RadioMonitorProvider({
     },
     [],
   );
-  const value = { ...listener, attachPlayer };
+  const [preListening, setPreListening] = useState(false);
+  const value = { ...listener, attachPlayer, setPreListening };
   return (
     <RadioMonitorContext.Provider value={value}>
-      <audio {...listener.audioProps} />
+      <audio {...listener.audioProps} muted={preListening} />
       {children}
     </RadioMonitorContext.Provider>
   );

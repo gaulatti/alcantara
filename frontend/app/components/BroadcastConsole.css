@@ -466,6 +466,35 @@
   border-color: var(--console-live);
   background: color-mix(in srgb, var(--console-live) 14%, var(--console-panel));
 }
+.console-cart-slot {
+  position: relative;
+  display: grid;
+}
+/* Room for the pre-listen button under the name, which keeps the pad's full width. */
+.console-cart-grid .console-cart-slot > .console-cart {
+  padding-bottom: 34px;
+}
+.console-cart-pfl {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  z-index: 2;
+  display: flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-button);
+  color: var(--console-muted);
+}
+.console-cart-pfl:hover,
+.console-cart-pfl:focus-visible {
+  color: var(--console-ready);
+}
+.console-cart-pfl[aria-pressed="true"] {
+  background: var(--console-ready);
+  color: var(--console-panel);
+}
 .console-cart-top {
   display: flex;
   justify-content: space-between;
