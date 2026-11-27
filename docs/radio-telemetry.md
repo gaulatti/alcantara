@@ -428,6 +428,8 @@ the program and the error class, never the error message:
 - `radio_settings_missing`: a song command for a program without radio
   settings, answered `ok: false` (`Radio settings missing for program <id>`).
 
+- `playout_heard`: what Palazzo last reported hearing could not be stored, so a
+  restart of both would not be told apart from an ordinary start.
 - `bumper_position`: the bumper count and next spot could not be stored. The
   bumpers carry on; a restart may delay one by a song.
 

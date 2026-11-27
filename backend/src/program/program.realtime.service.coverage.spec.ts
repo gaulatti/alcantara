@@ -302,6 +302,16 @@ describe('ProgramRealtimeService connections', () => {
   const sent = (socket: FakeSocket) =>
     socket.send.mock.calls.map(([text]) => JSON.parse(text as string));
 
+  it('tells a desk that connects after a playout restart which song was cut', () => {
+    const ctx = build();
+    const cut = { type: 'playout_restart_cut', programId: 'p', cutAtMs: 1_000 };
+    (
+      ctx.programService as unknown as Record<string, unknown>
+    ).getRecentPlayoutCut = jest.fn().mockReturnValue(cut);
+    expect(sent(connect(ctx, 'control'))).toContainEqual(cut);
+    expect(sent(connect(ctx, 'program'))).not.toContainEqual(cut);
+  });
+
   beforeEach(() => {
     jest.spyOn(console, 'log').mockImplementation(() => undefined);
     jest.spyOn(console, 'error').mockImplementation(() => undefined);

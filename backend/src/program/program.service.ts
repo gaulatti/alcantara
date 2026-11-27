@@ -205,6 +205,9 @@ export interface ProgramAudioBusSaved {
   version: number;
 }
 
+/** How long after a playout restart cut a song a newly connected desk is still told. */
+const PLAYOUT_CUT_NOTICE_MS = 10 * 60_000;
+
 @Injectable()
 export class ProgramService implements OnModuleInit, OnModuleDestroy {
   private static readonly DEFAULT_PROGRAM_ID = 'main';
@@ -230,6 +233,10 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
   private programSceneInstantPlaybackByProgramId = new Map<
     string,
     ProgramSceneInstantPlayback
+  >();
+  private readonly recentPlayoutCuts = new Map<
+    string,
+    { cut: Record<string, unknown>; until: number }
   >();
   private programSongPlaybackByProgramId = new Map<
     string,
@@ -4099,6 +4106,14 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** The cut a desk connecting now should still be told of, or null. */
+  getRecentPlayoutCut(programId: string): Record<string, unknown> | null {
+    const recent = this.recentPlayoutCuts.get(
+      this.normalizeProgramId(programId),
+    );
+    return recent && recent.until > Date.now() ? recent.cut : null;
+  }
+
   private handleEngineEvent(event: SongEngineEvent): void {
     this.outputConfidence?.observe(event);
     const programId = event.programId;
@@ -4236,10 +4251,13 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       case 'playout_restart_cut': {
         // For the operator's view: which song the restart cut, and where.
         const normalizedProgramId = this.normalizeProgramId(programId);
-        this.broadcastUpdate(normalizedProgramId, {
-          ...event,
-          programId: normalizedProgramId,
+        const cut = { ...event, programId: normalizedProgramId };
+        // Kept for a desk that connects after it: after a restart of the backend too, none is connected yet.
+        this.recentPlayoutCuts.set(normalizedProgramId, {
+          cut,
+          until: Date.now() + PLAYOUT_CUT_NOTICE_MS,
         });
+        this.broadcastUpdate(normalizedProgramId, cut);
         break;
       }
       case 'song_request_failed': {

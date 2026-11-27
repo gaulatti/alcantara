@@ -237,6 +237,7 @@ describe('RadioMetricsService engine degraded paths', () => {
       'bumper_attempt',
       'radio_settings_missing',
       'bumper_position',
+      'playout_heard',
     ])
       expect(fresh).toContain(
         `alcantara_radio_engine_degraded_total{site="${site}"} 0`,
@@ -255,7 +256,7 @@ describe('RadioMetricsService engine degraded paths', () => {
     expect(rendered).not.toContain('unbounded');
     expect(
       rendered.match(/^alcantara_radio_engine_degraded_total\{/gm),
-    ).toHaveLength(5);
+    ).toHaveLength(6);
   });
 
   it('counts shuffle picks by the order followed, from 0', () => {

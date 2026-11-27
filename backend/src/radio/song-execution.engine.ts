@@ -254,6 +254,20 @@ export const NO_PLAYBACK_BOUND_MS = 45_000;
 export const ANNOUNCED_SPOT_PLAYBACK_MS = 75_000;
 /** A song with no more than this left when Palazzo restarted is taken as having ended. */
 export const PLAYOUT_CUT_MARGIN_MS = 10_000;
+/** How often the last position Palazzo reported is stored, for a backend that starts after both restarted. */
+export const HEARD_STORE_INTERVAL_MS = 5_000;
+
+/** The stored account of what was last heard on a program. */
+interface HeardPlayout {
+  bootId: string;
+  playbackRequestId: string;
+  positionMs: number;
+  durationMs: number;
+  title: string;
+  artist: string;
+  audioUrl: string;
+  heardAt: Date;
+}
 
 /**
  * What a watchdog read of Palazzo shows (#230). Anything on the air (a song,
@@ -395,6 +409,10 @@ function restampSequence(
 }
 
 interface SongEngineState {
+  /** A song stored as on air by the last process and never closed, read at boot, until the first snapshot. */
+  heardAtBoot?: HeardPlayout;
+  /** The last position stored, so it is written every few seconds rather than every report. */
+  heardStored?: { playbackRequestId: string; at: number };
   /** Counts the Stops on this program, so a Play Next claim written across one can tell that it lost. */
   stops?: number;
   /** The song the as-run log last saw start, read at boot, until the first start or adoption (#849). */
@@ -661,6 +679,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
             songQueue: true,
             songRotation: true,
             bumperPosition: true,
+            playoutHeard: true,
           },
         },
       },
@@ -672,6 +691,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       this.hydrate(pid, s.programState);
       this.restoreBumperPosition(pid, s);
       await this.recallLastStartedSong(pid);
+      await this.recallHeardPlayout(pid, s.programState.playoutHeard);
     }
     this.updateHighRotationFavoriteMetric();
     // A deploy candidate (#223) starts no telemetry and no watchdog.
@@ -2102,6 +2122,15 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     state.palazzoBootId = snapshot.bootId;
     state.palazzoCapabilities = snapshot.capabilities ?? [];
     if (restarted) this.recordCutByRestart(programId, state, snapshot);
+    // Once, on the first snapshot after this process started, before anything else can be put on air.
+    const heard = state.heardAtBoot;
+    state.heardAtBoot = undefined;
+    if (
+      heard &&
+      heard.bootId !== snapshot.bootId &&
+      snapshot.track?.playbackRequestId !== heard.playbackRequestId
+    )
+      this.closeAsCut(programId, heard);
 
     if (snapshot.status === 'playing' && snapshot.track) {
       // Palazzo plays: a run of failed commands is over (#230).
@@ -2135,26 +2164,119 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     const cutAtMs = song.authoritativePositionMs;
     if (song.durationMs - cutAtMs <= PLAYOUT_CUT_MARGIN_MS) return;
     song.asRunClosed = true;
-    const at = new Date(song.authoritativeUpdatedAt);
+    this.closeAsCut(programId, {
+      playbackRequestId: song.playbackRequestId,
+      positionMs: cutAtMs,
+      durationMs: song.durationMs,
+      title: song.title,
+      artist: song.artist,
+      audioUrl: song.audioUrl,
+      heardAt: new Date(song.authoritativeUpdatedAt),
+    });
+  }
+
+  /** The as-run end of a song a playout restart cut, at the last moment it was heard, and the desk's word on it. */
+  private closeAsCut(
+    programId: string,
+    cut: Omit<HeardPlayout, 'bootId'>,
+  ): void {
     this.logger.warn(
-      `Palazzo restarted on ${programId}: ${song.playbackRequestId} cut at ${Math.round(cutAtMs / 1000)} s of ${Math.round(song.durationMs / 1000)} s`,
+      `Palazzo restarted on ${programId}: ${cut.playbackRequestId} cut at ${Math.round(cut.positionMs / 1000)} s of ${Math.round(cut.durationMs / 1000)} s`,
     );
     this.emitTrackEvent(
       programId,
       'track.ended',
-      song.playbackRequestId,
-      { title: song.title, artist: song.artist, url: song.audioUrl },
+      cut.playbackRequestId,
+      { title: cut.title, artist: cut.artist, url: cut.audioUrl },
       true,
       'playout_restart',
-      at,
+      cut.heardAt,
     );
     this.emit({
       type: 'playout_restart_cut',
       programId,
+      title: cut.title,
+      artist: cut.artist,
+      cutAtMs: cut.positionMs,
+      at: cut.heardAt.toISOString(),
+    });
+  }
+
+  /**
+   * The song the last process stored as on air, kept only if it can still turn out to have been cut: more than the
+   * margin (and one store interval, since the stored position may be that old) left, and an as-run start with no end.
+   * Whether it was cut is decided by the first snapshot: only a different Palazzo process says so.
+   */
+  private async recallHeardPlayout(
+    programId: string,
+    heard: HeardPlayout | null | undefined,
+  ): Promise<void> {
+    if (
+      !heard ||
+      heard.durationMs - heard.positionMs <=
+        PLAYOUT_CUT_MARGIN_MS + HEARD_STORE_INTERVAL_MS
+    )
+      return;
+    try {
+      const rows = await this.prisma.asRunRecord.findMany({
+        where: { programId, playbackRequestId: heard.playbackRequestId },
+        select: { state: true },
+      });
+      const states = rows.map((row) => row.state);
+      if (states.includes('started') && !states.includes('ended'))
+        this.ensureState(programId).heardAtBoot = heard;
+    } catch (error) {
+      this.logger.warn(
+        `Could not read whether the last song on ${programId} was closed: ${errorClass(error)}`,
+      );
+    }
+  }
+
+  /** Best effort and never awaited: a lost write costs at most an unnoticed cut after both restart. */
+  private storeHeard(
+    programId: string,
+    state: SongEngineState,
+    song: ActiveSong,
+  ): void {
+    if (!state.palazzoBootId || song.authoritativePositionMs === null) return;
+    const now = Date.now();
+    const last = state.heardStored;
+    if (
+      last?.playbackRequestId === song.playbackRequestId &&
+      now - last.at < HEARD_STORE_INTERVAL_MS
+    )
+      return;
+    state.heardStored = {
+      playbackRequestId: song.playbackRequestId,
+      at: now,
+    };
+    const heard: HeardPlayout = {
+      bootId: state.palazzoBootId,
+      playbackRequestId: song.playbackRequestId,
+      positionMs: Math.round(song.authoritativePositionMs),
+      durationMs: Math.round(song.durationMs),
       title: song.title,
       artist: song.artist,
-      cutAtMs,
-      at: at.toISOString(),
+      audioUrl: song.audioUrl,
+      heardAt: new Date(now),
+    };
+    const write = async (): Promise<void> => {
+      const row = await this.prisma.programState.findUnique({
+        where: { programId },
+        select: { id: true },
+      });
+      if (!row) return;
+      await this.prisma.radioPlayoutHeard.upsert({
+        where: { programStateId: row.id },
+        create: { programStateId: row.id, ...heard },
+        update: heard,
+      });
+    };
+    void write().catch((error) => {
+      this.logger.warn(
+        `Heard position not stored on ${programId} (${errorClass(error)})`,
+      );
+      this.metrics.recordEngineDegraded('playout_heard');
     });
   }
 
@@ -5043,6 +5165,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         song.authoritativePositionMs ?? 0,
       );
     }
+    this.storeHeard(programId, state, song);
     this.emitPlaybackUpdate(programId, song);
   }
 

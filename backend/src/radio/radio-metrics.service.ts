@@ -81,13 +81,15 @@ export type EngineDegradedSite =
   | 'bumper_settings'
   | 'bumper_attempt'
   | 'radio_settings_missing'
-  | 'bumper_position';
+  | 'bumper_position'
+  | 'playout_heard';
 export const ENGINE_DEGRADED_SITES: EngineDegradedSite[] = [
   'telemetry_state',
   'bumper_settings',
   'bumper_attempt',
   'radio_settings_missing',
   'bumper_position',
+  'playout_heard',
 ];
 
 const RESYNC_TRIGGERS: EngineResyncTrigger[] = [

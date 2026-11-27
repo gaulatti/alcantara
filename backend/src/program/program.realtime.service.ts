@@ -294,6 +294,7 @@ export class ProgramRealtimeService implements OnModuleDestroy {
       this.sendInitialMeterSnapshot(client);
       this.sendInitialSongPlaybackSnapshot(client);
       this.sendInitialSceneInstantSnapshot(client);
+      this.sendRecentPlayoutCut(client);
     }
 
     socket.on('message', (rawData) => {
@@ -392,6 +393,11 @@ export class ProgramRealtimeService implements OnModuleDestroy {
     } catch {
       // no-op
     }
+  }
+
+  private sendRecentPlayoutCut(client: ProgramRealtimeClient): void {
+    const cut = this.programService.getRecentPlayoutCut?.(client.programId);
+    if (cut) this.sendJson(client.socket, cut);
   }
 
   private async sendInitialSongPlaybackSnapshot(

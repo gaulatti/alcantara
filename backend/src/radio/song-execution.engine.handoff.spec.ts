@@ -578,6 +578,140 @@ describe('next-song announcement and handoff', () => {
     });
   });
 
+  // The backend and Palazzo restarting together (a host reboot): nothing in memory says what was on air.
+  describe('a cut noticed by a backend that has just started', () => {
+    const heard = (patch: Record<string, unknown> = {}) => ({
+      bootId: 'boot-1',
+      playbackRequestId: 'req-before',
+      positionMs: 115_000,
+      durationMs: 180_000,
+      title: 'Fictional song',
+      artist: 'Fictional artist',
+      audioUrl: SONGS[0].url,
+      heardAt: new Date(Date.now() - 20_000),
+      ...patch,
+    });
+    const booted = async (
+      stored: ReturnType<typeof heard> | null,
+      states: string[] | Error = ['started'],
+    ) => {
+      const h = harness();
+      const findMany = jest.fn(() =>
+        states instanceof Error
+          ? Promise.reject(states)
+          : Promise.resolve(states.map((state) => ({ state }))),
+      );
+      (h.prisma as unknown as Record<string, unknown>).asRunRecord = {
+        findMany,
+      };
+      const ends: { id: string; reason?: string; at: Date }[] = [];
+      const cuts: { cutAtMs: number }[] = [];
+      h.engine.trackEvents$.subscribe((event) => {
+        if (event.type === 'track.ended')
+          ends.push({
+            id: event.playbackRequestId,
+            reason: event.endReason,
+            at: event.at,
+          });
+      });
+      h.engine.setBroadcastHandler((event) => {
+        if (event.type === 'playout_restart_cut') cuts.push(event);
+      });
+      await h.engine['recallHeardPlayout'](PROGRAM, stored);
+      return { h, ends, cuts, findMany };
+    };
+
+    it('closes the stored song as cut when Palazzo is a new process, once', async () => {
+      const stored = heard();
+      const s = await booted(stored);
+      s.h.idle('boot-2');
+      s.h.idle('boot-3');
+      await settle();
+      expect(s.ends.filter((end) => end.id === 'req-before')).toEqual([
+        { id: 'req-before', reason: 'playout_restart', at: stored.heardAt },
+      ]);
+      expect(s.cuts).toMatchObject([{ cutAtMs: 115_000 }]);
+      expect(s.findMany).toHaveBeenCalledWith({
+        where: { programId: PROGRAM, playbackRequestId: 'req-before' },
+        select: { state: true },
+      });
+    });
+
+    it('claims nothing for the same Palazzo, a song near its end, a closed or unknown play, or an unreadable log', async () => {
+      const cases: [Parameters<typeof booted>, string][] = [
+        [[heard()], 'boot-1'],
+        // Palazzo is a new process but already plays the stored request again.
+        [[heard({ playbackRequestId: 'req-before' })], 'playing-it'],
+        [[heard({ positionMs: 166_000 })], 'boot-2'],
+        [[heard(), ['started', 'ended']], 'boot-2'],
+        [[heard(), []], 'boot-2'],
+        [[heard(), new Error('down')], 'boot-2'],
+        [[null], 'boot-2'],
+      ];
+      for (const [args, boot] of cases) {
+        const s = await booted(...args);
+        if (boot === 'playing-it')
+          s.h.playing({ id: 'req-before', url: SONGS[0].url }, 'boot-2');
+        else s.h.idle(boot);
+        await settle();
+        expect(s.cuts).toEqual([]);
+        expect(s.ends).toEqual([]);
+      }
+    });
+
+    it('stores what Palazzo reports, at most every 5 s for one song', async () => {
+      const h = harness();
+      const upsert = jest.fn().mockResolvedValue({});
+      const prisma = h.prisma as unknown as Record<string, any>;
+      prisma.radioPlayoutHeard = { upsert };
+      const find = prisma.programState.findUnique;
+      prisma.programState.findUnique = jest.fn((args: any) =>
+        args.select?.id ? Promise.resolve({ id: 7 }) : find(args),
+      );
+      await onAir(h);
+      const report = (seconds: number) =>
+        h.palazzo.event('playback.position', {
+          playbackRequestId: h.palazzo.current!.id,
+          positionSeconds: seconds,
+          remainingSeconds: 180 - seconds,
+        });
+      report(1);
+      jest.advanceTimersByTime(2_000);
+      report(3);
+      jest.advanceTimersByTime(4_000);
+      report(7);
+      await settle();
+      const stored = upsert.mock.calls.map(([call]) => call.update.positionMs);
+      expect(stored.at(-1)).toBe(7_000);
+      expect(stored).not.toContain(3_000);
+      expect(upsert.mock.lastCall![0]).toMatchObject({
+        where: { programStateId: 7 },
+        create: { programStateId: 7, bootId: 'boot-1', durationMs: 180_000 },
+      });
+
+      // A program with no row is not written.
+      const writes = upsert.mock.calls.length;
+      prisma.programState.findUnique = jest.fn((args: any) =>
+        args.select?.id ? Promise.resolve(null) : find(args),
+      );
+      jest.advanceTimersByTime(6_000);
+      report(9);
+      await settle();
+      expect(upsert.mock.calls).toHaveLength(writes);
+      prisma.programState.findUnique = jest.fn((args: any) =>
+        args.select?.id ? Promise.resolve({ id: 7 }) : find(args),
+      );
+
+      // A write that fails is counted, never thrown into the song.
+      upsert.mockRejectedValueOnce(new Error('down'));
+      const degraded = jest.spyOn(h.metrics, 'recordEngineDegraded');
+      jest.advanceTimersByTime(6_000);
+      report(13);
+      await settle();
+      expect(degraded).toHaveBeenCalledWith('playout_heard');
+    });
+  });
+
   it('accepts the announced start under overlap and records one start and one end per song', async () => {
     const h = harness();
     const store = asRunStore();

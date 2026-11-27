@@ -92,6 +92,7 @@ model ProgramState {
   stingers               ProgramStinger[]
   radioSettings          RadioSettings?
   bumperPosition         RadioBumperPosition?
+  playoutHeard    RadioPlayoutHeard?
   nowPlayingConsumers    NowPlayingConsumer[]
   songIntros             SongIntro[]
   broadcastSelections    BroadcastDestinationSelection[]
@@ -691,6 +692,21 @@ model RadioBumperPosition {
   interval       Int
   instantIds     Int[]
   updatedAt      DateTime     @updatedAt
+}
+
+/// What Palazzo last reported hearing on a program, written every few seconds by the song engine so that a backend
+/// started after Palazzo restarted too can tell that the song was cut.
+model RadioPlayoutHeard {
+  programStateId    Int          @id
+  programState      ProgramState @relation(fields: [programStateId], references: [id], onDelete: Cascade)
+  bootId            String
+  playbackRequestId String
+  positionMs        Int
+  durationMs        Int
+  title             String
+  artist            String
+  audioUrl          String
+  heardAt           DateTime
 }
 
 model NowPlayingConsumer {

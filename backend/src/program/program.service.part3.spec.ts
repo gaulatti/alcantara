@@ -1479,8 +1479,19 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
         cutAtMs: 214_000,
         at: '2026-11-17T12:00:00.000Z',
       };
+      expect(service.getRecentPlayoutCut('main')).toBeNull();
       (service as any).handleEngineEvent(cut);
       expect(events[0]).toEqual({ ...cut, programId: 'main' });
+      // A desk that connects after it is told too, for ten minutes.
+      expect(service.getRecentPlayoutCut(' main ')).toEqual({
+        ...cut,
+        programId: 'main',
+      });
+      const clock = jest
+        .spyOn(Date, 'now')
+        .mockReturnValue(Date.now() + 10 * 60_000 + 1);
+      expect(service.getRecentPlayoutCut('main')).toBeNull();
+      clock.mockRestore();
     });
 
     it('keeps the acting identity off the public program stream', () => {
