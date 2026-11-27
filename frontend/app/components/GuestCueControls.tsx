@@ -69,12 +69,27 @@ export type GuestCueHandle = ReturnType<typeof useGuestCue>;
  * The cue row: what cue holds, and the three cue buttons. It sits where nothing appears or disappears above it, so a
  * button never moves under a finger between the two presses of Cue live.
  */
-export function GuestCueButtons({ cue, disabled, controls }: { cue: CueState | null; disabled: boolean; controls: GuestCueHandle }) {
+export function GuestCueButtons({
+  cue,
+  disabled,
+  controls,
+  spaceSendsLive = true,
+}: {
+  cue: CueState | null;
+  disabled: boolean;
+  controls: GuestCueHandle;
+  /**
+   * Whether Space sends an armed live cue here. Not on the radio desk, where Space is the transport's Take
+   * (gaulatti/alcantara#879): there the second press is the only way, and the label says so.
+   */
+  spaceSendsLive?: boolean;
+}) {
   const { armed, holding, cueLive, startHold, cancelHold, standby } = controls;
   return (
     <div className="guest-strip-row">
       <span className="guest-strip-cue">{cue ? CUE_LINE[cue] : "Cue · none sent"}</span>
-      <Button size="xs" variant="secondary" disabled={disabled} onClick={standby}>
+      {/* data-own-space: a Space press on a cue button is that button's, never the desk transport's Take. */}
+      <Button size="xs" variant="secondary" disabled={disabled} onClick={standby} data-own-space="true">
         Standby
       </Button>
       <Button
@@ -82,17 +97,19 @@ export function GuestCueButtons({ cue, disabled, controls }: { cue: CueState | n
         variant={armed ? "destructive" : "secondary"}
         disabled={disabled}
         aria-pressed={armed}
+        data-own-space="true"
         // One width for both states, so arming does not widen the button or push the next one to another line.
         className="min-w-[13rem] whitespace-nowrap"
         onClick={cueLive}
       >
-        {armed ? "Press again or Space: cue live" : "Cue live"}
+        {armed ? (spaceSendsLive ? "Press again or Space: cue live" : "Press again: cue live") : "Cue live"}
       </Button>
       <Button
         size="xs"
         variant="secondary"
         disabled={disabled}
         data-holding={holding}
+        data-own-space="true"
         className="whitespace-nowrap"
         onPointerDown={startHold}
         onPointerUp={cancelHold}

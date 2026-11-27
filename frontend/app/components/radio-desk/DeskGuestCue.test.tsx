@@ -50,20 +50,25 @@ describe("DeskGuestCue", () => {
     expect(screen.getByText("Cue · none sent")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Cue live" }));
     expect(mocks.fetch).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: /Press again or Space: cue live/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Press again: cue live/ }));
     await waitFor(() => expect(screen.getByText("Cue · live")).toBeInTheDocument());
     expect(mocks.fetch.mock.calls[0][0]).toBe("/webrtc/rooms/radio%20one/participants/guest-a1/control");
     expect(bodyOf(mocks.fetch.mock.calls[0])).toEqual({ type: "cue", cue: "live" });
     expect(onChanged).toHaveBeenCalled();
   });
 
-  it("sends the armed live cue with Space, and stands by at once", async () => {
+  // On the desk Space is the transport's Take (gaulatti/alcantara#879): the armed live cue says "Press again" and is
+  // sent only by that press, never by Space.
+  it("never sends the live cue with Space on the desk, and stands by at once", async () => {
     render(<DeskGuestCue guest={inCall} programId="main" onChanged={vi.fn()} />);
     const group = screen.getByRole("group", { name: "Cue Fictional Anna" });
-    fireEvent.keyDown(group, { key: " " });
-    expect(mocks.fetch).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Cue live" }));
+    expect(screen.getByRole("button", { name: "Press again: cue live" })).toBeInTheDocument();
+    expect(screen.queryByText(/Space/)).toBeNull();
     fireEvent.keyDown(group, { key: " " });
+    fireEvent.keyDown(screen.getByRole("button", { name: "Press again: cue live" }), { key: " " });
+    expect(mocks.fetch).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Press again: cue live" }));
     await waitFor(() => expect(mocks.fetch).toHaveBeenCalledTimes(1));
     expect(bodyOf(mocks.fetch.mock.calls[0])).toEqual({ type: "cue", cue: "live" });
     fireEvent.click(screen.getByRole("button", { name: "Standby" }));
@@ -89,7 +94,7 @@ describe("DeskGuestCue", () => {
     mocks.fetch.mockResolvedValue(new Response(JSON.stringify({ message: "The guest left the call." }), { status: 409 }));
     render(<DeskGuestCue guest={{ ...inCall, cueState: "standby" }} programId="main" onChanged={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Cue live" }));
-    fireEvent.click(screen.getByRole("button", { name: /Press again or Space/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Press again/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("The guest left the call.");
     expect(screen.getByText("Cue · standby")).toBeInTheDocument();
 
@@ -104,7 +109,7 @@ describe("DeskGuestCue", () => {
   it("follows the stored cue once the list reads a new one", async () => {
     const { rerender } = render(<DeskGuestCue guest={{ ...inCall, cueState: "standby" }} programId="main" onChanged={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Cue live" }));
-    fireEvent.click(screen.getByRole("button", { name: /Press again or Space/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Press again/ }));
     await waitFor(() => expect(screen.getByText("Cue · live")).toBeInTheDocument());
     // The next read says the guest rejoined: the stored state wins over the cue the desk sent.
     rerender(<DeskGuestCue guest={{ ...inCall, cueState: "rejoined" }} programId="main" onChanged={vi.fn()} />);

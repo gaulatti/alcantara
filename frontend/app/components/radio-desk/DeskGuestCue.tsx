@@ -91,8 +91,14 @@ export function DeskGuestCue({
   }
 
   return (
-    <div role="group" aria-label={`Cue ${guest.name}`} onKeyDown={(event) => controls.spaceWhileArmed(event)}>
-      <GuestCueButtons cue={cue} disabled={!canOperate || busy || guest.connectionState !== "connected"} controls={controls} />
+    // No Space here: on the desk Space is the transport's Take, so the live cue is sent by the second press only.
+    <div role="group" aria-label={`Cue ${guest.name}`}>
+      <GuestCueButtons
+        cue={cue}
+        disabled={!canOperate || busy || guest.connectionState !== "connected"}
+        controls={controls}
+        spaceSendsLive={false}
+      />
       {error ? (
         <p role="alert" className="text-[10px] text-accent-yellow">
           {error}
