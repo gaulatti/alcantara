@@ -1864,6 +1864,8 @@ export default function Control() {
       `/program/${encodeURIComponent(targetProgramId)}/song-queue/${encodeURIComponent(entryId)}`,
       { method: "DELETE" },
     );
+    // Already gone (the engine took the entry, or another window removed it): there is nothing left to remove.
+    if (res.status === 404) return;
     if (!res.ok) throw await responseFailure(res);
     applySongQueueMutationResponse(await res.json(), targetProgramId);
   };

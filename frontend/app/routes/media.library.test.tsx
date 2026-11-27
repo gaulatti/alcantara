@@ -1299,3 +1299,25 @@ it("shows a label the library does not know as removable, and saves once it is r
     expect(requests("PUT")).toContainEqual(["/media-assets/img/labels", { labelIds: ["l1"] }]),
   );
 });
+
+// The labels are still loading: an item's label cannot be judged unknown yet, so no chip, and the chip appears once known.
+it("does not flag an item's labels as unknown until the library's labels have loaded", async () => {
+  assets = [
+    asset("img", {
+      image: { id: 11 },
+      labels: [{ id: "l1", name: "Headlines", description: null, position: 0 }],
+    }),
+  ];
+  labels = [label("l1", "Headlines")];
+  let answer: (response: Response) => void = () => {};
+  open();
+  await waitFor(() => expect(screen.queryByText("Asset img")).not.toBeNull());
+  routes["GET /media-labels"] = () => new Promise((resolve) => (answer = resolve));
+  fireEvent.click(screen.getByRole("button", { name: "Edit Asset img" }));
+  const dialog = await screen.findByRole("dialog", { name: "Edit image" });
+  expect(within(dialog).queryByText(/Not in the library/)).toBeNull();
+  answer(json({ data: labels, meta: { totalPages: 1 } }));
+  await waitFor(() => expect(within(dialog).getByRole("checkbox", { name: "Headlines" })).toBeChecked());
+  expect(within(dialog).queryByText(/Not in the library/)).toBeNull();
+});
+

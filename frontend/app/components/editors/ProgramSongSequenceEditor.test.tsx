@@ -1213,7 +1213,32 @@ describe("ProgramSongSequenceEditor remove undo", () => {
     editor({ sequence: saved, view: "queue" });
     expect(screen.queryByRole("status")).toBeNull();
   });
+
+  // Removing a Play Next song takes its entry with it, so Undo queues it again as well as putting the song back.
+  it("restores the Play Next entry when Undo brings back a removed song that was queued", () => {
+    const onQueueItem = vi.fn();
+    const view = editor({ sequence: seq(), view: "queue", playNextIds: ["b"], onQueueItem });
+    removeRow(1);
+    view.rerender(
+      <ProgramSongSequenceEditor undoScope="test-program" onChange={view.onChange} sequence={view.onChange.mock.lastCall![0]} playNextIds={[]} onQueueItem={onQueueItem} view="queue" />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(ids(view.onChange.mock.lastCall![0])).toEqual(["a", "b", "c"]);
+    expect(onQueueItem).toHaveBeenCalledWith("b");
+  });
+
+  it("does not queue a removed song again when it was not in Play Next", () => {
+    const onQueueItem = vi.fn();
+    const view = editor({ sequence: seq(), view: "queue", playNextIds: [], onQueueItem });
+    removeRow(1);
+    view.rerender(
+      <ProgramSongSequenceEditor undoScope="test-program" onChange={view.onChange} sequence={view.onChange.mock.lastCall![0]} playNextIds={[]} onQueueItem={onQueueItem} view="queue" />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(onQueueItem).not.toHaveBeenCalled();
+  });
 });
+
 
 describe("ProgramSongSequenceEditor undo per program", () => {
   beforeEach(() => {
@@ -1272,3 +1297,22 @@ it("keeps the high-rotation star visible on a touch screen, where there is no ho
   );
   expect(screen.getByLabelText("Add Title a to high rotation").className).toContain("[@media(hover:none)]:opacity-100");
 });
+
+// The five row buttons (Move up, Move down, Play next, Edit, Remove) must fit the actions column at 375 px. The guard
+// checks the layout classes, not the pixels; the 375 px capture is the check of the fit.
+it("lays the row actions out so the five buttons fit the column without wrapping", () => {
+  render(
+    <ProgramSongSequenceEditor
+      undoScope="test-program"
+      sequence={{ mode: "manual", activeItemId: "a", items: [preset("a")] } as any}
+      view="queue"
+      onChange={vi.fn()}
+      onQueueItem={vi.fn()}
+    />,
+  );
+  const actions = document.querySelector(".playlist-row-actions") as HTMLElement;
+  expect(actions.className).toContain("shrink-0");
+  expect(actions.className).toContain("flex-nowrap");
+  expect(document.querySelector(".playlist-row")!.className).toContain("minmax(0,1fr)_52px_auto");
+});
+

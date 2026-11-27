@@ -379,3 +379,20 @@ it("takes the song off air, and shows it when the radio refuses", async () => {
   await holdControl(screen.getByRole("button", { name: "Stop the song on air" }));
   expect(await screen.findByText("HTTP 503")).toBeVisible();
 });
+
+it("treats a Play Next entry that is already gone (404) as removed, with no error shown", async () => {
+  open("manual");
+  server.answer("DELETE /program/main/song-queue/q2", new Response("gone", { status: 404 }));
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: "Remove Fictional closer from Play Next",
+    }),
+  );
+  await waitFor(() =>
+    expect(
+      server.calls.filter((call) => call.method === "DELETE").map((call) => call.path),
+    ).toEqual(["/program/main/song-queue/q2"]),
+  );
+  expect(screen.queryByText(/HTTP 404|will play again/)).toBeNull();
+});
+

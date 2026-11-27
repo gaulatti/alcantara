@@ -656,11 +656,13 @@ export async function seedLocalDatabase(
 
   // A timed block on the radio show: a scheduled rundown with song events, so the timeline, inspector and Check
   // have something to drive on a fresh stack. Create-only (its name is the key); a fixed date keeps reseeds equal.
+  // Keyed by its scheduled time, the stable part: a block renamed by an operator is still found, and the seed does
+  // not try to create a second block at the same time (the unique key on programStateId and scheduledAt).
   await prisma.flightSequence.upsert({
     where: {
-      programStateId_name: {
+      programStateId_scheduledAt: {
         programStateId: radioProgram.id,
-        name: 'Local radio timed block',
+        scheduledAt: new Date('2030-01-01T12:00:00.000Z'),
       },
     },
     update: {},

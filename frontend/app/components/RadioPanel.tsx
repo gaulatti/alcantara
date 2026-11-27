@@ -991,6 +991,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                               })
                           : undefined
                       }
+                      playNextIds={songQueue.map((entry) => entry.itemId)}
                       onQueueItem={(itemId) => {
                         // The editor fires and forgets; a refused add is shown
                         // here, as a refused rotation change is (#194). A new
