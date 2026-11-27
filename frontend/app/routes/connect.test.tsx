@@ -1,8 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { apiUrl } from '../utils/apiBaseUrl';
 import Connect, { meta } from './connect';
 
-const URL_ = 'http://localhost:3000/mcp';
+// The endpoint the page shows: the same API origin the console calls, so the test follows the configured port.
+const URL_ = apiUrl('/mcp');
 
 const rows = [
   { name: 'whoami', title: 'Who am I', description: 'Confirms the connection.', tier: 'R', permission: 'alcantara:access' },

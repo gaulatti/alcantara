@@ -236,6 +236,7 @@ services:
       - ./frontend/vite.config.ts:/app/frontend/vite.config.ts
       - ./frontend/react-router.config.ts:/app/frontend/react-router.config.ts
       - ./frontend/tsconfig.json:/app/frontend/tsconfig.json
+      - ./shared:/app/shared:ro
     develop:
       watch:
         - action: sync
