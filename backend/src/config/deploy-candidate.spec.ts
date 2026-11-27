@@ -215,6 +215,9 @@ describe('deploy candidate mode', () => {
         reloadSettings: jest.fn(() => Promise.resolve()),
         anyActive: () => true,
         reloadEmbeddings: jest.fn(() => Promise.resolve()),
+        // The hook starts the load and returns; the load is the real one.
+        load: (SongSimilarityService.prototype as unknown as { load: unknown })
+          .load,
       };
       await run(SongSimilarityService.prototype, 'onModuleInit', self);
       await afterTimers();

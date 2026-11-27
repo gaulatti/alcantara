@@ -32,7 +32,8 @@ describe('media assets without a team', () => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
     const { prisma, metrics, service } = build();
     await expect(scraped(metrics)).resolves.toBeUndefined();
-    await service.onApplicationBootstrap();
+    service.onApplicationBootstrap();
+    await service.whenStarted();
     await expect(scraped(metrics)).resolves.toBe(3);
 
     prisma.mediaAsset.count.mockResolvedValue(0);
@@ -59,7 +60,8 @@ describe('media assets without a team', () => {
   it('reads nothing on a deploy candidate', async () => {
     process.env.ALCANTARA_DEPLOY_CANDIDATE = '1';
     const { prisma, service } = build();
-    await service.onApplicationBootstrap();
+    service.onApplicationBootstrap();
+    await service.whenStarted();
     expect(prisma.mediaAsset.count).not.toHaveBeenCalled();
   });
 

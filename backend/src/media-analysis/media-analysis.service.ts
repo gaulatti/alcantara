@@ -221,13 +221,31 @@ export class MediaAnalysisService
     @Optional() private readonly lease?: PlayoutLease,
   ) {}
 
-  async onApplicationBootstrap(): Promise<void> {
+  private starting: Promise<void> = Promise.resolve();
+
+  /**
+   * Checks the tools and schedules the queue without holding start-up: the port does not open until every start-up
+   * hook returns (alcantara#873).
+   */
+  onApplicationBootstrap(): void {
     if (isDeployCandidate()) {
       this.logger.log('Deploy candidate: media analysis is not scheduled');
       return;
     }
-    // Only the instance holding the playout lease (alcantara#873) analyses.
-    await startWhenActive(this.lease, () => this.startAnalysis());
+    // Only the instance holding the playout lease (alcantara#873) analyses. Not returned, so neither start-up nor an
+    // activation waits for it.
+    void startWhenActive(this.lease, () => {
+      this.starting = this.startAnalysis().catch((error) =>
+        this.logger.error(
+          `Media analysis is not scheduled: it could not start (${errorCause(error)})`,
+        ),
+      );
+    });
+  }
+
+  /** Resolves when the queue is scheduled, or was found not to be. */
+  whenStarted(): Promise<void> {
+    return this.starting;
   }
 
   private async startAnalysis(): Promise<void> {

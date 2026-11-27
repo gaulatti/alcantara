@@ -158,7 +158,8 @@ describe('SongSimilarityService', () => {
       prisma.radioSettings.findMany.mockResolvedValue([
         settingsRow('radio', 'off'),
       ]);
-      await service.onModuleInit();
+      service.onModuleInit();
+      await service.whenReady();
       expect(prisma.$queryRaw).not.toHaveBeenCalled();
       service.onModuleDestroy();
     });
@@ -170,7 +171,8 @@ describe('SongSimilarityService', () => {
       ]);
       prisma.$queryRaw.mockResolvedValue([]);
       prisma.song.findMany.mockResolvedValue([]);
-      await service.onModuleInit();
+      service.onModuleInit();
+      await service.whenReady();
       expect(service.getSettings('radio').mode).toBe('shadow');
       expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
       service.onModuleDestroy();
@@ -187,7 +189,8 @@ describe('SongSimilarityService', () => {
         new Promise((resolve) => (finish = resolve)),
       );
       prisma.song.findMany.mockResolvedValue([]);
-      const init = service.onModuleInit();
+      // Start-up is not held: the hook returns while the load is still running (alcantara#873).
+      expect(service.onModuleInit()).toBeUndefined();
       await flush();
       expect(service.isReady()).toBe(false);
       let resolved = false;
@@ -202,7 +205,7 @@ describe('SongSimilarityService', () => {
           vector: literal(unit(0)),
         },
       ]);
-      await init;
+      await service.whenReady();
       await flush();
       expect(service.isReady()).toBe(true);
       expect(resolved).toBe(true);
@@ -216,19 +219,34 @@ describe('SongSimilarityService', () => {
       service.onModuleDestroy();
     });
 
+    it('starts no refresh when it is shut down while the first load still runs', async () => {
+      jest.spyOn(Logger.prototype, 'log').mockImplementation();
+      const { prisma, service } = setup();
+      prisma.radioSettings.findMany.mockResolvedValue([]);
+      const timers = jest.spyOn(global, 'setInterval');
+      service.onModuleInit();
+      service.onModuleDestroy();
+      await service.whenReady();
+      await flush();
+      expect(timers).not.toHaveBeenCalled();
+      timers.mockRestore();
+    });
+
     it('is ready, with similarity off, when the load fails or every station is off', async () => {
       const log = jest.spyOn(Logger.prototype, 'log').mockImplementation();
       const failing = setup();
       failing.prisma.radioSettings.findMany.mockRejectedValue(
         new Error('db down'),
       );
-      await failing.service.onModuleInit();
+      failing.service.onModuleInit();
+      await failing.service.whenReady();
       expect(failing.service.isReady()).toBe(true);
       const quiet = setup();
       quiet.prisma.radioSettings.findMany.mockResolvedValue([
         settingsRow('radio', 'off'),
       ]);
-      await quiet.service.onModuleInit();
+      quiet.service.onModuleInit();
+      await quiet.service.whenReady();
       expect(quiet.service.isReady()).toBe(true);
       expect(
         log.mock.calls.some((call) =>
@@ -270,10 +288,45 @@ describe('SongSimilarityService', () => {
       expect(warn).toHaveBeenCalledTimes(1);
     });
 
+    it('says the index was ready when a fallback happens after the first load', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      jest.spyOn(Logger.prototype, 'log').mockImplementation();
+      const { prisma, service } = setup();
+      prisma.radioSettings.findMany.mockResolvedValue([]);
+      service.onModuleInit();
+      await service.whenReady();
+      service.recordDecision('radio', {
+        mode: 'on',
+        currentSongId: 534,
+        proposedSongId: null,
+        playedSongId: 475,
+        score: null,
+        runnerUps: [],
+        outcome: 'fallback-no-embedding',
+      });
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('(index ready, 0 vectors)'),
+      );
+      service.recordDecision('radio', {
+        mode: 'on',
+        currentSongId: null,
+        proposedSongId: null,
+        playedSongId: 475,
+        score: null,
+        runnerUps: [],
+        outcome: 'fallback-no-embedding',
+      });
+      expect(warn).toHaveBeenLastCalledWith(
+        expect.stringContaining('no closing embedding for song none'),
+      );
+      service.onModuleDestroy();
+    });
+
     it('keeps similarity off when the settings load fails', async () => {
       const { prisma, service } = setup();
       prisma.radioSettings.findMany.mockRejectedValue(new Error('db down'));
-      await service.onModuleInit();
+      service.onModuleInit();
+      await service.whenReady();
       expect(service.getSettings('radio').mode).toBe('off');
       expect(errorSpy).toHaveBeenCalled();
       service.onModuleDestroy();
@@ -285,7 +338,8 @@ describe('SongSimilarityService', () => {
       prisma.radioSettings.findMany.mockResolvedValue([
         settingsRow('radio', 'off'),
       ]);
-      await service.onModuleInit();
+      service.onModuleInit();
+      await service.whenReady();
       await jest.advanceTimersByTimeAsync(5 * 60 * 1000);
       expect(prisma.$queryRaw).not.toHaveBeenCalled();
 

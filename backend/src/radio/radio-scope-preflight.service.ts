@@ -31,17 +31,27 @@ export class RadioScopePreflightService
     @Optional() private readonly lease?: PlayoutLease,
   ) {}
 
-  async onApplicationBootstrap(): Promise<void> {
+  /** The first read, which start-up does not wait for. */
+  private first: Promise<void> = Promise.resolve();
+
+  /** The port does not open until every start-up hook returns (alcantara#873), so the first read is not awaited. */
+  onApplicationBootstrap(): void {
     if (isDeployCandidate()) return;
-    // Only the instance holding the playout lease (alcantara#873) runs it.
-    await startWhenActive(this.lease, async () => {
+    // Only the instance holding the playout lease (alcantara#873) runs it. The first read is not returned, so
+    // neither start-up nor an activation waits for it.
+    void startWhenActive(this.lease, () => {
       this.timer = setInterval(
         () => void this.refresh(),
         RADIO_SCOPE_PREFLIGHT_INTERVAL_MS,
       );
       this.timer.unref();
-      await this.refresh();
+      this.first = this.refresh();
     });
+  }
+
+  /** Resolves when the first read has finished (also if it failed). */
+  whenStarted(): Promise<void> {
+    return this.first;
   }
 
   onModuleDestroy(): void {

@@ -48,7 +48,8 @@ describe('radio scope preflight', () => {
   it('publishes both counts at start and again on each interval', async () => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
     const { prisma, metrics, service } = build();
-    await service.onApplicationBootstrap();
+    service.onApplicationBootstrap();
+    await service.whenStarted();
     await expect(scraped(metrics, PROGRAMS)).resolves.toBe(2);
     await expect(scraped(metrics, SONGS)).resolves.toBe(4);
 
@@ -79,7 +80,8 @@ describe('radio scope preflight', () => {
   it('reads nothing on a deploy candidate', async () => {
     process.env.ALCANTARA_DEPLOY_CANDIDATE = '1';
     const { prisma, service } = build();
-    await service.onApplicationBootstrap();
+    service.onApplicationBootstrap();
+    await service.whenStarted();
     service.onModuleDestroy();
     expect(prisma.programState.findMany).not.toHaveBeenCalled();
   });

@@ -660,13 +660,46 @@ describe('MediaAnalysisService schedule', () => {
     const { service, analyzer, prisma } = setup();
     analyzer.available.mockResolvedValueOnce(false);
 
-    await service.onApplicationBootstrap();
+    service.onApplicationBootstrap();
+
+    await service.whenStarted();
     await jest.advanceTimersByTimeAsync(START_DELAY_MS * 10);
 
     expect(analyzer.available).toHaveBeenCalledWith(10_000);
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
     expect(Logger.prototype.error).toHaveBeenCalledWith(
       'Media analysis is not scheduled: ffmpeg or ffprobe is not installed',
+    );
+  });
+
+  // Start-up is not held while the tools are checked: the port opens after every hook returns (alcantara#873).
+  it('returns from start-up before the tool check finishes', async () => {
+    const { service, analyzer } = setup();
+    let answer!: (found: boolean) => void;
+    analyzer.available.mockReturnValueOnce(
+      new Promise<boolean>((resolve) => (answer = resolve)),
+    );
+
+    expect(service.onApplicationBootstrap()).toBeUndefined();
+    expect(Logger.prototype.log).not.toHaveBeenCalled();
+    answer(false);
+    await service.whenStarted();
+    expect(Logger.prototype.error).toHaveBeenCalledWith(
+      'Media analysis is not scheduled: ffmpeg or ffprobe is not installed',
+    );
+  });
+
+  it('logs a start that fails instead of leaving a rejection unhandled', async () => {
+    const { service, analyzer } = setup();
+    analyzer.available.mockRejectedValueOnce(new Error('spawn failed'));
+
+    service.onApplicationBootstrap();
+    await service.whenStarted();
+
+    expect(Logger.prototype.error).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Media analysis is not scheduled: it could not start',
+      ),
     );
   });
 
@@ -677,7 +710,9 @@ describe('MediaAnalysisService schedule', () => {
       [candidate({ assetId: 'song:2' })],
     ]);
 
-    await service.onApplicationBootstrap();
+    service.onApplicationBootstrap();
+
+    await service.whenStarted();
     await jest.advanceTimersByTimeAsync(START_DELAY_MS - 1);
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
     await jest.advanceTimersByTimeAsync(1);
@@ -702,7 +737,8 @@ describe('MediaAnalysisService schedule', () => {
     jest.useFakeTimers();
     expect(START_DELAY_MS).toBe(5 * 60_000);
     const niced = setup();
-    await niced.service.onApplicationBootstrap();
+    niced.service.onApplicationBootstrap();
+    await niced.service.whenStarted();
     expect(Logger.prototype.log).toHaveBeenCalledWith(
       'Media analysis is scheduled at lowered priority',
     );
@@ -710,7 +746,8 @@ describe('MediaAnalysisService schedule', () => {
 
     const plain = setup();
     plain.analyzer.lowPriority = false;
-    await plain.service.onApplicationBootstrap();
+    plain.service.onApplicationBootstrap();
+    await plain.service.whenStarted();
     expect(Logger.prototype.log).toHaveBeenCalledWith(
       'Media analysis is scheduled; nice is not installed, so it runs at normal priority',
     );
@@ -728,7 +765,9 @@ describe('MediaAnalysisService schedule', () => {
       throw new AudioAnalysisError('decode-failed');
     });
 
-    await service.onApplicationBootstrap();
+    service.onApplicationBootstrap();
+
+    await service.whenStarted();
     await jest.advanceTimersByTimeAsync(START_DELAY_MS);
     await jest.advanceTimersByTimeAsync(10_000);
     expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith(
@@ -808,7 +847,9 @@ describe('MediaAnalysisService schedule', () => {
       analyzer,
     );
 
-    await service.onApplicationBootstrap();
+    service.onApplicationBootstrap();
+
+    await service.whenStarted();
     await jest.advanceTimersByTimeAsync(START_DELAY_MS);
     // Two calls at startup look for claims a stopped process left (#587).
     await settle(
@@ -865,7 +906,9 @@ describe('MediaAnalysisService schedule', () => {
     const { service, prisma } = setup();
     prisma.$queryRaw.mockRejectedValueOnce(new Error('database unavailable'));
 
-    await service.onApplicationBootstrap();
+    service.onApplicationBootstrap();
+
+    await service.whenStarted();
     await jest.advanceTimersByTimeAsync(START_DELAY_MS);
     expect(Logger.prototype.error).toHaveBeenCalledWith(
       'Media analysis run failed before analysing a file (Error)',
@@ -948,7 +991,9 @@ describe('MediaAnalysisService schedule', () => {
         const { service, prisma, analyzer } = setup([[candidate()]]);
         prisma.$queryRaw.mockRejectedValueOnce(make());
 
-        await service.onApplicationBootstrap();
+        service.onApplicationBootstrap();
+
+        await service.whenStarted();
         await jest.advanceTimersByTimeAsync(START_DELAY_MS);
         expect(Logger.prototype.warn).toHaveBeenCalledWith(
           `Media analysis run failed before analysing a file (${cause}); the next run retries it`,
@@ -993,7 +1038,9 @@ describe('MediaAnalysisService schedule', () => {
           }),
         );
 
-        await service.onApplicationBootstrap();
+        service.onApplicationBootstrap();
+
+        await service.whenStarted();
         await jest.advanceTimersByTimeAsync(START_DELAY_MS);
         expect(Logger.prototype.error).toHaveBeenCalledWith(
           `Media analysis run failed before analysing a file (PrismaClientKnownRequestError ${cause})`,
@@ -1013,7 +1060,9 @@ describe('MediaAnalysisService schedule', () => {
         ),
       );
 
-      await service.onApplicationBootstrap();
+      service.onApplicationBootstrap();
+
+      await service.whenStarted();
       await jest.advanceTimersByTimeAsync(START_DELAY_MS);
       expect(Logger.prototype.error).toHaveBeenCalledWith(
         'Media analysis run failed before analysing a file (PrismaClientKnownRequestError P2021)',
@@ -1029,7 +1078,9 @@ describe('MediaAnalysisService schedule', () => {
       nameless.name = '';
       prisma.$queryRaw.mockRejectedValueOnce(nameless);
 
-      await service.onApplicationBootstrap();
+      service.onApplicationBootstrap();
+
+      await service.whenStarted();
       await jest.advanceTimersByTimeAsync(START_DELAY_MS);
       expect(Logger.prototype.error).toHaveBeenCalledWith(
         'Media analysis run failed before analysing a file (Error)',
@@ -1042,7 +1093,9 @@ describe('MediaAnalysisService schedule', () => {
       const { service, prisma } = setup();
       prisma.$queryRaw.mockRejectedValueOnce('boom');
 
-      await service.onApplicationBootstrap();
+      service.onApplicationBootstrap();
+
+      await service.whenStarted();
       await jest.advanceTimersByTimeAsync(START_DELAY_MS);
       expect(Logger.prototype.error).toHaveBeenCalledWith(
         'Media analysis run failed before analysing a file (string)',
@@ -1061,7 +1114,8 @@ describe('MediaAnalysisService schedule', () => {
     busy.analyzer.analyze.mockImplementationOnce(
       () => new Promise<AudioAnalysis>((resolve) => (release = resolve)),
     );
-    await busy.service.onApplicationBootstrap();
+    busy.service.onApplicationBootstrap();
+    await busy.service.whenStarted();
     await jest.advanceTimersByTimeAsync(START_DELAY_MS);
     busy.service.onModuleDestroy();
     release(ANALYSIS);
@@ -1470,7 +1524,9 @@ describe('a database error on the result write (#278)', () => {
     const { service, prisma, analyzer } = setup([[candidate()]]);
     failResultWrites(prisma, transientError, 1);
 
-    await service.onApplicationBootstrap();
+    service.onApplicationBootstrap();
+
+    await service.whenStarted();
     await jest.advanceTimersByTimeAsync(START_DELAY_MS);
     expect(analyzer.analyze).toHaveBeenCalledTimes(1);
     expect(resultWrites(prisma)).toHaveLength(1);
@@ -1553,7 +1609,8 @@ describe('claims a stopped process left', () => {
     prisma.mediaAssetAnalysis.updateMany
       .mockResolvedValueOnce({ count: 1 })
       .mockResolvedValueOnce({ count: 0 });
-    await service.onApplicationBootstrap();
+    service.onApplicationBootstrap();
+    await service.whenStarted();
     await jest.advanceTimersByTimeAsync(RESUME_DELAY_MS - 1);
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
     await jest.advanceTimersByTimeAsync(1);
@@ -1568,7 +1625,8 @@ describe('claims a stopped process left', () => {
     prisma.mediaAssetAnalysis.updateMany.mockRejectedValueOnce(
       new Error('down'),
     );
-    await service.onApplicationBootstrap();
+    service.onApplicationBootstrap();
+    await service.whenStarted();
     expect(Logger.prototype.warn).toHaveBeenCalledWith(
       'Media analysis could not hand back interrupted runs (Error); their lease runs out',
     );

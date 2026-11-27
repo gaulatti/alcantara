@@ -114,7 +114,17 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly lease?: PlayoutLease,
   ) {}
 
-  async onModuleInit(): Promise<void> {
+  private destroyed = false;
+
+  /**
+   * Starts the first load without waiting for it: it takes seconds, and the port does not open until every start-up
+   * hook returns (alcantara#873). Whatever picks from the index waits for `whenReady()` first.
+   */
+  onModuleInit(): void {
+    void this.load();
+  }
+
+  private async load(): Promise<void> {
     const startedAt = Date.now();
     try {
       await this.reloadSettings();
@@ -135,6 +145,7 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
       );
       return;
     }
+    if (this.destroyed) return;
     // Only the instance holding the playout lease (alcantara#873) refreshes the catalog.
     startWhenActive(this.lease, () => {
       this.refreshTimer = setInterval(() => {
@@ -148,6 +159,7 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleDestroy(): void {
+    this.destroyed = true;
     if (this.refreshTimer) clearInterval(this.refreshTimer);
   }
 
