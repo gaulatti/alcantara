@@ -43,24 +43,29 @@ async function openPage(browser, path) {
       await page.waitForTimeout(5_000);
     }
   }
-  // The workspace opens after the test-auth session loads: wait for the app's own controls, not a fixed time.
-  await page.waitForFunction(() => document.querySelectorAll("button").length > 5, null, { timeout: TIMEOUT });
+  // The workspace opens after the test-auth session loads: wait for the app's own controls, not a fixed time. A cold
+  // dev server re-optimizes its dependencies on the first load and that page never finishes loading, so reload once.
+  const ready = () => page.waitForFunction(() => document.querySelectorAll("button").length > 5, null, { timeout: TIMEOUT });
+  try {
+    await ready();
+  } catch {
+    await page.reload({ waitUntil: "load", timeout: TIMEOUT });
+    await ready();
+  }
   return { context, page };
+}
+
+// The console's program is shared between runs (a check that switches it leaves it switched), so a check that needs
+// one program's media picks it first, as the timeline check does (#863).
+async function selectProgram(page, programId) {
+  const program = page.getByRole("combobox", { name: "Program" }).first();
+  await program.waitFor();
+  await program.click();
+  await page.getByRole("option", { name: programId, exact: true }).tap();
 }
 
 // Opacity a touch user sees. Hover-only controls are opacity 0 without hover, so a visible control reads ~1.
 const opacity = (locator) => locator.evaluate((el) => Number(getComputedStyle(el).opacity));
-
-// A case that cannot pass yet: listed with its reason, not run, and not a failure. Its body stays here so it can be
-// re-enabled by changing fixme back to check once its selector or seed data is fixed.
-const FIXME_REASONS = {
-  "media-label-row": "waiting for the Labels tab control times out at 2 min; the cause is not yet confirmed",
-  "media-unknown": "tapping the seeded image's Edit times out; the cause is not yet confirmed",
-  "timeline-pin-drag": "tapping a Program or Scheduled block control times out in the run; the cause is not yet confirmed",
-};
-async function fixme(name) {
-  report(name, "fixme", FIXME_REASONS[name]);
-}
 
 async function check(name, fn) {
   try {
@@ -122,25 +127,45 @@ try {
     }
   });
 
-  await fixme("media-label-row", async () => {
+  await check("media-label-row", async () => {
     const { context, page } = await openPage(browser, "/media");
     try {
-      const labels = page.getByRole("button", { name: "Labels", exact: true }).first();
+      // The seeded label with media belongs to the radio show.
+      await selectProgram(page, "radio-demo");
+      // The media type switcher is a tab list: Images, Audio, Video and Labels are tabs, not buttons (#863).
+      const labels = page.getByRole("tab", { name: "Labels", exact: true });
       await labels.waitFor();
       await labels.tap();
-      const up = page.getByRole("button", { name: /^Move .+ up$/ }).first();
-      if ((await up.count()) === 0) return { skip: "no label with media on this stack" };
-      if ((await opacity(up)) < 0.9) throw new Error("the label row's move control is hidden without hover");
+      // A label's media rows, with their controls, show once the label is selected in the list (#863).
+      const label = page.locator("tbody tr").first();
+      try {
+        await label.waitFor({ timeout: 15_000 });
+      } catch {
+        return { skip: "no label on this stack" };
+      }
+      await label.tap();
+      const down = page.getByRole("button", { name: /^Move .+ down$/ }).first();
+      const remove = page.getByRole("button", { name: /^Remove .+ from / }).first();
+      try {
+        await down.waitFor({ timeout: 10_000 });
+      } catch {
+        return { skip: "the first label has no media on this stack" };
+      }
+      // Enabled controls only: the first row's Move up is disabled, and its dimming is not hover.
+      for (const control of [down, remove])
+        if ((await opacity(control)) < 0.9) throw new Error("a label row control is hidden without hover");
       return { detail: "the label row's controls are visible under touch" };
     } finally {
       await context.close();
     }
   });
 
-  await fixme("media-unknown", async () => {
+  await check("media-unknown", async () => {
     const { context, page } = await openPage(browser, "/media");
     try {
-      await page.getByRole("button", { name: "Images", exact: true }).first().tap();
+      // The seeded image is the TV show's.
+      await selectProgram(page, "main");
+      await page.getByRole("tab", { name: "Images", exact: true }).tap();
       const edit = page.getByRole("button", { name: "Edit Local New York still" });
       await edit.waitFor();
       await edit.tap();
@@ -173,7 +198,7 @@ try {
     }
   });
 
-  await fixme("timeline-pin-drag", async () => {
+  await check("timeline-pin-drag", async () => {
     const { context, page } = await openPage(browser, "/flight");
     try {
       const program = page.getByRole("combobox", { name: "Program" }).first();
@@ -186,7 +211,7 @@ try {
       await page.getByRole("option", { name: /Draft/ }).first().tap();
       // The first event is fixed at the block start, so a second event gets a fixed start to give a movable pin.
       await page.getByRole("button", { name: /^Local demo tone 2, start/ }).first().tap();
-      await page.getByRole("checkbox").last().tap();
+      // The event inspector takes a fixed start as typed text; it has no checkbox to tick first (#863).
       await page.getByRole("textbox", { name: "Fixed start" }).fill("07:05");
       await page.getByRole("textbox", { name: "Fixed start" }).press("Enter");
       const pin = page.getByRole("slider").nth(1);
@@ -216,6 +241,5 @@ try {
 
 const failed = results.filter((result) => result.status === "failed");
 const skipped = results.filter((result) => result.status === "skipped");
-const fixmes = results.filter((result) => result.status === "fixme");
-console.log(JSON.stringify({ summary: { passed: results.filter((result) => result.status === "passed").length, failed: failed.length, skipped: skipped.length, fixme: fixmes.length } }));
+console.log(JSON.stringify({ summary: { passed: results.filter((result) => result.status === "passed").length, failed: failed.length, skipped: skipped.length } }));
 process.exit(failed.length ? 1 : 0);
