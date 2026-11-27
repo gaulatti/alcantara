@@ -142,7 +142,10 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
   const stale = live && !unconfirmed && playback?.telemetryStale === true;
   const unverified =
     live && !unconfirmed && !stale && input.outputUnverified === true;
-  const jingling = live && !unconfirmed && Boolean(playback?.jingle);
+  // A commanded jingle has no song under it: the engine says what is on without saying a song plays.
+  const commandedJingle =
+    !live && Boolean(playback?.jingle) && input.engine.connected && input.playoutDown !== true;
+  const jingling = commandedJingle || (live && !unconfirmed && Boolean(playback?.jingle));
   const hasLength =
     live &&
     typeof playback?.durationMs === "number" &&
@@ -245,7 +248,7 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
   const offRundown = audible && engineAirs && !fallback;
   const audioUnconfirmed = audible && !engineAirs;
 
-  return {
+  const view: OnAirView = {
     state: fallback
       ? "fallback"
       : offRundown
@@ -280,8 +283,8 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
             : "On air",
     // While a jingle is on, the song after it has not started: it is not named as on air, and has no clock.
     jingle: jingling,
-    title: !live ? null : jingling ? `Jingle · ${playback!.jingle!.name}` : (playback!.title || "Title unavailable"),
-    artist: !live ? null : jingling ? `Then ${playback!.title || "the next song"}${playback!.artist ? ` · ${playback!.artist}` : ""}` : (playback!.artist || "Artist unavailable"),
+    title: commandedJingle ? `Jingle · ${playback!.jingle!.name}` : !live ? null : jingling ? `Jingle · ${playback!.jingle!.name}` : (playback!.title || "Title unavailable"),
+    artist: commandedJingle ? "Then the next song" : !live ? null : jingling ? `Then ${playback!.title || "the next song"}${playback!.artist ? ` · ${playback!.artist}` : ""}` : (playback!.artist || "Artist unavailable"),
     elapsedMs: jingling ? null : clampedElapsed,
     remainingMs:
       !jingling && clampedElapsed !== null && hasLength
@@ -306,4 +309,5 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
     modeLabel: input.next?.via === "queue" ? "Play Next" : MODE_LABELS[input.mode],
     chips: shownChips,
   };
+  return commandedJingle ? { ...view, state: "on-air", label: "On air" } : view;
 }

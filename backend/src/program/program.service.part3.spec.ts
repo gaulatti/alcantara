@@ -1444,6 +1444,29 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
       },
     );
 
+    it('tells the console of a commanded jingle without claiming a song plays', () => {
+      const { service } = build();
+      const events: any[] = [];
+      service.addEventListener((e) => events.push(e.data));
+      const at = '2026-11-17T12:00:00.000Z';
+      for (const name of ['Fictional spot', null])
+        (service as any).handleEngineEvent({
+          type: 'jingle_command',
+          programId: 'main',
+          name,
+          at,
+        });
+      expect(events.map((e) => e.type)).toEqual([
+        'song_playback_update',
+        'song_playback_update',
+      ]);
+      expect(events[0].playback).toMatchObject({
+        isPlaying: false,
+        jingle: { name: 'Fictional spot' },
+      });
+      expect(events[1].playback).not.toHaveProperty('jingle');
+    });
+
     it('keeps the acting identity off the public program stream', () => {
       const { service } = build();
       const events: any[] = [];

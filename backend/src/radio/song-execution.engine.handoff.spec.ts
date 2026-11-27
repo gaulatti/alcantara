@@ -451,6 +451,30 @@ describe('next-song announcement and handoff', () => {
     expect(playback()).not.toHaveProperty('jingle');
   });
 
+  it.each([false, true])(
+    'tells the desk of a commanded jingle, and that it is over when frozen under it (%s)',
+    async (freeze) => {
+      const h = harness();
+      h.palazzo.settings = {
+        bumperEnabled: true,
+        bumperInterval: 1,
+        bumperInstantIds: [1],
+        bumperMode: 'sequential',
+      };
+      const jingles: (string | null)[] = [];
+      h.engine.setBroadcastHandler((event) => {
+        if (event.type === 'jingle_command') jingles.push(event.name);
+      });
+      await onAir(h);
+      const done = h.engine['maybeBumper'](PROGRAM);
+      for (let j = 0; j < 60; j += 1) await Promise.resolve();
+      if (freeze) h.engine['states'].get(PROGRAM)!.frozen = true;
+      await jest.advanceTimersByTimeAsync(8_000);
+      await done;
+      expect(jingles).toEqual(freeze ? ['Bumper', null] : ['Bumper']);
+    },
+  );
+
   it('accepts the announced start under overlap and records one start and one end per song', async () => {
     const h = harness();
     const store = asRunStore();

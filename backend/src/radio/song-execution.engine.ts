@@ -139,6 +139,16 @@ export type SongEngineEvent =
       sampledAt: string;
     }
   | {
+      /**
+       * A jingle sent by command is on air between two songs, with no song active (gaulatti/alcantara#879); a null
+       * name says it is over without a song following. For the console only.
+       */
+      type: 'jingle_command';
+      programId: string;
+      name: string | null;
+      at: string;
+    }
+  | {
       /** Palazzo could not load the song (#175); the engine moved on. */
       type: 'song_request_failed';
       programId: string;
@@ -4925,7 +4935,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       }
       this.logger.log(`Bumper: ${inst.name} on ${programId}`);
       this.recordBumperMetric('command', 'sent');
+      this.emitJingle(programId, inst.name);
       await new Promise((r) => setTimeout(r, 8000));
+      // Frozen while the jingle played: no song follows to replace it on the desk.
+      if (this.states.get(programId)?.frozen) this.emitJingle(programId, null);
     } catch (error) {
       this.logger.warn(
         `Bumper attempt failed before its send on ${programId} (${errorClass(error)})`,
@@ -5155,6 +5168,15 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       type: 'playback_update',
       programId,
       playback: this.playbackData(programId, song),
+    });
+  }
+
+  private emitJingle(programId: string, name: string | null): void {
+    this.emit({
+      type: 'jingle_command',
+      programId,
+      name,
+      at: new Date().toISOString(),
     });
   }
 

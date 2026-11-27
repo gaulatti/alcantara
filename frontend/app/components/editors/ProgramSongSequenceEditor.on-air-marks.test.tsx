@@ -62,3 +62,10 @@ describe("the selected row and the row on air", () => {
     expect(screen.getByText("3:05")).toBeInTheDocument();
   });
 });
+
+// gaulatti/alcantara#879: while a jingle is on, the song behind it has not started.
+it("marks the song behind a jingle After jingle, not On air", () => {
+  view("b", { token: "b:x", isPlaying: true, jingle: { name: "CUÑA 1" } });
+  expect(screen.getByText("After jingle")).toBeInTheDocument();
+  expect(screen.queryByText("On air")).toBeNull();
+});

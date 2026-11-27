@@ -549,7 +549,8 @@ export function ProgramSongSequenceEditor({
                                 <div className={`flex items-center gap-2 truncate text-[13px] font-medium leading-tight ${isActive ? 'text-sea' : 'text-text-primary'}`}>
                                   <span className='truncate'>{titleText}</span>
                                   {displayItem.id === liveItemId ? (
-                                    <StatePill tone='live' label='On air' pulse />
+                                    // While a jingle is on, this song has not started (gaulatti/alcantara#879).
+                                    programSongPlayback?.jingle ? <StatePill tone='info' label='After jingle' /> : <StatePill tone='live' label='On air' pulse />
                                   ) : displayItem.id === nextItemId ? (
                                     <StatePill tone='info' label='Next' />
                                   ) : null}

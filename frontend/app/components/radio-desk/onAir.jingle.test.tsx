@@ -60,3 +60,10 @@ it("does not claim a jingle the engine cannot confirm", () => {
   const view = deriveOnAir({ ...input({ jingle: { name: "CUÑA 2" } }), engine: { connected: false, degraded: false, unavailableLabel: "Engine unavailable" } });
   expect(view).toMatchObject({ state: "unconfirmed", title: "Quore", jingle: false });
 });
+
+it("shows a commanded jingle, which has no song under it, as a jingle and not as off air", () => {
+  const view = deriveOnAir({ ...input({ isPlaying: false, title: undefined, artist: undefined, jingle: { name: "CUÑA 4" } }), outputAudible: true, otherAudio: "none" });
+  expect(view).toMatchObject({ state: "on-air", label: "On air", jingle: true, title: "Jingle · CUÑA 4", artist: "Then the next song", elapsedMs: null });
+  const lost = deriveOnAir({ ...input({ isPlaying: false, jingle: { name: "CUÑA 4" } }), engine: { connected: false, degraded: false, unavailableLabel: "Engine unavailable" } });
+  expect(lost).toMatchObject({ state: "off-air", jingle: false });
+});

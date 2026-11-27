@@ -4195,6 +4195,27 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         });
         break;
       }
+      case 'jingle_command': {
+        // No song is active under a commanded jingle: the console is told what is on without being told a song plays.
+        const normalizedProgramId = this.normalizeProgramId(programId);
+        const playback = {
+          token: '',
+          audioUrl: '',
+          progress: 0,
+          currentTimeMs: 0,
+          durationMs: null,
+          isPlaying: false,
+          updatedAt: event.at,
+          ...(event.name !== null && { jingle: { name: event.name } }),
+        };
+        this.programSongPlaybackByProgramId.set(normalizedProgramId, playback);
+        this.broadcastUpdate(normalizedProgramId, {
+          type: 'song_playback_update',
+          programId: normalizedProgramId,
+          playback,
+        });
+        break;
+      }
       case 'song_queue_update': {
         const normalizedProgramId = this.normalizeProgramId(programId);
         this.broadcastUpdate(normalizedProgramId, {
