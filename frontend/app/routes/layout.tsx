@@ -56,6 +56,7 @@ import { useLogout } from '../hooks/useAuth';
 import { RadioMonitorProvider, useRadioMonitor } from '../components/RadioMonitor';
 import { HostMicProvider, useHostMic } from '../components/HostMicOnAir';
 import { LocalAudioGuard, usePreFadeOnHeadphones } from '../components/LocalAudioGuard';
+import { NewVersionPrompt } from '../components/NewVersionPrompt';
 import { useFeatures } from '../hooks/useFeatures';
 import { isTestAuth } from '../services/session';
 import { getAppNavigationSections, isNavigationItemActive, sidebarSectionsKey, type ProgramType } from '../utils/appNavigation';
@@ -1064,6 +1065,8 @@ function ConsoleShell() {
                   </Button>
                 </span>
               ) : null}
+              {/* A new build is deployed: offered, never forced, and held back while the mic or a guest is live (#879). */}
+              <NewVersionPrompt programId={selectedProgramId} />
               {radioMonitor && radioMonitor.state !== 'stopped' ? (
                 <span
                   role='status'

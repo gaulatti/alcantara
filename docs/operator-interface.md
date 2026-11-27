@@ -188,6 +188,12 @@ locally**) is muted too: the browser cannot tell speakers from headphones. An
 operator on headphones ticks **I'm on headphones: keep pre-fade** beside Mic on
 air, which this device remembers; the header chip says **PFL muted** or **PFL on
 headphones**.
+When a new build of the console is deployed, an open console's header offers
+**New version** with **Reload** and **Later** (it checks every minute and when
+the tab comes back). It never reloads by itself and blocks nothing, and it is
+held back while the host microphone is open or a guest of the show is live,
+appearing once neither is. **Later** keeps the running version until the next
+one (#879).
 
 Guest calls belongs to the show in its header: switching shows starts a fresh
 desk, dropping the previous show's lists, drafts, link and open microphones, and
