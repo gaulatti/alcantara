@@ -54,7 +54,7 @@ import { useLogout } from '../hooks/useAuth';
 import { RadioMonitorProvider, useRadioMonitor } from '../components/RadioMonitor';
 import { useFeatures } from '../hooks/useFeatures';
 import { isTestAuth } from '../services/session';
-import { getAppNavigationSections, isNavigationItemActive, type ProgramType } from '../utils/appNavigation';
+import { getAppNavigationSections, isNavigationItemActive, sidebarSectionsKey, type ProgramType } from '../utils/appNavigation';
 
 interface ProgramSummary {
   programId: string;
@@ -464,6 +464,9 @@ function ConsoleShell() {
       })),
     [location.pathname, navigationSections]
   );
+  // The sidebar decides which section is open when it mounts. Permissions add items later (TV destinations) and the
+  // page can move to another section, so it is mounted again for either (#875).
+  const sectionsKey = sidebarSectionsKey(groupedSidebarItems);
   /* v8 ignore next -- every navigation section has an items array, so the empty fallback cannot be reached */
   const flatSidebarItems: SidebarItem[] = useMemo(() => groupedSidebarItems.flatMap((section) => section.items ?? []), [groupedSidebarItems]);
   const isViewportConstrainedRoute = location.pathname === '/' || location.pathname === '/control' || location.pathname === '/console-fixture';
@@ -944,6 +947,7 @@ function ConsoleShell() {
       />
       <div className='flex h-screen min-h-0 bg-background text-foreground antialiased'>
         <Sidebar
+          key={sectionsKey}
           className='hidden shrink-0 xl:flex'
           collapsed={isViewportConstrainedRoute}
           header={sidebarHeader}
@@ -970,6 +974,7 @@ function ConsoleShell() {
             <div className='fixed inset-0 z-[1190] xl:hidden' role='dialog' aria-modal='true' aria-label='Application navigation'>
               <button type='button' aria-label='Close navigation' className='absolute inset-0 bg-black/65' onClick={() => setMobileNavigationOpen(false)} />
               <Sidebar
+                key={sectionsKey}
                 className='absolute bottom-0 right-0 top-16 w-[min(90vw,22rem)] shadow-2xl'
                 header={
                   <div className='space-y-3 px-1'>

@@ -62,6 +62,14 @@ interface ProgramState {
   templateVerifiedAt?: string | null;
 }
 
+/** The active scene by name; a scene the show no longer carries is said so, never shown as a bare number (#875). */
+function activeSceneName(program: ProgramState): string {
+  if (program.activeSceneId === null || program.activeSceneId === undefined) return 'none';
+  const entry = program.scenes.find((item) => item.sceneId === program.activeSceneId);
+  if (!entry) return 'one not assigned to this show';
+  return entry.scene?.name ?? `scene ${program.activeSceneId}`;
+}
+
 export function meta({}: Route.MetaArgs) {
   return [{ title: 'Shows - Alcantara' }, { name: 'description', content: 'Manage television, radio, and simulcast shows' }];
 }
@@ -553,7 +561,7 @@ export default function ProgramsAdmin() {
                         ) : (
                           <p className='mt-2 text-sm text-text-secondary dark:text-text-secondary'>
                             Scenes assigned: {program.scenes.length} · Media labels are available globally · Stingers assigned: {(program.stingers || []).length} · Active scene:{' '}
-                            {program.activeSceneId ?? 'none'}
+                            {activeSceneName(program)}
                           </p>
                         )}
                         {program.type !== 'radio' && program.templateManifest ? (

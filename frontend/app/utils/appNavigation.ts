@@ -161,3 +161,16 @@ export function isNavigationItemActive(
   if (href === "/") return pathname === "/" || pathname === "/control";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
+
+/**
+ * What the sidebar's open sections depend on. The sidebar decides which section is open when it mounts, so it is
+ * keyed by this: it changes when a section gains or loses items (permissions arrive after the first render) or the
+ * page on screen moves to another section (alcantara#875).
+ */
+export function sidebarSectionsKey(
+  sections: { id: string; active?: boolean; items?: unknown[] }[],
+): string {
+  return sections
+    .map((section) => `${section.id}:${section.items?.length ?? 0}${section.active ? "*" : ""}`)
+    .join("|");
+}

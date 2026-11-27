@@ -7,7 +7,7 @@ on phone and tablet. The mobile drawer is above all console surfaces, so a live
 monitor or transport control cannot cover navigation. The header's show selector keeps the operator's stored show: when the show list cannot be loaded it says so with **Retry** and never selects or stores another show; only a list that loaded and still lacks the show (it was deleted) moves the selection to the first show.
 The icon rail shows no
 names, so each rail link's label opens as a tooltip beside it on hover and on
-keyboard focus (#688); its accessible name is the same label.
+keyboard focus (#688); its accessible name is the same label. The sidebar reopens on the current page's section whenever the list of sections or their items changes, so a page whose section appears only after the show is known still shows its items (#875).
 
 ## Information architecture
 
@@ -48,6 +48,8 @@ assignments even when called outside the browser. Changing an existing show to
 Radio removes any obsolete visual assignments atomically. Simulcast remains the
 explicit type for a shared TV and radio program.
 
+The Shows list names each show's active scene, never its internal number: `none` when nothing is active, and `one not assigned to this show` when the active scene is no longer on the show (#875).
+
 ## Button help
 
 Alcántara uses the Tooltip from the installed Bleecker component library for
@@ -84,6 +86,9 @@ The broadcast deck reserves a separate semantic action grammar:
   air** (pulsing, with the on-air glow on the monitor) or **Faded to black**.
   Preview carries no on-air state. Source rows use pills too: Program, Preview ·
   Program, or Preview.
+- Below 1280 px the monitor header drops the word beside the Listen icon (the
+  button keeps its accessible name) and the local-return note, so the scene
+  name on Preview and Program stays readable (#875).
 - The transition, device class and preset visibility pickers are Bleecker
   `Select`; the source panel width is a Bleecker `Slider`. No text on the deck
   is smaller than 12 px.

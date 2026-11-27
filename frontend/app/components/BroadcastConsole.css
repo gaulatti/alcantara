@@ -1351,3 +1351,13 @@
     min-height: 44px;
   }
 }
+
+/* alcantara#875: at 1024 px the program monitor's header left the scene name no width at all, so what was on air
+   could not be read. Below 1280 px the header drops what it says elsewhere ("local render" is also on the picture)
+   and Listen keeps its icon. */
+@media (max-width: 1279px) {
+  .switcher-monitor header .switcher-return-local,
+  .switcher-monitor header .switcher-return-listen-label {
+    display: none;
+  }
+}

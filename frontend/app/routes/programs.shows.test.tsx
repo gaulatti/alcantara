@@ -73,7 +73,7 @@ beforeEach(() => {
   selection.set.mockReset();
   shows = [
     show("news", {
-      scenes: [{ id: 1, sceneId: 1, position: 0 }],
+      scenes: [{ id: 1, sceneId: 1, position: 0, scene: { id: 1, name: "Fictional opening" } }],
       stingers: [{ id: 1, stingerId: 7, position: 0 }],
       mediaGroups: [{ id: 1, mediaGroupId: 3, position: 0 }],
       activeSceneId: 1,
@@ -185,6 +185,15 @@ it("reports shows that cannot load, and offers the first show when there are non
   ).toBeInTheDocument();
 });
 
+// alcantara#875: the card printed the active scene's number.
+it("says so when the active scene is not one the show carries, or has no name", async () => {
+  shows.push(show("moved", { activeSceneId: 77 }), show("unnamed", { activeSceneId: 5, scenes: [{ id: 9, sceneId: 5, position: 0 }] }));
+  open();
+  await loaded();
+  expect(card("moved")).toHaveTextContent("Active scene: one not assigned to this show");
+  expect(card("unnamed")).toHaveTextContent("Active scene: scene 5");
+});
+
 it("lists shows by id with their type, assets, renderer and selection", async () => {
   shows.push(
     show("legacy", {
@@ -209,7 +218,7 @@ it("lists shows by id with their type, assets, renderer and selection", async ()
   // The active show is the console's selection, not on air: never the live tone.
   expect(within(news).getByText("Active").closest("[data-tone]")).toHaveAttribute("data-tone", "info");
   expect(news).toHaveTextContent(
-    "Scenes assigned: 1 · Media labels are available globally · Stingers assigned: 1 · Active scene: 1",
+    "Scenes assigned: 1 · Media labels are available globally · Stingers assigned: 1 · Active scene: Fictional opening",
   );
   expect(news).toHaveTextContent("No template");
   expect(news).toHaveTextContent("no external template is registered");

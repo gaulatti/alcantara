@@ -456,6 +456,7 @@ export function ConfidenceMonitor({
           <button
             type="button"
             className="switcher-return-listen"
+            aria-label="Listen"
             disabled
             title={
               fromReturn
@@ -463,7 +464,7 @@ export function ConfidenceMonitor({
                 : "No return audio: the local render is silent"
             }
           >
-            <Headphones size={12} aria-hidden="true" /> Listen
+            <Headphones size={12} aria-hidden="true" /> <span className="switcher-return-listen-label">Listen</span>
           </button>
         ) : null}
       </header>
