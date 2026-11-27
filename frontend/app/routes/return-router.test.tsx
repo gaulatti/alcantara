@@ -82,6 +82,9 @@ interface Node {
   disconnect: () => void;
 }
 let nodes: Node[] = [];
+let meterLevel = 0;
+let contextState = "running";
+let resumes = 0;
 let audioClosed = false;
 function node(label: string, extra: Record<string, unknown> = {}): Node {
   const created: Node = {
@@ -113,13 +116,24 @@ class FakeAudioContext {
   createGain() {
     return node("gain", { gain: { value: 0 } });
   }
+  createAnalyser() {
+    return node("meter", {
+      fftSize: 0,
+      getFloatTimeDomainData: (buffer: Float32Array) => buffer.fill(meterLevel).fill(-meterLevel, 0, 1),
+    });
+  }
+  state = contextState;
   createMediaElementSource(element: FakeAudio) {
     return node(`element:${element.src}`);
   }
   createDelay() {
     return node("delay", { delayTime: { value: -1 } });
   }
-  async resume() {}
+  async resume() {
+    resumes += 1;
+    // A suspended context that refuses to resume more than once (the page keeps asking, quietly).
+    if (contextState === "suspended" && resumes > 1) throw new Error("refused");
+  }
   async close() {
     audioClosed = true;
   }
@@ -133,16 +147,17 @@ class FakeAudio {
   crossOrigin: string | null = null;
   preload = "";
   paused = true;
-  listeners = new Map<string, () => void>();
+  listeners = new Map<string, (event: { type: string }) => void>();
+  error: { code: number } | null = null;
   static play: () => Promise<void> = () => Promise.resolve();
   constructor() {
     FakeAudio.all.push(this);
   }
-  addEventListener(event: string, listener: () => void) {
+  addEventListener(event: string, listener: (event: { type: string }) => void) {
     this.listeners.set(event, listener);
   }
   fire(event: string) {
-    this.listeners.get(event)?.();
+    this.listeners.get(event)?.({ type: event });
   }
   play() {
     this.paused = false;
@@ -226,6 +241,9 @@ beforeEach(() => {
   vi.useFakeTimers();
   nodes = [];
   audioClosed = false;
+  meterLevel = 0;
+  contextState = "running";
+  resumes = 0;
   lk.FakeRoom.last = null;
   routes = [];
   tokenStatus = 200;
@@ -898,4 +916,89 @@ it("does not join the room when the page closed while it was being authorized", 
     await vi.advanceTimersByTimeAsync(0);
   });
   expect(room().connectedWith).toBeNull();
+});
+
+// Bounded diagnostics for the runner's log: codes and numbers, never a key, a URL or a token.
+describe("the router's diagnostics", () => {
+  const lines = (spy: ReturnType<typeof vi.spyOn>): string[] => spy.mock.calls.map((call: unknown[]) => String(call[0]));
+
+  it("reports the context, the program audio and the levels every ten seconds, and keeps the context running", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    try {
+      contextState = "suspended";
+      audioTicket = () => Response.json({ streamPath: "/radio/main/monitor-audio?ticket=fictional-ticket" });
+      routes = [guestRoute("guest-anna", { returnAudioBus: "master" })];
+      await openRouter();
+      await settle();
+      expect(resumes).toBeGreaterThan(0);
+      room().remoteParticipants.set("guest-anna", { identity: "guest-anna" });
+      emit("participantConnected");
+      await settle();
+      FakeAudio.all.find((audio) => audio.srcObject === undefined)!.fire("playing");
+      meterLevel = 0.25;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      const said = lines(info);
+      expect(said).toContain("[return-router] context suspended");
+      expect(said).toContain("[return-router] program-audio requested");
+      expect(said).toContain("[return-router] program-audio playing");
+      expect(said).toContain("[return-router] levels program=0.25 mixes=1 mixpeak=0.25");
+      expect(said.every((line) => line.startsWith("[return-router] ") && !/key|ticket|http/.test(line))).toBe(true);
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  it("names why the program audio failed: the grant, a media error, the end of the stream or a refused play", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    try {
+      audioTicket = () => new Response(null, { status: 401 });
+      await openRouter();
+      await settle();
+      expect(lines(info)).toContain("[return-router] program-audio failed code=ticket_401");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(lines(info)).toContain("[return-router] levels program=none mixes=0 mixpeak=0");
+      cleanup();
+      info.mockClear();
+
+      audioTicket = () => Response.json({ streamPath: "/radio/main/monitor-audio?ticket=t" });
+      await openRouter();
+      await settle();
+      const player = FakeAudio.all.filter((audio) => audio.srcObject === undefined).at(-1)!;
+      player.error = { code: 4 };
+      player.fire("error");
+      expect(lines(info)).toContain("[return-router] program-audio failed code=media_4");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      const next = FakeAudio.all.filter((audio) => audio.srcObject === undefined).at(-1)!;
+      next.fire("error");
+      expect(lines(info)).toContain("[return-router] program-audio failed code=media_0");
+      cleanup();
+      info.mockClear();
+
+      FakeAudio.play = () => Promise.reject(new Error("NotAllowedError"));
+      try {
+        await openRouter();
+        await settle();
+      } finally {
+        FakeAudio.play = () => Promise.resolve();
+      }
+      expect(lines(info)).toContain("[return-router] program-audio failed code=play_refused");
+      cleanup();
+      info.mockClear();
+
+      audioTicket = () => {
+        throw new Error("network down");
+      };
+      await openRouter();
+      await settle();
+      expect(lines(info)).toContain("[return-router] program-audio failed code=unavailable");
+    } finally {
+      info.mockRestore();
+    }
+  });
 });

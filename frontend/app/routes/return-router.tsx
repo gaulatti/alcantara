@@ -32,6 +32,9 @@ function releaseInput(input: InputTrack) {
 type PublishedMix = {
   track: LocalAudioTrack;
   destination: MediaStreamAudioDestinationNode;
+  /** Listens to the published track itself, for the levels line. */
+  meter: AnalyserNode;
+  metered: MediaStreamAudioSourceNode;
 };
 
 export function meta() {
@@ -48,6 +51,25 @@ function readRendererKey() {
 
 /** Retry delays for the program-audio fallback: a dropped stream is asked for again, then less often. */
 const PROGRAM_AUDIO_RETRY_MS = [5_000, 15_000, 60_000];
+
+/** How often the page reports its levels for the runner's log. */
+const LEVELS_EVERY_MS = 10_000;
+
+/**
+ * One bounded line for the runner's log: a fixed prefix, then codes and numbers only (never a key, a URL or a
+ * token). The runner forwards these lines, and only these, to its stdout.
+ */
+function diagnose(message: string) {
+  console.info(`[return-router] ${message}`);
+}
+
+/** The peak of what an analyser hears right now, 0 to 1. */
+function peakOf(analyser: AnalyserNode, buffer: Float32Array<ArrayBuffer>): number {
+  analyser.getFloatTimeDomainData(buffer);
+  let peak = 0;
+  for (const sample of buffer) peak = Math.max(peak, Math.abs(sample));
+  return Math.round(peak * 1000) / 1000;
+}
 
 /** Tells a supervising runner how the page is doing: `starting`, `connected` or `failed`, plus the live mix count. */
 function reportState(state: 'starting' | 'connected' | 'failed', mixCount?: number) {
@@ -82,7 +104,19 @@ export default function ReturnRouterRoute() {
     let programAudioFailures = 0;
     // The program's own audio (Palazzo's output, through the backend's grant), mixed in as the program bus when no
     // program feed is in the room. Without it a guest hears nothing unless the desktop Feed or Alana is publishing.
-    let programAudio: { element: HTMLAudioElement; source: MediaElementAudioSourceNode } | null = null;
+    let programAudio: { element: HTMLAudioElement; source: MediaElementAudioSourceNode; meter: AnalyserNode } | null = null;
+    let levelsTimer = 0;
+    let lastContextState = '';
+    const meterBuffer = new Float32Array(2048);
+    // An AudioContext created without a gesture can start suspended, and a suspended context makes every mix
+    // silent, so it is asked to run on every rebuild and on every levels tick.
+    const keepContextRunning = () => {
+      if (context.state !== lastContextState) {
+        lastContextState = context.state;
+        diagnose(`context ${context.state}`);
+      }
+      if (context.state === 'suspended') void context.resume().catch(() => undefined);
+    };
     // The server-run router (opened by the return runner with `?runner=1`) takes the program's one fixed identity.
     const runner = new URLSearchParams(window.location.search).get('runner') === '1';
     reportState('starting', 0);
@@ -92,6 +126,7 @@ export default function ReturnRouterRoute() {
         await room.localParticipant.unpublishTrack(mix.track);
         mix.track.stop();
         mix.destination.disconnect();
+        mix.metered.disconnect();
       });
       mixes.clear();
       await Promise.all(pending);
@@ -99,6 +134,7 @@ export default function ReturnRouterRoute() {
 
     const rebuild = async () => {
       if (cancelled || room.state !== ConnectionState.Connected) return;
+      keepContextRunning();
       await unpublishMixes();
       inputs.forEach((input) => input.source.disconnect());
       const connectedGuests = new Set(
@@ -140,6 +176,10 @@ export default function ReturnRouterRoute() {
         // No program feed carries audio: the program bus is the program's own audio, when the program has it.
         const programBus = route.returnAudioBus === 'master' || route.returnAudioBus === 'program';
         if (programBus && programFeedsWithAudio.size === 0 && programAudio) programAudio.source.connect(destination);
+        const meter = context.createAnalyser();
+        meter.fftSize = 2048;
+        const metered = context.createMediaStreamSource(destination.stream);
+        metered.connect(meter);
         const mediaTrack = destination.stream.getAudioTracks()[0];
         const localTrack = new LocalAudioTrack(mediaTrack);
         await room.localParticipant.publishTrack(localTrack, {
@@ -148,7 +188,9 @@ export default function ReturnRouterRoute() {
         });
         mixes.set(route.participantIdentity, {
           track: localTrack,
-          destination
+          destination,
+          meter,
+          metered
         });
       }
       if (!cancelled) {
@@ -202,6 +244,7 @@ export default function ReturnRouterRoute() {
     const stopProgramAudio = () => {
       if (!programAudio) return;
       programAudio.source.disconnect();
+      programAudio.meter.disconnect();
       programAudio.element.pause();
       programAudio.element.removeAttribute('src');
       programAudio.element.load();
@@ -210,27 +253,33 @@ export default function ReturnRouterRoute() {
 
     const startProgramAudio = async () => {
       if (cancelled) return;
+      diagnose('program-audio requested');
       try {
         const response = await fetch(apiUrl('/webrtc/return-audio-ticket'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Renderer-Key': rendererKey },
           body: JSON.stringify({ programId })
         });
-        if (!response.ok) throw new Error(`Program audio grant failed (${response.status}).`);
+        if (!response.ok) throw new Error(`ticket_${response.status}`);
         const grant = (await response.json()) as { streamPath?: unknown };
-        if (typeof grant.streamPath !== 'string' || !grant.streamPath.startsWith('/radio/')) throw new Error('Malformed program audio grant.');
+        if (typeof grant.streamPath !== 'string' || !grant.streamPath.startsWith('/radio/')) throw new Error('grant_malformed');
         if (cancelled) return;
         stopProgramAudio();
         const element = new Audio();
         element.crossOrigin = 'anonymous';
         element.preload = 'none';
         const source = context.createMediaElementSource(element);
-        programAudio = { element, source };
+        const meter = context.createAnalyser();
+        meter.fftSize = 2048;
+        source.connect(meter);
+        programAudio = { element, source, meter };
         element.addEventListener('playing', () => {
           programAudioFailures = 0;
+          diagnose('program-audio playing');
         });
-        const dropped = () => {
+        const dropped = (event: Event) => {
           if (programAudio?.element !== element) return;
+          diagnose(`program-audio failed code=${event.type === 'ended' ? 'ended' : `media_${element.error?.code ?? 0}`}`);
           stopProgramAudio();
           scheduleRebuild();
           retryProgramAudio();
@@ -238,9 +287,13 @@ export default function ReturnRouterRoute() {
         element.addEventListener('error', dropped);
         element.addEventListener('ended', dropped);
         element.src = apiUrl(grant.streamPath);
-        await element.play();
+        await element.play().catch(() => {
+          throw new Error('play_refused');
+        });
         scheduleRebuild();
-      } catch {
+      } catch (error) {
+        const code = error instanceof Error && /^(ticket_\d+|grant_malformed|play_refused)$/.test(error.message) ? error.message : 'unavailable';
+        diagnose(`program-audio failed code=${code}`);
         // No radio connection, or the stream dropped: the program feeds still apply, and it is asked for again.
         stopProgramAudio();
         retryProgramAudio();
@@ -300,6 +353,13 @@ export default function ReturnRouterRoute() {
       await context.resume();
       await loadRoutes();
       void startProgramAudio();
+      keepContextRunning();
+      levelsTimer = window.setInterval(() => {
+        keepContextRunning();
+        const program = programAudio ? String(peakOf(programAudio.meter, meterBuffer)) : 'none';
+        const mixPeak = Array.from(mixes.values()).reduce((peak, mix) => Math.max(peak, peakOf(mix.meter, meterBuffer)), 0);
+        diagnose(`levels program=${program} mixes=${mixes.size} mixpeak=${mixPeak}`);
+      }, LEVELS_EVERY_MS);
       stateTimer = window.setInterval(() => void loadRoutes().catch(() => setProblem(boundedProblem('route_refresh', 'Route refresh failed; the last routes still apply.'))), 3000);
       scheduleRebuild();
     };
@@ -313,6 +373,7 @@ export default function ReturnRouterRoute() {
       window.clearTimeout(rebuildTimer);
       window.clearInterval(stateTimer);
       window.clearTimeout(programAudioTimer);
+      window.clearInterval(levelsTimer);
       stopProgramAudio();
       void unpublishMixes();
       inputs.forEach(releaseInput);
