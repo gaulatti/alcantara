@@ -1323,3 +1323,20 @@
     background: var(--app-deep-sea);
   }
 }
+
+/* alcantara#875: the cartwall was the one panel of the tools column allowed to shrink, so a short screen (a tablet at
+   1024 x 768) cut its pads in half. It now keeps its pads whole, up to two rows before it scrolls itself, and the
+   column scrolls for what is below. */
+@media (min-width: 1024px) {
+  .radio-tools .radio-cartwall {
+    flex: 1 0 auto;
+    min-height: 0;
+    max-height: 320px;
+  }
+}
+/* Three pads across leave a sounder's name unreadable in a tablet's column. */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .radio-cartwall .console-cart-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
