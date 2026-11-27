@@ -118,13 +118,15 @@ it("starts a rotation whose active song was removed from its first song, and sav
   });
 });
 
-it("keeps no active song for a rotation that has none", async () => {
+// Walk part 5 and GM's rule: Autoplay on a rotation with no cursor (a Stop leaves none) starts at the first song, the
+// one the desk names as next; it used to save no cursor and air nothing.
+it("starts Autoplay at the first song for a rotation that has no active song", async () => {
   open(null);
   fireEvent.click(await screen.findByRole("button", { name: "Autoplay" }));
   await waitFor(() => expect(saved()).toHaveLength(1));
   expect(saved()[0].songSequence).toMatchObject({
     mode: "autoplay",
-    activeItemId: null,
+    activeItemId: "s1",
   });
 });
 
