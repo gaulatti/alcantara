@@ -89,6 +89,11 @@ it("requires a deliberate second action before fading to black", () => {
   // One click only arms (Bleecker ArmTake); the second press within the time takes.
   fireEvent.click(screen.getByRole("button", { name: "Fade to black" }));
   expect(onFadeToBlack).not.toHaveBeenCalled();
+  // Armed, it says what the second press does, and never "take" (#875): it sits under Take to program.
+  const armed = screen.getByRole("button", { name: "Fade to black: armed. Press again to fade" });
+  expect(armed).toHaveTextContent("Press again to fade");
+  expect(screen.getByText("Armed. Press again to fade.")).toBeInTheDocument();
+  expect(armed.textContent).not.toMatch(/take/i);
   fireEvent.click(
     screen.getByRole("button", { name: /^Fade to black: armed/ }),
   );

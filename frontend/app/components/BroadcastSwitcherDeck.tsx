@@ -936,9 +936,11 @@ export function BroadcastSwitcherDeck(props: Props) {
                       label="Fade to black armed: Alt+B again"
                     />
                   ) : null}
-                  {/* Hold, or press twice: one stray click never fades the program. */}
+                  {/* Hold, or press twice: one stray click never fades the program. Armed, it says the second press
+                      fades: it sits under Take to program, so "take" would point at the wrong control (#875). */}
                   <ArmTake
                     label="Fade to black"
+                    armedLabel="Press again to fade"
                     armTimeoutMs={FTB_ARM_MS}
                     onTake={() => latestPropsRef.current.onFadeToBlack()}
                   />
