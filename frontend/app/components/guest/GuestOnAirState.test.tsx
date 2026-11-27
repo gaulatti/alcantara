@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { GuestOnAirState, guestOnAirCopy } from "./GuestOnAirState";
+import { GuestOnAirState, guestOnAirBannerVisible, guestOnAirCopy } from "./GuestOnAirState";
 
 describe("guest on-air state", () => {
   it("is on air only for a live cue", () => {
@@ -21,5 +21,11 @@ describe("guest on-air state", () => {
     render(<GuestOnAirState cue="standby" />);
     expect(screen.getByRole("status")).toHaveAttribute("data-on-air", "false");
     expect(screen.getByText("Off air")).toBeVisible();
+  });
+
+  it("shows only while connected, and never while reconnecting or without a cue", () => {
+    expect(guestOnAirBannerVisible("live", "live")).toBe(true);
+    expect(guestOnAirBannerVisible("reconnecting", "live")).toBe(false);
+    expect(guestOnAirBannerVisible("live", null)).toBe(false);
   });
 });

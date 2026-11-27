@@ -9,7 +9,7 @@ import { isProgramFeed, preferredProgramFeed } from '../utils/programFeed';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { mediaErrorHelp, type MediaHelp } from '../utils/guestMediaHelp';
 import { GUEST_RETURN_COPY, RETURN_STALL_MS, guestReturnState, returnFeedHealthFor } from '../components/guest/guestReturnCopy';
-import { GuestOnAirState, type GuestCue } from '../components/guest/GuestOnAirState';
+import { GuestOnAirState, guestOnAirBannerVisible, type GuestCue } from '../components/guest/GuestOnAirState';
 import { GuestReturnLevel } from '../components/guest/GuestReturnLevel';
 import type { Route } from './+types/guest';
 
@@ -357,6 +357,7 @@ export default function GuestRoute() {
         cue?: GuestCue;
       };
       window.sessionStorage.setItem(storageKey, credentials.sessionToken);
+      // A new join starts with no cue: the next answer from the studio decides.
       setCue(credentials.cue ?? null);
       sessionTokenRef.current = credentials.sessionToken;
       // The join itself is the studio hearing from this page.
@@ -653,7 +654,7 @@ export default function GuestRoute() {
           </div>
           <StatusBadge className='ml-auto' label={status} variant={status === 'live' ? 'live' : status === 'reconnecting' ? 'offline' : 'default'} />
         </header>
-        {cue && (status === 'live' || status === 'reconnecting') ? <GuestOnAirState cue={cue} /> : null}
+        {guestOnAirBannerVisible(status, cue) ? <GuestOnAirState cue={cue} /> : null}
         <div className='relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black [@media(max-height:500px)]:aspect-auto [@media(max-height:500px)]:h-[calc(100dvh-11.5rem)] [@media(max-height:500px)]:min-h-40'>
           {status === 'live' || status === 'reconnecting' ? <video ref={returnVideoRef} autoPlay playsInline className='h-full w-full object-contain' /> : null}
           <audio ref={returnAudioRef} autoPlay playsInline />

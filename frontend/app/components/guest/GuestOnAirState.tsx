@@ -10,6 +10,14 @@ export function guestOnAirCopy(cue: GuestCue): { title: string; body: string; on
   return { title: "Off air", body: "You are not on air. The producer can still see and hear you.", onAir: false };
 }
 
+/**
+ * Whether the banner may show at all: only while the guest is connected to the studio. While reconnecting, the server
+ * may already have taken them off air, so nothing is claimed until a fresh cue arrives.
+ */
+export function guestOnAirBannerVisible(status: string, cue: GuestCue | null): cue is GuestCue {
+  return cue !== null && status === "live";
+}
+
 /** A large, unmissable banner. Polite live region, so a change is read out once. */
 export function GuestOnAirState({ cue }: { cue: GuestCue }) {
   const copy = guestOnAirCopy(cue);
