@@ -2,6 +2,7 @@ import { ConsoleClock } from "../ConsoleSurface";
 import { deriveOnAir, formatClock, type OnAirInput, type OnAirView } from "./onAir";
 import { StatePill } from "./primitives";
 import { useOutputUnverified } from "./useOutputUnverified";
+import { Link } from "react-router";
 
 /**
  * The strip as the desk mounts it: it reads the output's freshness itself, so the once-a-second tick renders the
@@ -157,14 +158,16 @@ export function OnAirStrip({
       </div>
       {/* On a phone the chips share one line with the clock and scroll sideways (#610); wider screens wrap them. */}
       <div className="flex min-w-0 flex-1 basis-40 flex-nowrap items-center gap-1.5 overflow-x-auto md:flex-none md:basis-auto md:flex-wrap md:overflow-visible [&>*]:shrink-0">
-        {view.chips.map((chip) => (
-          <StatePill
-            key={chip.id}
-            tone={chip.tone}
-            label={chip.label}
-            title={chip.title}
-          />
-        ))}
+        {view.chips.map((chip) => {
+          const pill = <StatePill key={chip.id} tone={chip.tone} label={chip.label} title={chip.title} />;
+          return chip.href ? (
+            <Link key={chip.id} to={chip.href} aria-label={`${chip.label}. Open radio settings`} className="underline-offset-2 hover:underline">
+              {pill}
+            </Link>
+          ) : (
+            pill
+          );
+        })}
       </div>
       <ConsoleClock />
     </section>

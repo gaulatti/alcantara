@@ -8,6 +8,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type {
   ProgramSongPlaybackState,
@@ -637,4 +638,34 @@ it("draws the level, the live peak and the held peak, and colours a hold in the 
   rerender(<Meter label="Music live peak" value={-9.8} hold={-20} min={-30} max={0} unit="LUFS" warnFrom={-3} />);
   expect(screen.getByRole("meter")).toHaveAttribute("aria-valuetext", "-9.8 LUFS");
   expect(within(screen.getByRole("meter")).getByTestId("meter-hold").className).toContain("bg-accent-yellow");
+});
+
+// alcantara#875: an engine that is off for a settings reason links to where it is fixed.
+it("links the engine chip to the radio settings only when the settings are the reason", () => {
+  for (const [label, linked] of [
+    ["Engine unavailable: not configured", true],
+    ["Engine unavailable: disabled in settings", true],
+    ["Engine unavailable: connection lost", false],
+  ] as const) {
+    const view = deriveOnAir({ ...base, engine: { connected: false, degraded: false, unavailableLabel: label } });
+    render(
+      <MemoryRouter>
+        <OnAirStrip view={view} programId="radio-demo" />
+      </MemoryRouter>,
+    );
+    const link = screen.queryByRole("link", { name: `${label}. Open radio settings` });
+    if (linked) expect(link).toHaveAttribute("href", "/radio-settings");
+    else expect(link).toBeNull();
+    cleanup();
+  }
+});
+
+// alcantara#875: the hint is one sentence, not pieces the row spaces apart.
+it("writes the cue hint as one run of text", () => {
+  transport();
+  fireEvent.keyDown(window, { key: "n" });
+  const hint = screen.getByText(/Copper Season — The Paper Hours/);
+  expect(hint.textContent).toBe(
+    "Copper Season — The Paper Hours. Take or press Space within 5 s; Esc clears it.",
+  );
 });

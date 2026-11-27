@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { afterEach, expect, it, vi } from "vitest";
 import type { ProgramSongPlaybackState } from "../../models/broadcast";
 import { deriveOnAir, type OnAirInput } from "./onAir";
@@ -57,7 +58,12 @@ it("calls a song on air only when the engine is connected and its report is fres
 });
 
 it("shows an unconfirmed song with a warning and no clock", () => {
-  render(<OnAirStrip view={deriveOnAir(input(false))} programId="station" />);
+  // The engine chip links to the radio settings here, so the strip needs the app's router.
+  render(
+    <MemoryRouter>
+      <OnAirStrip view={deriveOnAir(input(false))} programId="station" />
+    </MemoryRouter>,
+  );
   expect(screen.getByText("Not confirmed")).toBeVisible();
   expect(screen.getByText("No engine confirmation")).toBeVisible();
   expect(screen.queryByText("On air")).not.toBeInTheDocument();

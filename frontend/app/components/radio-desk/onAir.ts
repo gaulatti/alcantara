@@ -35,6 +35,8 @@ export interface OnAirChip {
   tone: StatePillTone;
   label: string;
   title?: string;
+  /** Where to fix what the chip reports. */
+  href?: string;
 }
 
 export interface NextUp {
@@ -194,6 +196,9 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
             tone: "warn",
             label: input.engine.unavailableLabel,
             title: input.engine.detail ?? undefined,
+            ...(/not configured|disabled in settings/.test(input.engine.unavailableLabel)
+              ? { href: "/radio-settings" }
+              : {}),
           },
     input.monitor === "playing"
       ? { id: "monitor", tone: "info", label: "Listening" }
