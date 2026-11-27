@@ -240,6 +240,8 @@ function runDeploy({
   nginxWorkersLinger = 0,
   // The old backend takes this long to exit after it frees the lease (held connections), in seconds.
   slowStop = 0,
+  // The host nginx master's pid as systemd reports it ('' or '0' when unknown).
+  nginxMaster = '4242',
 }) {
   const {
     mkdtempSync,
@@ -331,13 +333,23 @@ exit 0`,
   for (const name of ['install', 'sleep', 'certbot'])
     stub(name, 'exit 0');
   stub('nginx', `case "$*" in -t) exit ${nginxValid ? 0 : 1} ;; esac\nexit 0`);
-  stub('systemctl', `case "$*" in "reload nginx") ${reloadFails ? 'exit 1' : `touch "${bin}/reloaded"; exit 0`} ;; esac\nexit 0`);
+  stub(
+    'systemctl',
+    `case "$*" in
+  "reload nginx") ${reloadFails ? 'exit 1' : `touch "${bin}/reloaded"; exit 0`} ;;
+  "show --property MainPID --value nginx") echo '${nginxMaster}' ;;
+esac
+exit 0`,
+  );
   // nginx's accepting workers: 101 before the reload; after it, 101 lingers for nginxWorkersLinger checks beside the
   // new 202, then only 202 accepts.
   const linger = Number.isFinite(nginxWorkersLinger) ? nginxWorkersLinger : 1_000_000;
+  // A worker of an nginx inside a container (999) matches the same name and never stops: only the host master's
+  // children (-P) may count.
   stub(
     'pgrep',
-    `[ -f "${bin}/reloaded" ] || { echo 101; exit 0; }
+    `case "$*" in "-P 4242 "*) ;; *) echo 999 ;; esac
+[ -f "${bin}/reloaded" ] || { echo 101; exit 0; }
 n=$(( $(cat "${bin}/pgrep-count" 2>/dev/null || echo 0) + 1 )); echo "$n" > "${bin}/pgrep-count"
 if [ "$n" -le ${linger} ]; then printf '101\\n202\\n'; else echo 202; fi
 exit 0`,
@@ -964,7 +976,7 @@ test('the previous backend is stopped only after the nginx workers from before t
   assert.ok(run.stdout.indexOf('NGINX_SETTLED') < run.stdout.indexOf('OWNER_RELEASED'));
 });
 
-test('a worker that never stops accepting holds the stop for 5 s at most, and says so', () => {
+test('a worker that never stops accepting holds the stop for 2 s at most, and says so', () => {
   const run = runDeploy({
     candidateHealthy: true,
     leaseImage: true,
@@ -977,7 +989,7 @@ test('a worker that never stops accepting holds the stop for 5 s at most, and sa
   assert.match(run.stdout, /^NGINX_SETTLE_TIMEOUT \S+: workers from before the reload still accept$/m);
   const reload = run.log.indexOf('systemctl reload nginx');
   const stop = run.log.findIndex((line) => line.startsWith('docker stop -t 15 alcantara-backend'));
-  assert.equal(run.log.slice(reload, stop).filter((line) => line.startsWith('pgrep')).length, 50);
+  assert.equal(run.log.slice(reload, stop).filter((line) => line.startsWith('pgrep')).length, 20);
   assert.match(run.stdout, /OWNER_ACQUIRED/);
 });
 
@@ -1015,4 +1027,25 @@ test('the takeover is seen while the old backend is still stopping, and its log 
   assert.ok(run.log.indexOf('docker logs alcantara-backend') > finished);
   assert.ok(run.log.indexOf('docker rename alcantara-backend-next alcantara-backend') > finished);
   assert.match(run.stdout, /^OWNER_ACQUIRED \d{4}-\d\d-\d\dT\S+Z$/m);
+});
+
+// 5d0c1249's handover: the settle ran out after 6.7 s, with requests waiting on the standby meanwhile, because the
+// check counted every process named like an nginx worker on the host, a container's among them (gaulatti/alcantara#873).
+test("counts only the host nginx master's own workers, and settles for a fixed second when the master is unknown", () => {
+  const run = runDeploy({ candidateHealthy: true, leaseImage: true, certificate: true, installedSite: site3006, repositorySite: repositoryHalf });
+  assert.equal(run.status, 0, run.stdout + run.stderr);
+  const checks = run.log.filter((line) => line.startsWith('pgrep'));
+  assert.ok(checks.length >= 2);
+  assert.ok(checks.every((line) => line === "pgrep -P 4242 -f ^nginx: worker process$"), checks.join('\n'));
+  assert.match(run.stdout, /^NGINX_SETTLED \S+$/m);
+
+  for (const nginxMaster of ['', '0']) {
+    const unknown = runDeploy({ candidateHealthy: true, leaseImage: true, certificate: true, installedSite: site3006, repositorySite: repositoryHalf, nginxMaster });
+    assert.equal(unknown.status, 0, unknown.stdout + unknown.stderr);
+    assert.equal(unknown.log.filter((line) => line.startsWith('pgrep')).length, 0);
+    assert.match(unknown.stdout, /^NGINX_SETTLED \S+ fixed$/m);
+    const reload = unknown.log.indexOf('systemctl reload nginx');
+    const stop = unknown.log.findIndex((line) => line.startsWith('docker stop -t 15 alcantara-backend'));
+    assert.ok(unknown.log.slice(reload, stop).includes('sleep 1'));
+  }
 });

@@ -187,23 +187,32 @@ playout_granted() {
   curl --fail --silent --max-time 2 "http://127.0.0.1:$1/health/ready" | sed -n 's/.*"grantedAt":"\([^"]*\)".*/\1/p'
 }
 
-# The nginx workers that accept new connections. A worker retitles itself "worker process is shutting down" once a
-# reload tells it to stop accepting, so it no longer matches.
+# The host nginx's workers that accept new connections: children of its master only, since an nginx inside a
+# container on this host has workers of the same name that a reload here never touches. A worker retitles itself
+# "worker process is shutting down" once a reload tells it to stop accepting, so it no longer matches. Nothing is
+# printed when the master is unknown.
+nginx_master_pid() {
+  systemctl show --property MainPID --value nginx 2>/dev/null || true
+}
 nginx_accepting_workers() {
-  pgrep -f '^nginx: worker process$' 2>/dev/null || true
+  local master
+  master="$(nginx_master_pid)"
+  case "$master" in '' | 0 | *[!0-9]*) return 0 ;; esac
+  pgrep -P "$master" -f '^nginx: worker process$' 2>/dev/null || true
 }
 
 # After a reload, waits until none of the workers that accepted before it (BEFORE, their pids) still accepts, at
-# most 5 s: only then can no new request reach the previous backend once it is told to stop. A worker kept by a
-# long-lived stream stops accepting at once, so it does not hold this up. Without pgrep, a fixed 1 s settle.
+# most 2 s: only then can no new request reach the previous backend once it is told to stop. Requests sent meanwhile
+# reach the new standby and wait for the lease, so the bound is short. A worker kept by a long-lived stream stops
+# accepting at once, so it does not hold this up. Without pgrep, or with no workers known, a fixed 1 s settle.
 wait_nginx_workers() {
   local before="$1" now pid lingering
-  if ! command -v pgrep >/dev/null 2>&1; then
+  if [ -z "$before" ] || ! command -v pgrep >/dev/null 2>&1; then
     sleep 1
     echo "NGINX_SETTLED $(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) fixed"
     return 0
   fi
-  for _ in $(seq 1 50); do
+  for _ in $(seq 1 20); do
     now="$(nginx_accepting_workers)"
     lingering=false
     for pid in $before; do
