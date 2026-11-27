@@ -94,7 +94,8 @@ at once; past either it gets `503` with `Retry-After: 2`. An instance that is sh
 request and any new one get that `503` at once, so a straggler cannot keep the old backend's HTTP server from closing,
 and its retry reaches the instance that took over. The console's backend fetch sends a `503` that carries
 `Retry-After` again quietly, after the wait it asks for (at most 5 s), for up to 6 s, so no caller sees it (a streamed
-request body is sent once). The console's event streams reconnect on their own; they end at every shutdown anyway. The standby asks for the lock every 200 ms, so it takes a
+request body is sent once). The console's event streams end at every shutdown and reconnect on their own; a stream that was connected stays shown
+connected while it does, for up to 5 s, and shows disconnected only if it is not back by then. The standby asks for the lock every 200 ms, so it takes a
 freed lock within 0.2 s.
 
 On taking the lock, the instance runs every writer and scheduler, in the order they registered, and only then reports

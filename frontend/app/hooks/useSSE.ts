@@ -11,6 +11,11 @@ interface UseSSEOptions {
 
 export type SSEConnectionState = 'connecting' | 'connected' | 'disconnected';
 
+/** How long a stream that was connected may be away before it is reported disconnected. */
+export const DISCONNECT_GRACE_MS = 5_000;
+/** How soon a dropped stream that was connected tries again, within its grace period. */
+export const GRACE_RECONNECT_MS = 500;
+
 export function useSSE({ url, onMessage, onConnectionChange, onConnectionStateChange, reconnectInterval = 3000, enabled = true }: UseSSEOptions) {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -42,9 +47,42 @@ export function useSSE({ url, onMessage, onConnectionChange, onConnectionStateCh
     let disposed = false;
     let eventSource: EventSource | null = null;
     let reconnectTimer: number | null = null;
+    // A stream that was connected and dropped is in its grace period until this timer fires or it reopens.
+    let graceTimer: number | null = null;
+    let wasConnected = false;
     setIsConnected(false);
     onConnectionChangeRef.current?.(false);
     onConnectionStateChangeRef.current?.('connecting');
+
+    const reportDisconnected = (cause: Error) => {
+      wasConnected = false;
+      setIsConnected(false);
+      onConnectionChangeRef.current?.(false);
+      onConnectionStateChangeRef.current?.('disconnected');
+      setError(cause);
+    };
+
+    /**
+     * A stream that had been connected and drops stays reported connected while it reconnects, for up to
+     * DISCONNECT_GRACE_MS: every backend deploy ends the streams, and the new instance answers within moments
+     * (gaulatti/alcantara#873). Only a stream that is not back by then reports disconnected. One that never
+     * connected reports at once.
+     */
+    const dropped = (cause: Error) => {
+      eventSource?.close();
+      eventSource = null;
+      if (wasConnected && graceTimer === null) {
+        graceTimer = window.setTimeout(() => {
+          graceTimer = null;
+          reportDisconnected(cause);
+        }, DISCONNECT_GRACE_MS);
+      } else if (graceTimer === null) {
+        reportDisconnected(cause);
+      }
+      if (!disposed) {
+        reconnectTimer = window.setTimeout(connect, graceTimer === null ? reconnectInterval : GRACE_RECONNECT_MS);
+      }
+    };
 
     const connect = () => {
       if (disposed) {
@@ -58,9 +96,16 @@ export function useSSE({ url, onMessage, onConnectionChange, onConnectionStateCh
           if (disposed) {
             return;
           }
-          setIsConnected(true);
-          onConnectionChangeRef.current?.(true);
-          onConnectionStateChangeRef.current?.('connected');
+          if (graceTimer !== null) {
+            window.clearTimeout(graceTimer);
+            graceTimer = null;
+          }
+          if (!wasConnected) {
+            wasConnected = true;
+            setIsConnected(true);
+            onConnectionChangeRef.current?.(true);
+            onConnectionStateChangeRef.current?.('connected');
+          }
           setError(null);
         };
 
@@ -77,25 +122,10 @@ export function useSSE({ url, onMessage, onConnectionChange, onConnectionStateCh
           if (disposed) {
             return;
           }
-          setIsConnected(false);
-          onConnectionChangeRef.current?.(false);
-          onConnectionStateChangeRef.current?.('disconnected');
-          setError(new Error('SSE connection error'));
-          eventSource?.close();
-          eventSource = null;
-
-          if (!disposed) {
-            reconnectTimer = window.setTimeout(connect, reconnectInterval);
-          }
+          dropped(new Error('SSE connection error'));
         };
       } catch (err) {
-        setIsConnected(false);
-        onConnectionChangeRef.current?.(false);
-        onConnectionStateChangeRef.current?.('disconnected');
-        setError(err as Error);
-        if (!disposed) {
-          reconnectTimer = window.setTimeout(connect, reconnectInterval);
-        }
+        dropped(err as Error);
       }
     };
 
@@ -105,6 +135,9 @@ export function useSSE({ url, onMessage, onConnectionChange, onConnectionStateCh
       disposed = true;
       if (reconnectTimer !== null) {
         window.clearTimeout(reconnectTimer);
+      }
+      if (graceTimer !== null) {
+        window.clearTimeout(graceTimer);
       }
       eventSource?.close();
     };
