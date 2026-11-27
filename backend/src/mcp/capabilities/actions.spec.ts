@@ -475,7 +475,7 @@ const ROWS: Row[] = [
     cases: [
       { args: { scene_id: 3 } },
       {
-        args: { scene_id: 3, component_type: 'modoitaliano-bracket', seed: 7 },
+        args: { scene_id: 3, component_type: 'modoitaliano-giorgia-bracket', seed: 7 },
       },
     ],
     rest: (c, a) =>
@@ -497,7 +497,7 @@ const ROWS: Row[] = [
       {
         args: {
           scene_id: 3,
-          component_type: 'modoitaliano-bracket',
+          component_type: 'modoitaliano-giorgia-bracket',
           match_id: 2,
           voter_id: 'v1',
           song_id: null,

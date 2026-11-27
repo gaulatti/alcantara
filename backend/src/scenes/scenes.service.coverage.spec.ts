@@ -3,7 +3,7 @@ import { BadRequestException } from '@nestjs/common';
 import { ScenesService } from './scenes.service';
 import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 
-const TYPE = 'modoitaliano-bracket';
+const TYPE = 'modoitaliano-giorgia-bracket';
 
 function build() {
   const prisma = {

@@ -36,7 +36,7 @@ vi.mock("@gaulatti/bleecker", async (importOriginal) => {
   };
 });
 
-const TYPE = "modoitaliano-bracket";
+const TYPE = "modoitaliano-giorgia-bracket";
 const song = (
   id: number,
   artist: string,

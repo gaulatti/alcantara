@@ -859,7 +859,7 @@ describe("the Modo Italiano components", () => {
 
   it("draws a retired clock beside the bracket as the standalone Giorgia clock with its stored settings", async () => {
     await show(
-      sceneOf(["modoitaliano-clock", "modoitaliano-bracket"], {
+      sceneOf(["modoitaliano-clock", "modoitaliano-giorgia-bracket"], {
         "modoitaliano-clock": { showWorldClocks: "off", showLogo: 0, showPlaybackProgress: "yes" },
       }),
     );
@@ -1012,8 +1012,8 @@ describe("the Modo Italiano components", () => {
 
   it("hands the bracket its rounds and votes, and starts it without a draw", async () => {
     await show(
-      sceneOf(["modoitaliano-bracket"], {
-        "modoitaliano-bracket": {
+      sceneOf(["modoitaliano-giorgia-bracket"], {
+        "modoitaliano-giorgia-bracket": {
           title: "Fictional bracket",
           show: false,
           startRound: 2,
@@ -1039,8 +1039,19 @@ describe("the Modo Italiano components", () => {
       votingResultStartedAt: "2030-01-01T00:00:00Z",
     });
     cleanup();
-    await show(sceneOf(["modoitaliano-bracket"]));
+    await show(sceneOf(["modoitaliano-giorgia-bracket"]));
     expect(stub("ModoItalianoBracket")).toMatchObject({ show: true, matches: [] });
+  });
+});
+
+// gaulatti/alcantara#391: a stored legacy bracket id is no longer a component. It shows nothing and never crashes.
+describe("a stored legacy bracket id", () => {
+  it("renders no bracket and does not crash the program output", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await show(sceneOf(["modoitaliano-bracket"], { "modoitaliano-bracket": { matches: [] } }));
+    expect(present("ModoItalianoBracket")).toBe(false);
+    expect(warn).toHaveBeenCalledWith("Unknown component type:", "modoitaliano-bracket");
+    warn.mockRestore();
   });
 });
 

@@ -207,7 +207,7 @@ it("switches the chyron to a sequence and takes a value live, saving each change
 });
 
 it("records a bracket ballot through the scene and shows what the scene then holds", async () => {
-  const type = "modoitaliano-bracket";
+  const type = "modoitaliano-giorgia-bracket";
   const bracket = {
     matches: [{ id: 1, songAId: 1, songBId: 2, winnerId: null }],
     voters: [{ id: "v1", name: "Fictional voter" }],

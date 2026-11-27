@@ -607,7 +607,6 @@ export function ComponentPropsFields({
         </div>
       );
     }
-    case 'modoitaliano-bracket':
     case 'modoitaliano-giorgia-bracket':
       return (
         <ModoItalianoBracketEditorFields

@@ -330,7 +330,7 @@ export class ScenesService {
     if (this.isAudienceInteractionComponent(requestedType)) return requestedType.trim();
     const sceneType = scene?.layout?.componentType;
     if (this.isAudienceInteractionComponent(sceneType)) return sceneType.trim();
-    return 'modoitaliano-bracket';
+    return 'modoitaliano-giorgia-bracket';
   }
 
   private isAudienceInteractionComponent(

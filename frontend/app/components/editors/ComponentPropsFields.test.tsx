@@ -150,7 +150,7 @@ it("hosts the dedicated editors for richer types", () => {
     ["fifthbell-chyron", "Social Handles (comma-separated)"],
     ["modoitaliano-giorgia-chyron", "Main Chyron"],
     ["reloj-digital-loop-clock", "Lower Third Title"],
-    ["modoitaliano-bracket", "Matches Configuration"],
+    ["modoitaliano-giorgia-bracket", "Matches Configuration"],
     ["modoitaliano-podcast-player", "Cover Art"],
     ["modoitaliano-giorgia-podcast-player", "Cover Art"],
     ["modoitaliano-giorgia-artist-bumper", "Show bumper"],
