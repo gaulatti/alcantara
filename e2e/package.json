@@ -7,7 +7,9 @@
   "scripts": {
     "webrtc": "node webrtc-call.mjs",
     "browsers": "playwright install chromium",
-    "touch": "node touch-regressions.mjs"
+    "touch": "node touch-regressions.mjs",
+    "webrtc:matrix": "node webrtc-matrix.mjs",
+    "browsers:all": "playwright install chromium webkit firefox"
   },
   "devDependencies": {
     "livekit-client": "2.21.0",

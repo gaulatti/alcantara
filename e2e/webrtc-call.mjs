@@ -34,7 +34,7 @@
 
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { chromium } from "playwright";
+import { chromium, firefox, webkit } from "playwright";
 
 const require = createRequire(import.meta.url);
 // The package's exports hide its UMD build, which sits beside the entry it does export.
@@ -51,7 +51,47 @@ const APP = (process.env.ALCANTARA_APP_URL || "http://localhost:5173").replace(
   /\/$/,
   "",
 );
-const PROGRAM = process.env.ALCANTARA_PROGRAM_ID || "main";
+const PROGRAM = process.env.ALCANTARA_PROGRAM_ID || "radio-demo.fm";
+// The browser engine the guest runs in: chromium (default), webkit (closest to iPhone Safari) or firefox.
+const ENGINE = process.env.WEBRTC_ENGINE || "chromium";
+const ENGINES = { chromium, firefox, webkit };
+if (!ENGINES[ENGINE]) throw new Error(`WEBRTC_ENGINE must be chromium, webkit or firefox, not ${ENGINE}`);
+// A generated camera and microphone for an engine with no fake-device switch (WebKit). A moving canvas and a steady
+// tone reach the guest's peer connection as real tracks, so the bytes-flowing checks measure the same path.
+const SYNTHETIC_MEDIA = `(() => {
+  const md = navigator.mediaDevices;
+  if (!md || !md.getUserMedia) return;
+  md.getUserMedia = async (constraints = {}) => {
+    const tracks = [];
+    if (constraints.video) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 320;
+      canvas.height = 240;
+      const ctx = canvas.getContext("2d");
+      let frame = 0;
+      setInterval(() => {
+        frame += 1;
+        ctx.fillStyle = "hsl(" + (frame % 360) + ",60%,40%)";
+        ctx.fillRect(0, 0, 320, 240);
+      }, 100);
+      tracks.push(...canvas.captureStream(10).getVideoTracks());
+    }
+    if (constraints.audio) {
+      const audio = new AudioContext();
+      const osc = audio.createOscillator();
+      osc.frequency.value = 440;
+      const dest = audio.createMediaStreamDestination();
+      osc.connect(dest);
+      osc.start();
+      tracks.push(...dest.stream.getAudioTracks());
+    }
+    return new MediaStream(tracks);
+  };
+  md.enumerateDevices = async () => [
+    { deviceId: "synthetic-camera", kind: "videoinput", label: "Synthetic camera", groupId: "g" },
+    { deviceId: "synthetic-mic", kind: "audioinput", label: "Synthetic microphone", groupId: "g" },
+  ];
+})();`;
 const RENDERER_KEY = process.env.ALCANTARA_RENDERER_KEY || "";
 const TIMEOUT = Number(process.env.WEBRTC_TIMEOUT_MS || 45_000);
 const EXPECT_ICE_URL = process.env.WEBRTC_EXPECT_ICE_URL || "";
@@ -274,16 +314,25 @@ async function main() {
       : { ok: true, id: invitation.id, slot: invitation.slotNumber },
   );
 
-  const browser = await chromium.launch({
+  // Each engine has its own fake-media switch. Chromium takes flags; Firefox takes a pref; WebKit has none, so its
+  // guest gets a generated canvas and oscillator stream (SYNTHETIC_MEDIA) in place of a real camera and microphone.
+  const browser = await ENGINES[ENGINE].launch({
     headless: process.env.WEBRTC_HEADED !== "1",
-    args: [
-      "--use-fake-device-for-media-stream",
-      "--use-fake-ui-for-media-stream",
-      "--autoplay-policy=no-user-gesture-required",
-      // A local stack serves LiveKit on loopback, which Chromium's Local Network Access check would hold behind a
-      // permission prompt nobody answers. Production's LiveKit is public, so this changes nothing there.
-      "--disable-features=LocalNetworkAccessChecks,BlockInsecurePrivateNetworkRequests",
-    ],
+    ...(ENGINE === "chromium"
+      ? {
+          args: [
+            "--use-fake-device-for-media-stream",
+            "--use-fake-ui-for-media-stream",
+            "--autoplay-policy=no-user-gesture-required",
+            // A local stack serves LiveKit on loopback, which Chromium's Local Network Access check would hold behind a
+            // permission prompt nobody answers. Production's LiveKit is public, so this changes nothing there.
+            "--disable-features=LocalNetworkAccessChecks,BlockInsecurePrivateNetworkRequests",
+          ],
+        }
+      : {}),
+    ...(ENGINE === "firefox"
+      ? { firefoxUserPrefs: { "media.navigator.streams.fake": true, "media.navigator.permission.disabled": true, "media.autoplay.default": 0 } }
+      : {}),
   });
   const context = await browser.newContext({
     permissions: ["camera", "microphone"],
@@ -311,7 +360,14 @@ async function main() {
     // The guest is signed out, as in production, where the sign-in library answers a session with no ID token. In its
     // own context the local test-auth session is answered the same way (gaulatti/alcantara#354: a fetch wrapper that
     // needed a token stopped every production guest's join before it left the browser).
-    const guestContext = await browser.newContext({ permissions: ["camera", "microphone"] });
+    // The guest is a phone: 375 px, touch, as the guest page is used.
+    const guestContext = await browser.newContext({
+      permissions: ["camera", "microphone"],
+      viewport: { width: 375, height: 812 },
+      isMobile: true,
+      hasTouch: true,
+    });
+    if (ENGINE === "webkit") await guestContext.addInitScript(SYNTHETIC_MEDIA);
     await guestContext.route("**/__test/session**", (route) =>
       route.fulfill({
         contentType: "application/json",
