@@ -186,7 +186,7 @@ root playback routes.
   not reconciled. Manual mode stays an operator boundary. On 2026-11-20 every
   Palazzo restart unfroze automation about 6 s before Palazzo could play, the
   first command failed, and the radio stayed silent until a person restarted
-  the backend.
+  the backend. `not-aired` counts a song Palazzo ended within a second of starting it; it is recorded and not counted (gaulatti/palazzo#75).
 
 ## Transports and failure behavior
 

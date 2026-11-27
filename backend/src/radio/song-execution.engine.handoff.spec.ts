@@ -3426,3 +3426,79 @@ describe('after the playout lease is released', () => {
     },
   );
 });
+
+// Production 2026-11-27 16:09:00Z (gaulatti/palazzo#75): at the handoff Palazzo reported the announced song started
+// and ended 22 ms apart. Nothing of it was heard, so it is no performance.
+describe('a song Palazzo ends as it starts', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-11-27T16:06:00.000Z'));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  const at = (type: string, data: Record<string, unknown>, ms: number) => ({
+    type,
+    data,
+    occurredAt: new Date(
+      Date.parse('2026-11-27T16:09:00.501Z') + ms,
+    ).toISOString(),
+  });
+
+  const play = async (endAfterMs: number, startEarly = false) => {
+    const h = harness();
+    const ends: { id: string; reason?: string }[] = [];
+    h.engine.trackEvents$.subscribe((event) => {
+      if (event.type === 'track.ended')
+        ends.push({ id: event.playbackRequestId, reason: event.endReason });
+    });
+    await onAir(h);
+    const next = h.palazzo.announced.at(-1)!;
+    const id = (
+      h.engine as unknown as {
+        states: Map<string, { announcement: { playbackId: string } }>;
+      }
+    ).states.get(PROGRAM)!.announcement.playbackId;
+    const started = at(
+      'track.started',
+      { playbackRequestId: id, url: next.url },
+      0,
+    );
+    if (startEarly) h.engine.handlePalazzoEvent(PROGRAM, started as never);
+    h.engine.handlePalazzoEvent(
+      PROGRAM,
+      at(
+        'track.ended',
+        { playbackRequestId: h.palazzo.current!.id },
+        -215,
+      ) as never,
+    );
+    await settle();
+    if (!startEarly) h.engine.handlePalazzoEvent(PROGRAM, started as never);
+    h.engine.handlePalazzoEvent(
+      PROGRAM,
+      at('track.ended', { playbackRequestId: id }, endAfterMs) as never,
+    );
+    await settle();
+    return {
+      h,
+      reason: ends.find((end) => end.id === id)?.reason,
+      ended: ends.filter((end) => end.id === id).length,
+    };
+  };
+
+  it.each([false, true])(
+    'closes it as not aired, whether its start came after the handoff or before (%s)',
+    async (startEarly) => {
+      const { h, reason, ended } = await play(22, startEarly);
+      expect(ended).toBe(1);
+      expect(reason).toBe('not_aired');
+      expect(h.metrics.snapshot().trackTransitions['not-aired']).toBe(1);
+    },
+  );
+
+  it('keeps an end after more than a second as a play', async () => {
+    const { reason, ended } = await play(1_001);
+    expect(ended).toBe(1);
+    expect(reason).toBeUndefined();
+  });
+});

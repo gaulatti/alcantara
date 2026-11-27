@@ -27,8 +27,9 @@ export const AS_RUN_ACTOR_VIAS: readonly string[] = ['console', 'mcp'];
  * that cut it, a playing snapshot that reported another track (inferred), or
  * `preempted`: a song announced as next that Palazzo started at the handoff
  * although it was no longer the engine's successor, so the engine replaced it
- * at once (gaulatti/palazzo#40). Stored on the `ended` row; NULL for
- * Palazzo's own and idle-inferred ends.
+ * at once (gaulatti/palazzo#40). `not_aired`: Palazzo ended a song within a
+ * second of starting it, so nothing of it was heard (gaulatti/palazzo#75).
+ * Stored on the `ended` row; NULL for Palazzo's other and idle-inferred ends.
  */
 export type AsRunEndReason =
   | 'stopped'
@@ -37,7 +38,8 @@ export type AsRunEndReason =
   | 'preempted'
   | 'fixed_start'
   | 'playout_restart'
-  | 'dead_air';
+  | 'dead_air'
+  | 'not_aired';
 
 export const AS_RUN_END_REASONS: readonly string[] = [
   'stopped',
@@ -51,14 +53,18 @@ export const AS_RUN_END_REASONS: readonly string[] = [
   // The dead-air watchdog played the song again, or moved past it, after it went silent on air. It aired until it fell
   // silent, so it is counted, as a stop is.
   'dead_air',
+  'not_aired',
 ];
 
 /**
  * End reasons that are recorded but never counted as a performance: a
  * preempted song was on air for at most the moment the engine took to replace
- * it at the handoff.
+ * it at the handoff, and a song that never aired was not heard at all.
  */
-export const AS_RUN_UNCOUNTED_END_REASONS: readonly string[] = ['preempted'];
+export const AS_RUN_UNCOUNTED_END_REASONS: readonly string[] = [
+  'preempted',
+  'not_aired',
+];
 
 /** Which ends a SoundExchange export counts: all, only inferred, or none inferred. */
 export type AsRunInferredFilter = 'include' | 'only' | 'exclude';

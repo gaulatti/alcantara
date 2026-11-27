@@ -444,7 +444,7 @@ export class McpRadioReadTools implements McpToolProviderShape {
     return tool({
       name: 'get_as_run',
       title: 'As-run log',
-      description: `Lists as-run log rows between from and to (at most ${MCP_READ_LIMITS.asRunWindowDays} days apart), oldest first, at most limit rows (${MCP_READ_LIMITS.asRunLimitMax} at most). Each row is a song start or end with its time, whether the end was inferred, its review flag and the reason the engine itself ended the play (stopped, replaced, superseded, preempted, fixed_start, or playout_restart for a song cut when the playout engine restarted). truncated is true when the window holds more rows. Each row says who acted: actor_principal_id and actor_via (console or mcp), and the MCP client name as untrusted.actor_client; all are null for an automatic end. ${UNTRUSTED_NOTE}`,
+      description: `Lists as-run log rows between from and to (at most ${MCP_READ_LIMITS.asRunWindowDays} days apart), oldest first, at most limit rows (${MCP_READ_LIMITS.asRunLimitMax} at most). Each row is a song start or end with its time, whether the end was inferred, its review flag and the reason the engine itself ended the play (stopped, replaced, superseded, preempted, fixed_start, playout_restart for a song cut when the playout engine restarted, dead_air, or not_aired for a song Palazzo ended as it started, so nothing of it was heard). truncated is true when the window holds more rows. Each row says who acted: actor_principal_id and actor_via (console or mcp), and the MCP client name as untrusted.actor_client; all are null for an automatic end. ${UNTRUSTED_NOTE}`,
       permission: ALCANTARA_PERMISSIONS.radio.read,
       tier: 'R',
       firstClass: true,
@@ -509,7 +509,7 @@ export class McpRadioReadTools implements McpToolProviderShape {
     return tool({
       name: 'get_royalty_summary',
       title: 'Royalty summary',
-      description: `Counts the performances of each song between from and to (at most ${MCP_READ_LIMITS.royaltyWindowDays} days apart): the rows of the SoundExchange export, as data, most played first, at most ${MCP_READ_LIMITS.royaltySongsMax} songs (truncated says when there are more). Inferred ends count; a preempted song does not. ${UNTRUSTED_NOTE}`,
+      description: `Counts the performances of each song between from and to (at most ${MCP_READ_LIMITS.royaltyWindowDays} days apart): the rows of the SoundExchange export, as data, most played first, at most ${MCP_READ_LIMITS.royaltySongsMax} songs (truncated says when there are more). Inferred ends count; a preempted or not_aired song does not. ${UNTRUSTED_NOTE}`,
       permission: ALCANTARA_PERMISSIONS.radio.read,
       tier: 'R',
       firstClass: true,

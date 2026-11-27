@@ -329,6 +329,9 @@ stop-reason label:
   below) that Palazzo started at the handoff although it was no longer the
   engine's successor, so the engine replaced it at once. It is recorded as
   started and preempted, and never counted as a performance.
+- `not_aired`: Palazzo reported a song longer than 20 s as ended within a
+  second of starting it (its own event times), so nothing of it was heard
+  (gaulatti/palazzo#75). Recorded as started and not aired, never counted.
 
 `endReason` is NULL on every other row: Palazzo's own ends, ends inferred from
 an idle snapshot, all `started` rows, and every row written before the column
@@ -410,7 +413,7 @@ subscribers only.
   fixed specification columns and carries no actor.
 - `format=soundexchange` counts each `ended` record as one performance,
   inferred and flagged ends included, because the track was transmitted.
-  `preempted` ends are the exception: they are left out of every filter.
+  `preempted` and `not_aired` ends are the exception: they are left out of every filter.
   `inferred=include` (default) counts all ends, `inferred=only` lists only
   inferred ends (including `superseded`), and `inferred=exclude` lists only
   ends that are not inferred: Palazzo's reported ends, `stopped` and

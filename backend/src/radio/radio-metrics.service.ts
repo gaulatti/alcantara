@@ -118,7 +118,8 @@ export type TrackTransitionResult =
   | 'command-failed'
   | 'published-stopped'
   | 'rotation-ended'
-  | 'aired-cursor-passed';
+  | 'aired-cursor-passed'
+  | 'not-aired';
 
 export type SongRequestFailureReason = 'timeout' | 'other';
 
@@ -447,6 +448,7 @@ const TRANSITION_RESULTS: TrackTransitionResult[] = [
   'published-stopped',
   'rotation-ended',
   'aired-cursor-passed',
+  'not-aired',
 ];
 
 const SONG_REQUEST_FAILURE_REASONS: SongRequestFailureReason[] = [
@@ -504,8 +506,16 @@ const ANALYSIS_DROP_RESULTS: AnalysisDropResult[] = [
 /** The dead-air watchdog's steps, smallest first, and what became of each (dead-air-watchdog.service.ts). */
 export type DeadAirStep = 'resend' | 'advance' | 'give_up';
 export type DeadAirResult = 'recovered' | 'still_silent' | 'held';
-export const DEAD_AIR_STEPS: readonly DeadAirStep[] = ['resend', 'advance', 'give_up'];
-export const DEAD_AIR_RESULTS: readonly DeadAirResult[] = ['recovered', 'still_silent', 'held'];
+export const DEAD_AIR_STEPS: readonly DeadAirStep[] = [
+  'resend',
+  'advance',
+  'give_up',
+];
+export const DEAD_AIR_RESULTS: readonly DeadAirResult[] = [
+  'recovered',
+  'still_silent',
+  'held',
+];
 
 const NEXT_ANNOUNCEMENT_RESULTS: NextAnnouncementResult[] = [
   'accepted',

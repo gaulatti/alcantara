@@ -243,6 +243,10 @@ export const COMMAND_RETRY_MAX_MS = 30_000;
  */
 export const INHERITED_LOOKUP_ATTEMPTS = 8;
 
+/** A Palazzo end this soon after its start, for a song longer than the minimum, means nothing of it was heard. */
+const NOT_AIRED_WITHIN_MS = 1_000;
+const NOT_AIRED_MIN_DURATION_MS = 20_000;
+
 export const WATCHDOG_INTERVAL_MS = 10_000;
 export const NO_PLAYBACK_BOUND_MS = 45_000;
 /**
@@ -306,6 +310,8 @@ interface ActiveSong {
   introStatus: IntroPlaybackStatus;
   introFailureReason: string | null;
   authoritativeStartedAt: number | null;
+  /** When Palazzo says it started this song, on its own clock; absent until its start event is read. */
+  palazzoStartedAt?: number;
   authoritativePositionMs: number | null;
   authoritativeUpdatedAt: number | null;
   queueEntryId: string | null;
@@ -348,6 +354,7 @@ interface NextAnnouncement {
   status: 'pending' | 'accepted' | 'not-announced';
   /** When its `track.started` was accepted before promotion. */
   startedAt: number | null;
+  palazzoStartedAt?: number;
   /**
    * The accepted announcement this one replaces while its own PUT is
    * unanswered: Palazzo may still start it at the handoff.
@@ -557,7 +564,8 @@ export type SongEngineEndReason =
   /** Palazzo restarted under the song: it was heard only up to the cut (gaulatti/palazzo#74). */
   | 'playout_restart'
   /** The dead-air watchdog played it again or moved past it after it went silent on air. */
-  | 'dead_air';
+  | 'dead_air'
+  | 'not_aired';
 
 /** Why the dead-air watchdog may not act on the engine now (deadAirTarget). */
 export type DeadAirEngineHold =
@@ -2198,7 +2206,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
    * left as they are. Its play closes with end reason `dead_air`. Returns the new playback's id, or null when the
    * song on air is no longer the one the watchdog judged, or the watchdog may not act now.
    */
-  resendForDeadAir(programId: string, playbackRequestId: string): string | null {
+  resendForDeadAir(
+    programId: string,
+    playbackRequestId: string,
+  ): string | null {
     const target = this.deadAirTarget(programId);
     if (
       !target.ok ||
@@ -2491,6 +2502,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           data: { playbackId: string; programId?: string | null };
         },
   ): void {
+    // Palazzo's own time for the event, so a replay after a reconnect keeps the real intervals.
+    const palazzoAt = Date.parse(
+      (event as { occurredAt?: string }).occurredAt ?? '',
+    );
     if (!this.isRadioCapable(programId)) return;
     const state = this.states.get(programId);
     if (!state) return;
@@ -2551,6 +2566,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       state.awaitingAir.delete(requestId);
       const activeSong = state.activeSong;
       if (activeSong?.playbackRequestId === requestId) {
+        if (Number.isFinite(palazzoAt))
+          activeSong.palazzoStartedAt ??= palazzoAt;
         // The command is no longer pending once Palazzo confirms playback.
         // Leaving successful request IDs here permanently blocks the next
         // automatic song because maybeStartSequence treats any pending ID as
@@ -2586,7 +2603,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           );
         }
         this.refreshAnnouncement(programId);
-      } else if (this.acceptAnnouncedStart(programId, state, requestId)) {
+      } else if (
+        this.acceptAnnouncedStart(programId, state, requestId, palazzoAt)
+      ) {
         // The announced song started, under overlap or at the handoff.
       } else if (state.pendingRequestIds.has(requestId)) {
         // A command is confirmed after another song (for example a manual
@@ -2603,14 +2622,34 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     // not narrow `event.data` through the intro branch.
     const ended = event as Extract<typeof event, { type: 'track.ended' }>;
     // A play the engine already closed (superseded) is not closed again.
-    const closed = state.activeSong?.asRunClosed === true;
+    const song = state.activeSong;
+    const closed = song?.asRunClosed === true;
+    // Read before the end advances the engine. Ended as it started: recorded, never counted (gaulatti/palazzo#75).
+    const notAired =
+      song?.playbackRequestId === requestId &&
+      song.palazzoStartedAt !== undefined &&
+      song.durationMs > NOT_AIRED_MIN_DURATION_MS &&
+      palazzoAt - song.palazzoStartedAt <= NOT_AIRED_WITHIN_MS;
     // Only an accepted end is emitted; ignored ends (duplicate, mismatched,
     // frozen, no active song) must not count as a play downstream.
     if (
       this.handleAuthoritativeTrackEnded(programId, state, requestId) &&
       !closed
     ) {
-      this.emitTrackEvent(programId, ended.type, requestId, ended.data);
+      if (notAired) {
+        this.logger.warn(
+          `Palazzo ended ${requestId} on ${programId} as it started; recorded as not aired`,
+        );
+        this.metrics.recordTrackTransition('not-aired');
+      }
+      this.emitTrackEvent(
+        programId,
+        ended.type,
+        requestId,
+        ended.data,
+        false,
+        notAired ? 'not_aired' : undefined,
+      );
     }
   }
 
@@ -3182,6 +3221,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     programId: string,
     state: SongEngineState,
     requestId: string,
+    palazzoAt: number,
   ): boolean {
     const announcement = [
       state.announcement,
@@ -3194,6 +3234,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     );
     if (announcement) {
       announcement.startedAt = Date.now();
+      if (Number.isFinite(palazzoAt)) announcement.palazzoStartedAt = palazzoAt;
       this.metrics.recordTrackTransition('adopted');
       this.emitTrackEvent(programId, 'track.started', requestId, {
         title: announcement.title,
@@ -4742,6 +4783,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       introStatus: 'none',
       introFailureReason: null,
       authoritativeStartedAt: startedAt,
+      ...(promote && announced.palazzoStartedAt !== undefined
+        ? { palazzoStartedAt: announced.palazzoStartedAt }
+        : {}),
       authoritativePositionMs: startedAt === null ? null : 0,
       authoritativeUpdatedAt: startedAt,
       queueEntryId: queueEntry?.id ?? null,
