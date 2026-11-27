@@ -4,6 +4,8 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  type OnModuleDestroy,
+  type OnModuleInit,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -24,6 +26,13 @@ import {
 } from 'livekit-server-sdk';
 import type { CanonicalIdentity } from '../identity/principals';
 import { PrismaService } from '../prisma.service';
+import {
+  ManagedMetricsService,
+  WEBRTC_ICE_PATHS,
+  WEBRTC_JOIN_RESULTS,
+  type WebrtcIcePath,
+  type WebrtcJoinResult,
+} from '../observability/managed-metrics.service';
 
 type ReturnVideo = 'program' | 'preview' | 'none';
 type ReturnAudioBus = 'master' | 'monitor' | `aux-${number}`;
@@ -31,14 +40,58 @@ type CommandStatus = 'accepted' | 'rejected' | 'read' | 'acknowledged';
 
 const MAX_GUESTS = 6;
 const SESSION_LEASE_MS = 60_000;
+const LOST_CALL_SWEEP_MS = 30_000;
 const JOIN_TOKEN_TTL = '5m';
+/** What a guest's browser may report; the API counts success and an expired invitation itself. */
+const GUEST_FAILURES: readonly WebrtcJoinResult[] = [
+  'permission_denied',
+  'no_device',
+  'ice_failed',
+  'token_rejected',
+  'other',
+];
+
+function icePathFrom(value: unknown): WebrtcIcePath | null {
+  return WEBRTC_ICE_PATHS.find((path) => path === value) ?? null;
+}
 
 @Injectable()
-export class WebrtcService {
+export class WebrtcService implements OnModuleInit, OnModuleDestroy {
+  private lostCallSweep: ReturnType<typeof setInterval> | null = null;
+
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly metrics: ManagedMetricsService,
   ) {}
+
+  onModuleInit() {
+    this.lostCallSweep = setInterval(() => {
+      // A database that is away is retried at the next sweep.
+      void this.countLostCalls().catch(() => undefined);
+    }, LOST_CALL_SWEEP_MS);
+    this.lostCallSweep.unref();
+  }
+
+  onModuleDestroy() {
+    if (this.lostCallSweep) clearInterval(this.lostCallSweep);
+    this.lostCallSweep = null;
+  }
+
+  /**
+   * Counts live calls whose heartbeat stopped without a leave: a guest who dropped and never came back. Clearing
+   * `liveSince` in the same statement counts each once, whoever else is sweeping.
+   */
+  async countLostCalls() {
+    const { count } = await this.prisma.guestInvitation.updateMany({
+      where: {
+        liveSince: { not: null },
+        activeSessionUntil: { lt: new Date() },
+      },
+      data: { liveSince: null },
+    });
+    this.metrics.recordWebrtcDrops(count);
+  }
 
   getPublicConfig() {
     return { enabled: this.hasConfiguration(), maxGuests: MAX_GUESTS };
@@ -142,6 +195,7 @@ export class WebrtcService {
           slotNumber: null,
           activeSessionId: null,
           activeSessionUntil: null,
+          liveSince: null,
           events: {
             create: {
               type: 'revoked',
@@ -208,12 +262,15 @@ export class WebrtcService {
   async redeemInvitation(invitationValue: unknown, sessionTokenValue: unknown) {
     this.requireConfiguration();
     const invitationToken = this.requireString(invitationValue, 'Invitation');
-    const invitation = await this.verifyInvitationToken(invitationToken);
+    const invitation = await this.verifyInvitationToken(invitationToken).catch(
+      (error: unknown) => {
+        if (error instanceof UnauthorizedException)
+          this.metrics.recordWebrtcJoin('guest', 'token_rejected');
+        throw error;
+      },
+    );
     const now = new Date();
-    if (invitation.revokedAt)
-      throw new ForbiddenException('This invitation was revoked.');
-    if (invitation.expiresAt <= now)
-      throw new UnauthorizedException('This invitation expired.');
+    this.requireOpenInvitation(invitation, now);
 
     let sessionId: string | null = null;
     if (typeof sessionTokenValue === 'string' && sessionTokenValue) {
@@ -238,6 +295,7 @@ export class WebrtcService {
       },
     });
     if (claimed.count !== 1) {
+      this.metrics.recordWebrtcJoin('guest', 'other');
       throw new ConflictException(
         'This invitation is already active in another session.',
       );
@@ -284,19 +342,77 @@ export class WebrtcService {
     };
   }
 
+  /**
+   * A join the guest's browser saw fail, often before it asked to join (camera refused, no microphone). It needs the
+   * invitation's own token, so only an invited guest can add to the counts.
+   */
+  async reportJoinFailure(invitationValue: unknown, reasonValue: unknown) {
+    this.requireConfiguration();
+    const invitation = await this.verifyInvitationToken(
+      this.requireString(invitationValue, 'Invitation'),
+    );
+    const reason = GUEST_FAILURES.find((known) => known === reasonValue);
+    if (!reason) throw new BadRequestException('Unknown failure reason.');
+    this.requireOpenInvitation(invitation, new Date());
+    await this.prisma.guestEvent.create({
+      data: {
+        invitationId: invitation.id,
+        type: 'join_failed',
+        details: { reason },
+      },
+    });
+    this.metrics.recordWebrtcJoin('guest', reason);
+    return { recorded: true };
+  }
+
+  /** The operator's own talkback connection: counted, not stored. */
+  reportOperatorCall(resultValue: unknown, icePathValue: unknown) {
+    const result = WEBRTC_JOIN_RESULTS.find((known) => known === resultValue);
+    if (!result) throw new BadRequestException('Unknown call result.');
+    this.metrics.recordWebrtcJoin('operator', result);
+    const path = icePathFrom(icePathValue);
+    if (result === 'success' && path)
+      this.metrics.recordWebrtcIcePath('operator', path);
+    return { recorded: true };
+  }
+
   async heartbeat(sessionTokenValue: unknown, telemetryValue: unknown) {
     const session = await this.requireActiveSession(sessionTokenValue);
     const telemetry = this.normalizeTelemetry(telemetryValue);
+    // What the guest says about the call's life, apart from the telemetry stored for the desk.
+    const reported = telemetryValue as {
+      joined?: unknown;
+      iceTransport?: unknown;
+      dropped?: unknown;
+      left?: unknown;
+    } | null;
+    // Sent until a heartbeat gets through, which may be after the guest's network returns. Counted only while the
+    // call is still marked live, so a drop the sweep already counted is not counted again.
+    if (reported?.dropped === true) {
+      const { count } = await this.prisma.guestInvitation.updateMany({
+        where: { id: session.invitation.id, liveSince: { not: null } },
+        data: { liveSince: null },
+      });
+      this.metrics.recordWebrtcDrops(count);
+    }
     const activeSessionUntil = new Date(Date.now() + SESSION_LEASE_MS);
     await this.prisma.guestInvitation.update({
       where: { id: session.invitation.id },
       data: {
         activeSessionUntil,
+        ...(reported?.joined === true ? { liveSince: new Date() } : {}),
+        ...(reported?.left === true ? { liveSince: null } : {}),
         ...(telemetry
           ? { events: { create: { type: 'telemetry', details: telemetry } } }
           : {}),
       },
     });
+    // The guest marks the first heartbeat of a connection, so one join is counted once.
+    if (reported?.joined === true) {
+      this.metrics.recordWebrtcJoin('guest', 'success');
+      const path = icePathFrom(reported.iceTransport);
+      if (path) this.metrics.recordWebrtcIcePath('guest', path);
+    }
     return { activeSessionUntil: activeSessionUntil.toISOString() };
   }
 
@@ -323,7 +439,15 @@ export class WebrtcService {
     const programId = this.normalizeProgramId(programIdValue);
     const invitations = await this.prisma.guestInvitation.findMany({
       where: { programId, revokedAt: null, expiresAt: { gt: new Date() } },
-      include: { commands: { orderBy: { createdAt: 'desc' }, take: 10 } },
+      include: {
+        commands: { orderBy: { createdAt: 'desc' }, take: 10 },
+        // The latest report on the call decides what the row shows.
+        events: {
+          where: { type: { in: ['telemetry', 'join_failed'] } },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
       orderBy: { slotNumber: 'asc' },
     });
     let participants: Awaited<
@@ -371,6 +495,7 @@ export class WebrtcService {
               mimeType: track.mimeType,
             })) ?? [],
           commands: invitation.commands,
+          ...this.reportedCall(invitation.events[0]),
         };
       }),
     };
@@ -454,6 +579,7 @@ export class WebrtcService {
       data: {
         activeSessionId: null,
         activeSessionUntil: null,
+        liveSince: null,
         events: {
           create: {
             type: 'removed',
@@ -629,6 +755,36 @@ export class WebrtcService {
       roomName: this.roomName(programId),
       identity: `desktop-program-feed-${programId}`,
     };
+  }
+
+  private reportedCall(event?: {
+    type: string;
+    details: Prisma.JsonValue | null;
+  }) {
+    const details = (event?.details ?? {}) as {
+      iceTransport?: unknown;
+      reason?: unknown;
+    };
+    return {
+      icePath:
+        event?.type === 'telemetry' ? icePathFrom(details.iceTransport) : null,
+      joinFailure:
+        event?.type === 'join_failed'
+          ? (GUEST_FAILURES.find((known) => known === details.reason) ??
+            'other')
+          : null,
+    };
+  }
+
+  private requireOpenInvitation(invitation: GuestInvitation, now: Date) {
+    if (invitation.revokedAt) {
+      this.metrics.recordWebrtcJoin('guest', 'token_rejected');
+      throw new ForbiddenException('This invitation was revoked.');
+    }
+    if (invitation.expiresAt <= now) {
+      this.metrics.recordWebrtcJoin('guest', 'invite_expired');
+      throw new UnauthorizedException('This invitation expired.');
+    }
   }
 
   private async requireActiveSession(sessionTokenValue: unknown) {

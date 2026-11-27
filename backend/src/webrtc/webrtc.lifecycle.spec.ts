@@ -14,6 +14,7 @@ import {
   TrackSource,
 } from 'livekit-server-sdk';
 import { WebrtcService } from './webrtc.service';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
 
 const id = '11111111-1111-4111-8111-111111111111';
 const invitationToken = `${id}.fictional-invitation-secret`;
@@ -50,6 +51,7 @@ function fixture(overrides: Record<string, unknown> = {}) {
     createdAt: new Date(),
     updatedAt: new Date(),
     commands: [],
+    events: [],
   };
   const prisma = {
     guestInvitation: {
@@ -82,6 +84,7 @@ function fixture(overrides: Record<string, unknown> = {}) {
   const service = new WebrtcService(
     new ConfigService({ ...config, ...overrides }),
     prisma as any,
+    new ManagedMetricsService(),
   );
   return { service, prisma, invitation: () => invitation };
 }

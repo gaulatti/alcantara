@@ -79,6 +79,18 @@ export class WebrtcController {
     return this.webrtc.redeemInvitation(body.invitation, body.sessionToken);
   }
 
+  @Post('join/failure')
+  @Public()
+  joinFailure(@Body() body: Record<string, unknown>) {
+    return this.webrtc.reportJoinFailure(body.invitation, body.reason);
+  }
+
+  @Post('operator-report')
+  @RequirePermission(ALCANTARA_PERMISSIONS.webrtc.operate)
+  operatorReport(@Body() body: Record<string, unknown>) {
+    return this.webrtc.reportOperatorCall(body.result, body.icePath);
+  }
+
   @Post('session/heartbeat')
   @Public()
   heartbeat(@Body() body: Record<string, unknown>) {

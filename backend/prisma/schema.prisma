@@ -752,6 +752,8 @@ model GuestInvitation {
   revokedAt          DateTime?
   activeSessionId    String?
   activeSessionUntil DateTime?
+  /// Set while the guest's call is live and neither left nor reported dropped.
+  liveSince          DateTime?
   createdByIdentity  String
   /// Canonical Pompeii principal of the operator who created this invitation.
   /// Audit only. createdByIdentity is never rewritten, so historical actor

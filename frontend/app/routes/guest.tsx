@@ -4,6 +4,7 @@ import { Camera, CameraOff, CheckCircle2, Headphones, Mic, MicOff, PhoneOff, Rad
 import { ConnectionState, Room, RoomEvent, Track, type RemoteParticipant, type RemoteTrack, type RemoteTrackPublication } from 'livekit-client';
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router';
+import { isDrop, reportJoinFailure, roomIcePath } from '../utils/callTelemetry';
 import { isProgramFeed, preferredProgramFeed } from '../utils/programFeed';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { mediaErrorHelp, type MediaHelp } from '../utils/guestMediaHelp';
@@ -51,6 +52,10 @@ export default function GuestRoute() {
   const roomRef = useRef<Room | null>(null);
   const sessionTokenRef = useRef('');
   const heartbeatRef = useRef<number | null>(null);
+  // Set at each join until a heartbeat has told the studio, so one join is counted once.
+  const announceJoinRef = useRef(false);
+  // A lost call is reported by the next heartbeat that gets through.
+  const pendingDropRef = useRef(false);
   const [status, setStatus] = useState<GuestStatus>('preflight');
   const [error, setError] = useState('');
   // The plain-words help for a refused camera or microphone, and the attempt number that re-runs the preflight.
@@ -82,6 +87,18 @@ export default function GuestRoute() {
   const telemetryRef = useRef({ quality, returnFeed, cameraEnabled, microphoneEnabled });
   telemetryRef.current = { quality, returnFeed, cameraEnabled, microphoneEnabled };
 
+  // Tells the studio the guest ended the call, so a stopped heartbeat is not counted as a drop. `keepalive` lets
+  // it go out while the page is closing.
+  const sayLeft = () => {
+    if (!sessionTokenRef.current) return;
+    void fetch(apiUrl('/webrtc/session/heartbeat'), {
+      method: 'POST',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionToken: sessionTokenRef.current, telemetry: { left: true } })
+    }).catch(() => undefined);
+  };
+
   const stopHeartbeat = () => {
     if (heartbeatRef.current !== null) window.clearInterval(heartbeatRef.current);
     heartbeatRef.current = null;
@@ -90,6 +107,10 @@ export default function GuestRoute() {
   const heartbeat = async () => {
     if (!sessionTokenRef.current) return;
     const telemetry = telemetryRef.current;
+    const icePath = await roomIcePath(roomRef.current);
+    const joined = announceJoinRef.current;
+    announceJoinRef.current = false;
+    const dropped = pendingDropRef.current;
     const response = await fetch(apiUrl('/webrtc/session/heartbeat'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -100,10 +121,14 @@ export default function GuestRoute() {
           quality: telemetry.quality,
           returnFeedHealth: telemetry.returnFeed ? 'healthy' : 'missing',
           cameraEnabled: telemetry.cameraEnabled,
-          microphoneEnabled: telemetry.microphoneEnabled
+          microphoneEnabled: telemetry.microphoneEnabled,
+          ...(icePath ? { iceTransport: icePath } : {}),
+          ...(joined ? { joined: true } : {}),
+          ...(dropped ? { dropped: true } : {})
         }
       })
     });
+    if (response.ok && dropped) pendingDropRef.current = false;
     if (response.status === 401 || response.status === 403) {
       stopHeartbeat();
       intentionalEndRef.current = true;
@@ -167,13 +192,17 @@ export default function GuestRoute() {
         setNetwork(connection ? `${connection.effectiveType || 'network'} · ${connection.downlink || '?'} Mbps · ${connection.rtt || '?'} ms RTT` : 'Browser network check ready');
         setStatus('ready');
       } catch (reason) {
+        if (!cancelled) void reportJoinFailure(invitation, reason);
         setMediaHelp(mediaErrorHelp(reason, navigator.userAgent));
         setStatus('error');
       }
     };
     void prepare();
+    window.addEventListener('pagehide', sayLeft);
     return () => {
       cancelled = true;
+      window.removeEventListener('pagehide', sayLeft);
+      if (heartbeatRef.current !== null) sayLeft();
       stopHeartbeat();
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
       roomRef.current?.disconnect();
@@ -367,6 +396,13 @@ export default function GuestRoute() {
           setStatus('ended');
         }
       });
+      // Only a call that got as far as live can drop; a failed join is reported as one.
+      let wentLive = false;
+      room.on(RoomEvent.Disconnected, (reason) => {
+        if (!wentLive || !isDrop(reason)) return;
+        pendingDropRef.current = true;
+        void heartbeat().catch(() => undefined);
+      });
       room.on(RoomEvent.ConnectionQualityChanged, (next, participant) => {
         if (participant.isLocal) setQuality(String(next).toLowerCase());
       });
@@ -406,10 +442,13 @@ export default function GuestRoute() {
       const cameraPublication = room.localParticipant.getTrackPublication(Track.Source.Camera);
       if (cameraPublication?.videoTrack && previewRef.current) cameraPublication.videoTrack.attach(previewRef.current);
       setStatus('live');
+      announceJoinRef.current = true;
+      wentLive = true;
       stopHeartbeat();
       heartbeatRef.current = window.setInterval(() => void heartbeat(), 20_000);
       void heartbeat();
-    } catch {
+    } catch (reason) {
+      void reportJoinFailure(invitation, reason);
       // Release the half-joined room, without its listeners reporting the
       // disconnect as an ended session, so a retry starts from a clean room.
       const failedRoom = roomRef.current;
@@ -452,6 +491,7 @@ export default function GuestRoute() {
   };
 
   const leave = () => {
+    sayLeft();
     stopHeartbeat();
     intentionalEndRef.current = true;
     roomRef.current?.disconnect();

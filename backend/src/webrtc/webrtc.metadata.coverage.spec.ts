@@ -10,6 +10,7 @@ describe('webrtc decorator parameter metadata', () => {
     jest.dontMock('./webrtc.service');
     jest.dontMock('@nestjs/config');
     jest.dontMock('../prisma.service');
+    jest.dontMock('../observability/managed-metrics.service');
   });
 
   it('reflects Record as a function when a global Record exists', () => {
@@ -50,9 +51,13 @@ describe('webrtc decorator parameter metadata', () => {
       ConfigService: {},
     }));
     jest.doMock('../prisma.service', () => ({ PrismaService: {} }));
+    jest.doMock('../observability/managed-metrics.service', () => ({
+      ManagedMetricsService: {},
+    }));
     jest.isolateModules(() => {
       const { WebrtcService } = require('./webrtc.service');
       expect(Reflect.getMetadata('design:paramtypes', WebrtcService)).toEqual([
+        Object,
         Object,
         Object,
       ]);

@@ -191,7 +191,7 @@ describe('appendix A rows of ticket #219', () => {
 
   it('keeps the excluded rows out', () => {
     // In this ticket's areas: the monitor and download tickets, the rotation,
-    // both guest-link rows, the operator token, the desktop program feed token and
+    // both guest-link rows, the operator token and talkback report, the desktop program feed token and
     // a destination's ingest key.
     expect(excludedRows.map((row) => row[4]).sort()).toEqual([
       'addDestination',
@@ -200,6 +200,7 @@ describe('appendix A rows of ticket #219', () => {
       'issue',
       'issue',
       'issueIngest',
+      'operatorReport',
       'operatorToken',
       'replaceInvitation',
       'replaceKey',

@@ -171,6 +171,7 @@ webrtc	POST	/webrtc/invitations/:id/replace	webrtc.operate	replaceInvitation	—
 webrtc	DELETE	/webrtc/invitations/:id	webrtc.operate	revokeInvitation	webrtc_revoke_invitation	D
 webrtc	PATCH	/webrtc/invitations/:id/return	webrtc.operate	updateReturn	webrtc_update_return	A
 webrtc	GET	/webrtc/rooms/:programId/participants	webrtc.read	listParticipants	webrtc_list_participants	R
+webrtc	POST	/webrtc/operator-report	webrtc.operate	operatorReport	—	excluded: the console reports its own talkback connection
 webrtc	POST	/webrtc/operator-token	webrtc.operate	operatorToken	—	excluded: returns a credential
 webrtc	POST	/webrtc/desktop-program-feed-token	webrtc.operate	desktopProgramFeedToken	—	excluded: returns a credential
 webrtc	POST	/webrtc/rooms/:programId/participants/:identity/control	webrtc.operate	controlParticipant	webrtc_control_participant	A
