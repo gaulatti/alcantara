@@ -16,8 +16,16 @@ export function LocalAudioGuard() {
 export const usePreFadeOnHeadphones = () => useSyncExternalStore(subscribeLocalAudio, onHeadphones, () => false);
 export const usePreFadeMuted = () => useSyncExternalStore(subscribeLocalAudio, preFadeMuted, () => false);
 
-export function HeadphonesToggle() {
+/** The desk's terse toggle; with a label (the calls status bar) it reads as that label instead. */
+export function HeadphonesToggle({ label }: { label?: string } = {}) {
   const checked = usePreFadeOnHeadphones();
+  if (label !== undefined)
+    return (
+      <label className="inline-flex min-h-11 items-center gap-1.5 text-xs text-text-secondary" title="While your mic is live, pre-listens and previews are muted unless you are on headphones. This device remembers.">
+        <input type="checkbox" checked={checked} onChange={(event) => setOnHeadphones(event.target.checked)} />
+        {label}
+      </label>
+    );
   return (
     // Terse on the desk; the full meaning is its accessible name and its hover title.
     <label className="desk-toggle" title="I'm on headphones: keep pre-fade. While your mic is live, pre-listens and previews are muted unless you are on headphones. This device remembers.">

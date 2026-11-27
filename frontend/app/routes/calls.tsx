@@ -436,28 +436,32 @@ function CallsDesk({ programId }: { programId: string }) {
   return (
     <AppPage width='wide'>
       <div>
-        <PageHeader
-          title='Guest calls'
-          description={`Six reusable remote-contributor slots for ${programId}. Guests never enter Preview or Program automatically.`}
-          actions={
-            <Button variant='secondary' onClick={() => void refresh().catch((error) => {
-                console.error('Unable to refresh guest calls:', error);
-                setNotice('Guest calls could not be refreshed.');
-              })}>
-              <RefreshCw size={15} /> Refresh
-            </Button>
-          }
-        />
+        <PageHeader title='Guest calls' />
         <section className='caller-desk-status' aria-label='Caller desk status'>
           <span className='caller-desk-count' data-live={cuedLive > 0}>
-            {cuedLive} {cuedLive === 1 ? 'guest' : 'guests'} cued live
+            {cuedLive} cued live
           </span>
-          <span>Room {programId}</span>
-          <span>{activeInvitations.length} of 6 slots in use</span>
+          <span>{activeInvitations.length} of 6 slots</span>
           <span>{livekitEnabled ? 'LiveKit connected' : 'Checking LiveKit…'}</span>
-          {updatedAt ? <span>Updated {updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span> : null}
-          <HostMicOnAir programId={programId} canOperate={canOperate} />
-          <HeadphonesToggle />
+          <span data-return-sending={roomReturn ? String(roomReturn.returnSending) : 'unknown'}>
+            Return {roomReturn?.returnSending ? 'sending' : '—'}
+          </span>
+          <span className='caller-desk-status-end'>
+            <HostMicOnAir programId={programId} canOperate={canOperate} />
+            <HeadphonesToggle label='Headphones' />
+            <Button
+              variant='secondary'
+              size='sm'
+              aria-label='Refresh guest list'
+              title='Re-read the guest list'
+              onClick={() => void refresh().catch((error) => {
+                console.error('Unable to refresh guest calls:', error);
+                setNotice('Guest calls could not be refreshed.');
+              })}
+            >
+              <RefreshCw size={14} />
+            </Button>
+          </span>
         </section>
         <CallHealthBanner programId={programId} className='mb-5' />
         {failedPolls >= 2 ? (
@@ -502,7 +506,6 @@ function CallsDesk({ programId }: { programId: string }) {
               ) : (
                 <p className='text-xs text-text-secondary'>No one is waiting to join.</p>
               )}
-              <p className='caller-desk-gap'>A guest who joins waits here, off air, until you press Admit.</p>
             </section>
             <Card variant='outlined' className='p-5'>
               <h2 className='text-base font-medium'>Create invitation</h2>
@@ -533,15 +536,6 @@ function CallsDesk({ programId }: { programId: string }) {
             </Card>
           </aside>
           <section className='caller-desk-strips' aria-label='Guest slots'>
-            {loadState !== 'loading' ? (
-              <p className='col-span-full text-sm font-medium' data-return-sending={roomReturn ? String(roomReturn.returnSending) : 'unknown'}>
-                {roomReturn === null
-                  ? 'Return to guests: unknown'
-                  : roomReturn.returnSending
-                    ? 'Return to guests: sending (program audio)'
-                    : 'Return to guests: not sending'}
-              </p>
-            ) : null}
             {loadState === 'loading' ? (
               <div role='status' aria-label='Loading guest slots'>
                 <SkeletonCard rows={3} />

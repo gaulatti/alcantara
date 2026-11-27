@@ -13,8 +13,9 @@ describe("guest slots layout on /calls", () => {
     expect(strips).toMatch(/align-items:\s*start/);
   });
 
-  it("lets the return line span the whole grid", () => {
+  it("shows the return state in the status bar, with a dash until it sends", () => {
     const calls = readFileSync(join(__dirname, "..", "routes", "calls.tsx"), "utf8");
-    expect(calls).toMatch(/className='col-span-full text-sm font-medium' data-return-sending/);
+    expect(calls).toMatch(/data-return-sending=\{roomReturn \? String\(roomReturn\.returnSending\) : 'unknown'\}/);
+    expect(calls).toMatch(/Return \{roomReturn\?\.returnSending \? 'sending' : '—'\}/);
   });
 });

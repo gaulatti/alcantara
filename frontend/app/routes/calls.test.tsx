@@ -306,20 +306,24 @@ it("says whether the studio's return is sending to guests", async () => {
   room = { returnSending: true, returnParticipant: "renderer-main-7f3a" };
   serve();
   render(<CallsRoute />);
-  expect(await screen.findByText("Return to guests: sending (program audio)")).toBeVisible();
+  expect(await screen.findByText("Return sending")).toBeVisible();
+  expect(document.querySelector("[data-return-sending='true']")).not.toBeNull();
 });
 
 it("says the return is not sending when no return router is in the room", async () => {
   serve();
   render(<CallsRoute />);
-  expect(await screen.findByText("Return to guests: not sending")).toBeVisible();
+  // Nothing is sent until someone is admitted: the bar reads a dash, not "off", so it does not look like a fault.
+  expect(await screen.findByText("Return —")).toBeVisible();
+  expect(document.querySelector("[data-return-sending='false']")).not.toBeNull();
 });
 
 it("says the return is unknown when the studio reports no room state", async () => {
   room = undefined;
   serve();
   render(<CallsRoute />);
-  expect(await screen.findByText("Return to guests: unknown")).toBeVisible();
+  expect(await screen.findByText("Return —")).toBeVisible();
+  expect(document.querySelector("[data-return-sending='unknown']")).not.toBeNull();
 });
 
 it("shows what the producer needs: 'Hears the studio' when playing, a warning when stalled, nothing while connecting", async () => {
@@ -806,7 +810,7 @@ it("asks for a second confirmation before talking to a guest cued live", async (
   render(<CallsRoute />);
   await screen.findByText("Ada", { selector: "h3" });
   expect(within(card()).getByText("Live · cued")).toBeVisible();
-  expect(screen.getByText("1 guest cued live")).toBeVisible();
+  expect(screen.getByText("1 cued live")).toBeVisible();
   expect(await within(card()).findByText(/on the output only through a scene/)).toBeVisible();
   expect(button(/Hold · talk/)).toBeDisabled();
   expect(within(card()).getByText("Allow private talk while live (never on air)").closest("label")).toHaveAttribute("title", "Talkback reaches only this guest. It never goes to air.");
@@ -966,14 +970,14 @@ it("refreshes the guest list every 3 seconds, and a failed background refresh st
 
 // A waiting guest must never sit unseen behind a desk that stopped updating: a hidden tab's timers run about once a
 // minute, so the desk catches up when it is looked at, says when it last heard from the API, and says when it can't.
-it("catches up when the tab is shown or focused, and says when it last updated", async () => {
+it("catches up when the tab is shown or focused", async () => {
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   try {
     const calls = serve();
     render(<CallsRoute />);
     await vi.advanceTimersByTimeAsync(0);
     expect(await screen.findByText("Ada", { selector: "h3" })).toBeVisible();
-    expect(screen.getByText(/^Updated \d/)).toBeVisible();
+    expect(await screen.findByRole("button", { name: "Refresh guest list" })).toBeVisible();
     const participantsAsked = () => calls.filter((call) => call.url.includes("/participants")).length;
     const before = participantsAsked();
     Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
@@ -1082,7 +1086,7 @@ it("starts empty on a switch, with nothing of the previous show to act on", asyn
   vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
   shown.program = "other show";
   view.rerender(<CallsRoute />);
-  expect(screen.getByText(/slots for other show/)).toBeVisible();
+  expect(screen.getByText(/0 of 6 slots/)).toBeVisible();
   expect(screen.queryByRole("article")).toBeNull();
   expect(screen.queryByText(/Ada/)).toBeNull();
 });
