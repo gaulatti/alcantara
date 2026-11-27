@@ -770,7 +770,9 @@ model GuestInvitation {
   /// Screening before air: set when the operator admits the guest; until then they wait in a room of their own.
   admittedAt         DateTime?
   /// The operator's last cue (standby, live, wrap). Live reaches air only for the session it was given to
-  /// (cueSessionId): a new session starts off air, as it starts unadmitted.
+  /// (cueSessionId): a new session starts off air, as it starts unadmitted. "rejoined" is written, with no
+  /// cueSessionId, when a guest who had been cued live comes back off air; standby and wrap are kept as they were.
+  /// Nothing reads "rejoined" as live.
   cue                String         @default("standby")
   cueSessionId       String?
   createdByIdentity  String

@@ -46,7 +46,13 @@ describe('the on-air stream, over a real socket', () => {
               findMany: jest
                 .fn()
                 .mockResolvedValue([
-                  { id: ANNA, activeSessionId: 's', cueSessionId: 's' },
+                  {
+                    id: ANNA,
+                    cue: 'live',
+                    admittedAt: new Date(),
+                    activeSessionId: 's',
+                    cueSessionId: 's',
+                  },
                 ]),
             },
           },

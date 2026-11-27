@@ -140,7 +140,11 @@ describe('screening before air', () => {
   // alcantara#875: the server, not the page, decides who skips the waiting room. These drive the join against an
   // invitation row that applies each update's conditions, at chosen times after the guest was last heard.
   describe('coming back without being admitted again', () => {
-    const away = async (afterLeaseMs: number, presentSession = true) => {
+    const away = async (
+      afterLeaseMs: number,
+      presentSession = true,
+      cue = 'live',
+    ) => {
       const fixture = setup();
       const { service, prisma, invitation } = fixture;
       const row = invitation as unknown as Record<string, unknown>;
@@ -163,15 +167,54 @@ describe('screening before air', () => {
       const first = await service.redeemInvitation(token, undefined);
       // The producer admits and cues them live; then the phone goes to sleep.
       row.admittedAt = new Date();
-      row.cue = 'live';
+      row.cue = cue;
       row.cueSessionId = row.activeSessionId;
       row.activeSessionUntil = new Date(Date.now() - afterLeaseMs);
       const back = await service.redeemInvitation(
         token,
         presentSession ? first.sessionToken : undefined,
       );
-      return { back, row };
+      return { back, row, ...fixture, sessionToken: first.sessionToken };
     };
+    // What the desk's cue line is given for the row as the join left it.
+    const deskCue = async (service: WebrtcService) => {
+      jest
+        .spyOn(RoomServiceClient.prototype, 'listParticipants')
+        .mockResolvedValue([]);
+      return (await service.listParticipants('main')).participants[0].cueState;
+    };
+
+    it('tells the desk a cued guest rejoined, and keeps saying so until the next cue', async () => {
+      for (const lapsed of [
+        REJOIN_WINDOW_MS - 10_000,
+        REJOIN_WINDOW_MS + 10_000,
+      ]) {
+        const { service, row, sessionToken } = await away(lapsed);
+        await expect(deskCue(service)).resolves.toBe('rejoined');
+        row.activeSessionUntil = new Date(Date.now() - 10_000);
+        await service.redeemInvitation(token, sessionToken);
+        await expect(deskCue(service)).resolves.toBe('rejoined');
+      }
+    });
+
+    it.each(['standby', 'wrap'])(
+      'keeps showing %s after a rejoin, on both ways back',
+      async (cue) => {
+        for (const lapsed of [
+          REJOIN_WINDOW_MS - 10_000,
+          REJOIN_WINDOW_MS + 10_000,
+        ]) {
+          const { service, row } = await away(lapsed, true, cue);
+          expect(row.cue).toBe(cue);
+          await expect(deskCue(service)).resolves.toBe(cue);
+        }
+      },
+    );
+
+    it('says nothing of a rejoin to the desk while the cue still holds', async () => {
+      const { service } = await away(-30_000);
+      await expect(deskCue(service)).resolves.not.toBe('rejoined');
+    });
 
     it('keeps admission and the cue for a session whose lease is still live', async () => {
       const { back, row } = await away(-30_000);
@@ -185,7 +228,7 @@ describe('screening before air', () => {
         admission: 'admitted',
         roomName: 'alcantara-main',
       });
-      expect(row).toMatchObject({ cue: 'standby', cueSessionId: null });
+      expect(row).toMatchObject({ cue: 'rejoined', cueSessionId: null });
     });
 
     it('screens the same session again once the window has passed', async () => {
@@ -193,7 +236,7 @@ describe('screening before air', () => {
       expect(back).toMatchObject({ admission: 'waiting', roomName: screening });
       expect(row).toMatchObject({
         admittedAt: null,
-        cue: 'standby',
+        cue: 'rejoined',
         cueSessionId: null,
       });
     });

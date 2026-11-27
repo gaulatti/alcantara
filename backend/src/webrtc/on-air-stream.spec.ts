@@ -37,6 +37,8 @@ function setup() {
   };
   let onAir: Array<{
     id: string;
+    cue: string;
+    admittedAt: Date;
     activeSessionId: string;
     cueSessionId: string;
   }> = [];
@@ -96,7 +98,13 @@ const settle = async () => {
 };
 const metric = async (metrics: ManagedMetricsService, line: string) =>
   (await metrics.render('')).split('\n').find((l) => l.startsWith(line));
-const anna = { id: ANNA, activeSessionId: 's-anna', cueSessionId: 's-anna' };
+const anna = {
+  id: ANNA,
+  cue: 'live',
+  admittedAt: new Date(),
+  activeSessionId: 's-anna',
+  cueSessionId: 's-anna',
+};
 
 describe('the on-air stream', () => {
   beforeEach(() => jest.useFakeTimers());

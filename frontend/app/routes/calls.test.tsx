@@ -1011,3 +1011,25 @@ it("says the desk is not updating after two failed refreshes in a row, and clear
     vi.useRealTimers();
   }
 });
+
+// gaulatti/alcantara#875: a screenshot a second after the second press still read "Cue · none sent": the line
+// waited for the next read of the room.
+it("changes the cue line from the command's own answer, before the room is read again", async () => {
+  participants = [participant({ cueState: null, commands: [] })];
+  let sent = false;
+  serve({
+    "POST /webrtc/rooms/main show/participants/guest-ada/control": () => {
+      sent = true;
+      return Response.json({ id: "c9", type: "cue", status: "delivered", payload: { cue: "standby" }, createdAt: "" });
+    },
+  });
+  render(<CallsRoute />);
+  await screen.findByText("Ada", { selector: "h3" });
+  expect(card()).toHaveTextContent("Cue · none sent");
+  // Every later read of the room hangs.
+  const answer = api.handler!;
+  api.handler = (url, init) => (sent && url.endsWith("/participants") ? new Promise<Response>(() => {}) : answer(url, init));
+  fireEvent.click(button("Standby"));
+  await waitFor(() => expect(card()).toHaveTextContent("Cue · standby"));
+  expect(within(card()).getByText("Latest cue:")).toBeVisible();
+});

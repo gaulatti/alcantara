@@ -153,3 +153,11 @@
     transition: background-color 800ms linear;
   }
 }
+
+/* The cue's words get their own line, so their length never moves the buttons; the return's line is always there. */
+.guest-strip-cue {
+  flex-basis: 100%;
+}
+.guest-strip-status {
+  min-height: 1.25rem;
+}

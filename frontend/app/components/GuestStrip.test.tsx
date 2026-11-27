@@ -249,3 +249,37 @@ describe("GuestStrip", () => {
     expect(within(card).getByRole("button", { name: /Hold · talk/ })).toBeDisabled();
   });
 });
+
+// gaulatti/alcantara#875: the cue line follows the cue that holds, and the cue buttons never move under a finger.
+describe("the cue line", () => {
+  const live = [{ type: "cue", payload: { cue: "live" }, status: "delivered" }];
+  const line = (card: HTMLElement) => card.querySelector(".guest-strip-cue")!.textContent;
+
+  it("reads the stored state over the command history", () => {
+    expect(line(strip({ commands: live, cueState: "rejoined" }).card)).toBe("Off air · rejoined, cue again");
+    cleanup();
+    expect(line(strip({ commands: [], cueState: "live" }).card)).toBe("Cue · live");
+    cleanup();
+    expect(line(strip({ commands: live, cueState: "wrap" }).card)).toBe("Cue · wrap sent");
+    cleanup();
+    expect(line(strip({ commands: live, cueState: null }).card)).toBe("Cue · none sent");
+    cleanup();
+    // A backend that does not send it yet: the history.
+    expect(line(strip({ commands: live }).card)).toBe("Cue · live");
+  });
+
+  it("keeps the cue buttons above everything that comes and goes", () => {
+    const { card } = strip({ returnReaching: "healthy", cueState: "live" });
+    const button = within(card).getByRole("button", { name: "Standby" });
+    for (const later of [".call-path", ".guest-strip-status", ".guest-strip-av"]) {
+      const element = card.querySelector(later);
+      if (element) expect(button.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+    expect(card.querySelector(".guest-strip-status")).toHaveTextContent("Hears the studio");
+    expect(card.querySelector(".guest-strip-head")!.nextElementSibling).toContainElement(button);
+  });
+
+  it("keeps the status line's place when there is nothing to say", () => {
+    expect(strip().card.querySelector(".guest-strip-status")).toBeEmptyDOMElement();
+  });
+});

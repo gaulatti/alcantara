@@ -1,8 +1,7 @@
 /**
  * The caller desk (gaulatti/alcantara#301, #291 group 2), over today's guest
- * data only. A guest's connection and the last cue the console sent are real;
- * a per-guest on-air state and mic meters are not modelled yet, so
- * the desk never derives them.
+ * data only. A guest's connection and the cue the backend holds for them are
+ * real; mic meters are not modelled yet, so the desk never derives them.
  */
 export const DESK_SLOTS = 6;
 /** How long a guest strip stays armed before a second press is needed again. */
@@ -24,6 +23,26 @@ export function latestCue(commands: DeskCommand[]): Cue | null {
   return cue === "standby" || cue === "live" || cue === "wrap" ? cue : null;
 }
 
+/** What the desk can say of a guest's cue; "rejoined" is a cue that no longer holds because they came back. */
+export type CueState = Cue | "rejoined";
+
+/**
+ * The cue a guest holds, from the stored state the backend sends.
+ *
+ * Transitional: the command-history fallback is only for a backend older than `cueState` while a deploy rolls over.
+ * Remove it once no such backend can answer; the history is not a second source of truth.
+ */
+export function currentCue(guest: { cueState?: CueState | null; commands?: DeskCommand[] }): CueState | null {
+  return guest.cueState !== undefined ? guest.cueState : latestCue(guest.commands ?? []);
+}
+
+export const CUE_LINE: Record<CueState, string> = {
+  live: "Cue · live",
+  standby: "Cue · standby",
+  wrap: "Cue · wrap sent",
+  rejoined: "Off air · rejoined, cue again",
+};
+
 export type StripState = "cued-live" | "connected" | "reconnecting" | "offline";
 
 /**
@@ -33,7 +52,7 @@ export type StripState = "cued-live" | "connected" | "reconnecting" | "offline";
  */
 export function stripState(
   connectionState: "connected" | "reconnecting" | "offline",
-  cue: Cue | null,
+  cue: CueState | null,
 ): StripState {
   if (connectionState !== "connected") return connectionState;
   return cue === "live" ? "cued-live" : "connected";

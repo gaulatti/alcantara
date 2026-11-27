@@ -12,7 +12,7 @@ import { GuestStrip } from '../components/GuestStrip';
 import { WaitingGuest } from '../components/WaitingGuest';
 import { HostMicOnAir } from '../components/HostMicOnAir';
 import { callFailureReason, roomIcePath, type CallFailure, type IcePath } from '../utils/callTelemetry';
-import { deskSlots, emptySlotLabel, latestCue, stripState } from '../utils/callerDesk';
+import { currentCue, deskSlots, emptySlotLabel, stripState, type Cue, type CueState } from '../utils/callerDesk';
 import '../components/CallerDesk.css';
 
 type Command = {
@@ -49,6 +49,8 @@ type Participant = {
   sourceDelayMs: number;
   tracks: Array<{ sid: string; source: string; muted: boolean }>;
   commands: Command[];
+  // The cue that holds now; absent from an older backend.
+  cueState?: CueState | null;
   // Joined and not admitted yet; absent from a backend without screening.
   screening?: boolean;
   // Whether the call ever reported from the room; absent from an older backend.
@@ -298,6 +300,15 @@ export default function CallsRoute() {
         body: JSON.stringify(payload)
       });
       if (!response.ok) throw new Error(await readError(response));
+      // The cue line changes with the command's own answer, not on the next read of the room.
+      if (payload.type === 'cue') {
+        const sent = (await response.json().catch(() => null)) as Command | null;
+        setParticipants((current) =>
+          current.map((item) =>
+            item.identity === participant.identity ? { ...item, cueState: payload.cue as Cue, commands: sent?.payload ? [sent, ...item.commands] : item.commands } : item
+          )
+        );
+      }
       if (payload.type === 'message') setDrafts((current) => ({ ...current, [participant.identity]: '' }));
     });
 
@@ -396,7 +407,7 @@ export default function CallsRoute() {
   const slots = deskSlots(activeInvitations, participants);
   const toAdmit = slots.filter((slot) => slot.invitation && slot.participant?.screening);
   const waiting = slots.filter((slot) => slot.invitation && !slot.participant?.screening && (!slot.participant || slot.participant.connectionState === 'offline'));
-  const cuedLive = participants.filter((participant) => stripState(participant.connectionState, latestCue(participant.commands)) === 'cued-live').length;
+  const cuedLive = participants.filter((participant) => stripState(participant.connectionState, currentCue(participant)) === 'cued-live').length;
   if (livekitEnabled === false) {
     return (
       <AppPage width='wide'>

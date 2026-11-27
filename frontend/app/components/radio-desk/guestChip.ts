@@ -1,4 +1,4 @@
-import { latestCue, stripState, type DeskCommand } from "../../utils/callerDesk";
+import { currentCue, stripState, type DeskCommand } from "../../utils/callerDesk";
 import type { OnAirChip } from "./onAir";
 
 export interface DeskGuest {
@@ -17,7 +17,7 @@ export interface DeskGuest {
 export function guestChip(guests: DeskGuest[]): OnAirChip | null {
   const waiting = guests.filter((guest) => guest.screening);
   const inCall = guests.filter((guest) => !guest.screening && guest.connectionState === "connected");
-  const live = inCall.filter((guest) => stripState(guest.connectionState, latestCue(guest.commands ?? [])) === "cued-live");
+  const live = inCall.filter((guest) => stripState(guest.connectionState, currentCue(guest)) === "cued-live");
   const everyone = [...inCall, ...waiting];
   if (everyone.length === 0) return null;
   const parts = [

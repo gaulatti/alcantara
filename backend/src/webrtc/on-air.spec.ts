@@ -135,13 +135,26 @@ describe('the operator cue on a guest', () => {
 });
 
 describe('the guests on air', () => {
+  // What the query already guarantees of every row it returns.
+  const cuedLive = { cue: 'live', admittedAt: new Date() };
+
   it('lists only guests cued live in the session they are in, admitted and open', async () => {
     const { service, prisma, metrics } = setup();
     prisma.guestInvitation.findMany.mockResolvedValue([
-      { id: CY, activeSessionId: 's-cy', cueSessionId: 's-cy' },
+      { ...cuedLive, id: CY, activeSessionId: 's-cy', cueSessionId: 's-cy' },
       // Rejoined in a new session after the cue: off air until cued again.
-      { id: DEE, activeSessionId: 's-dee-2', cueSessionId: 's-dee-1' },
-      { id: ANNA, activeSessionId: 's-anna', cueSessionId: 's-anna' },
+      {
+        ...cuedLive,
+        id: DEE,
+        activeSessionId: 's-dee-2',
+        cueSessionId: 's-dee-1',
+      },
+      {
+        ...cuedLive,
+        id: ANNA,
+        activeSessionId: 's-anna',
+        cueSessionId: 's-anna',
+      },
     ]);
     await expect(
       service.onAirGuests(KEY, ' modoitaliano.fm '),
@@ -158,7 +171,13 @@ describe('the guests on air', () => {
         admittedAt: { not: null },
         activeSessionId: { not: null },
       },
-      select: { id: true, activeSessionId: true, cueSessionId: true },
+      select: {
+        id: true,
+        cue: true,
+        admittedAt: true,
+        activeSessionId: true,
+        cueSessionId: true,
+      },
     });
     expect(await metric(metrics, 'alcantara_webrtc_on_air_guests')).toMatch(
       / 2$/,

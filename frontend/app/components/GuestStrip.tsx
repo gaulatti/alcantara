@@ -14,9 +14,11 @@ import {
   ARM_TIMEOUT_MS,
   HOLD_MS,
   STRIP_LABEL,
-  latestCue,
+  CUE_LINE,
+  currentCue,
   stripState,
   type Cue,
+  type CueState,
   type DeskCommand,
 } from "../utils/callerDesk";
 import type { CallFailure, IcePath } from "../utils/callTelemetry";
@@ -41,6 +43,8 @@ export interface StripParticipant {
   sourceDelayMs: number;
   tracks: Array<{ sid: string; source: string; muted: boolean }>;
   commands: Array<DeskCommand & { status: string }>;
+  // The cue that holds now; absent from a backend that does not send it.
+  cueState?: CueState | null;
   icePath?: IcePath | null;
   joinFailure?: CallFailure | null;
   // The guest's own report of the studio's return, from its latest telemetry. Null until it reports.
@@ -103,7 +107,7 @@ export function GuestStrip({
   onRemove: () => void;
   onRevoke: () => void;
 }) {
-  const cue = latestCue(participant.commands);
+  const cue = currentCue(participant);
   const state = stripState(participant.connectionState, cue);
   const connected = participant.connectionState === "connected";
   const microphone = participant.tracks.find((track) => track.source.includes("microphone"));
@@ -201,19 +205,63 @@ export function GuestStrip({
           {neverJoined && state === "offline" ? "Invited, not joined" : STRIP_LABEL[state]}
         </span>
       </header>
+      {/* The cue row sits above everything that appears and disappears, so a button never moves under a finger
+          between the two presses of Cue live. */}
+      <div className="guest-strip-row">
+        <span className="guest-strip-cue">{cue ? CUE_LINE[cue] : "Cue · none sent"}</span>
+        <Button size="xs" variant="secondary" disabled={cueDisabled} onClick={() => sendCue("standby")}>
+          Standby
+        </Button>
+        <Button
+          size="xs"
+          variant={armed ? "destructive" : "secondary"}
+          disabled={cueDisabled}
+          aria-pressed={armed}
+          // One width for both states, so arming does not widen the button or push the next one to another line.
+          className="min-w-[13rem] whitespace-nowrap"
+          onClick={cueLive}
+        >
+          {armed ? "Press again or Space: cue live" : "Cue live"}
+        </Button>
+        <Button
+          size="xs"
+          variant="secondary"
+          disabled={cueDisabled}
+          data-holding={holding}
+          className="whitespace-nowrap"
+          onPointerDown={startHold}
+          onPointerUp={cancelHold}
+          onPointerLeave={cancelHold}
+          onKeyDown={(event) => {
+            if ((event.key === "Enter" || event.key === " ") && !event.repeat) {
+              event.preventDefault();
+              startHold();
+            }
+          }}
+          onKeyUp={(event) => {
+            if (event.key === "Enter" || event.key === " ") cancelHold();
+          }}
+          title="Hold to send the wrap cue"
+        >
+          {holding ? "Keep holding…" : "Hold · cue wrap"}
+        </Button>
+      </div>
       <CallPathLine participant={participant} />
       {/* What the producer needs to see: the guest hears the studio, or it has not reached them for 15 s. Nothing
           extra while the guest is still connecting. */}
-      {connected && participant.returnReaching === 'healthy' ? (
-        <p className="guest-strip-note text-emerald-300" data-return-reaching="healthy">
-          Hears the studio
-        </p>
-      ) : null}
-      {connected && participant.returnReaching === 'stalled' ? (
-        <p role="status" className="guest-strip-note font-semibold text-amber-300" data-return-reaching="stalled">
-          Studio sound not reaching guest
-        </p>
-      ) : null}
+      {/* Its line is kept whether or not there is anything to say, so the cards below do not jump. */}
+      <div className="guest-strip-status">
+        {connected && participant.returnReaching === 'healthy' ? (
+          <p className="guest-strip-note text-emerald-300" data-return-reaching="healthy">
+            Hears the studio
+          </p>
+        ) : null}
+        {connected && participant.returnReaching === 'stalled' ? (
+          <p role="status" className="guest-strip-note font-semibold text-amber-300" data-return-reaching="stalled">
+            Studio sound not reaching guest
+          </p>
+        ) : null}
+      </div>
       {state === "cued-live" ? (
         <p className="guest-strip-note">{cuedNote(programType)}</p>
       ) : null}
@@ -337,45 +385,6 @@ export function GuestStrip({
         >
           {camera?.muted ? <VideoOff size={13} /> : <Video size={13} />}
           {camera?.muted ? "Request camera" : "Mute camera"}
-        </Button>
-      </div>
-      <div className="guest-strip-row">
-        <span className="guest-strip-cue">Cue · {cue ?? "none sent"}</span>
-        <Button size="xs" variant="secondary" disabled={cueDisabled} onClick={() => sendCue("standby")}>
-          Standby
-        </Button>
-        <Button
-          size="xs"
-          variant={armed ? "destructive" : "secondary"}
-          disabled={cueDisabled}
-          aria-pressed={armed}
-          // One width for both states, so arming does not widen the button or push the next one to another line.
-          className="min-w-[13rem] whitespace-nowrap"
-          onClick={cueLive}
-        >
-          {armed ? "Press again or Space: cue live" : "Cue live"}
-        </Button>
-        <Button
-          size="xs"
-          variant="secondary"
-          disabled={cueDisabled}
-          data-holding={holding}
-          className="whitespace-nowrap"
-          onPointerDown={startHold}
-          onPointerUp={cancelHold}
-          onPointerLeave={cancelHold}
-          onKeyDown={(event) => {
-            if ((event.key === "Enter" || event.key === " ") && !event.repeat) {
-              event.preventDefault();
-              startHold();
-            }
-          }}
-          onKeyUp={(event) => {
-            if (event.key === "Enter" || event.key === " ") cancelHold();
-          }}
-          title="Hold to send the wrap cue"
-        >
-          {holding ? "Keep holding…" : "Hold · cue wrap"}
         </Button>
       </div>
       <div className="guest-strip-row">

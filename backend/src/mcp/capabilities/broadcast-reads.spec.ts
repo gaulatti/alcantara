@@ -332,6 +332,7 @@ describe('read capabilities return what the controller returns', () => {
           slotNumber: 2,
           connectionState: 'connected',
           returnReaching: 'stalled',
+          cueState: 'rejoined',
           screening: false,
         },
         {
@@ -346,11 +347,14 @@ describe('read capabilities return what the controller returns', () => {
         },
       ],
     });
-    const result = await same('webrtc_list_participants', { program_id: 'main' }, () =>
-      controllers.webrtc.listParticipants('main'),
+    const result = await same(
+      'webrtc_list_participants',
+      { program_id: 'main' },
+      () => controllers.webrtc.listParticipants('main'),
     );
     const text = JSON.stringify(result);
     expect(text).toContain('"returnReaching":"stalled"');
+    expect(text).toContain('"cueState":"rejoined"');
     expect(text).toContain('"screening":true');
     expect(text).toContain('"returnReaching":null');
   });

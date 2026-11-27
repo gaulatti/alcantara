@@ -90,6 +90,44 @@ function icePathFrom(value: unknown): WebrtcIcePath | null {
   return WEBRTC_ICE_PATHS.find((path) => path === value) ?? null;
 }
 
+export interface StoredCue {
+  cue: string;
+  cueSessionId: string | null;
+  admittedAt: Date | null;
+  activeSessionId: string | null;
+}
+
+/**
+ * The cue that holds for a guest's session, from the stored state. "live" only when it reaches air: cued live,
+ * admitted, and the cue was given to the session the guest is on. A stored live that does not is "standby".
+ */
+export function guestCueState(
+  invitation: StoredCue,
+  sessionId: string | null = invitation.activeSessionId,
+): 'live' | 'standby' | 'wrap' {
+  if (invitation.cue === 'wrap') return 'wrap';
+  return invitation.cue === 'live' &&
+    invitation.admittedAt !== null &&
+    sessionId !== null &&
+    invitation.activeSessionId === sessionId &&
+    invitation.cueSessionId === sessionId
+    ? 'live'
+    : 'standby';
+}
+
+/**
+ * The stored cue for a guest who comes back off air. A live cue becomes "rejoined", which tells the desk it no longer
+ * holds; nothing reads it as live. Standby and wrap are kept as given: neither reaches air.
+ */
+function offAirAgain(before: { cue?: string; cueSessionId?: string | null }) {
+  if (before.cue === 'live' || before.cue === 'rejoined')
+    return { cue: 'rejoined', cueSessionId: null };
+  return {
+    cue: before.cue === 'wrap' ? 'wrap' : 'standby',
+    cueSessionId: before.cueSessionId ?? null,
+  };
+}
+
 @Injectable()
 export class WebrtcService implements OnModuleInit, OnModuleDestroy {
   private lostCallSweep: ReturnType<typeof setInterval> | null = null;
@@ -507,7 +545,7 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
                 gte: new Date(now.getTime() - REJOIN_WINDOW_MS),
               },
             },
-            data: { ...lease, cue: 'standby', cueSessionId: null },
+            data: { ...lease, ...offAirAgain(invitation) },
           });
     const sameSession = reconnected.count === 1 || returned?.count === 1;
     const newSession = sameSession
@@ -523,8 +561,7 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
           data: {
             ...lease,
             admittedAt: null,
-            cue: 'standby',
-            cueSessionId: null,
+            ...offAirAgain(invitation),
           },
         });
     if (!sameSession && newSession?.count !== 1) {
@@ -761,6 +798,9 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
               mimeType: track.mimeType,
             })) ?? [],
           commands: invitation.commands,
+          // The cue that holds now, from the same stored state the on-air list reads. The command history above can
+          // still end in "live" for a guest who rejoined and is off air.
+          cueState: this.deskCueState(invitation),
           // Joined and not yet admitted: waiting in their screening room.
           screening: Boolean(
             !invitation.admittedAt &&
@@ -1027,10 +1067,17 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
         admittedAt: { not: null },
         activeSessionId: { not: null },
       },
-      select: { id: true, activeSessionId: true, cueSessionId: true },
+      select: {
+        id: true,
+        cue: true,
+        admittedAt: true,
+        activeSessionId: true,
+        cueSessionId: true,
+      },
     });
+    // The query only narrows; guestCueState alone says who is live, for this list and everything that reports it.
     const guests = rows
-      .filter((row) => row.cueSessionId === row.activeSessionId)
+      .filter((row) => guestCueState(row) === 'live')
       .map((row) => this.guestIdentity(row.id))
       .sort();
     this.metrics.setOnAirGuests(guests.length);
@@ -1105,11 +1152,7 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
         sourceGain: invitation.sourceGain,
         sourceMuted: invitation.sourceMuted,
         sourceDelayMs: invitation.sourceDelayMs,
-        onAir:
-          invitation.cue === 'live' &&
-          invitation.admittedAt !== null &&
-          invitation.activeSessionId !== null &&
-          invitation.cueSessionId === invitation.activeSessionId,
+        onAir: guestCueState(invitation) === 'live',
       })),
     };
   }
@@ -1607,6 +1650,20 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       )
         throw this.livekitUnavailable(error);
     }
+  }
+
+  /**
+   * The desk's cue line. null: none holds and none was lost. "rejoined": cued live before, then came back off air, so
+   * a new cue is needed.
+   */
+  private deskCueState(
+    invitation: StoredCue,
+  ): 'standby' | 'live' | 'wrap' | 'rejoined' | null {
+    if (invitation.cue === 'rejoined') return 'rejoined';
+    // "standby" is also the column's default: with no session on it, none was ever sent.
+    if (invitation.cue === 'standby' && invitation.cueSessionId === null)
+      return null;
+    return guestCueState(invitation);
   }
 
   /** Stores the operator's cue for the guest's current session; live reaches air for that session only. */

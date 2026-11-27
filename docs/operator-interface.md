@@ -176,15 +176,22 @@ and the slots in use. A waiting list shows invited guests who have not joined,
 and each of the six slots is a strip with the guest's connection, audio and
 video state, return video and bus, level, delay, mute, camera, cue, private
 message, replace, remove and revoke. The strip reads **Live** when connected,
-**Live · cued** only for the last cue the console sent, **Connecting** while it
+**Live · cued** only while a live cue holds, **Connecting** while it
 reconnects, **Dropped** for a guest who was live and lost the connection, and
 **Invited, not joined** for a link no one has used. A
 guest reaches the output only through a scene that carries them, and the strip
 says so. Talk is hold-to-talk (press and hold, or hold T while the strip has
 focus), and only the guest it is for can receive it. Releasing always closes the microphone, even before the connection is
-up. Talking to a guest who was cued live needs "Allow talk while cued live" to
-be ticked first. The live cue is armed by one press and sent by a second press,
+up. Talking to a guest who was cued live needs "Allow private talk while live (never
+on air)" to be ticked first. The live cue is armed by one press and sent by a second press,
 or by Space within 5 s. The wrap cue needs a 0.8 s hold.
+The cue line reads the stored cue, the one the contribution worker uses: **live**,
+**standby**, **wrap sent** or **none sent**, and **Off air · rejoined, cue
+again** for a guest who had been cued live and came back off air (the guest is stored
+as `rejoined`, which nothing reads as live); a guest on standby or wrapped keeps
+that line after coming back. It changes as soon as the command is answered. The
+cue buttons sit directly under the guest's name, above every line that appears or
+disappears, so none moves between the two presses.
 Cue live a beat before the guest speaks; air follows about 6 s later (on a radio show, the station's live input takes
 that long to come up after the cue).
 **Mic on air** in the status strip puts the operator's own microphone on the radio's air (red **ON AIR** while it is on;
@@ -194,8 +201,8 @@ A waiting guest can be admitted to their strip (**Admit**), spoken to without
 going on air (**Talk privately**, which ends with **End private talk**), or turned
 away (**Decline**). Screening applies to each new session: the guest's own
 session reconnecting keeps its admission, and any other session waits to be
-admitted again. A per-guest on-air state and mic meters are not built yet,
-and the desk says so. Mute and remove ask first, in plain words; a request to
+admitted again. Mic meters are not built yet, and
+the desk says so. Mute and remove ask first, in plain words; a request to
 turn a device back on does not. **Remove session** drops the guest, who can
 rejoin with the same link until it expires. Without LiveKit (alcantara#51) the page names that dependency, and a control
 plane that can't be reached is named instead of showing a raw fetch error.
