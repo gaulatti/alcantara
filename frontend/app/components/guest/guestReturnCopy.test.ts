@@ -19,6 +19,15 @@ describe("guestReturnState", () => {
     expect(GUEST_RETURN_COPY.dropped).toBe("The studio sound dropped. It will come back by itself.");
   });
 
+  it("says the sound is not reaching the guest once the stall time has passed, until it arrives", () => {
+    expect(guestReturnState({ returnFeed: false, everPlayed: false, stalled: true })).toBe("stalled");
+    expect(guestReturnState({ returnFeed: false, everPlayed: true, stalled: true })).toBe("stalled");
+    expect(guestReturnState({ returnFeed: true, everPlayed: true, stalled: true })).toBe("playing");
+    expect(GUEST_RETURN_COPY.stalled).toBe(
+      "The studio sound isn't reaching you yet. The producer can see this; you can keep talking.",
+    );
+  });
+
   it("never names the internal feed or bus wording a guest should not see", () => {
     for (const copy of Object.values(GUEST_RETURN_COPY)) {
       expect(copy).not.toMatch(/feed|bus|N-1|mix-minus|mixminus/i);

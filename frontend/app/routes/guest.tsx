@@ -8,7 +8,7 @@ import { isDrop, reportJoinFailure, roomIcePath } from '../utils/callTelemetry';
 import { isProgramFeed, preferredProgramFeed } from '../utils/programFeed';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { mediaErrorHelp, type MediaHelp } from '../utils/guestMediaHelp';
-import { GUEST_RETURN_COPY, guestReturnState } from '../components/guest/guestReturnCopy';
+import { GUEST_RETURN_COPY, RETURN_STALL_MS, guestReturnState } from '../components/guest/guestReturnCopy';
 import { GuestReturnLevel } from '../components/guest/GuestReturnLevel';
 import type { Route } from './+types/guest';
 
@@ -88,6 +88,8 @@ export default function GuestRoute() {
   const [returnFeed, setReturnFeed] = useState(false);
   // Whether the guest has heard the studio's return on this call: it tells "connecting" from "dropped".
   const [returnEverPlayed, setReturnEverPlayed] = useState(false);
+  // True once the return has been missing for RETURN_STALL_MS on air: the guest is then told it is not reaching them.
+  const [returnStalled, setReturnStalled] = useState(false);
   // The return participant whose audio is playing, read for the level meter.
   const returnLevelSource = useRef<RemoteParticipant | null>(null);
   const [displayName, setDisplayName] = useState('Guest');
@@ -588,6 +590,16 @@ export default function GuestRoute() {
     if (returnFeed) setReturnEverPlayed(true);
   }, [returnFeed]);
 
+  // Starts when the guest is on air (admission) and again on every drop; cleared the moment the return is back.
+  useEffect(() => {
+    if ((status !== 'live' && status !== 'reconnecting') || returnFeed) {
+      setReturnStalled(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setReturnStalled(true), RETURN_STALL_MS);
+    return () => window.clearTimeout(timer);
+  }, [status, returnFeed]);
+
   // The join needs the speaker test and the headphones confirmation. The page says which one is still missing.
   const readyToJoin = status === 'ready' && speakerChecked && headphonesConfirmed;
   const joinBlockedBy = !speakerChecked ? 'Play the test tone first.' : !headphonesConfirmed ? 'Confirm you are wearing headphones.' : '';
@@ -626,7 +638,7 @@ export default function GuestRoute() {
               <div>
                 <Radio className='mx-auto animate-pulse text-sky-300' />
                 <p role='status' className='mt-3 max-w-sm font-semibold'>
-                  {GUEST_RETURN_COPY[guestReturnState({ returnFeed, everPlayed: returnEverPlayed })]}
+                  {GUEST_RETURN_COPY[guestReturnState({ returnFeed, everPlayed: returnEverPlayed, stalled: returnStalled })]}
                 </p>
               </div>
             </div>

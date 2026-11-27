@@ -688,6 +688,74 @@ it("says the studio sound is playing, with a level meter, once the return is hea
   expect(screen.queryByText("Connecting you to the studio sound…")).not.toBeInTheDocument();
 });
 
+// Fifteen seconds on air without the return says so, in plain words; the timer is captured rather than waited for.
+const STALL = "The studio sound isn't reaching you yet. The producer can see this; you can keep talking.";
+function captureStallTimers() {
+  const timers: Array<{ fn: () => void; delay: number }> = [];
+  const original = window.setTimeout.bind(window);
+  const spy = vi.spyOn(window, "setTimeout").mockImplementation(((fn: () => void, delay?: number, ...rest: unknown[]) => {
+    timers.push({ fn, delay: Number(delay) });
+    return original(fn, delay, ...rest);
+  }) as typeof window.setTimeout);
+  const latest = () => [...timers].reverse().find((timer) => timer.delay === 15_000);
+  return { spy, latest };
+}
+
+it("says the sound is not reaching the guest after 15 s on air with no return, and clears it when the return arrives", async () => {
+  const { spy, latest } = captureStallTimers();
+  try {
+    await joined();
+    expect(screen.getByText("Connecting you to the studio sound…")).toBeVisible();
+    const stall = latest();
+    expect(stall).toBeDefined();
+    expect(stall!.delay).toBe(15_000);
+    act(() => stall!.fn());
+    expect(screen.getByText(STALL)).toBeVisible();
+
+    const attached: string[] = [];
+    const mix = {
+      kind: "audio",
+      attach: () => attached.push("audio"),
+      detach: () => attached.push("detached-audio"),
+    };
+    const publication = { kind: "audio", trackName: "mixminus:guest-ada:aux-2", setSubscribed: async () => {} };
+    emit("trackSubscribed", mix, publication, { identity: "return-router-main", audioLevel: 0.2 });
+    expect(screen.getByText("You're hearing the studio")).toBeVisible();
+    expect(screen.queryByText(STALL)).not.toBeInTheDocument();
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+it("says the sound is not reaching the guest when a drop lasts 15 s, and clears it when the return is back", async () => {
+  const { spy, latest } = captureStallTimers();
+  try {
+    await joined();
+    const attached: string[] = [];
+    const mix = {
+      kind: "audio",
+      attach: () => attached.push("audio"),
+      detach: () => attached.push("detached-audio"),
+    };
+    const publication = { kind: "audio", trackName: "mixminus:guest-ada:aux-2", setSubscribed: async () => {} };
+    const router = { identity: "return-router-main", audioLevel: 0.2 };
+    emit("trackSubscribed", mix, publication, router);
+    expect(screen.getByText("You're hearing the studio")).toBeVisible();
+
+    emit("trackUnsubscribed", mix, publication, router);
+    expect(screen.getByText("The studio sound dropped. It will come back by itself.")).toBeVisible();
+    const stall = latest();
+    expect(stall).toBeDefined();
+    act(() => stall!.fn());
+    expect(screen.getByText(STALL)).toBeVisible();
+
+    emit("trackSubscribed", mix, publication, router);
+    expect(screen.getByText("You're hearing the studio")).toBeVisible();
+  } finally {
+    spy.mockRestore();
+  }
+});
+
 it("takes no return video when the guest's return is set to none", async () => {
   joinAnswer = () =>
     Response.json({
