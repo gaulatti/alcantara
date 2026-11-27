@@ -133,6 +133,19 @@ The preview preserves content cue IDs and fixed starts, replaces only previously
 
 Standalone audio clips require an accurate declared duration; scheduled execution takes music off air at clip start and waits that duration before following events. A fixed start still takes precedence. Clips use the existing shared instant-audio channel and are not forcibly stopped individually; the declared duration must cover the actual clip. Explicit Stop content leaves intentional silence rather than filling it. The preview does not add an end boundary. Add a fixed final Stop yourself when the block must finish at a precise time. Saved fillers carry `isFiller:true` through validation, storage, reload, and rendering; tags are not read during playout. Filler previews record bounded `filled` and `fill-failed` results in the existing private radio log transition metric. No database migration is required.
 
+## What a backend deploy does to air
+
+A backend deploy replaces the backend container. Palazzo, which puts the audio out, is not restarted.
+
+- **Songs play through.** The song on air keeps playing. A successor Palazzo already accepted, with its jingle in a bumper slot, starts at the cue-out even while the backend is down.
+- **The next song is re-armed.** The new backend adopts the song Palazzo is playing and announces what follows it ([Gapless handoff](#gapless-handoff-announcing-the-next-song)). If Palazzo is idle instead, an Autoplay or Shuffle rotation resumes without repeating a song that already started.
+- **The jingle cadence survives.** The count of songs and the next spot are stored as songs end. A song that ends while the backend is down is not counted, so a jingle can still come one song late then.
+- **The desk and its tools drop for a moment.** Commands fail until the new backend answers; reload nothing, repeat the command.
+- **A running timed block does not resume.** It is marked interrupted and is not replayed; the continuous rotation carries on.
+- **The deploy checks the radio.** It fails if no song starts after the restart while a program is in automation (a live show passes).
+
+Measured on 2026-11-27 between 00:00Z and 01:53Z, across ten backend deploys: 36 plays with no repeat, no missing start or end and no song cut short; every gap over 5 s was a station jingle. Before the count was stored, three of those restarts delayed a jingle by one song.
+
 ## Continuous rotation and block migration
 
 No database migration or automatic rewriting of saved data is needed. Existing rotations remain in `ProgramState.songSequence`; scheduled song cues no longer replace them with a one-song manual sequence. Existing hourly blocks, including explicit +3600 Stop boundaries, continue to work as authored. New filler previews add songs only before an existing fixed boundary; they never invent an hourly end or append material after the last content event. Library tags remain preview selection inputs; tag edits do not silently alter persisted playout. The 120-event limit applies to an individual timed block, not to the continuous rotation or broadcast day. Fixed cue timers recheck distant boundaries in bounded timer chunks rather than overflowing the runtime timer limit.
