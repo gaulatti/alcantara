@@ -60,9 +60,16 @@ describeWithDatabase('the local seed and team-scoped reads (PostgreSQL e2e)', ()
   it('seeds a scheduled radio timed block with song events, and program branding on the radio show', async () => {
     const radio = await prisma.programState.findUniqueOrThrow({ where: { programId: 'radio-demo' }, select: { id: true } });
     const block = await prisma.flightSequence.findUniqueOrThrow({
-      where: { programStateId_name: { programStateId: radio.id, name: 'Local radio timed block' } },
+      where: { programStateId_scheduledAt: { programStateId: radio.id, scheduledAt: new Date('2030-01-01T12:00:00.000Z') } },
     });
     expect(block.scheduledAt?.toISOString()).toBe('2030-01-01T12:00:00.000Z');
+    // A renamed block is still the same block: reseeding does not add a second one at the same time.
+    await prisma.flightSequence.update({ where: { id: block.id }, data: { name: 'Renamed by an operator' } });
+    const uploadsBefore = uploads.length;
+    await seedLocalDatabase(prisma, environment, fakeStore);
+    uploads.length = uploadsBefore;
+    expect(await prisma.flightSequence.count({ where: { programStateId: radio.id, scheduledAt: block.scheduledAt } })).toBe(1);
+    expect((await prisma.flightSequence.findUniqueOrThrow({ where: { id: block.id } })).name).toBe('Renamed by an operator');
     const items = block.items as Array<{ kind: string }>;
     expect(items.filter((item) => item.kind === 'playSong')).toHaveLength(3);
     expect(items.some((item) => item.kind === 'waitForSongEnd')).toBe(true);

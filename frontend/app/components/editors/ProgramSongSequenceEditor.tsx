@@ -6,7 +6,7 @@ import { Check, ChevronDown, ChevronUp, Clock, GripVertical, Headphones, ListPlu
 /** How long Undo offers to put back a song that was removed from a rotation. */
 const UNDO_MS = 8_000;
 
-type PendingUndo = { item: ProgramSongSequenceLeafItem; index: number; expiresAt: number };
+type PendingUndo = { item: ProgramSongSequenceLeafItem; index: number; expiresAt: number; wasPlayNext?: boolean };
 
 // The pending undo lives in sessionStorage, so a reload inside the window still offers it. Storage that cannot be
 // read or written leaves the undo offer off; the removal itself is saved either way.
@@ -82,6 +82,7 @@ export function ProgramSongSequenceEditor({
   onChange,
   onTakeSelection,
   onQueueItem,
+  playNextIds,
   depth = 0,
   view = 'full',
   rotationLabel = 'Playlist',
@@ -95,6 +96,8 @@ export function ProgramSongSequenceEditor({
   onChange: (nextSequence: ProgramSongSequence) => void;
   onTakeSelection?: (nextSequence: ProgramSongSequence) => Promise<void> | void;
   onQueueItem?: (itemId: string) => Promise<void> | void;
+  /** The rotation items that are queued as Play Next. Removing one takes its entry with it, so Undo queues it again. */
+  playNextIds?: string[];
   depth?: number;
   view?: 'full' | 'catalog' | 'queue';
   rotationLabel?: string;
@@ -302,11 +305,11 @@ export function ProgramSongSequenceEditor({
         startedAt: isAutomatic && !removedCurrent ? resolveAutoplayStartedAt() : Date.now()
       });
       // The removal is saved at once. Undo puts the song back at its place for UNDO_MS, and survives a reload in that window.
-      const undo = { item: removed, index, expiresAt: Date.now() + UNDO_MS };
+      const undo = { item: removed, index, expiresAt: Date.now() + UNDO_MS, wasPlayNext: !!playNextIds?.includes(removed.id) };
       setPendingUndo(undo);
       writePendingUndo(undoKey, undo);
     },
-    [applySequence, editorActiveItemId, isAutomatic, programSongPlayback?.isPlaying, programSongPlayback?.queueEntryId, resolveAutoplayStartedAt, sequence, undoKey]
+    [applySequence, editorActiveItemId, isAutomatic, playNextIds, programSongPlayback?.isPlaying, programSongPlayback?.queueEntryId, resolveAutoplayStartedAt, sequence, undoKey]
   );
 
   const undoRemove = useCallback(() => {
@@ -318,7 +321,8 @@ export function ProgramSongSequenceEditor({
     const nextItems = [...sequence.items];
     nextItems.splice(Math.min(index, nextItems.length), 0, item);
     applySequence({ ...sequence, items: nextItems });
-  }, [applySequence, pendingUndo, sequence, undoKey]);
+    if (pendingUndo.wasPlayNext && onQueueItem) void onQueueItem(item.id);
+  }, [applySequence, onQueueItem, pendingUndo, sequence, undoKey]);
 
   const updateItem = useCallback(
     (index: number, updatedItem: ProgramSongSequenceLeafItem) => {
@@ -403,7 +407,7 @@ export function ProgramSongSequenceEditor({
             ) : (
               <div className='min-h-0 flex-1 overflow-auto'>
                 <div className='playlist-table min-w-100'>
-                  <div className='playlist-column-heading grid grid-cols-[28px_28px_28px_28px_1fr_52px_84px] items-center border-b border-sand/30 px-3 py-1.5 text-[10px] font-medium uppercase tracking-widest text-text-secondary'>
+                  <div className='playlist-column-heading grid grid-cols-[28px_28px_28px_28px_minmax(0,1fr)_52px_auto] items-center border-b border-sand/30 px-3 py-1.5 text-[10px] font-medium uppercase tracking-widest text-text-secondary'>
                     <span />
                     <span className='text-center'>#</span>
                     <span />
@@ -456,7 +460,7 @@ export function ProgramSongSequenceEditor({
                         >
                           <div
                             data-active={isActive}
-                            className={`playlist-row group grid grid-cols-[28px_28px_28px_28px_1fr_52px_84px] items-center px-3 py-1.5 transition-colors ${isActive ? 'bg-sea/15' : 'hover:bg-dark-sand/70'}`}
+                            className={`playlist-row group grid grid-cols-[28px_28px_28px_28px_minmax(0,1fr)_52px_auto] items-center px-3 py-1.5 transition-colors ${isActive ? 'bg-sea/15' : 'hover:bg-dark-sand/70'}`}
                           >
                             <span
                               draggable
@@ -554,7 +558,7 @@ export function ProgramSongSequenceEditor({
                               </div>
                             </div>
                             <span className={`text-right pr-3 text-xs tabular-nums ${isActive ? 'text-sea' : 'text-text-secondary'}`}>{rowDuration}</span>
-                            <div className='playlist-row-actions flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100'>
+                            <div className='playlist-row-actions flex shrink-0 flex-nowrap items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100'>
                               {/* Move up and down are the keyboard and touch way to reorder; they use the same
                                   reorderItems as drag, so the new order persists the same way. */}
                               <Button

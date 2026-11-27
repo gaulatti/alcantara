@@ -198,6 +198,8 @@ export default function MediaRoute() {
 
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [labels, setLabels] = useState<MediaLabel[]>([]);
+  // Until the library's labels have loaded, a label on an item cannot be judged unknown: the list is still empty.
+  const [labelsLoaded, setLabelsLoaded] = useState(false);
   const labelsRequestVersion = useRef(0);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -259,7 +261,10 @@ export default function MediaRoute() {
   const fetchLabels = useCallback(async () => {
     const version = ++labelsRequestVersion.current;
     const loaded = await fetchAllMediaLabels<MediaLabel>();
-    if (version === labelsRequestVersion.current) setLabels(loaded);
+    if (version === labelsRequestVersion.current) {
+      setLabels(loaded);
+      setLabelsLoaded(true);
+    }
   }, []);
 
   const fetchAssets = useCallback(async () => {
@@ -1060,7 +1065,7 @@ export default function MediaRoute() {
             />
             <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
             {[...imageLabelIds]
-              .filter((id) => !labels.some((known) => known.id === id))
+              .filter((id) => labelsLoaded && !labels.some((known) => known.id === id))
               .map((id) => (
                 <div
                   key={id}
@@ -1235,7 +1240,7 @@ export default function MediaRoute() {
             />
             <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
             {[...backgroundLabelIds]
-              .filter((id) => !labels.some((known) => known.id === id))
+              .filter((id) => labelsLoaded && !labels.some((known) => known.id === id))
               .map((id) => (
                 <div
                   key={id}
