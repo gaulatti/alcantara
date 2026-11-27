@@ -1333,6 +1333,12 @@
   },
   {
     "method": "GET",
+    "path": "/webrtc/health",
+    "public": false,
+    "permission": "alcantara:webrtc:read"
+  },
+  {
+    "method": "GET",
     "path": "/webrtc/invitations",
     "public": false,
     "permission": "alcantara:webrtc:read"

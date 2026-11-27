@@ -55,6 +55,13 @@ export class ReturnRouterController {
     return this.webrtc.onAirGuests(rendererKey, programId);
   }
 
+  /** The call chain's health for the desk (alcantara#877): operator auth, not the renderer key. */
+  @Get('health')
+  @Header('Cache-Control', 'no-store')
+  health(@Query('programId') programId: unknown) {
+    return this.returns.health(programId);
+  }
+
   /** The same list pushed as it changes, so the worker puts a cue on air without waiting for its next poll. */
   @Sse('on-air/stream')
   @Public()

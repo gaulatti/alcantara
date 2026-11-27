@@ -230,6 +230,16 @@ the stream is live), `alcantara_contribution_stream_total{result}` (`connected`,
 `alcantara_contribution_room_connections_total{result}`, `alcantara_contribution_on_air_sources`,
 `alcantara_contribution_pushing` and `alcantara_contribution_room_connected`. None carries a program or guest label.
 
+The desk can see when the call chain is broken before a guest notices: `GET /webrtc/health?programId=…` (operator
+auth, `alcantara:webrtc:read`) answers `{programId, returnRunner, contribution, livekit, checkedAt}` (gaulatti/alcantara#877).
+`returnRunner` is `ok` while the return runner's work-list polls reach this backend (the last within 15 s), `down` once
+they stop, and `unknown` until the first one after this backend started. `contribution` is `ok` while the program's
+contribution worker holds its on-air stream here, `down` once it had one and holds none, and `unknown` when none was
+ever opened here. Both read `unknown` for a few seconds after a backend handover. `livekit` is `ok` when the room
+service answers within 2 s, else `down`; one check serves every caller for 5 s. Without LiveKit configured it answers
+503, as the other call endpoints do. Metric: `alcantara_webrtc_chain_ok{component="return_runner"|"livekit"}` (1 or
+0, at the last check).
+
 Metrics: `alcantara_webrtc_return_router_polls_total{result}` (`ok`, `rejected`,
 `failure`), `alcantara_webrtc_return_routers_wanted`,
 `alcantara_webrtc_return_routers_running` (as the runner reports it, capped at 64),

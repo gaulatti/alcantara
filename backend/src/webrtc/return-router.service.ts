@@ -8,6 +8,10 @@ export const RETURN_ROUTER_LINGER_MS = 60_000;
 /** The runner polls every few seconds; one LiveKit pass serves every poll inside this window. */
 const WANTED_CACHE_MS = 2_000;
 const MAX_RUNNING_REPORTED = 64;
+/** The return runner counts as polling while its last poll here is this recent (alcantara#877). */
+export const RETURN_RUNNER_FRESH_MS = 15_000;
+
+export type ChainState = 'ok' | 'down' | 'unknown';
 
 /**
  * Decides which programs need a server-run return router (the runner on Helix pulls this list and opens one
@@ -20,6 +24,8 @@ export class ReturnRouterService {
   private readonly lastGuestSeen = new Map<string, number>();
   private cached: { at: number; programs: string[] } | null = null;
   private pending: Promise<string[]> | null = null;
+  /** The last authorised poll from the return runner on this instance; null until the first. */
+  private lastRunnerPollAt: number | null = null;
 
   constructor(
     private readonly webrtc: WebrtcService,
@@ -42,6 +48,8 @@ export class ReturnRouterService {
       );
       throw error;
     }
+    // The runner is polling, whatever this answer turns out to be.
+    this.lastRunnerPollAt = this.now();
     try {
       const programs = await this.currentPrograms();
       this.metrics.recordReturnRouterPoll('ok');
@@ -54,6 +62,37 @@ export class ReturnRouterService {
       this.metrics.recordReturnRouterPoll('failure');
       throw error;
     }
+  }
+
+  /**
+   * The call chain's health for a program's desk (alcantara#877): the return runner polling its work list, the
+   * program's contribution worker holding its on-air stream, and LiveKit answering.
+   */
+  async health(programIdValue: unknown): Promise<{
+    programId: string;
+    returnRunner: ChainState;
+    contribution: ChainState;
+    livekit: 'ok' | 'down';
+    checkedAt: string;
+  }> {
+    const programId = this.webrtc.normalizeRendererProgramId(programIdValue);
+    const now = this.now();
+    const livekit = await this.webrtc.livekitHealth(now);
+    const returnRunner: ChainState =
+      this.lastRunnerPollAt === null
+        ? 'unknown'
+        : now - this.lastRunnerPollAt <= RETURN_RUNNER_FRESH_MS
+          ? 'ok'
+          : 'down';
+    this.metrics.setChainOk('return_runner', returnRunner === 'ok');
+    this.metrics.setChainOk('livekit', livekit === 'ok');
+    return {
+      programId,
+      returnRunner,
+      contribution: this.webrtc.contributionHealth(programId),
+      livekit,
+      checkedAt: new Date(now).toISOString(),
+    };
   }
 
   async audioTicket(rendererKey: string | undefined, programIdValue: unknown) {

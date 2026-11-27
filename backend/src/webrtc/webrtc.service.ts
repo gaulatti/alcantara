@@ -60,6 +60,9 @@ const SESSION_LEASE_MS = 60_000;
  */
 export const REJOIN_WINDOW_MS = 5 * 60_000;
 const LOST_CALL_SWEEP_MS = 30_000;
+/** The call-chain health's LiveKit check (alcantara#877): its bound, and how long one result is reused. */
+export const LIVEKIT_HEALTH_TIMEOUT_MS = 2_000;
+export const LIVEKIT_HEALTH_CACHE_MS = 5_000;
 /** The on-air stream sends the current list at least this often, so its reader can tell a live stream from a stuck one. */
 export const ON_AIR_REFRESH_MS = 5_000;
 // Only long enough to connect: the guest page asks /webrtc/join again for every join, and once connected LiveKit
@@ -134,6 +137,11 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
   /** A program whose on-air list may have changed: a cue, an admission, a new session, a removal or a revoke. */
   private readonly onAirChanges = new Subject<string>();
   private readonly onAirClosing = new Subject<void>();
+  /** Open on-air streams per program, and the programs that have had one on this instance (alcantara#877). */
+  private readonly onAirStreamsOpen = new Map<string, number>();
+  private readonly onAirStreamsSeen = new Set<string>();
+  private livekitCheck: { at: number; state: Promise<'ok' | 'down'> } | null =
+    null;
 
   constructor(
     private readonly config: ConfigService,
@@ -627,7 +635,10 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       // is standby; only a reconnect keeps its cue, judged against this session.
       cue:
         sameSession && reconnected.count === 1
-          ? guestCueState({ ...invitation, activeSessionId: sessionId }, sessionId)
+          ? guestCueState(
+              { ...invitation, activeSessionId: sessionId },
+              sessionId,
+            )
           : 'standby',
     };
   }
@@ -1054,6 +1065,11 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
         complete: () => subscriber.complete(),
       });
       this.metrics.recordOnAirStream(1);
+      this.onAirStreamsSeen.add(programId);
+      this.onAirStreamsOpen.set(
+        programId,
+        (this.onAirStreamsOpen.get(programId) ?? 0) + 1,
+      );
       void send(true);
       return () => {
         closed = true;
@@ -1061,6 +1077,10 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
         clearInterval(refresh);
         closing.unsubscribe();
         this.metrics.recordOnAirStream(-1);
+        // Set when this stream opened, so always present here.
+        const open = (this.onAirStreamsOpen.get(programId) as number) - 1;
+        if (open > 0) this.onAirStreamsOpen.set(programId, open);
+        else this.onAirStreamsOpen.delete(programId);
       };
     });
   }
@@ -1090,6 +1110,40 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       .sort();
     this.metrics.setOnAirGuests(guests.length);
     return { programId, guests };
+  }
+
+  /**
+   * The contribution worker's link for a program (alcantara#877): ok while it holds an on-air stream here, down once
+   * it had one on this instance and holds none, unknown when none was ever opened here.
+   */
+  contributionHealth(programId: string): 'ok' | 'down' | 'unknown' {
+    if (this.onAirStreamsOpen.has(programId)) return 'ok';
+    return this.onAirStreamsSeen.has(programId) ? 'down' : 'unknown';
+  }
+
+  /**
+   * Whether the LiveKit room service answers, within LIVEKIT_HEALTH_TIMEOUT_MS. One check serves every caller for
+   * LIVEKIT_HEALTH_CACHE_MS, so a desk that polls never loads LiveKit.
+   */
+  livekitHealth(now = Date.now()): Promise<'ok' | 'down'> {
+    this.requireConfiguration();
+    if (
+      this.livekitCheck &&
+      now - this.livekitCheck.at < LIVEKIT_HEALTH_CACHE_MS
+    )
+      return this.livekitCheck.state;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const state = Promise.race([
+      this.roomService.listRooms().then(() => 'ok' as const),
+      new Promise<'down'>((resolve) => {
+        timer = setTimeout(() => resolve('down'), LIVEKIT_HEALTH_TIMEOUT_MS);
+        timer.unref?.();
+      }),
+    ])
+      .catch(() => 'down' as const)
+      .finally(() => clearTimeout(timer));
+    this.livekitCheck = { at: now, state };
+    return state;
   }
 
   /** The program id rule every call endpoint applies, for the return router's endpoints. */

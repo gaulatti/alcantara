@@ -436,6 +436,7 @@ export class ManagedMetricsService {
   private readonly guestCues: Counter;
   private readonly onAirGuests: Gauge;
   private readonly onAirStreams: Gauge;
+  private readonly chainOk: Gauge<string>;
   private readonly onAirStreamChanges: Counter;
   private readonly mcpAuth: Counter<string>;
   private readonly mcpOAuth: Counter<string>;
@@ -712,6 +713,12 @@ export class ManagedMetricsService {
     this.onAirStreams = new Gauge({
       name: 'alcantara_webrtc_on_air_streams',
       help: 'Open on-air list streams (one per connected contribution worker).',
+      registers: [this.registry],
+    });
+    this.chainOk = new Gauge({
+      name: 'alcantara_webrtc_chain_ok',
+      help: 'Whether the last call-chain health check found the component ok (1) or not (0).',
+      labelNames: ['component'],
       registers: [this.registry],
     });
     this.onAirStreamChanges = new Counter({
@@ -1194,6 +1201,10 @@ export class ManagedMetricsService {
 
   recordOnAirStream(delta: 1 | -1): void {
     this.onAirStreams.inc(delta);
+  }
+
+  setChainOk(component: 'return_runner' | 'livekit', ok: boolean): void {
+    this.chainOk.labels(component).set(ok ? 1 : 0);
   }
 
   recordOnAirStreamChange(): void {
