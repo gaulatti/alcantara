@@ -133,7 +133,7 @@ describe("GuestStrip", () => {
   it("shows what is not measured yet, and a connected guest's controls", () => {
     const { card } = strip();
     expect(card).toHaveAttribute("data-state", "connected");
-    expect(within(card).getByText("Live")).toBeVisible();
+    expect(within(card).getByText("Connected")).toBeVisible();
     expect(within(card).getByText("Meter not measured yet")).toBeVisible();
     expect(within(card).getByText("Cue · none sent")).toBeVisible();
     expect(within(card).queryByRole("checkbox")).toBeNull();

@@ -295,7 +295,7 @@ it("shows this program's slots and each guest's state", async () => {
   expect(screen.getByText("1 of 6 slots")).toBeVisible();
   // A participant without an invitation of this program is not shown.
   expect(screen.queryByText("Ghost")).not.toBeInTheDocument();
-  expect(within(card()).getByText("Live")).toBeVisible();
+  expect(within(card()).getByText("Connected")).toBeVisible();
   expect(within(card()).getByText("Latest cue:")).toBeVisible();
   expect(button(/Request camera/)).toBeEnabled();
   expect(button(/Mute mic/)).toBeEnabled();
