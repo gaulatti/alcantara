@@ -423,14 +423,30 @@ it("reloads the program from the header and reports a refused reload in the cons
     new Promise((resolve) => (reload = resolve));
   open();
   await waitFor(() => expect(programSelects()[0]).toHaveValue("news"));
-  const refresh = screen.getByRole("button", { name: "Refresh Program" });
-  fireEvent.click(refresh);
+  const refreshButton = () =>
+    screen.getByRole("button", { name: "Refresh Program" });
+  // One press only asks: the output is not reloaded until the second.
+  const reloadTwice = () => {
+    fireEvent.click(refreshButton());
+    fireEvent.click(screen.getByRole("button", { name: "Reload output?" }));
+  };
+  const asked: string[] = [];
+  const answer = routes["POST /program/news/reload"];
+  routes["POST /program/news/reload"] = (...args) => {
+    asked.push("reload");
+    return answer(...args);
+  };
+  fireEvent.click(refreshButton());
+  expect(screen.getByRole("button", { name: "Reload output?" })).toBeVisible();
+  expect(asked).toEqual([]);
+  fireEvent.click(screen.getByRole("button", { name: "Reload output?" }));
+  const refresh = refreshButton();
   await waitFor(() => expect(refresh).toBeDisabled());
   expect(refresh.querySelector("svg")).toHaveClass("animate-spin");
   await act(async () => reload(json({})));
   await waitFor(() => expect(refresh).toBeEnabled());
   routes["POST /program/news/reload"] = () => json({}, 503);
-  fireEvent.click(refresh);
+  reloadTwice();
   await waitFor(() =>
     expect(errors).toHaveBeenCalledWith(
       "Failed to request program reload from header:",
@@ -1066,6 +1082,14 @@ it("opens and closes the phone navigation, which closes on navigation", async ()
   fireEvent.click(
     screen.getAllByRole("button", { name: "Close navigation" }).at(-1)!,
   );
+  expect(
+    screen.queryByRole("dialog", { name: "Application navigation" }),
+  ).toBeNull();
+  // Escape closes it; another key does not.
+  fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+  fireEvent.keyDown(window, { key: "a" });
+  expect(screen.getByRole("dialog", { name: "Application navigation" })).toBeInTheDocument();
+  fireEvent.keyDown(window, { key: "Escape" });
   expect(
     screen.queryByRole("dialog", { name: "Application navigation" }),
   ).toBeNull();

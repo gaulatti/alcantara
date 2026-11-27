@@ -193,6 +193,8 @@ Existing `/radio-output/:programId` links select that station and redirect to it
 desk. TV and Simulcast retain their TV renderer output action; Renderer Refresh
 is hidden for Radio.
 
+The header's **Refresh Program** reloads the program output, which takes it off for a moment: the first press only asks (**Reload?**, for five seconds and for that show), the second reloads. Escape closes the phone navigation.
+
 The player receives the existing station's output through
 **Liquidsoap → Icecast → Palazzo backend → Alcántara backend → browser audio**.
 Palazzo relays its configured Icecast port and mount through the private

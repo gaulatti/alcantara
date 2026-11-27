@@ -35,6 +35,7 @@ import {
   Video
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useArmed } from '../components/radio-desk/useArmed';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { apiUrl, getApiBaseUrl } from '../utils/apiBaseUrl';
 import { useGlobalProgramId } from '../utils/globalProgram';
@@ -192,11 +193,23 @@ function ConsoleShell() {
   const [isTriggeringProgramReload, setIsTriggeringProgramReload] = useState(false);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  // A reload takes the program output off for a moment, so one press only arms it; the show it was armed for is held.
+  const reloadArm = useArmed<string>();
   const selectedTransition = getSceneTransitionPreset(selectedTransitionId);
 
   useEffect(() => {
     setMobileNavigationOpen(false);
   }, [location.pathname]);
+
+  // Escape closes the phone navigation, as it does any dialog. The command menu opened from it takes its own Escape.
+  useEffect(() => {
+    if (!mobileNavigationOpen || commandOpen) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMobileNavigationOpen(false);
+    };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [mobileNavigationOpen, commandOpen]);
 
   const loadBroadcastSettings = useCallback(async () => {
     try {
@@ -500,21 +513,38 @@ function ConsoleShell() {
     </IconButton>
   );
 
-  const renderRefreshProgramButton = () => !resolvedSelectedProgram || selectedProgramType === 'radio' ? null : (
-    <IconButton
-      type='button'
-      size='sm'
-      variant='subtle'
-      title='Refresh Program'
-      aria-label='Refresh Program'
-      onClick={() => {
-        void triggerProgramReload();
-      }}
-      disabled={isTriggeringProgramReload}
-    >
-      <RefreshCw size={16} strokeWidth={1.8} className={isTriggeringProgramReload ? 'animate-spin' : ''} />
-    </IconButton>
-  );
+  const renderRefreshProgramButton = () => {
+    if (!resolvedSelectedProgram || selectedProgramType === 'radio') return null;
+    if (reloadArm.armed === selectedProgramId)
+      return (
+        <Button
+          size='sm'
+          variant='destructive'
+          title='Reloads the program output now'
+          // Short on screen: the phone header has no room for more.
+          aria-label='Reload output?'
+          onClick={() => {
+            reloadArm.take();
+            void triggerProgramReload();
+          }}
+        >
+          <RefreshCw size={14} strokeWidth={1.8} /> Reload?
+        </Button>
+      );
+    return (
+      <IconButton
+        type='button'
+        size='sm'
+        variant='subtle'
+        title='Refresh Program'
+        aria-label='Refresh Program'
+        onClick={() => reloadArm.arm(selectedProgramId)}
+        disabled={isTriggeringProgramReload}
+      >
+        <RefreshCw size={16} strokeWidth={1.8} className={isTriggeringProgramReload ? 'animate-spin' : ''} />
+      </IconButton>
+    );
+  };
 
   const renderAccessButton = () => (
     <Button variant='ghost' size='sm' onClick={() => navigate('/access')} aria-current={location.pathname === '/access' ? 'page' : undefined}>
