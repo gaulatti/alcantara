@@ -1,7 +1,7 @@
 import React from 'react';
 import '@testing-library/jest-dom/vitest';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import SourcesRoute, { meta } from './sources';
 import { authFetch } from '../services/api';
 import type {
@@ -62,13 +62,35 @@ class MockRoom {
   disconnect = vi.fn();
 }
 
+// Each render that has no room starts the LiveKit preview: a config request through the global fetch. Stubbing
+// it here answers at once (LiveKit off), so no request is left pending for the next test or the teardown.
+const LIVEKIT_OFF = () =>
+  new Response(JSON.stringify({ livekit: { enabled: false } }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+// Lets work the page queued (state updates from a settled request, a fetch that resolves in a later task) finish
+// while the test environment is still alive, then unmounts the page.
+async function settleAndUnmount() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  cleanup();
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
 describe('SourcesRoute (/sources)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal('fetch', vi.fn(async () => LIVEKIT_OFF()));
   });
 
-  afterEach(() => {
-    cleanup();
+  afterEach(async () => {
+    await settleAndUnmount();
+    vi.unstubAllGlobals();
   });
 
   it('renders the list from GET /external-sources for the current program covering all eight lifecycles and all four health values', async () => {
@@ -244,6 +266,15 @@ describe('SourcesRoute (/sources)', () => {
 
 // gaulatti/alcantara#404 (sources route, outside the #404 list): the page's browser title.
 describe('SourcesRoute meta', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn(async () => LIVEKIT_OFF()));
+  });
+
+  afterEach(async () => {
+    await settleAndUnmount();
+    vi.unstubAllGlobals();
+  });
+
   it('names the page for the browser', () => {
     expect(meta()).toEqual([{ title: 'External Sources - Alcántara' }]);
   });
