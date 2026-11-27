@@ -573,7 +573,8 @@ export default function ManualRundown() {
   const activeCueIndex = runtime?.activeIndex ?? -1;
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    // The console surface, like Timed blocks: the shared song picker reads its --console-* tokens from it.
+    <div className="broadcast-console min-h-screen">
       <AlertContainer />
       <div className="mx-auto max-w-7xl p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

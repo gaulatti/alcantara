@@ -158,6 +158,10 @@ it("opens an active rundown that is not running with no runtime yet", async () =
   await openRundown();
   expect(await screen.findByText("Cue 0 of 3")).toBeVisible();
   expect(screen.getByText("Loop off")).toBeVisible();
+  // The shared song picker sits on the console surface that defines its tokens.
+  expect(
+    screen.getByPlaceholderText("Search songs and clips").closest(".broadcast-console"),
+  ).not.toBeNull();
   // Stopped: Start is the action to take, GO waits.
   expect(screen.getByRole("button", { name: "Start" })).toHaveClass("bg-sea");
   expect(screen.getByRole("button", { name: /GO/ })).not.toHaveClass("bg-sea");
