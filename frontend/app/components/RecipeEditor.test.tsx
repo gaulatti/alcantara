@@ -75,6 +75,7 @@ interface Options {
   sequences?: FlightSequence[];
   put?: (body: Record<string, unknown>) => Response;
   expand?: Response;
+  post?: (body: Record<string, unknown>) => Response;
 }
 
 function stubApi(options: Options = {}) {
@@ -94,6 +95,8 @@ function stubApi(options: Options = {}) {
         if (options.putFails !== undefined) throw options.putFails;
         return options.put ? options.put(body!) : new Response(JSON.stringify({ ...recipe, ...body, revision: 4, rebuilt: options.rebuilt ?? 2 }));
       }
+      if (url.endsWith("/recipes") && method === "POST")
+        return options.post ? options.post(body!) : new Response(JSON.stringify({ ...recipe, id: 9, revision: 1, ...body }));
       if (url.includes("/recipes"))
         return new Response(JSON.stringify(options.recipes ?? [recipe]), { status: options.recipesStatus ?? 200 });
       if (url.endsWith("/flight")) return new Response(JSON.stringify(options.sequences ?? [sequence()]));
@@ -423,4 +426,41 @@ it("renames the recipe and picks its return scene, then saves both", async () =>
   fireEvent.click(screen.getByRole("button", { name: "Save recipe" }));
   fireEvent.click(screen.getByRole("button", { name: "Confirm save" }));
   await screen.findByText("Recipe saved. No upcoming use needed a rebuild.");
+});
+
+it("creates the first recipe from its name and opens it in the form", async () => {
+  const calls = stubApi({ recipes: [] });
+  render(<RecipeEditor programId="tv-main" canManage />);
+  await screen.findByText("No recipes in this show yet");
+  const form = screen.getByRole("form", { name: "New recipe" });
+  const create = within(form).getByRole("button", { name: "Create recipe" });
+  // A blank name cannot be sent.
+  fireEvent.change(within(form).getByRole("textbox", { name: "Recipe name" }), { target: { value: "   " } });
+  expect(create).toBeDisabled();
+  fireEvent.change(within(form).getByRole("textbox", { name: "Recipe name" }), { target: { value: " Song " } });
+  fireEvent.click(create);
+  expect(await screen.findByRole("region", { name: "Recipe Song" })).toBeVisible();
+  expect(calls.filter((call) => call.method === "POST")).toEqual([
+    { method: "POST", url: expect.stringContaining("/program/tv-main/recipes"), body: { name: "Song" } },
+  ]);
+  expect(within(screen.getByRole("list", { name: "Recipes" })).getByText("Song")).toBeTruthy();
+});
+
+it("shows why a new recipe was refused and keeps the name to correct", async () => {
+  stubApi({
+    post: () => new Response(JSON.stringify({ message: "a recipe named Song already exists" }), { status: 409 }),
+  });
+  await open();
+  const form = screen.getByRole("form", { name: "New recipe" });
+  fireEvent.change(within(form).getByRole("textbox", { name: "Recipe name" }), { target: { value: "Song" } });
+  fireEvent.submit(form);
+  expect(await within(form).findByRole("alert")).toHaveTextContent("a recipe named Song already exists");
+  expect(within(form).getByRole("textbox", { name: "Recipe name" })).toHaveValue("Song");
+});
+
+it("offers no new recipe without flight.manage, and says who can create one", async () => {
+  stubApi({ recipes: [] });
+  render(<RecipeEditor programId="tv-main" canManage={false} />);
+  expect(await screen.findByText(/Someone who manages this show's rundown can create one/)).toBeVisible();
+  expect(screen.queryByRole("form", { name: "New recipe" })).toBeNull();
 });

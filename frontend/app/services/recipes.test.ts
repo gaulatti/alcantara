@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   RecipeConflictError,
   RecipeDeleteRefusal,
+  createRecipe,
   deleteRecipe,
   expandRecipe,
   fetchRecipes,
@@ -199,4 +200,14 @@ describe("deleteRecipe (gaulatti/alcantara#465)", () => {
     ).rejects.toThrow("boom");
     vi.unstubAllGlobals();
   });
+});
+
+it("creates a recipe from its name, and reports the backend's refusal", async () => {
+  answer(new Response(JSON.stringify(recipe), { status: 201 }));
+  await expect(createRecipe("tv main", "Song")).resolves.toEqual(recipe);
+  const [url, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+  expect(url).toContain("/program/tv%20main/recipes");
+  expect(init).toMatchObject({ method: "POST", body: JSON.stringify({ name: "Song" }) });
+  answer(new Response(JSON.stringify({ message: "a recipe needs a name" }), { status: 400 }));
+  await expect(createRecipe("tv", "")).rejects.toThrow("a recipe needs a name");
 });

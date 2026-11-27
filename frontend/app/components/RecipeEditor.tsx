@@ -18,6 +18,7 @@ import type {
 import {
   RecipeConflictError,
   RecipeDeleteRefusal,
+  createRecipe,
   deleteRecipe,
   expandRecipe,
   fetchRecipes,
@@ -180,6 +181,13 @@ export function RecipeEditor({
   );
   const [previewError, setPreviewError] = useState<string | null>(null);
 
+  // A new recipe joins the list and opens in the form, where its scenes are chosen.
+  const created = (recipe: Recipe) => {
+    setRecipes((current) => [...(current ?? []), recipe]);
+    setSelectedId(recipe.id);
+    setListNotice(null);
+  };
+
   const load = useCallback(async () => {
     setError(null);
     setConflict(false);
@@ -281,7 +289,16 @@ export function RecipeEditor({
       <div className="p-6">
         <Empty
           title="No recipes in this show yet"
-          description="A recipe is the steps a song needs around it: bumper, transition, hold, slideshow and back. Ask for the starter Song recipe on this show."
+          description={
+            canManage
+              ? "A recipe is the steps a song needs around it: bumper, transition, hold, slideshow and back. Name one to start; you choose its scenes next."
+              : "A recipe is the steps a song needs around it: bumper, transition, hold, slideshow and back. Someone who manages this show's rundown can create one."
+          }
+          action={
+            canManage && !fixture ? (
+              <NewRecipe programId={programId} onCreated={created} />
+            ) : undefined
+          }
         />
       </div>
     );
@@ -385,6 +402,9 @@ export function RecipeEditor({
           >
             {listNotice}
           </p>
+        ) : null}
+        {canManage && !fixture ? (
+          <NewRecipe programId={programId} onCreated={created} />
         ) : null}
         <ul className="space-y-2" aria-label="Recipes">
           {recipes.map((recipe) => (
@@ -676,3 +696,58 @@ function DeleteRecipe({
 }
 
 export default RecipeEditor;
+
+/** Names a new recipe; the backend gives it every step, a cut and a 3 s hold, and the form opens on it. */
+function NewRecipe({
+  programId,
+  onCreated,
+}: {
+  programId: string;
+  onCreated: (recipe: Recipe) => void;
+}) {
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const trimmed = name.trim();
+  const submit = async () => {
+    setBusy(true);
+    setFailure(null);
+    try {
+      onCreated(await createRecipe(programId, trimmed));
+      setName("");
+    } catch (createError) {
+      setFailure(
+        createError instanceof Error ? createError.message : String(createError),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form
+      aria-label="New recipe"
+      className="space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (trimmed && !busy) void submit();
+      }}
+    >
+      <div className="flex gap-2">
+        <Input
+          aria-label="Recipe name"
+          placeholder="Recipe name"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
+        <Button type="submit" size="sm" disabled={!trimmed || busy}>
+          Create recipe
+        </Button>
+      </div>
+      {failure ? (
+        <p role="alert" className="text-xs text-terracotta">
+          {failure}
+        </p>
+      ) : null}
+    </form>
+  );
+}

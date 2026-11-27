@@ -420,6 +420,10 @@ only `flight.manage` edits. Radio's timed blocks have no recipes.
 
 - **List:** each recipe with its revision and how many uses it has in this show's operator sequences (the
   distinct `recipeUse.useId` of its cues).
+- **New recipe** (`flight.manage` only, above the list and in the empty state): a name, then **Create recipe**
+  sends `POST /program/:id/recipes` with `{name}`. The backend gives it every step, a cut and a 3 s hold, with no
+  scenes; it joins the list and opens in the form to choose them. A refusal (a name the show already has) shows
+  the backend's reason under the field and keeps the name.
 - **Form:** the bumper, slideshow and return scene pickers (the show's assigned scenes; none skips the step),
   the transition, the hold in seconds (0 to 60, half-second steps) and one switch per step. A step switched off
   is left out of `steps`, so the recipe skips it; a step key the editor does not know is kept as it came.

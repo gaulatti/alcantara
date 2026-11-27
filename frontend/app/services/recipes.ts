@@ -65,6 +65,23 @@ export async function fetchRecipes(
   return payload as Recipe[];
 }
 
+/**
+ * Creates a recipe from its name. The backend fills the rest: every step, a cut, a 3 s hold, and no
+ * scenes yet; a name the show already has is refused with the backend's message.
+ */
+export async function createRecipe(
+  programId: string,
+  name: string,
+): Promise<Recipe> {
+  const response = await fetch(base(programId), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) throw await recipeError(response);
+  return (await response.json()) as Recipe;
+}
+
 /** The saved recipe, and how many uses of it that had not aired followed the change (the backend rebuilt them). */
 export interface RecipeSaved {
   recipe: Recipe;
