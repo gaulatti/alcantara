@@ -38,6 +38,8 @@ but navigation and normal discovery begin in the unified Media library.
 Label selectors create and select a new label inline, including image upload,
 background-audio upload, and bulk labeling, so classification does not require
 a round trip through the Labels tab.
+A label on an item that the library does not know is listed as **Not in the library**, with a **Remove label**
+button, so it can be removed before the item is saved. Known labels are never removed silently.
 
 Radio is an audio-only show type. Its setup form exposes no renderer template,
 Scenes, Media groups, or Transitions, and the backend rejects those visual
@@ -156,22 +158,29 @@ stored. TAKE and CUT never wait on the return.
 
 Guest calls is a caller desk. A status strip counts the guests sent the live cue
 and the slots in use. A waiting list shows invited guests who have not joined,
-and each of the six slots is a strip with the guest's connection, return video
-and bus, level, delay, mute, camera, cue, private message, replace, remove and
-revoke. The strip says "Cued live" only for the last cue the console sent. A
+and each of the six slots is a strip with the guest's connection, audio and
+video state, return video and bus, level, delay, mute, camera, cue, private
+message, replace, remove and revoke. The strip reads **Live** when connected,
+**Live · cued** only for the last cue the console sent, **Connecting** while it
+reconnects, **Dropped** for a guest who was live and lost the connection, and
+**Invited, not joined** for a link no one has used. A
 guest reaches the output only through a scene that carries them, and the strip
 says so. Talk is hold-to-talk (press and hold, or hold T while the strip has
 focus). Releasing always closes the microphone, even before the connection is
 up. Talking to a guest who was cued live needs "Allow talk while cued live" to
 be ticked first. The live cue is armed by one press and sent by a second press,
-or by Space within 5 s. The wrap cue needs a 0.8 s hold. Screening before air,
-a per-guest on-air state and mic meters are not built yet, and the desk says
-so. Without LiveKit (alcantara#51) the page names that dependency, and a control
+or by Space within 5 s. The wrap cue needs a 0.8 s hold.
+A waiting guest can be admitted to their strip (**Admit**), spoken to without
+going on air (**Talk privately**, which ends with **End private talk**), or turned
+away (**Decline**). A per-guest on-air state and mic meters are not built yet,
+and the desk says so. Mute and remove ask first, in plain words; a request to
+turn a device back on does not. **Remove session** drops the guest, who can
+rejoin with the same link until it expires. Without LiveKit (alcantara#51) the page names that dependency, and a control
 plane that can't be reached is named instead of showing a raw fetch error.
 
 `/console-fixture?state=program-return` draws the tile in each state, today's
 local render first. `/console-fixture?state=caller-desk` draws three fictional
-strips: cued live, connected and reconnecting.
+strips: Live · cued, Live and Connecting.
 
 
 
@@ -241,6 +250,12 @@ The Radio desk (#298) has an **on-air strip** that never scrolls away: On air, O
 The dominant panel follows the current playout owner. Continuous mode shows the saved filler rotation and existing Play Next overrides; timed mode shows the on-air block with protected played/on-air events and fixed boundaries. **Prepare rundown** opens the planner with the continuous-fillers summary and optional timed blocks. **Build from tags** resolves Library labels into a reviewable block draft. See `radio-station-workflow.md` for selection and completion behavior.
 
 Output confidence, Cartwall, and the three-channel Mixer remain beside the log.
+A cued song is cleared with Esc on a keyboard or with the **Clear cue** button beside Take, which is the
+touch way; an armed cue also clears itself after 5 s. The **Next** line names the song the engine plays next,
+and reads **Next · Play Next** when that song came from a Play Next entry.
+Each Cartwall pad has a **Pre-listen** control that plays the pad on this device only; it is not on air.
+Rotation rows reorder with **Move up** and **Move down** as well as by drag. Removing a row offers **Undo**
+for 8 s, which puts the song back in its place and survives a reload within that window.
 The Cartwall has search, numbered pads, existing shortcut labels, and playing
 state. Disabled clips stay disabled. Recovery/session controls remain in a
 secondary disclosure. The development `radio-workflow` fixture now shows a log
@@ -440,8 +455,8 @@ only `flight.manage` edits. Radio's timed blocks have no recipes.
 
 ### Recipe uses in the operator cues (gaulatti/alcantara#425)
 
-The **Cues** tab has the rundown library (search, Songs, Clips; select and press Enter or double-click to
-add at the end). When the show has recipes it also has a **Recipes** tab: choose the recipe, pick a song, and
+The **Cues** tab has the rundown library (search, Songs, Clips; each row has an **Add** button, which is the
+way to add on a phone or tablet; select and press Enter or double-click also add at the end). When the show has recipes it also has a **Recipes** tab: choose the recipe, pick a song, and
 press Enter. The console calls `expand`, and adds the use's cues in one save. When the use reports issues,
 a dialog lists them first; **Add anyway** adds it, **Cancel** adds nothing.
 
@@ -465,7 +480,7 @@ The `rundown-recipes` console fixture shows one recipe with two uses and a previ
 
 ### Scheduled Rundown workspace
 
-The block is built by direct manipulation (gaulatti/alcantara#299). A searchable **library** (All, Songs, Clips; `/` focuses its search) lists enabled songs with their stored length, enabled clips, and a Stop. An empty Clips or Songs tab says where to add one (Media for clips, Songs for songs); a search with no result names what was searched. Visual fixture: `/console-fixture?state=rundown-library-empty`. Drag a row onto the **timeline**, where it is inserted ahead of the first item whose middle lies past the drop point, or select it (click or ↑/↓) and press Enter, or double-click it, to add it at the end. Nothing is inserted ahead of an item that has played, and an item dropped first becomes the block's opener at 0. Recipes and show templates are not offered until #222's recipe model exists.
+The block is built by direct manipulation (gaulatti/alcantara#299). A searchable **library** (All, Songs, Clips; `/` focuses its search) lists enabled songs with their stored length, enabled clips, and a Stop; each row has an **Add** button for a touch screen. An empty Clips or Songs tab says where to add one (Media for clips, Songs for songs); a search with no result names what was searched. Visual fixture: `/console-fixture?state=rundown-library-empty`. Drag a row onto the **timeline**, where it is inserted ahead of the first item whose middle lies past the drop point, or select it (click or ↑/↓) and press Enter, or double-click it, to add it at the end. Nothing is inserted ahead of an item that has played, and an item dropped first becomes the block's opener at 0. Recipes and show templates are not offered until #222's recipe model exists.
 
 The timeline draws the block as a span of time with the numbers `rundownTiming()` computes: each item where it starts and as wide as its stored length, a hatched **gap** where content ends before the next fixed start, and a red **cut** where it runs past one. An item with no stored length is dashed and drawn 30 s wide after the previous item; the starts after it are unknown. Its header totals content, gaps, any content overrun (fillers are cut, not counted as overrun) and how many items have no stored length. Each fixed start (`clockOffsetSeconds`) is a gold pin on the ruler: drag it, or focus it and press ←/→ to move it 5 s (Shift for 60 s). It always snaps to 5 s. The opener's pin and those of played items do not move. The Event inspector's **Pin its start here** fixes an item at its estimated start, and **Follow the previous event** removes the fixed start.
 
