@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router';
 import { isProgramFeed, preferredProgramFeed } from '../utils/programFeed';
 import { apiUrl } from '../utils/apiBaseUrl';
+import { mediaErrorHelp, type MediaHelp } from '../utils/guestMediaHelp';
 import type { Route } from './+types/guest';
 
 type GuestStatus = 'preflight' | 'ready' | 'joining' | 'live' | 'reconnecting' | 'left' | 'ended' | 'error';
@@ -38,7 +39,8 @@ const INVITATION_CLOSED_HINT = 'Ask the studio for a new link.';
 const IN_USE_ELSEWHERE = 'This invitation is already in use in another window. Try again in a minute.';
 const STUDIO_NOT_READY = 'The studio is not ready for guests yet. Try again in a minute.';
 const STUDIO_UNREACHABLE = 'The studio could not be reached. Check your connection and try again.';
-const CONNECT_FAILED = 'Could not connect to the studio. Try again.';
+const CONNECT_FAILED = 'Could not connect to the studio. Check your Wi-Fi or mobile data, then try again.';
+const DROPPED = 'Your connection to the studio dropped. Check your Wi-Fi or mobile data, then rejoin.';
 
 export default function GuestRoute() {
   const { invitation = '' } = useParams();
@@ -51,6 +53,11 @@ export default function GuestRoute() {
   const heartbeatRef = useRef<number | null>(null);
   const [status, setStatus] = useState<GuestStatus>('preflight');
   const [error, setError] = useState('');
+  // The plain-words help for a refused camera or microphone, and the attempt number that re-runs the preflight.
+  const [mediaHelp, setMediaHelp] = useState<MediaHelp | null>(null);
+  const [preflightAttempt, setPreflightAttempt] = useState(0);
+  // Set when the page itself ends the call (leave, or a revoked session), so the disconnect is not reported as a drop.
+  const intentionalEndRef = useRef(false);
   // The join was refused (401/403): the invitation is closed, so a rejoin cannot succeed (gaulatti/alcantara#353).
   const [invitationClosed, setInvitationClosed] = useState(false);
   const [cameraEnabled, setCameraEnabled] = useState(true);
@@ -99,6 +106,7 @@ export default function GuestRoute() {
     });
     if (response.status === 401 || response.status === 403) {
       stopHeartbeat();
+      intentionalEndRef.current = true;
       roomRef.current?.disconnect();
       setStatus('ended');
       setError('The studio ended or revoked this guest session.');
@@ -159,7 +167,7 @@ export default function GuestRoute() {
         setNetwork(connection ? `${connection.effectiveType || 'network'} · ${connection.downlink || '?'} Mbps · ${connection.rtt || '?'} ms RTT` : 'Browser network check ready');
         setStatus('ready');
       } catch (reason) {
-        setError(reason instanceof Error ? `Camera or microphone permission failed: ${reason.message}` : 'Camera or microphone permission failed.');
+        setMediaHelp(mediaErrorHelp(reason, navigator.userAgent));
         setStatus('error');
       }
     };
@@ -170,7 +178,14 @@ export default function GuestRoute() {
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
       roomRef.current?.disconnect();
     };
-  }, []);
+  }, [preflightAttempt]);
+
+  const retryPreflight = () => {
+    setMediaHelp(null);
+    setError('');
+    setStatus('preflight');
+    setPreflightAttempt((attempt) => attempt + 1);
+  };
 
   const switchDevice = async (kind: 'videoinput' | 'audioinput', id: string) => {
     if (kind === 'videoinput') setCameraId(id);
@@ -211,6 +226,7 @@ export default function GuestRoute() {
     if (!speakerChecked || (!headphonesConfirmed && !echoRiskAccepted)) return;
     setStatus('joining');
     setError('');
+    intentionalEndRef.current = false;
     const storageKey = `alcantara-guest-session:${invitation.split('.')[0] || 'unknown'}`;
     const previousSession = window.sessionStorage.getItem(storageKey);
     let response: Response;
@@ -346,7 +362,10 @@ export default function GuestRoute() {
       room.on(RoomEvent.ConnectionStateChanged, (state) => {
         if (state === ConnectionState.Reconnecting) setStatus('reconnecting');
         if (state === ConnectionState.Connected) setStatus('live');
-        if (state === ConnectionState.Disconnected && status !== 'left') setStatus('ended');
+        if (state === ConnectionState.Disconnected && !intentionalEndRef.current) {
+          setError(DROPPED);
+          setStatus('ended');
+        }
       });
       room.on(RoomEvent.ConnectionQualityChanged, (next, participant) => {
         if (participant.isLocal) setQuality(String(next).toLowerCase());
@@ -434,6 +453,7 @@ export default function GuestRoute() {
 
   const leave = () => {
     stopHeartbeat();
+    intentionalEndRef.current = true;
     roomRef.current?.disconnect();
     setStatus('left');
   };
@@ -511,13 +531,27 @@ export default function GuestRoute() {
             </div>
           ) : null}
         </div>
+        {mediaHelp && status === 'error' ? (
+          <div role='alert' className='mt-4 rounded-xl border border-amber-300/40 bg-amber-300/10 p-4 text-sm text-amber-100'>
+            <p className='font-semibold'>{mediaHelp.title}</p>
+            <ol className='mt-2 list-decimal space-y-1 pl-5 text-white/80'>
+              {mediaHelp.steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+            <Button className='mt-4 w-full' onClick={retryPreflight}>
+              Try again
+            </Button>
+          </div>
+        ) : null}
         {/* The ended/left panel already shows the message; the banner is for every other state. */}
         {error && status !== 'ended' && status !== 'left' ? (
           <div role='alert' className='mt-4 rounded-xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-200'>
             {error}
           </div>
         ) : null}
-        <div className='mt-6 flex flex-wrap items-center justify-center gap-3'>
+        {/* Phones get two equal columns the thumb can reach; the join and leave controls take a full row. */}
+        <div className='mt-6 grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-center sm:justify-center'>
           <Button variant='secondary' onClick={() => void toggleMedia('camera')}>
             {cameraEnabled ? <Camera size={18} /> : <CameraOff size={18} />} {cameraEnabled ? 'Camera on' : 'Camera off'}
           </Button>
@@ -525,13 +559,13 @@ export default function GuestRoute() {
             {microphoneEnabled ? <Mic size={18} /> : <MicOff size={18} />} {microphoneEnabled ? 'Mic on' : 'Mic off'}
           </Button>
           {status === 'ready' || status === 'error' ? (
-            <Button disabled={!readyToJoin} onClick={() => void join()}>
+            <Button className='col-span-2 sm:col-span-1' disabled={!readyToJoin} onClick={() => void join()}>
               <Radio size={18} /> Join studio
             </Button>
           ) : null}
           {status === 'joining' ? <Button loading>Joining</Button> : null}
           {status === 'live' || status === 'reconnecting' ? (
-            <Button variant='destructive' onClick={leave}>
+            <Button className='col-span-2 sm:col-span-1' variant='destructive' onClick={leave}>
               <PhoneOff size={18} /> Leave
             </Button>
           ) : null}
