@@ -420,6 +420,37 @@ describe('next-song announcement and handoff', () => {
     expect(h.engine.getPlaybackState(PROGRAM)?.telemetryStale).toBe(true);
   });
 
+  // The radio walk: the desk named the song behind a jingle as on air while the jingle played.
+  it('says a jingle is chosen, then that it is on in front of the promoted song, then nothing', async () => {
+    const h = harness({ capabilities: ['next.bumper'] });
+    h.palazzo.settings = {
+      bumperEnabled: true,
+      bumperInterval: 1,
+      bumperInstantIds: [1],
+      bumperMode: 'sequential',
+    };
+    await onAir(h);
+    const next = h.palazzo.queued!;
+    const spot = { playbackId: next.bumper!.playbackId };
+    const playback = () => h.engine.getPlaybackState(PROGRAM)!;
+    expect(playback().jingleNext).toEqual({ name: 'Bumper' });
+    expect(playback()).not.toHaveProperty('jingle');
+
+    // The spot starts just before the ending song's end: that song is still on air.
+    h.palazzo.event('instant.started', spot);
+    expect(playback()).not.toHaveProperty('jingle');
+
+    h.palazzo.event('track.ended', {
+      playbackRequestId: h.palazzo.current!.id,
+    });
+    for (let j = 0; j < 60; j += 1) await Promise.resolve();
+    expect(playback().audioUrl).toBe(SONGS[1].url);
+    expect(playback().jingle).toEqual({ name: 'Bumper' });
+
+    h.palazzo.event('instant.ended', spot);
+    expect(playback()).not.toHaveProperty('jingle');
+  });
+
   it('accepts the announced start under overlap and records one start and one end per song', async () => {
     const h = harness();
     const store = asRunStore();
@@ -513,7 +544,10 @@ describe('next-song announcement and handoff', () => {
     await settle();
     expect(urls(h.palazzo.commands)).toEqual([SONGS[0].url]);
     expect(h.engine.getPlaybackState(PROGRAM)).toEqual(
-      expect.objectContaining({ audioUrl: SONGS[4].url, queueEntryId: entry.id }),
+      expect.objectContaining({
+        audioUrl: SONGS[4].url,
+        queueEntryId: entry.id,
+      }),
     );
     const state = (
       h.engine as unknown as {
@@ -521,7 +555,9 @@ describe('next-song announcement and handoff', () => {
       }
     ).states.get(PROGRAM)!;
     expect(state.sentRequestIds?.has(announcedId) ?? false).toBe(false);
-    expect(h.metrics.snapshot().songQueueActions['stale-claim-dropped']).toBeUndefined();
+    expect(
+      h.metrics.snapshot().songQueueActions['stale-claim-dropped'],
+    ).toBeUndefined();
     expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 1 });
   });
 
@@ -2934,7 +2970,13 @@ describe('an announced song that never airs', () => {
     await h.engine.checkPlayback();
     await settle();
     return Object.fromEntries(
-      [...h.metrics.render().matchAll(/^alcantara_radio_announced_not_aired_total\{reason="(\w+)"\} (\d+)$/gm)]
+      [
+        ...h.metrics
+          .render()
+          .matchAll(
+            /^alcantara_radio_announced_not_aired_total\{reason="(\w+)"\} (\d+)$/gm,
+          ),
+      ]
         .filter(([, , value]) => value !== '0')
         .map(([, reason, value]) => [reason, Number(value)]),
     );
@@ -2946,7 +2988,11 @@ describe('an announced song that never airs', () => {
 
   it('counts nothing across ordinary handoffs, and renders every reason from zero', async () => {
     const h = harness();
-    expect(h.metrics.render().match(/^alcantara_radio_announced_not_aired_total\{/gm)).toHaveLength(8);
+    expect(
+      h.metrics
+        .render()
+        .match(/^alcantara_radio_announced_not_aired_total\{/gm),
+    ).toHaveLength(8);
     await onAir(h);
     for (let n = 0; n < 3; n += 1) {
       h.palazzo.endCurrent({ overlap: n === 1 });
@@ -2968,14 +3014,18 @@ describe('an announced song that never airs', () => {
     expect(logged()).toEqual([]);
     expect(await counted(h)).toEqual({ operator: 1 });
     expect(await counted(h)).toEqual({ operator: 1 });
-    expect(logged()).toEqual([`Announced song never aired on ${PROGRAM}: operator (${announced.id})`]);
+    expect(logged()).toEqual([
+      `Announced song never aired on ${PROGRAM}: operator (${announced.id})`,
+    ]);
   });
 
   it('counts a replaced announcement as superseded', async () => {
     const h = harness();
     await onAir(h);
     const first = h.palazzo.queued!.id;
-    h.engine.handleQueueUpdated(PROGRAM, [{ id: 'q1', itemId: SONGS[3].itemId, enqueuedAt: 1 }]);
+    h.engine.handleQueueUpdated(PROGRAM, [
+      { id: 'q1', itemId: SONGS[3].itemId, enqueuedAt: 1 },
+    ]);
     await settle();
     expect(h.palazzo.queued!.id).not.toBe(first);
     expect(await counted(h)).toEqual({ superseded: 1 });
@@ -3010,7 +3060,10 @@ describe('an announced song that never airs', () => {
         h.palazzo.endCurrent();
         await settle();
       }
-      h.palazzo.event('playout.next_withdrawn', { playbackId: announced.id, reason: 'not_ready' });
+      h.palazzo.event('playout.next_withdrawn', {
+        playbackId: announced.id,
+        reason: 'not_ready',
+      });
       await settle();
       expect(await counted(h)).toEqual({ not_ready: 1 });
     }
@@ -3029,7 +3082,9 @@ describe('an announced song that never airs', () => {
   it('counts a successor the engine withdraws, and one an end releases', async () => {
     const withdrawn = harness();
     await onAir(withdrawn);
-    withdrawn.engine.handleQueueUpdated(PROGRAM, [{ id: 'entry-x', itemId: 'missing', enqueuedAt: 1 }]);
+    withdrawn.engine.handleQueueUpdated(PROGRAM, [
+      { id: 'entry-x', itemId: 'missing', enqueuedAt: 1 },
+    ]);
     await settle();
     expect(await counted(withdrawn)).toEqual({ withdrawn: 1 });
 

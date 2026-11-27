@@ -96,6 +96,10 @@ export interface SongPlaybackData {
   introStatus: IntroPlaybackStatus;
   introFailureReason: string | null;
   queueEntryId: string | null;
+  /** A jingle is on the air in front of this song, which has not started yet. Absent otherwise. */
+  jingle?: { name: string };
+  /** A jingle is chosen to play when this song ends, before the next one. Absent otherwise. */
+  jingleNext?: { name: string };
 }
 
 export type IntroPlaybackStatus =
@@ -449,7 +453,11 @@ interface SongEngineState {
   /** Song whose missing announcement was already counted, so once per song. */
   skipCountedFor?: string | null;
   /** The announced spot Palazzo has on air, and since when (palazzo#50). */
-  announcedSpotOnAir?: { playbackId: string; since: number } | null;
+  announcedSpotOnAir?: {
+    playbackId: string;
+    since: number;
+    name: string;
+  } | null;
   /** Bumper spots sent and not yet seen on air, by playback ID. */
   bumperSpotsSent?: Map<
     string,
@@ -2162,6 +2170,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (event.type === 'instant.ended') {
       if (state.announcedSpotOnAir?.playbackId === event.data.playbackId) {
         state.announcedSpotOnAir = null;
+        if (state.activeSong)
+          this.emitPlaybackUpdate(programId, state.activeSong);
       }
       return;
     }
@@ -4822,7 +4832,14 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (!spot) return;
     state.bumperSpotsSent?.delete(playbackId);
     if (spot.path === 'announced') {
-      state.announcedSpotOnAir = { playbackId, since: Date.now() };
+      state.announcedSpotOnAir = {
+        playbackId,
+        since: Date.now(),
+        name: spot.name,
+      };
+      // The desk says a jingle is on from now, not from the next position tick.
+      if (state.activeSong)
+        this.emitPlaybackUpdate(programId, state.activeSong);
     }
     this.recordBumperMetric(spot.path, 'played');
     this.logger.log(`Bumper played: ${spot.name} on ${programId}`);
@@ -5014,6 +5031,31 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       introStatus: s.introStatus,
       introFailureReason: s.introFailureReason,
       queueEntryId: s.queueEntryId,
+      ...this.jingleData(programId, s, now),
+    };
+  }
+
+  /** What the desk is told about jingles around a song. Read only: it changes nothing the engine does. */
+  private jingleData(
+    programId: string,
+    s: ActiveSong,
+    now: number,
+  ): Pick<SongPlaybackData, 'jingle' | 'jingleNext'> {
+    const state = this.states.get(programId);
+    const spot = state?.announcedSpotOnAir;
+    const next = state?.bumperChoice;
+    return {
+      // Only in front of an announced song that Palazzo has not reported yet. The spot starts just before the
+      // ending song's end, and that song is still what is heard.
+      ...(spot &&
+      s.promoted &&
+      s.authoritativeUpdatedAt === null &&
+      now - spot.since < ANNOUNCED_SPOT_PLAYBACK_MS
+        ? { jingle: { name: spot.name } }
+        : {}),
+      ...(next && next.forRequestId === s.playbackRequestId
+        ? { jingleNext: { name: next.name } }
+        : {}),
     };
   }
 

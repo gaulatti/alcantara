@@ -250,8 +250,15 @@ export function normalizeProgramSongPlayback(value: unknown): ProgramSongPlaybac
     telemetryStale: typeof r.telemetryStale === 'boolean' ? r.telemetryStale : undefined,
     introStatus: r.introStatus === 'pending' || r.introStatus === 'playing' || r.introStatus === 'completed' || r.introStatus === 'degraded' ? r.introStatus : 'none',
     introFailureReason: typeof r.introFailureReason === 'string' ? r.introFailureReason.trim().slice(0, 200) || null : null,
-    queueEntryId: typeof r.queueEntryId === 'string' && r.queueEntryId.trim() ? r.queueEntryId.trim() : null
+    queueEntryId: typeof r.queueEntryId === 'string' && r.queueEntryId.trim() ? r.queueEntryId.trim() : null,
+    ...jingleField('jingle', r.jingle),
+    ...jingleField('jingleNext', r.jingleNext)
   };
+}
+
+function jingleField(key: 'jingle' | 'jingleNext', value: unknown) {
+  const name = value && typeof value === 'object' ? (value as Record<string, unknown>).name : null;
+  return typeof name === 'string' ? { [key]: { name: name.trim().slice(0, 120) || 'Jingle' } } : {};
 }
 
 export function normalizeSceneInstantPlayback(value: unknown): SceneInstantPlaybackState {

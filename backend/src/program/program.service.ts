@@ -4120,6 +4120,10 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
           introStatus: event.playback.introStatus,
           introFailureReason: event.playback.introFailureReason,
           queueEntryId: event.playback.queueEntryId,
+          ...(event.playback.jingle && { jingle: event.playback.jingle }),
+          ...(event.playback.jingleNext && {
+            jingleNext: event.playback.jingleNext,
+          }),
         };
         const normalizedProgramId = this.normalizeProgramId(programId);
         this.programSongPlaybackByProgramId.set(normalizedProgramId, playback);
@@ -4147,6 +4151,10 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
           introStatus: event.playback.introStatus,
           introFailureReason: event.playback.introFailureReason,
           queueEntryId: event.playback.queueEntryId,
+          ...(event.playback.jingle && { jingle: event.playback.jingle }),
+          ...(event.playback.jingleNext && {
+            jingleNext: event.playback.jingleNext,
+          }),
         };
         const normalizedProgramId = this.normalizeProgramId(programId);
         this.programSongPlaybackByProgramId.set(normalizedProgramId, playback);

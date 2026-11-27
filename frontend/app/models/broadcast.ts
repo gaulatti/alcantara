@@ -270,6 +270,10 @@ export interface ProgramSongPlaybackState {
   introStatus?: 'none' | 'pending' | 'playing' | 'completed' | 'degraded';
   introFailureReason?: string | null;
   queueEntryId?: string | null;
+  /** A jingle is on the air in front of this song. */
+  jingle?: { name: string } | null;
+  /** A jingle plays when this song ends. */
+  jingleNext?: { name: string } | null;
 }
 
 export type ComponentPropsMap = Record<string, any>;

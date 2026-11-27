@@ -115,7 +115,9 @@ export function OnAirStrip({
       ) : fallback || offRundown ? (
         <span className="text-xs text-text-secondary">No song clock</span>
       ) : null}
-      {on ? (
+      {view.jingle ? (
+        <span className="text-xs text-text-secondary">No song clock</span>
+      ) : on ? (
         <div
           className="font-mono tabular-nums"
           aria-label={

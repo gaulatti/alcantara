@@ -56,6 +56,8 @@ export interface OnAirView {
    * engine is not connected, "Status delayed" when the report is stale, otherwise "Off air".
    */
   label: string;
+  /** A jingle is on in front of the next song: the title names the jingle and there is no song clock. */
+  jingle?: boolean;
   title: string | null;
   artist: string | null;
   /** Null when there is no length, or when a stale report would show a frozen clock. */
@@ -140,6 +142,7 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
   const stale = live && !unconfirmed && playback?.telemetryStale === true;
   const unverified =
     live && !unconfirmed && !stale && input.outputUnverified === true;
+  const jingling = live && !unconfirmed && Boolean(playback?.jingle);
   const hasLength =
     live &&
     typeof playback?.durationMs === "number" &&
@@ -275,20 +278,23 @@ export function deriveOnAir(input: OnAirInput): OnAirView {
           : unverified
             ? "Unverified"
             : "On air",
-    title: live ? (playback!.title || "Title unavailable") : null,
-    artist: live ? (playback!.artist || "Artist unavailable") : null,
-    elapsedMs: clampedElapsed,
+    // While a jingle is on, the song after it has not started: it is not named as on air, and has no clock.
+    jingle: jingling,
+    title: !live ? null : jingling ? `Jingle · ${playback!.jingle!.name}` : (playback!.title || "Title unavailable"),
+    artist: !live ? null : jingling ? `Then ${playback!.title || "the next song"}${playback!.artist ? ` · ${playback!.artist}` : ""}` : (playback!.artist || "Artist unavailable"),
+    elapsedMs: jingling ? null : clampedElapsed,
     remainingMs:
-      clampedElapsed !== null && hasLength
+      !jingling && clampedElapsed !== null && hasLength
         ? (playback!.durationMs as number) - clampedElapsed
         : null,
-    intro: live ? introOf(playback!) : null,
+    intro: live && !jingling ? introOf(playback!) : null,
     next: input.next
       ? {
           title: input.next.title,
           detail: input.next.sameSong
             ? "same song (loop of one)"
             : [
+                live && playback!.jingleNext ? `after jingle ${playback!.jingleNext.name}` : null,
                 input.next.artist,
                 input.next.durationMs ? formatClock(input.next.durationMs) : null,
               ]
