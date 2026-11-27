@@ -8,6 +8,12 @@ on:
       - 'frontend/**'
       - '.github/workflows/frontend-deploy.yml'
 
+# One deploy at a time, and only the newest waiting push deploys next: each push contains the ones before it, and two
+# deploys running at once could finish out of order and put an older build live (2026-11-27, eight ran in parallel).
+concurrency:
+  group: frontend-deploy
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest

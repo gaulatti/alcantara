@@ -38,12 +38,10 @@ on:
 permissions: {}
 
 concurrency:
-  group: alcantara-ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.issue.number || inputs.pull_request || (github.event_name == 'push' && github.sha) || github.ref }}
-  # A push to main is never cancelled by the next push: every commit on main
-  # gets a complete verification. Each push gets its own group (its sha),
-  # because GitHub keeps one pending run per group and drops the rest
-  # (gaulatti/alcantara#459). Pull request and review runs still cancel.
-  cancel-in-progress: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+  group: alcantara-ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.issue.number || inputs.pull_request || github.ref }}
+  # Work lands straight on main (owner, 2026-11-26), so a newer push to main supersedes the run before it: only the
+  # newest commit is verified, as with pull requests. Every deploy still runs its own tests.
+  cancel-in-progress: true
 
 jobs:
   resolve-clouseau:
