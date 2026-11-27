@@ -82,6 +82,10 @@ revoked, expired or invalid (401 or 403) ends the guest's session; any other
 refusal (the invitation in use in another window, the studio not ready, a
 network or room-connection failure) keeps the preflight and lets the guest
 press Join again. A refused camera or microphone permission keeps Join locked.
+The console's authenticated fetch leaves this page and the machine-only
+`/return-router/:programId` alone: neither has a session (the guest
+authenticates with its invitation, the router with its renderer key), so their
+backend requests go out as they are.
 
 Operator mute is immediate. Camera/microphone enable is delivered as a request
 that the guest accepts or rejects. A media command that names no camera or

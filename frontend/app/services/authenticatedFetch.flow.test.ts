@@ -35,6 +35,41 @@ describe("public renderer paths", () => {
   });
 });
 
+// gaulatti/alcantara#354: in production no guest could join. The guest page has no session, the wrapper threw
+// "Authenticated session has no ID token", and POST /webrtc/join never left the browser.
+describe("public call paths", () => {
+  it("matches the guest page and the return router, one segment each", async () => {
+    const { mod } = await setup();
+    expect(mod.isPublicCallPath("/guest/abc.DEF-123_x")).toBe(true);
+    expect(mod.isPublicCallPath("/guest/abc/")).toBe(true);
+    expect(mod.isPublicCallPath("/return-router/main")).toBe(true);
+    expect(mod.isPublicCallPath("/guest/abc/extra")).toBe(false);
+    expect(mod.isPublicCallPath("/guest/")).toBe(false);
+    expect(mod.isPublicCallPath("/calls")).toBe(false);
+  });
+
+  it.each(["/guest/invitation-id.secret", "/return-router/main"])(
+    "sends %s's backend requests without a session, even when the session has no token",
+    async (path) => {
+      const { native, getAppSession, patched } = await setup({
+        session: vi.fn().mockResolvedValue({ token: undefined }),
+      });
+      window.history.replaceState({}, "", path);
+      const init = { method: "POST", body: "{}" };
+      await expect(patched("https://api.test/webrtc/join", init)).resolves.toBeInstanceOf(Response);
+      expect(native).toHaveBeenCalledWith("https://api.test/webrtc/join", init);
+      expect(getAppSession).not.toHaveBeenCalled();
+    },
+  );
+
+  it("still authenticates the signed-in call desk", async () => {
+    const { native, patched } = await setup();
+    window.history.replaceState({}, "", "/calls");
+    await patched("https://api.test/webrtc/invitations");
+    expect(auth(native.mock.calls[0])).toBe("Bearer t1");
+  });
+});
+
 describe("installation", () => {
   it("installs once", async () => {
     const { mod, patched } = await setup();
