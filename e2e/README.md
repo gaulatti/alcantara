@@ -149,7 +149,7 @@ A signed-in layout check for the console, against the **local** Compose stack on
 
 It joins one stand-in guest through the guest page with fake media, admits it, and then:
 
-- **`/calls`** at 1440×900, 1280×800 and 1024×768: fails if any column of the caller desk is more than 60% empty above the fold, or if two guest slots overlap. One screenshot per size, in `SMOKE_SHOTS` (default `console-smoke-shots`).
+- **`/calls`** at 1440×900, 1280×800 and 1024×768: fails if a column has a dead band above the fold longer than 40% of the fold (a stretch where that column is empty while a neighbour has content; space below a column's last element does not count), or if two guest slots overlap. One screenshot per size, in `SMOKE_SHOTS` (default `console-smoke-shots`).
 - **The radio desk** (`radio-demo.fm`) at 1440×900 and 1024×768: at 1440, fails if the Guests strip, the mixer or the cartwall is not visible without scrolling. One screenshot per size.
 
 Running it changes only the local stack's data: one invitation, one guest joined and admitted (both removed at the end), and the operator's selected show.
