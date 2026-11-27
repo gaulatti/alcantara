@@ -111,3 +111,8 @@ describe("nextUp and a cued song inside a nested block", () => {
     expect(nextUp({ sequence: moved, queue: [], playback: null })?.itemId).not.toBe("p2");
   });
 });
+
+it("names a rotation song when neither a cue nor a cursor is stored", () => {
+  const bare = { items: [leaf("a"), leaf("b")], activeItemId: null, cuedItemId: null, loop: true } as unknown as ProgramSongSequence;
+  expect(nextUp({ sequence: bare, queue: [], playback: null })).toMatchObject({ via: "rotation" });
+});

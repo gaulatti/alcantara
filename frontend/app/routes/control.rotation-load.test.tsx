@@ -161,3 +161,22 @@ it("loads again from an answer at the version already seen", async () => {
   await waitFor(() => expect(screen.queryByText("Couldn't load the rotation")).toBeNull(), { timeout: 10000 });
   expect(screen.getAllByText("Fictional opener").length).toBeGreaterThan(0);
 }, 25000);
+
+it("refuses a rotation change while the rotation is not loaded, and loads it when Retry is pressed", async () => {
+  let down = true;
+  server.answer("GET /program/main/audio-bus", () =>
+    down
+      ? new Response("down", { status: 500 })
+      : Response.json({
+          songSequence: { mode: "manual", items: [song("s1", "Fictional opener", 11)], activeItemId: "s1", intervalMs: 4000, loop: true, startedAt: 0 },
+          songQueue: [],
+        }),
+  );
+  render(view());
+  expect(await screen.findByText("Couldn't load the rotation", {}, { timeout: 5000 })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Autoplay" }));
+  expect((await screen.findAllByText(/Nothing can be changed until it does/)).length).toBeGreaterThan(0);
+  down = false;
+  fireEvent.click(screen.getAllByRole("button", { name: "Retry" })[0]);
+  expect((await screen.findAllByText("Fictional opener", {}, { timeout: 8000 })).length).toBeGreaterThan(0);
+}, 15000);

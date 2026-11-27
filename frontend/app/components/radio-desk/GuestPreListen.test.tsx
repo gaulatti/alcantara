@@ -42,6 +42,23 @@ vi.mock("livekit-client", async (importOriginal) => {
           ]),
         },
       ],
+      [
+        "guest-2",
+        {
+          identity: "guest-2",
+          trackPublications: new Map([
+            [
+              "mic",
+              {
+                kind: "audio",
+                source: "microphone",
+                track: { attach: () => ({ muted: true }), detach: () => undefined },
+                setSubscribed: () => undefined,
+              },
+            ],
+          ]),
+        },
+      ],
     ]);
     on = vi.fn();
     off = vi.fn();
@@ -251,4 +268,49 @@ it("drops a read that answers after the desk it was made for is gone", async () 
   view.unmount();
   await act(async () => release(new Response(JSON.stringify({ participants: [{ identity: "guest-1", name: "Ada", connectionState: "connected" }] }))));
   expect(onGuests).not.toHaveBeenCalled();
+});
+
+// Answers and failures that are not the usual shape.
+const withGuests = (participants: unknown, token: () => Promise<Response> = async () => Response.json({ serverUrl: "wss://live.example.test", token: "fictional-token" })) =>
+  authFetch.mockImplementation(async (url: string) => (url === "/webrtc/operator-token" ? token() : Response.json(participants)));
+
+it("lists no guest for an answer that names none", async () => {
+  withGuests({});
+  const onGuests = vi.fn();
+  render(<GuestPreListen programId="main" onActive={() => undefined} onGuests={onGuests} />);
+  await waitFor(() => expect(onGuests).toHaveBeenCalledWith([]));
+  expect(screen.getByText("No guest is connected.")).toBeVisible();
+});
+
+it("moves to a second guest on the room already joined, ignores other keys, and still names a guest gone from the list", async () => {
+  const both = { participants: [{ identity: "guest-1", name: "Ada", connectionState: "connected" }, { identity: "guest-2", name: "Grace", connectionState: "connected" }] };
+  withGuests(both);
+  let reread: (() => void) | undefined;
+  const real = window.setInterval.bind(window);
+  const spy = vi.spyOn(window, "setInterval").mockImplementation(((handler: () => void, delay?: number) => {
+    if (delay === 10_000) reread = handler;
+    return real(handler, delay);
+  }) as typeof window.setInterval);
+  render(<GuestPreListen programId="main" onActive={() => undefined} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Pre-listen Ada" }));
+  await waitFor(() => expect(lk.state.connects).toHaveLength(1));
+  expect(await screen.findByRole("status")).toHaveTextContent("PFL · Ada");
+  fireEvent.keyDown(window, { key: "a" });
+  expect(screen.getByRole("status")).toHaveTextContent("PFL · Ada");
+  fireEvent.click(screen.getByRole("button", { name: "Pre-listen Grace" }));
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("PFL · Grace"));
+  expect(lk.state.connects).toHaveLength(1);
+  withGuests({ participants: [] });
+  await act(async () => reread!());
+  expect(screen.getByRole("status")).toHaveTextContent("PFL · guest · this device only");
+  spy.mockRestore();
+});
+
+it("says the guest could not be listened to for a failure that is not an error, and clears it when another pre-fade takes the desk", async () => {
+  withGuests({ participants: [{ identity: "guest-1", name: "Ada", connectionState: "connected" }] }, () => Promise.reject("offline"));
+  const view = render(<GuestPreListen programId="main" onActive={() => undefined} activeOwner={null} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Pre-listen Ada" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("The guest could not be listened to here.");
+  view.rerender(<GuestPreListen programId="main" onActive={() => undefined} activeOwner="song" />);
+  expect(screen.queryByRole("alert")).toBeNull();
 });

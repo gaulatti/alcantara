@@ -387,3 +387,40 @@ it('an answer in flight from before a reconnect cannot refill the cleared banner
   expect(screen.queryByText("You're on air")).toBeNull();
 });
 
+
+// A studio that cannot be reached while the guest waits: nothing is thrown at the page, and the wait goes on.
+const dropHeartbeats = () => {
+  const original = globalThis.fetch;
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).endsWith('/webrtc/session/heartbeat')) throw new TypeError('offline');
+    return original(input, init);
+  }));
+};
+
+it('keeps waiting when the studio cannot be reached by the poll, and offers a rejoin when the room then drops', async () => {
+  await join();
+  dropHeartbeats();
+  await act(async () => poll!());
+  expect(screen.getByText('Waiting for the producer to let you in')).toBeVisible();
+  await act(async () => lk.state.rooms[0].emit('disconnected', 3));
+  expect(await screen.findByText(/Your connection to the studio dropped/)).toBeVisible();
+});
+
+it('waits with the chosen devices and no self-view track when the room publishes none', async () => {
+  vi.mocked(navigator.mediaDevices.enumerateDevices).mockResolvedValue([
+    { kind: 'videoinput', deviceId: 'cam-1', label: 'Camera' },
+    { kind: 'audioinput', deviceId: 'mic-1', label: 'Microphone' }
+  ] as MediaDeviceInfo[]);
+  const original = lk.Room.prototype.connect;
+  lk.Room.prototype.connect = async function (this: InstanceType<typeof lk.Room>, url: string, token: string) {
+    this.localParticipant.getTrackPublication = () => undefined as never;
+    await original.call(this, url, token);
+  };
+  dropHeartbeats();
+  try {
+    await join();
+  } finally {
+    lk.Room.prototype.connect = original;
+  }
+  expect(lk.state.rooms[0].media).toEqual(['camera:true', 'microphone:true']);
+});

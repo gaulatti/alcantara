@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { HeadphonesToggle, LocalAudioGuard } from "./LocalAudioGuard";
+import { renderToString } from "react-dom/server";
+import { HeadphonesToggle, LocalAudioGuard, usePreFadeMuted } from "./LocalAudioGuard";
 import { usePreListen } from "./radio-desk/usePreListen";
 import { resetLocalAudio } from "../utils/localAudio";
 
@@ -64,4 +65,20 @@ it("leaves a pre-listen audible with the mic off, and mutes it when the mic is p
   mic.value = { state: "starting" };
   view.rerender(desk());
   expect(made[0].muted).toBe(true);
+});
+
+// The server has no device preference: the first paint assumes a speaker and nothing muted.
+it("renders on the server with the headphones box clear and nothing muted", () => {
+  window.localStorage.setItem("alcantara.preFadeOnHeadphones", "yes");
+  function Muted() {
+    return <span>{usePreFadeMuted() ? "muted" : "audible"}</span>;
+  }
+  const html = renderToString(
+    <>
+      <HeadphonesToggle />
+      <Muted />
+    </>,
+  );
+  expect(html).not.toContain("checked");
+  expect(html).toContain("audible");
 });

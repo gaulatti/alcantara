@@ -67,3 +67,7 @@ it("shows a commanded jingle, which has no song under it, as a jingle and not as
   const lost = deriveOnAir({ ...input({ isPlaying: false, jingle: { name: "CUÑA 4" } }), engine: { connected: false, degraded: false, unavailableLabel: "Engine unavailable" } });
   expect(lost).toMatchObject({ state: "off-air", jingle: false });
 });
+
+it("calls an untitled song behind a jingle the next song, with no artist to add", () => {
+  expect(deriveOnAir(input({ jingle: { name: "CUÑA 2" }, title: "", artist: "" })).artist).toBe("Then the next song");
+});

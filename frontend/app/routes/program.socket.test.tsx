@@ -129,3 +129,15 @@ it("does not connect for a confidence monitor", async () => {
   await advance(2000);
   expect(FakeSocket.instances).toHaveLength(0);
 });
+
+it("reconnects after a connection that had opened, and opens again on the new one", async () => {
+  open();
+  await advance(10);
+  act(() => FakeSocket.instances[0].emit("open"));
+  act(() => FakeSocket.instances[0].emit("close"));
+  await advance(1600);
+  expect(FakeSocket.instances).toHaveLength(2);
+  act(() => FakeSocket.instances[1].emit("open"));
+  await advance(10);
+  expect(FakeSocket.instances).toHaveLength(2);
+});

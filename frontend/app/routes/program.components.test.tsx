@@ -992,6 +992,24 @@ describe("the Modo Italiano components", () => {
     expect(stub("ModoItalianoGiorgiaArtistBumper").show).toBe(true);
   });
 
+  it("gives each podcast player its defaults for props it lacks, and its own when it has them", async () => {
+    const episode = {
+      show: false,
+      coverUrl: "https://x.example/g.jpg",
+      episodeTitle: "Fictional second episode",
+      showName: "Fictional second show",
+      audioUrl: "https://x.example/g.mp3",
+    };
+    await show(
+      sceneOf(["modoitaliano-podcast-player", "modoitaliano-giorgia-podcast-player"], {
+        "modoitaliano-podcast-player": { show: "yes", coverUrl: 4, episodeTitle: null, showName: [], audioUrl: {} },
+        "modoitaliano-giorgia-podcast-player": episode,
+      }),
+    );
+    expect(stub("PodcastPlayer")).toMatchObject({ show: true, coverUrl: "", episodeTitle: "", showName: "", audioUrl: "" });
+    expect(stub("ModoItalianoGiorgiaPodcastPlayer")).toMatchObject(episode);
+  });
+
   it("hands the bracket its rounds and votes, and starts it without a draw", async () => {
     await show(
       sceneOf(["modoitaliano-bracket"], {

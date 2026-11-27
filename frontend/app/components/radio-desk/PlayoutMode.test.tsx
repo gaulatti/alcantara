@@ -116,3 +116,10 @@ it("starts Autoplay at the first song when a Stop left no cursor, and leaves Man
   fireEvent.click(screen.getByRole("button", { name: "Manual" }));
   expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ mode: "manual", activeItemId: null }));
 });
+
+it("starts no row when Autoplay is chosen on an empty playlist with no cursor", () => {
+  const onChange = vi.fn();
+  render(<PlayoutMode sequence={sequence([], { activeItemId: null })} activeItemId={null} playing={false} onChange={onChange} />);
+  fireEvent.click(screen.getByRole("button", { name: /autoplay/i }));
+  expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ mode: "autoplay", activeItemId: null }));
+});

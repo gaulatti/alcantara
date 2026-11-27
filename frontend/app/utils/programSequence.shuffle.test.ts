@@ -66,3 +66,8 @@ test('gives a backend without play order the shuffled order as rows, and leaves 
   assert.equal(rowsAsPlayOrder(manual), manual);
   assert.deepEqual(rowsAsPlayOrder({ ...shuffled, mode: 'manual' }).items.map((item) => item.id), ['a', 'b', 'c']);
 });
+
+test('plays songs added since the shuffle after the shuffled ones, in the rows order', () => {
+  const order = programSongPlayOrder(sequence(['a', 'b', 'c', 'd'], { shuffleOrder: ['c', 'a'] }));
+  assert.deepEqual(order.map((item) => item.id), ['c', 'a', 'b', 'd']);
+});

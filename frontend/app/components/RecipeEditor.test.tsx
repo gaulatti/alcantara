@@ -464,3 +464,17 @@ it("offers no new recipe without flight.manage, and says who can create one", as
   expect(await screen.findByText(/Someone who manages this show's rundown can create one/)).toBeVisible();
   expect(screen.queryByRole("form", { name: "New recipe" })).toBeNull();
 });
+
+// The form sent with nothing to send, and a create that fails with something other than an error.
+it("sends nothing for a blank name, and shows a failure that is not an error as it is", async () => {
+  const calls = stubApi({ recipes: [] });
+  render(<RecipeEditor programId="tv-main" canManage />);
+  await screen.findByText("No recipes in this show yet");
+  const form = screen.getByRole("form", { name: "New recipe" });
+  fireEvent.submit(form);
+  expect(calls.filter((call) => call.method === "POST")).toEqual([]);
+  vi.stubGlobal("fetch", vi.fn(() => Promise.reject("offline")));
+  fireEvent.change(within(form).getByRole("textbox", { name: "Recipe name" }), { target: { value: "Song" } });
+  fireEvent.submit(form);
+  expect(await within(form).findByRole("alert")).toHaveTextContent("offline");
+});

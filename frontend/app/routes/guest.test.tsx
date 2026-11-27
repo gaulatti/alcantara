@@ -1301,3 +1301,118 @@ it("says the studio removed the guest, not that the connection dropped", async (
   expect(screen.queryByText(/dropped/)).toBeNull();
   expect(screen.getByRole("button", { name: "Rejoin the studio" })).toBeInTheDocument();
 });
+
+// A studio that stops answering mid-call, and events that arrive out of the usual order.
+describe("the guest page when the studio cannot be reached", () => {
+  const dropHeartbeats = () => {
+    const original = globalThis.fetch;
+    const dropped = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/webrtc/session/heartbeat")) throw new TypeError("offline");
+      return original(input, init);
+    });
+    vi.stubGlobal("fetch", dropped);
+    return () => dropped.mock.calls.filter(([input]) => String(input).endsWith("/webrtc/session/heartbeat")).length;
+  };
+
+  it("stays in the call when the beats on waking, reconnecting and confirming a cue all fail, and still leaves", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await joined();
+    const attempts = dropHeartbeats();
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await emit("connectionStateChanged", "reconnecting");
+    await emit("connectionStateChanged", "connected");
+    await director({ id: "c-9", type: "cue", cue: "live" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    expect(attempts()).toBeGreaterThanOrEqual(3);
+    expect(screen.queryByRole("alert")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Leave/ }));
+    expect(await screen.findByText("You left the studio.")).toBeVisible();
+  });
+
+  it("does not read the cue again for a connected state that followed no reconnect", async () => {
+    await joined();
+    const attempts = dropHeartbeats();
+    await emit("connectionStateChanged", "connected");
+    expect(attempts()).toBe(0);
+  });
+
+  it("keeps saying the studio removed the guest when the room then reports disconnected", async () => {
+    await joined();
+    await emit("disconnected", 1);
+    await emit("connectionStateChanged", "disconnected");
+    expect(screen.queryByText(/Your connection to the studio dropped/)).toBeNull();
+    expect(screen.getByRole("alert")).toHaveTextContent(/removed/i);
+  });
+
+  it("joins with a studio-given reconnect window, and reads a silent level for a source that reports none", async () => {
+    joinAnswer = () =>
+      Response.json({
+        serverUrl: "wss://livekit.example",
+        token: "fictional-guest-token",
+        sessionToken: "session-1",
+        reconnectWindowSeconds: 30,
+        displayName: "Ada",
+        programId: "main",
+        participantIdentity: "guest-ada",
+        returnVideo: "program",
+        returnAudioBus: "aux-2",
+      });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await joined();
+    const router: { identity: string; audioLevel?: number } = { identity: "return-router-main" };
+    emit(
+      "trackSubscribed",
+      { kind: "audio", attach: () => {}, detach: () => {} },
+      { kind: "audio", trackName: "mixminus:guest-ada:aux-2", setSubscribed: async () => {} },
+      router,
+    );
+    const meter = screen.getByRole("meter", { name: "Studio sound level" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(meter).toHaveAttribute("aria-valuenow", "0");
+    router.audioLevel = Number.NaN;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(meter).toHaveAttribute("aria-valuenow", "0");
+    router.audioLevel = 7;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(meter).toHaveAttribute("aria-valuenow", "100");
+  });
+
+  it("keeps the shown program feed when the other one leaves", async () => {
+    await joined();
+    const shown: string[] = [];
+    const feed = (name: string) => ({
+      kind: "video",
+      attach: () => shown.push(name),
+      detach: () => shown.push(`detached-${name}`),
+    });
+    const publication = { kind: "video", trackName: "", setSubscribed: async () => {} };
+    const alana = feed("alana");
+    const desktop = feed("desktop");
+    emit("trackSubscribed", desktop, publication, { identity: "desktop-feed-main" });
+    emit("trackSubscribed", alana, publication, { identity: "program-feed-main" });
+    const before = [...shown];
+    const other = before.at(-1) === "desktop" ? { track: alana, identity: "program-feed-main" } : { track: desktop, identity: "desktop-feed-main" };
+    emit("trackUnsubscribed", other.track, publication, { identity: other.identity });
+    expect(shown.filter((entry) => entry === `detached-${before.at(-1)}`)).toEqual([]);
+  });
+
+  it("says nothing more when the camera is refused after the page has closed", async () => {
+    let refuse!: (reason: unknown) => void;
+    getUserMedia.mockImplementation(() => new Promise((_resolve, reject) => (refuse = reject)));
+    const view = openPage();
+    view.unmount();
+    await act(async () => refuse(new DOMException("denied", "NotAllowedError")));
+    expect(fetchCalls.filter((call) => call.url.includes("/webrtc/"))).toEqual([]);
+  });
+});

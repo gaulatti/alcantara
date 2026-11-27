@@ -290,3 +290,12 @@ it("moves the TV audio desk's faders and meters with the audio bus and meter eve
   await send({ type: "audio_meter_update", levels: { song: 0.5, instants: { vu: 0, peak: 0 }, main: { level: 0 } } });
   await waitFor(() => expect(meter()).toBeCloseTo(Math.pow(0.5, 0.6) * 100, 3));
 });
+
+it("says where a playout restart cut a song, and keeps what it said for a notice it cannot read", async () => {
+  open("radio");
+  expect((await screen.findAllByText("Fictional opener", {}, { timeout: 5000 })).length).toBeGreaterThan(0);
+  await send({ type: "playout_restart_cut", programId: "main", title: "Fictional closer", cutAtMs: 83_000 });
+  expect(await screen.findByText(/Playout restarted: song cut at 1:23/)).toBeVisible();
+  await send({ type: "playout_restart_cut", programId: "main", title: "Fictional closer", cutAtMs: "soon" });
+  expect(screen.queryByText(/Playout restarted/)).toBeNull();
+});

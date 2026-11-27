@@ -2680,3 +2680,24 @@ it("says a broken call chain under the on-air strip", async () => {
   expect(line).toHaveTextContent("Guests can't reach air right now.");
   expect(line.previousElementSibling).toBe(screen.getByRole("region", { name: "On air" }));
 });
+
+// Input the desk is not usually given: a failed load with nothing to retry with, a playing song with no token, and
+// sounders whose playback has already ended or names no end.
+it("says the rotation did not load, with no Retry when it was given none", () => {
+  const p = props();
+  p.fixtureData!.logs = [];
+  mount({ ...p, rotationLoadError: true });
+  expect(screen.getByText("Couldn't load the rotation")).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+});
+
+it("keeps the desk up for a playing song with no token and for sounders that ended or name no end", () => {
+  const p = props();
+  p.programSongPlayback = { ...p.programSongPlayback!, token: "" };
+  p.instantPlayback = {
+    1: { startedAtMs: Date.now() - 60_000, endsAtMs: Date.now() - 30_000 },
+    2: { startedAtMs: Date.now(), endsAtMs: null },
+  } as never;
+  mount(p);
+  expect(within(screen.getByLabelText("On-air player")).getByText("City lights")).toBeVisible();
+});
