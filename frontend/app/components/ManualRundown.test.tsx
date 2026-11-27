@@ -271,8 +271,12 @@ it("activates and deactivates a rundown from the chooser", async () => {
 
 it("toggles looping and reports a failed toggle", async () => {
   await openRundown();
+  // Loop is a toggle that says its state, and only an armed loop takes the primary colour.
+  expect(screen.getByRole("button", { name: /Loop off/ })).toHaveAttribute("aria-pressed", "false");
+  expect(screen.getByRole("button", { name: /Loop off/ })).not.toHaveClass("bg-sea");
   fireEvent.click(screen.getByRole("button", { name: /Loop off/ }));
   expect(await screen.findByText("Loop on")).toBeVisible();
+  expect(screen.getByRole("button", { name: /Loop on/ })).toHaveAttribute("aria-pressed", "true");
   expect(updateFlightSequence).toHaveBeenCalledWith("main", 1, { loop: true });
   expect(screen.getByText("Cue 0 of 3 (looping)")).toBeVisible();
 
@@ -285,6 +289,9 @@ it("deletes the active rundown only after confirmation", async () => {
   await openRundown();
   const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValue(true);
   vi.stubGlobal("confirm", confirm);
+  // Delete reads as destructive and the cue buttons as secondary, never the primary blue.
+  expect(screen.getByRole("button", { name: "Delete" })).toHaveClass("bg-terracotta");
+  expect(screen.getByRole("button", { name: /Wait for song end/ })).not.toHaveClass("bg-sea");
   vi.mocked(deleteFlightSequence)
     .mockRejectedValueOnce(new Error("In use"))
     .mockResolvedValueOnce(undefined as never);

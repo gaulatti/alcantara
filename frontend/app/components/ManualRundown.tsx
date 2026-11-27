@@ -641,14 +641,14 @@ export default function ManualRundown() {
 
                   {activeSequence && (
                     <>
+                      {/* Bleecker's variant classes win over a passed className: the walk found every
+                          button here in primary blue, Delete included. Use its variants instead. */}
                       <Button
                         type="button"
+                        size="sm"
+                        variant={activeSequence.loop ? "primary" : "secondary"}
+                        aria-pressed={activeSequence.loop}
                         onClick={handleToggleLoop}
-                        className={`flex items-center gap-2 rounded px-3 py-2 text-xs font-semibold ${
-                          activeSequence.loop
-                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
-                            : "border border-zinc-700 bg-zinc-900 text-zinc-400 hover:bg-zinc-800"
-                        }`}
                       >
                         <Repeat size={14} />
                         {activeSequence.loop ? "Loop on" : "Loop off"}
@@ -656,8 +656,9 @@ export default function ManualRundown() {
 
                       <Button
                         type="button"
+                        size="sm"
+                        variant="destructive"
                         onClick={() => handleDeleteSequence(activeSequence.id)}
-                        className="flex items-center gap-2 rounded border border-red-900/50 bg-zinc-900 px-3 py-2 text-xs font-semibold text-red-400 hover:bg-red-950/30"
                       >
                         <Trash2 size={14} />
                         Delete
@@ -672,8 +673,9 @@ export default function ManualRundown() {
                       <Button
                         key={option.value}
                         type="button"
+                        size="sm"
+                        variant="secondary"
                         onClick={() => handleAddCue(option.value)}
-                        className="flex items-center gap-1.5 rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
                       >
                         <Plus size={12} />
                         {option.label}
