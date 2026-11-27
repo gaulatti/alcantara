@@ -88,6 +88,8 @@ export function GuestStrip({
   const [armed, setArmed] = useState(false);
   const [holding, setHolding] = useState(false);
   const [talkOnAir, setTalkOnAir] = useState(false);
+  // Mute and remove are confirmed in plain words before they are sent; a request to turn a device back on is not.
+  const [confirming, setConfirming] = useState<'mic' | 'camera' | 'remove' | null>(null);
   const holdTimer = useRef<number | null>(null);
   const talkHeld = useRef(false);
 
@@ -180,6 +182,40 @@ export function GuestStrip({
           Sent the live cue. The guest is on the output only through a scene that carries them.
         </p>
       ) : null}
+      {confirming ? (
+        <div role="group" aria-label="Confirm" className="guest-strip-row">
+          <p className="text-sm">
+            {confirming === 'remove'
+              ? `Remove ${participant.name} from the call? They drop off now. Their link still works until it expires, so they can rejoin.`
+              : confirming === 'mic'
+                ? `Mute ${participant.name}'s microphone? They are asked to switch it off.`
+                : `Turn off ${participant.name}'s camera? They are asked to switch it off.`}
+          </p>
+          <Button
+            size="xs"
+            variant="destructive"
+            disabled={busy}
+            onClick={() => {
+              if (confirming === 'remove') onRemove();
+              else onCommand({ type: 'media', device: confirming === 'mic' ? 'microphone' : 'camera', enabled: false });
+              setConfirming(null);
+            }}
+          >
+            {confirming === 'remove' ? 'Remove from call' : confirming === 'mic' ? 'Mute microphone' : 'Turn off camera'}
+          </Button>
+          <Button size="xs" variant="secondary" onClick={() => setConfirming(null)}>
+            Keep
+          </Button>
+        </div>
+      ) : null}
+      <div className="guest-strip-av" aria-label="Audio and video">
+        <span data-av={microphone ? (microphone.muted ? 'muted' : 'on') : 'none'}>
+          {microphone ? (microphone.muted ? 'Audio muted' : 'Audio on') : 'Audio not sent'}
+        </span>
+        <span data-av={camera ? (camera.muted ? 'off' : 'on') : 'none'}>
+          {camera ? (camera.muted ? 'Video off' : 'Video on') : 'Video not sent'}
+        </span>
+      </div>
       <div className="guest-strip-meter" aria-label="Mic level">
         <span>Mic</span>
         <span className="text-text-secondary">Meter not measured yet</span>
@@ -253,7 +289,7 @@ export function GuestStrip({
           size="xs"
           variant="secondary"
           disabled={!canOperate || !microphone || busy}
-          onClick={() => onCommand({ type: "media", device: "microphone", enabled: Boolean(microphone?.muted) })}
+          onClick={() => (microphone?.muted ? onCommand({ type: "media", device: "microphone", enabled: true }) : setConfirming("mic"))}
         >
           {microphone?.muted ? <MicOff size={13} /> : <Mic size={13} />}
           {microphone?.muted ? "Request mic" : "Mute mic"}
@@ -262,7 +298,7 @@ export function GuestStrip({
           size="xs"
           variant="secondary"
           disabled={!canOperate || !camera || busy}
-          onClick={() => onCommand({ type: "media", device: "camera", enabled: Boolean(camera?.muted) })}
+          onClick={() => (camera?.muted ? onCommand({ type: "media", device: "camera", enabled: true }) : setConfirming("camera"))}
         >
           {camera?.muted ? <VideoOff size={13} /> : <Video size={13} />}
           {camera?.muted ? "Request camera" : "Mute camera"}
@@ -363,7 +399,7 @@ export function GuestStrip({
           size="xs"
           variant="ghost"
           disabled={!canOperate || participant.connectionState === "offline" || busy}
-          onClick={onRemove}
+          onClick={() => setConfirming("remove")}
         >
           Remove session
         </Button>
