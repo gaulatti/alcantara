@@ -52,3 +52,15 @@ if (!window.matchMedia) {
     }),
   });
 }
+
+// gaulatti/alcantara#723: floating-ui (Radix tooltips and popovers) asks `element.matches(':modal')` and
+// `':popover-open'` on every position update to detect the top layer. jsdom's selector engine (nwsapi) resolves
+// `:modal` through `:fullscreen`, which calls `matches` again and recurses until the stack overflows; floating-ui
+// catches the error, so each check silently cost seconds and a file that opened one tooltip took about 12 s.
+// jsdom has no top layer, dialog modality or fullscreen, so these selectors match nothing: answer that directly.
+const TOP_LAYER_SELECTOR = /^\s*:(modal|popover-open|fullscreen)\s*$/;
+const nativeMatches = Element.prototype.matches;
+Element.prototype.matches = function matches(this: Element, selectors: string) {
+  if (TOP_LAYER_SELECTOR.test(selectors)) return false;
+  return nativeMatches.call(this, selectors);
+};
