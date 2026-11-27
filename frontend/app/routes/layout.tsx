@@ -571,6 +571,8 @@ function ConsoleShell() {
         description: 'Open the live control panel',
         group: 'Navigation',
         icon: <SlidersHorizontal size={16} />,
+        // For a show with radio this is the radio desk, and operators call it that.
+        keywords: selectedProgramType === 'tv' ? ['desk'] : ['radio desk', 'radio', 'desk'],
         onSelect: () => navigate('/')
       },
       {

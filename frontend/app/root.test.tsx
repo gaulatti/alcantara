@@ -64,6 +64,7 @@ describe("ErrorBoundary", () => {
     render(<ErrorBoundary error={{ status: 404, statusText: "Not Found" } as any} params={{} as any} />);
     expect(screen.getByText("404")).toBeInTheDocument();
     expect(screen.getByText("The requested page could not be found.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to Control" })).toHaveAttribute("href", "/");
   });
   it("shows the status text of other route errors, or a generic line without one", () => {
     mocks.isRouteErrorResponse.mockReturnValue(true);

@@ -93,6 +93,12 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
           <p className="text-xl text-text-secondary dark:text-text-secondary mb-8">
             {details}
           </p>
+          {/* A full load, so it recovers from whatever broke the page too. */}
+          <p className="mb-8">
+            <a href="/" className="text-sea underline underline-offset-4">
+              Back to Control
+            </a>
+          </p>
           {stack && (
             <pre className="w-full p-4 overflow-x-auto bg-white/50 rounded-lg text-left text-sm">
               <code>{stack}</code>
