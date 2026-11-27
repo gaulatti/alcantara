@@ -7,6 +7,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY frontend/package.json frontend/
 COPY backend/package.json backend/
 COPY infra/aws/package.json infra/aws/
+COPY e2e/package.json e2e/
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts --filter frontend
 
 FROM node:22.23.5-alpine AS build-env
@@ -16,6 +17,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY frontend/package.json frontend/
 COPY backend/package.json backend/
 COPY infra/aws/package.json infra/aws/
+COPY e2e/package.json e2e/
 RUN pnpm install --frozen-lockfile --filter frontend
 COPY frontend/ ./frontend/
 RUN pnpm --dir frontend run build
