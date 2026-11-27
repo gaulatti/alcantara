@@ -22,6 +22,7 @@ Configuration:
 - [`livekit.production.example.yaml`](livekit.production.example.yaml): the shape of the LiveKit Server configuration. The real file is rendered from the runtime secret by `backend/scripts/print-livekit-config.mjs`.
 - [`ingress.production.example.yaml`](ingress.production.example.yaml): LiveKit Ingress configuration.
 - [`helix/nginx-livekit.conf`](helix/nginx-livekit.conf): the public name's nginx server block.
+- [`helix/nginx-turn-stream.conf`](helix/nginx-turn-stream.conf) and [`helix/nginx-behind-stream.conf`](helix/nginx-behind-stream.conf): TURN over TLS on 443 (see below).
 
 All configuration files in source control use placeholder credentials (`replace-api-key`, `replace-api-secret`, `replace-redis-password`). Real credentials live only in AWS Secrets Manager (`broadcast/production/config`).
 
@@ -36,7 +37,7 @@ AWS_REGION=us-east-1 ALCANTARA_CONFIG_SECRET_ID=broadcast/production/config infr
 The script:
 1. renders `livekit.yaml` with the image's `print-livekit-config.mjs`;
 2. streams it over SSH into `~/.alcantara-livekit/livekit.yaml` (mode 0600) on Helix. The file is never printed or written on the operator's machine;
-3. copies the compose file and the nginx server block;
+3. copies the compose file and the nginx files;
 4. starts the project and waits up to two minutes for `livekit` to report healthy.
 
 Helix holds no cloud credential.
@@ -60,7 +61,7 @@ Signalling is not forwarded. `7880/tcp` is published on Helix's loopback only (`
 
 The TURN relay range (`30000-30100/udp`) only carries traffic from TURN to the SFU inside the container, so it is neither published nor forwarded.
 
-TURN over TLS (`5349`) is not enabled.
+TURN over TLS is on only when the runtime secret names `livekitTurnTlsDomain`. nginx then takes it on 443, and `5349/tcp` is published on Helix's loopback only. See below.
 
 - **Ingress WHIP** (only with the `ingress` profile):
   - `8080/tcp`: WHIP HTTP/TLS ingestion endpoint.
@@ -70,6 +71,81 @@ TURN over TLS (`5349`) is not enabled.
 - **Redis (`6379`)**: Not published. It is reachable only on the project's network.
 - **Health check (`8081`)**: Bound strictly to host loopback (`127.0.0.1:8081/tcp`) for internal orchestration and monitoring.
 - **Prometheus metrics (`8082`)**: Bound strictly to host loopback (`127.0.0.1:8082/tcp`) for authenticated metric scraping.
+
+## TURN over TLS on 443
+
+For guests whose networks block UDP and `7881/tcp`. LiveKit tells clients to use `turns:<domain>:443`, always on 443, so nginx must share that port between the web sites and TURN. It does that by the name a client asks for (`ssl_preread`), ends TLS for the TURN name with its own certificate, and passes the plain stream to LiveKit (`turn.external_tls`).
+
+**This changes every HTTPS site on Helix, not only Alcantara's.** nginx cannot have both a `stream` listener and `http` server blocks on 443, so every HTTPS server block moves to `127.0.0.1:8443`. Pick a moment when a short interruption of all of them is acceptable and nothing is on air or in a call.
+
+No router change is needed: 443 already reaches Helix. UDP 443 (HTTP/3), if any site uses it, is not affected.
+
+1. **DNS.** Deploy the `infra/aws` stack, which adds `turn.alcantara.gaulatti.com` as a CNAME to `helix.gaulatti.com`. Check: `dig +short turn.alcantara.gaulatti.com`.
+2. **Backend image.** Deploy the backend, so that `ghcr.io/gaulatti/alcantara:latest` has the new renderer.
+3. **Copy the files.** Run `livekit-up.sh` as above. With no `livekitTurnTlsDomain` yet, LiveKit's configuration does not change. The compose file gains the loopback port, so LiveKit restarts and calls in progress drop.
+4. **Packages, SELinux and certificate** (on Helix):
+
+   ```bash
+   sudo dnf install -y nginx-mod-stream policycoreutils-python-utils
+   ```
+
+   ```bash
+   sudo semanage port -a -t http_port_t -p tcp 5350 || sudo semanage port -m -t http_port_t -p tcp 5350
+   ```
+
+   ```bash
+   sudo setsebool -P httpd_can_network_connect 1
+   ```
+
+   ```bash
+   sudo certbot certonly --nginx -d turn.alcantara.gaulatti.com --deploy-hook "systemctl reload nginx"
+   ```
+
+5. **Move the web sites and add the stream block.** First back up and list what listens on 443:
+
+   ```bash
+   sudo cp -a /etc/nginx /etc/nginx.before-turn && sudo grep -rnE "^[[:space:]]*listen[^;#]*443" /etc/nginx/nginx.conf /etc/nginx/conf.d /etc/nginx/sites-enabled
+   ```
+
+   ```bash
+   sudo ss -ltnp 'sport = :443'
+   ```
+
+   Anything other than nginx on TCP 443 must be dealt with first. Then, in each file listed:
+   - replace `listen 443 ssl ...;` with `listen 127.0.0.1:8443 ssl proxy_protocol ...;`, keeping any `http2` and `default_server`;
+   - delete the matching `listen [::]:443 ...;` line (the stream block listens on IPv6);
+   - leave `listen ... quic` lines and port 80 alone;
+   - if a site passes `$server_port` to its application (for example `X-Forwarded-Port`), write `443` there instead.
+
+   Install the two files, and add `include /etc/nginx/stream.d/*.conf;` to `/etc/nginx/nginx.conf` outside the `http {}` block:
+
+   ```bash
+   sudo mkdir -p /etc/nginx/stream.d && sudo cp ~/.alcantara-livekit/nginx-turn-stream.conf /etc/nginx/stream.d/alcantara-turn.conf && sudo cp ~/.alcantara-livekit/nginx-behind-stream.conf /etc/nginx/conf.d/behind-stream.conf
+   ```
+
+   ```bash
+   sudo nginx -t && sudo systemctl restart nginx
+   ```
+
+   Do not restart until `nginx -t` passes; a failed test leaves the running nginx serving as before. `restart` rather than `reload`, because port 443 passes from one context to the other.
+
+6. **Check the sites** before going on: open each HTTPS site, `curl https://livekit.alcantara.gaulatti.com` (answers `OK`), and confirm that a site's access log shows client addresses, not `127.0.0.1`. Fix whatever is wrong in the nginx files and run step 5's last command again.
+7. **Name it in the secret.** Add `"livekitTurnTlsDomain": "turn.alcantara.gaulatti.com"` to `broadcast/production/config`. Only the renderer reads it. It must differ from the signalling host.
+8. **Render and restart LiveKit.** Run `livekit-up.sh` again, then restart the container, which Compose does not do when only `livekit.yaml` changed (calls in progress drop):
+
+   ```bash
+   ssh <helix ssh target> docker restart alcantara-livekit
+   ```
+
+9. **Verify.** From outside Helix's network, the certificate below must be the TURN name's:
+
+   ```bash
+   openssl s_client -connect turn.alcantara.gaulatti.com:443 -servername turn.alcantara.gaulatti.com </dev/null 2>/dev/null | openssl x509 -noout -subject -enddate
+   ```
+
+   Then join a call from a network that allows only TCP 443 (or with UDP and 7881 blocked on the guest's machine). In `chrome://webrtc-internals` the selected candidate pair is `relay` with relay protocol `tls`.
+
+Certbot renews the TURN certificate and the hook reloads nginx. A site added later with `certbot --nginx` may get a `listen 443 ssl` line, which `nginx -t` rejects as already in use; change it as in step 5.
 
 ## Protocol Gates & Enablement Requirements
 

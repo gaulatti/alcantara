@@ -10,6 +10,7 @@ interface PlaylistSheetPanelProps {
   notice?: ReactNode;
   isOpen: boolean;
   onClose: () => void;
+  programId: string;
   sequence: ProgramSongSequence;
   songCatalog: SongCatalogItem[];
   programSongPlayback: ProgramSongPlaybackState | null;
@@ -21,6 +22,7 @@ interface PlaylistSheetPanelProps {
 }
 
 export function PlaylistSheetPanel({
+  programId,
   isOpen,
   onClose,
   sequence,
@@ -58,6 +60,7 @@ export function PlaylistSheetPanel({
           view='catalog'
           onChange={(nextSequence) => onChange(nextSequence)}
           onTakeSelection={onTakeSelection}
+          undoScope={programId}
         />
         </div>
       </div>

@@ -177,8 +177,18 @@ export const FILLER_ON_AIR_MESSAGE =
 export const LEFTOVER_PROGRAM_ID_MESSAGE =
   "That ID belongs to a deleted show's settings. Choose another ID.";
 
+export const ON_AIR_DELETE_MESSAGE =
+  'This show is on air. Take it off air before deleting it.';
+export const FILLER_ON_AIR_DELETE_MESSAGE =
+  'Its filler is on air. Stop it before deleting.';
 /** How the refusal to rename a program that is on air begins; the Shows dialog shows such a refusal as it is. */
 export const ON_AIR_RENAME_MESSAGE_START = 'This show is on air';
+
+interface OnAirState {
+  activeSceneId: number | null;
+  fadeToBlack: boolean;
+  activeFlightSequenceId: number | null;
+}
 
 /** How often a checked save is read and checked again when the row changes under it. */
 const AUDIO_BUS_SAVE_ATTEMPTS = 3;
@@ -1583,29 +1593,28 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * A rename takes the program's filler with it, so it is refused while that filler is on air: a session holds a
-   * version (until its Stop), or Palazzo reports recovery automation running.
+   * A rename takes the program's filler with it and a delete ends it, so neither is done while that filler is on air:
+   * a session holds a version (until its Stop), or Palazzo reports recovery automation running.
    */
-  private async refuseRenameWhileFillerAirs(programId: string): Promise<void> {
+  private async refuseWhileFillerAirs(
+    programId: string,
+    message: string,
+  ): Promise<void> {
     const held = await this.prisma.fillerLeg.count({
       where: { programId, activeVersionId: { not: null } },
     });
     if (held || (await this.radioService.isRecoveryRunning(programId)))
-      throw new ConflictException(FILLER_ON_AIR_MESSAGE);
+      throw new ConflictException(message);
   }
 
   /**
-   * A rename moves the program's engines and outputs to another id, so a program that is on air is not renamed: it
-   * would go silent, or lose its output.
+   * What a program has on air. A rename would move its engines and outputs to another id and a delete would end them,
+   * so neither is done while this is not empty: the show would go silent, or lose its output.
    */
-  private async refuseRenameOnAir(
+  private async onAirReasons(
     programId: string,
-    state: {
-      activeSceneId: number | null;
-      fadeToBlack: boolean;
-      activeFlightSequenceId: number | null;
-    },
-  ): Promise<void> {
+    state: OnAirState,
+  ): Promise<string[]> {
     // A selected log that is not running airs nothing.
     const log =
       state.activeFlightSequenceId == null
@@ -1614,7 +1623,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
             where: { id: state.activeFlightSequenceId },
             select: { isRunning: true },
           });
-    const reasons = [
+    return [
       [state.activeSceneId != null, 'a scene is on air'],
       [!!state.fadeToBlack, 'fade to black is on'],
       [!!log?.isRunning, 'a log is running'],
@@ -1630,10 +1639,30 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     ]
       .filter(([holds]) => holds)
       .map(([, reason]) => reason as string);
+  }
+
+  private async refuseRenameOnAir(
+    programId: string,
+    state: OnAirState,
+  ): Promise<void> {
+    const reasons = await this.onAirReasons(programId, state);
     if (reasons.length === 0) return;
     throw new ConflictException(
       `${ON_AIR_RENAME_MESSAGE_START} (${reasons.join('; ')}). Take it off air before renaming it.`,
     );
+  }
+
+  /** The row only while it is still off air, as `state` was read. */
+  private offAirRow(state: OnAirState & { id: number }) {
+    return {
+      id: state.id,
+      activeSceneId: null,
+      fadeToBlack: false,
+      activeFlightSequenceId: state.activeFlightSequenceId,
+      flightSequences: {
+        none: { id: state.activeFlightSequenceId ?? 0, isRunning: true },
+      },
+    };
   }
 
   private requireRecorder(): OperatorChangeRecorder {
@@ -1675,7 +1704,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Program not found');
     }
     if (current !== next) {
-      await this.refuseRenameWhileFillerAirs(current);
+      await this.refuseWhileFillerAirs(current, FILLER_ON_AIR_MESSAGE);
       const existingTarget = await this.prisma.programState.findUnique({
         where: { programId: next },
         select: { id: true },
@@ -1732,18 +1761,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         where:
           current === next
             ? { id: existingSource.id }
-            : {
-                id: existingSource.id,
-                activeSceneId: null,
-                fadeToBlack: false,
-                activeFlightSequenceId: existingSource.activeFlightSequenceId,
-                flightSequences: {
-                  none: {
-                    id: existingSource.activeFlightSequenceId ?? 0,
-                    isRunning: true,
-                  },
-                },
-              },
+            : this.offAirRow(existingSource),
         data: updateData,
       });
     if (current === next) {
@@ -1844,17 +1862,33 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     const normalized = this.normalizeProgramId(programId);
     const existing = await this.prisma.programState.findUnique({
       where: { programId: normalized },
-      select: { id: true },
+      select: {
+        id: true,
+        activeSceneId: true,
+        fadeToBlack: true,
+        activeFlightSequenceId: true,
+      },
     });
 
     if (!existing) {
       throw new Error('Program not found');
     }
 
-    await this.prisma.programState.delete({
-      where: { id: existing.id },
-    });
+    await this.refuseWhileFillerAirs(normalized, FILLER_ON_AIR_DELETE_MESSAGE);
+    if ((await this.onAirReasons(normalized, existing)).length)
+      throw new ConflictException(ON_AIR_DELETE_MESSAGE);
+    // The delete matches the row only while it is still off air, as the rename's write does.
+    try {
+      await this.prisma.programState.delete({
+        where: this.offAirRow(existing),
+      });
+    } catch (error) {
+      if ((error as { code?: string }).code !== 'P2025') throw error;
+      throw new ConflictException(ON_AIR_DELETE_MESSAGE);
+    }
     this.programTeams?.invalidate(normalized);
+    // Without this the engine and its Palazzo client kept running for the deleted program until a restart.
+    this.songExecutionEngine.removeProgram(normalized);
 
     const subject = this.eventSubjects.get(normalized);
     if (subject) {

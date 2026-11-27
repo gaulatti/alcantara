@@ -22,6 +22,7 @@ const WORKSPACE_COPY = [
   'COPY frontend/package.json frontend/',
   'COPY backend/package.json backend/',
   'COPY infra/aws/package.json infra/aws/',
+  'COPY e2e/package.json e2e/',
 ];
 
 test('the npm lockfile is gone, so no image or workflow can read or regenerate it', () => {

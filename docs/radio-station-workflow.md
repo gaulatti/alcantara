@@ -137,6 +137,14 @@ An explicit operator Stop takes audio off air and sets the base rotation to Manu
 
 On backend restart, scheduled blocks whose in-memory timers were lost are marked interrupted (`isRunning:false`) without resetting `lastStartedAt` or rewriting the rotation. They are not replayed automatically. The continuous engine retains its normal authoritative Palazzo snapshot reconciliation before sending a new selection. The bounded `interrupted` metric counts startup batches containing such blocks.
 
+## Deleting a program
+
+A program that is on air is not deleted: 409 "This show is on air. Take it off air before deleting it.", by the same
+check a rename makes (a scene or fade to black, a running log, a playing song or scene instant), and the delete matches
+the program only while it is still off air. It is also refused, 409 "Its filler is on air. Stop it before deleting.",
+while its filler is on air, by the rule a rename uses ([program-filler.md](program-filler.md)). A delete of an off-air program removes its rows, stops its song engine's
+timers, any armed rundown timer and its Palazzo telemetry client, and drops what they held for it. It sends no command.
+
 ## Saving the rotation
 
 `PUT /program/:programId/audio-bus` with a `songSequence` replaces the whole stored rotation, so a save names the
@@ -355,6 +363,11 @@ command that repeats one is answered `duplicate: true` and airs nothing. So:
 
 Walk part 4 (2026-11-26) found the gap: after a Take now over a Play Next song, the engine re-sent the claim's ID at
 the next end, Palazzo aired nothing while the desk said On air with Dead air, and every watchdog resume re-sent it.
+
+In manual mode the watchdog otherwise never acts, so a claim restored after a restart whose command Palazzo answers as
+a duplicate is judged by it until Palazzo confirms the song: after Palazzo has reported nothing on the air for the
+watchdog's bound, the song is taken off air and its entry dropped, counted `restart-duplicate-dropped`. Nothing else is
+started. A duplicate answer for a song Palazzo reports playing changes nothing.
 
 ## Gapless handoff: announcing the next song
 

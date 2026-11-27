@@ -19,6 +19,7 @@ import { AppLoading } from "../components/AppLoading";
 import { RundownFixture } from "../components/RundownFixture";
 import { RecipeEditorFixture } from "../components/RecipeEditorFixture";
 import { RundownRecipeFixture } from "../components/RundownRecipeFixture";
+import { RundownLibrary } from "../components/RundownLibrary";
 import { CallerDeskFixture, ProgramReturnFixture } from "../components/ReturnCallersFixture";
 import { RundownFillers } from "../components/RundownFillers";
 import {
@@ -179,7 +180,9 @@ export default function ConsoleFixture() {
     fixture.startsWith("radio-") || fixture.startsWith("audio")
       ? fixture === "radio-empty" || fixture === "audio-empty"
         ? { ...consoleSongs, items: [], activeItemId: null }
-        : consoleSongs
+        : fixture === "radio-manual-off-air"
+          ? { ...consoleSongs, mode: "manual" as const }
+          : consoleSongs
       : playbackSequence,
   );
   const [cartSearch, setCartSearch] = useState("");
@@ -357,6 +360,12 @@ export default function ConsoleFixture() {
   if (fixture === "rundown-desk") return <RundownFixture />;
   if (fixture === "rundown-recipes") return <RecipeEditorFixture />;
   if (fixture === "rundown-recipe") return <RundownRecipeFixture />;
+  if (fixture === "rundown-library-empty")
+    return (
+      <main className="max-w-sm p-6">
+        <RundownLibrary songs={[]} clips={[]} disabled={false} onAdd={() => {}} initialFilter="clip" />
+      </main>
+    );
   if (fixture === "program-return") return <ProgramReturnFixture />;
   if (fixture === "caller-desk") return <CallerDeskFixture />;
   if (fixture === "loading") return <AppLoading />;
@@ -377,6 +386,7 @@ export default function ConsoleFixture() {
           <div className="h-[32rem] w-full max-w-3xl overflow-hidden rounded-xl border border-sand/30">
             <ProgramSongSequenceEditor
               sequence={songs}
+              undoScope="fixture"
               view="queue"
               onChange={setSongs}
             />
@@ -452,6 +462,7 @@ export default function ConsoleFixture() {
               logs:
                 fixture === "radio-empty" ||
                 fixture === "radio-continuous" ||
+                fixture === "radio-manual-off-air" ||
                 fixture === "radio-audio-off-rundown"
                   ? []
                   : [
@@ -512,9 +523,11 @@ export default function ConsoleFixture() {
               }))}
             programSongPlayback={
               // radio-audio-off-rundown (D7): no song commanded while the station is audible.
+              // radio-manual-off-air (walk part 4): a manual rotation with nothing on air, where Autoplay starts it.
               playbackOnAir &&
               fixture !== "radio-empty" &&
-              fixture !== "radio-audio-off-rundown"
+              fixture !== "radio-audio-off-rundown" &&
+              fixture !== "radio-manual-off-air"
                 ? {
                     token:
                       fixture === "radio-external"
@@ -716,6 +729,7 @@ export default function ConsoleFixture() {
                     : null,
               }}
               music={{
+                programId: "fixture",
                 sequence: songs,
                 songCatalog: [],
                 programSongPlayback: null,

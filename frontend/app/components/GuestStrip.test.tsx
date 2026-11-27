@@ -133,7 +133,7 @@ describe("GuestStrip", () => {
   it("shows what is not measured yet, and a connected guest's controls", () => {
     const { card } = strip();
     expect(card).toHaveAttribute("data-state", "connected");
-    expect(within(card).getByText("Connected")).toBeVisible();
+    expect(within(card).getByText("Live")).toBeVisible();
     expect(within(card).getByText("Meter not measured yet")).toBeVisible();
     expect(within(card).getByText("Cue · none sent")).toBeVisible();
     expect(within(card).queryByRole("checkbox")).toBeNull();
@@ -216,11 +216,15 @@ describe("GuestStrip", () => {
     fireEvent.click(within(card).getByRole("button", { name: /Request camera/ }));
     expect(onCommand).toHaveBeenCalledWith({ type: "media", device: "microphone", enabled: true });
     expect(onCommand).toHaveBeenCalledWith({ type: "media", device: "camera", enabled: true });
+    // Muting asks first, in plain words (see the coverage file).
     fireEvent.change(within(card).getByLabelText("Message Lucía Ferrer"), { target: { value: "Now" } });
     expect(onDraftChange).toHaveBeenCalledWith("Now");
     fireEvent.click(within(card).getByRole("button", { name: "Send message to Lucía Ferrer" }));
     expect(onCommand).toHaveBeenCalledWith({ type: "message", text: "On in 10" });
-    for (const [name, handler] of [[/Replace link/, onReplace], [/Remove session/, onRemove], [/Revoke/, onRevoke]] as const) {
+    fireEvent.click(within(card).getByRole("button", { name: /Remove session/ }));
+    fireEvent.click(within(card).getByRole("button", { name: "Remove from call" }));
+    expect(onRemove).toHaveBeenCalled();
+    for (const [name, handler] of [[/Replace link/, onReplace], [/Revoke/, onRevoke]] as const) {
       fireEvent.click(within(card).getByRole("button", { name }));
       expect(handler).toHaveBeenCalled();
     }

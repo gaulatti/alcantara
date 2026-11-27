@@ -6,6 +6,7 @@
 !pnpm-workspace.yaml
 !frontend/package.json
 !infra/aws/package.json
+!e2e/package.json
 !backend/
 backend/node_modules
 backend/dist

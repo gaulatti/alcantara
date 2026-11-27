@@ -21,7 +21,7 @@ test('the image copies the workspace lockfile and manifests before installing', 
   const install = dockerfile.indexOf('RUN pnpm install');
   const lockfile = dockerfile.indexOf('COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./');
   assert.ok(lockfile >= 0 && lockfile < install);
-  for (const manifest of ['backend/package.json', 'frontend/package.json', 'infra/aws/package.json'])
+  for (const manifest of ['backend/package.json', 'frontend/package.json', 'infra/aws/package.json', 'e2e/package.json'])
     assert.ok(dockerfile.indexOf(`COPY ${manifest} `) >= 0 && dockerfile.indexOf(`COPY ${manifest} `) < install, manifest);
 });
 
@@ -44,7 +44,7 @@ test('the development image installs with the frozen lockfile, never a floating 
   assert.deepEqual(installs, ['RUN pnpm install --frozen-lockfile --ignore-scripts --filter backend']);
   assert.doesNotMatch(devDockerfile, /--no-frozen-lockfile/);
   const install = devDockerfile.indexOf('RUN pnpm install');
-  for (const copy of ['COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./', 'COPY backend/package.json backend/', 'COPY frontend/package.json frontend/', 'COPY infra/aws/package.json infra/aws/'])
+  for (const copy of ['COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./', 'COPY backend/package.json backend/', 'COPY frontend/package.json frontend/', 'COPY infra/aws/package.json infra/aws/', 'COPY e2e/package.json e2e/'])
     assert.ok(devDockerfile.indexOf(copy) >= 0 && devDockerfile.indexOf(copy) < install, copy);
 });
 

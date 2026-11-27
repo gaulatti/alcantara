@@ -34,6 +34,7 @@ describe('renaming a program keeps its Program row, against Postgres', () => {
       {
         getOnAirView: () => ({ playbackRequestId: null }),
         renameProgram: () => Promise.resolve(),
+        removeProgram: () => undefined,
       } as never,
       undefined,
       undefined,

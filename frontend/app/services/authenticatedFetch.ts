@@ -12,6 +12,14 @@ export const isPublicProgramRendererPath = (pathname: string): boolean =>
 /** The public MCP instructions page (gaulatti/bastille#35): it reads one public list and must not need a session. */
 export const isPublicConnectPath = (pathname: string): boolean => /^\/connect\/?$/.test(pathname);
 
+/**
+ * The call pages nobody signs in to (gaulatti/alcantara#354): a guest's /guest/<invitation>, which authenticates with
+ * its invitation, and the machine-only /return-router/<programId>, which sends its renderer key. With no session the
+ * wrapper threw "Authenticated session has no ID token" before any request, so in production no guest could join.
+ */
+export const isPublicCallPath = (pathname: string): boolean =>
+  /^\/(guest|return-router)\/[^/]+\/?$/.test(pathname);
+
 const isBackendRequest = (input: RequestInfo | URL): boolean => {
   const requestUrl =
     typeof input === "string"
@@ -80,7 +88,10 @@ export const installAuthenticatedFetch = (): void => {
 
   installed = true;
   globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) =>
-    isBackendRequest(input) && !isPublicProgramRendererPath(window.location.pathname) && !isPublicConnectPath(window.location.pathname)
+    isBackendRequest(input) &&
+    !isPublicProgramRendererPath(window.location.pathname) &&
+    !isPublicConnectPath(window.location.pathname) &&
+    !isPublicCallPath(window.location.pathname)
       ? authenticatedBackendFetch(input, init)
       : nativeFetch(input, init);
 };
