@@ -368,19 +368,17 @@ it("selects the first known show when the saved one is gone, and opens its telev
   expect(shell.logout).toHaveBeenCalled();
 });
 
-it("gives Logout its own room in the sidebar footer, and an icon to every Development item", async () => {
+it("keeps Access and Logout in the sidebar foot, and an icon to every Development item", async () => {
   open("/songs");
   await waitFor(() => expect(programSelects()[0]).toHaveValue("news"));
   const sidebar = screen.getByRole("navigation", { name: "Sidebar" });
-  // Commands, Access and Logout used to share one row of the 256px sidebar, which clipped Logout.
+  // The foot holds the account actions only; the show picker and Commands live in the top bar.
   const footer = within(sidebar).getByTestId("sidebar-footer-actions");
-  const commands = within(footer).getByRole("button", { name: /Commands/ });
   const access = within(footer).getByRole("button", { name: "Access" });
   const logout = within(footer).getByRole("button", { name: "Logout" });
-  expect(commands.parentElement).toBe(footer);
-  expect(access.parentElement).toBe(logout.parentElement);
-  expect(access.parentElement).not.toBe(footer);
-  expect(footer).toHaveClass("flex-col");
+  expect(within(footer).queryByRole("button", { name: /Commands/ })).toBeNull();
+  expect(access.parentElement).toBe(footer);
+  expect(logout.parentElement).toBe(footer);
 
   for (const label of [
     "Component catalog",
@@ -434,7 +432,7 @@ it("reloads the program from the header and reports a refused reload in the cons
   // One press only asks: the output is not reloaded until the second.
   const reloadTwice = () => {
     fireEvent.click(refreshButton());
-    fireEvent.click(screen.getByRole("button", { name: "Reload output?" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reload program output: press again" }));
   };
   const asked: string[] = [];
   const answer = routes["POST /program/news/reload"];
@@ -443,9 +441,9 @@ it("reloads the program from the header and reports a refused reload in the cons
     return answer(...args);
   };
   fireEvent.click(refreshButton());
-  expect(screen.getByRole("button", { name: "Reload output?" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Reload program output: press again" })).toBeVisible();
   expect(asked).toEqual([]);
-  fireEvent.click(screen.getByRole("button", { name: "Reload output?" }));
+  fireEvent.click(screen.getByRole("button", { name: "Reload program output: press again" }));
   const refresh = refreshButton();
   await waitFor(() => expect(refresh).toBeDisabled());
   expect(refresh.querySelector("svg")).toHaveClass("animate-spin");
@@ -847,17 +845,18 @@ it("opens a simulcast show's template output and labels it", async () => {
   await waitFor(() => expect(shell.program).toBe("plain"));
 });
 
-// #875: the line under the header says what the live desk does, so only the desk carries it.
+// The top bar carries no prose: the mode pill names the show type, and the desk says the rest.
 it.each([
   ["news", "Preview and Program switching"],
   ["sim", "Television and radio legs"],
   ["radio one", "Continuous audio playout"],
-  // A show with no type reads as television.
   ["plain", "Preview and Program switching"],
-])("describes the %s desk on the desk itself", async (program, description) => {
+])("keeps the %s desk's description out of the top bar", async (program, description) => {
   shell.program = program;
   open("/");
-  expect(await screen.findByText(description)).toBeInTheDocument();
+  // Wait for the shell to render its top bar, so an empty page cannot pass the absence check.
+  await screen.findByRole("button", { name: "Open command menu" });
+  expect(screen.queryByText(description)).toBeNull();
 });
 
 // Never a moment it can go on air unseen: a press followed by navigation shows it while it is still opening.
@@ -1094,7 +1093,8 @@ it("opens and closes the phone navigation, which closes on navigation", async ()
   shell.testAuth = true;
   open("/console-fixture");
   await waitFor(() => expect(programSelects()[0]).toHaveValue("news"));
-  expect(screen.getAllByText("TEST AUTH").length).toBeGreaterThan(1);
+  // One badge in the top bar, at every width.
+  expect(screen.getAllByText("TEST AUTH")).toHaveLength(1);
   expect(
     screen.getByRole("navigation", { name: "Collapsed sidebar" }),
   ).toBeInTheDocument();
@@ -1103,12 +1103,11 @@ it("opens and closes the phone navigation, which closes on navigation", async ()
   const phoneSidebar = within(mobile).getByRole("navigation", {
     name: "Mobile sidebar",
   });
-  expect(
-    within(phoneSidebar).getAllByText("Television").length,
-  ).toBeGreaterThan(0);
-  fireEvent.click(
-    within(phoneSidebar).getByRole("button", { name: /Commands/ }),
-  );
+  // The show type is named once, in the top bar, which the phone menu sits beside.
+  expect(screen.getAllByText("Television").length).toBeGreaterThan(0);
+  // Commands lives once, in the top bar, at every width.
+  expect(within(phoneSidebar).queryByRole("button", { name: /Commands/ })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Open command menu" }));
   expect(commands()).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Close command menu" }));
   fireEvent.click(within(phoneSidebar).getByRole("link", { name: "Shows" }));
@@ -1147,14 +1146,8 @@ it("opens and closes the phone navigation, which closes on navigation", async ()
     screen.queryByRole("dialog", { name: "Application navigation" }),
   ).toBeNull();
 
-  // The full sidebar's own Commands button.
-  fireEvent.click(
-    within(screen.getByRole("navigation", { name: "Sidebar" })).getByRole(
-      "button",
-      { name: /Commands/ },
-    ),
-  );
-  expect(commands()).toBeInTheDocument();
+  // The full sidebar has no Commands of its own; the top bar's button opens the menu.
+  expect(within(screen.getByRole("navigation", { name: "Sidebar" })).queryByRole("button", { name: /Commands/ })).toBeNull();
 });
 
 // gaulatti/alcantara#287: the listener audio lives in the shell, so it survives page changes.

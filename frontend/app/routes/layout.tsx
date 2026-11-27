@@ -559,28 +559,27 @@ function ConsoleShell() {
           size='sm'
           variant='destructive'
           title='Reloads the program output now'
-          // Short on screen: the phone header has no room for more.
-          aria-label='Reload output?'
+          aria-label='Reload program output: press again'
           onClick={() => {
             reloadArm.take();
             void triggerProgramReload();
           }}
         >
-          <RefreshCw size={14} strokeWidth={1.8} /> Reload?
+          <RefreshCw size={14} strokeWidth={1.8} /> Press again
         </Button>
       );
     return (
-      <IconButton
+      <Button
         type='button'
         size='sm'
         variant='subtle'
-        title='Refresh Program'
+        title='Refresh Program: reloads the program output after a second press'
         aria-label='Refresh Program'
         onClick={() => reloadArm.arm(selectedProgramId)}
         disabled={isTriggeringProgramReload}
       >
-        <RefreshCw size={16} strokeWidth={1.8} className={isTriggeringProgramReload ? 'animate-spin' : ''} />
-      </IconButton>
+        <RefreshCw size={14} strokeWidth={1.8} className={isTriggeringProgramReload ? 'animate-spin' : ''} /> Program
+      </Button>
     );
   };
 
@@ -895,6 +894,8 @@ function ConsoleShell() {
   ]);
 
   const programModeLabel = programModeLabelFor(resolvedSelectedProgram?.type as ProgramType | undefined);
+  // Pages with their own mic control (the desk, the calls board) show it there, so the shell chip is left off them.
+  const ownMicPage = location.pathname === '/' || location.pathname === '/control' || location.pathname === '/calls';
   const programModeIcon =
     selectedProgramType === 'radio' ? (
       <Radio size={14} />
@@ -921,32 +922,19 @@ function ConsoleShell() {
       <Link to='/' aria-label='Alcántara live control' className='flex justify-center'>
         <img src='/logo.svg' alt='' className='h-7 w-7 object-contain' />
       </Link>
-      {testAuthBadge(true)}
     </div>
   ) : (
     <div className='px-1'>
       <BrandLockup href='/' name='alcántara' logoAlt='alcántara' logoSrc='/logo.svg' renderLink={renderAppLink} />
-      <div className='mt-2 flex items-center justify-between gap-2'>
-        <p className='text-[11px] leading-5 text-text-secondary'>Broadcast control center</p>
-        {testAuthBadge()}
-      </div>
+      <p className='mt-2 text-[11px] leading-5 text-text-secondary'>Broadcast control center</p>
     </div>
   );
+  // The top bar carries the show picker, Commands and the test badge once at every width; the sidebar foot keeps only
+  // the account actions.
   const sidebarFooter = isViewportConstrainedRoute ? undefined : (
-    <div className='space-y-3 px-1'>
-      <div>
-        <p className='mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-text-secondary'>Active show</p>
-        {renderHeaderProgramSelector()}
-      </div>
-      <div className='flex flex-col items-start gap-1' data-testid='sidebar-footer-actions'>
-        <Button size='sm' variant='ghost' onClick={() => setCommandOpen(true)}>
-          <Search size={14} /> Commands
-        </Button>
-        <div className='flex items-center gap-1'>
-          {renderAccessButton()}
-          {renderLogoutButton()}
-        </div>
-      </div>
+    <div className='flex items-center gap-1 px-1' data-testid='sidebar-footer-actions'>
+      {renderAccessButton()}
+      {renderLogoutButton()}
     </div>
   );
 
@@ -972,42 +960,15 @@ function ConsoleShell() {
         />
 
         <div className='flex min-w-0 flex-1 flex-col'>
-          <header className='fixed inset-x-0 top-0 z-[1200] flex h-16 items-center justify-between border-b border-white/10 bg-deep-sea/95 px-4 backdrop-blur xl:hidden'>
-            <BrandLockup href='/' name='alcántara' logoAlt='alcántara' logoSrc='/logo.svg' renderLink={renderAppLink} />
-            <div className='flex items-center gap-2'>
-              {testAuthBadge()}
-              <span className='hidden items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.06] px-2.5 py-1 text-xs font-semibold text-text-secondary sm:inline-flex'>
-                {programModeIcon} {programModeLabel}
-              </span>
-              <IconButton variant='ghost' aria-label={mobileNavigationOpen ? 'Close navigation' : 'Open navigation'} onClick={() => setMobileNavigationOpen((open) => !open)}>
-                {mobileNavigationOpen ? <X size={20} /> : <Menu size={20} />}
-              </IconButton>
-            </div>
-          </header>
-
           {mobileNavigationOpen ? (
             <div className='fixed inset-0 z-[1190] xl:hidden' role='dialog' aria-modal='true' aria-label='Application navigation'>
               <button type='button' aria-label='Close navigation' className='absolute inset-0 bg-black/65' onClick={() => setMobileNavigationOpen(false)} />
               <Sidebar
                 key={sectionsKey}
-                className='absolute bottom-0 right-0 top-16 w-[min(90vw,22rem)] shadow-2xl'
-                header={
-                  <div className='space-y-3 px-1'>
-                    <p className='text-[10px] font-semibold uppercase tracking-[0.12em] text-text-secondary'>Active show</p>
-                    {renderHeaderProgramSelector()}
-                    <span className='inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.06] px-2.5 py-1 text-xs font-semibold text-text-secondary'>
-                      {programModeIcon} {programModeLabel}
-                    </span>
-                  </div>
-                }
+                className='absolute bottom-0 right-0 top-14 w-[min(90vw,22rem)] shadow-2xl'
                 items={groupedSidebarItems}
                 footer={
                   <div className='flex flex-wrap items-center gap-2 px-1'>
-                    <Button size='sm' variant='secondary' onClick={() => setCommandOpen(true)}>
-                      <Search size={14} /> Commands
-                    </Button>
-                    {renderOpenProgramButton()}
-                    {renderRefreshProgramButton()}
                     {renderAccessButton()}
                     {renderLogoutButton()}
                   </div>
@@ -1018,8 +979,15 @@ function ConsoleShell() {
             </div>
           ) : null}
 
-          <div className='flex min-h-0 flex-1 flex-col pt-16 xl:pt-0'>
-            <div className='flex min-h-13 shrink-0 items-center gap-2 border-b border-white/[0.08] bg-deep-sea px-3 py-2 sm:px-4'>
+          <div className='flex min-h-0 flex-1 flex-col'>
+            {/* One top bar at every width: below xl the menu and logo sit here instead of a second header (#shell v3). */}
+            <div className='flex h-14 shrink-0 items-center gap-2 border-b border-white/[0.08] bg-deep-sea px-3 sm:px-4'>
+              <IconButton variant='ghost' className='xl:hidden' aria-label={mobileNavigationOpen ? 'Close navigation' : 'Open navigation'} onClick={() => setMobileNavigationOpen((open) => !open)}>
+                {mobileNavigationOpen ? <X size={20} /> : <Menu size={20} />}
+              </IconButton>
+              <Link to='/' aria-label='alcántara' className='shrink-0 xl:hidden'>
+                <img src='/logo.svg' alt='' className='h-6 w-6 object-contain' />
+              </Link>
               <div className='min-w-0 flex-1 sm:max-w-[260px]'>{renderHeaderProgramSelector()}</div>
               {programsFailed ? (
                 <p role='alert' className='flex items-center gap-2 text-xs text-terracotta'>
@@ -1038,15 +1006,13 @@ function ConsoleShell() {
                   </Button>
                 </p>
               ) : null}
-              <span className='hidden shrink-0 items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.05] px-2.5 py-1 text-xs font-semibold text-text-secondary sm:inline-flex'>
+              <span className='inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.05] px-2.5 py-1 text-xs font-semibold text-text-secondary'>
                 {programModeIcon} {programModeLabel}
               </span>
-              <span className='hidden min-w-0 flex-1 truncate text-xs text-text-secondary lg:block'>
-                {/* What the live desk does; on any other page it described a screen that is not there (#875). */}
-                {location.pathname !== '/' && location.pathname !== '/control' ? null : selectedProgramType === 'radio' ? 'Continuous audio playout' : selectedProgramType === 'both' ? 'Television and radio legs' : 'Preview and Program switching'}
-              </span>
-              {/* A live microphone is said on every page, with its off switch (#879). */}
-              {hostMic && hostMic.state !== 'off' ? (
+              <span className='min-w-0 flex-1' />
+              {testAuthBadge()}
+              {/* The mic chip is said while the mic is live, on every page that has no mic control of its own (#879). */}
+              {hostMic && hostMic.state !== 'off' && !ownMicPage ? (
                 <span role='status' className='inline-flex shrink-0 items-center gap-1.5 rounded-full border border-accent-red bg-accent-red py-0.5 pl-2.5 pr-1 text-xs font-bold text-white'>
                   <Mic size={14} />
                   <span className='max-w-32 truncate'>
