@@ -9,6 +9,7 @@ const lk = vi.hoisted(() => {
   class Room {
     localParticipant = {
       trackPublications: new Map<string, unknown>(),
+      setTrackSubscriptionPermissions: () => {},
       publishTrack: async () => {
         const stats = new Map([
           ['P', { type: 'candidate-pair', localCandidateId: 'L', nominated: true, state: 'succeeded' }],

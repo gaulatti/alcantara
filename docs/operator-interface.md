@@ -166,7 +166,7 @@ reconnects, **Dropped** for a guest who was live and lost the connection, and
 **Invited, not joined** for a link no one has used. A
 guest reaches the output only through a scene that carries them, and the strip
 says so. Talk is hold-to-talk (press and hold, or hold T while the strip has
-focus). Releasing always closes the microphone, even before the connection is
+focus), and only the guest it is for can receive it. Releasing always closes the microphone, even before the connection is
 up. Talking to a guest who was cued live needs "Allow talk while cued live" to
 be ticked first. The live cue is armed by one press and sent by a second press,
 or by Space within 5 s. The wrap cue needs a 0.8 s hold.

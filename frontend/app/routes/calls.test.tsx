@@ -19,6 +19,7 @@ const lk = vi.hoisted(() => {
       connectedTo: string[];
       published: string[];
       disconnected: boolean;
+      allowed: Array<{ all: boolean; identities: string[]; beforePublish: boolean }>;
     }[],
     tracks: [] as { stopped: boolean }[],
     // Set by a test to make the next connect fail with this value.
@@ -28,7 +29,19 @@ const lk = vi.hoisted(() => {
     connectedTo: string[] = [];
     published: string[] = [];
     disconnected = false;
+    // Who may receive this room's tracks, as set before each publish.
+    allowed: Array<{ all: boolean; identities: string[]; beforePublish: boolean }> = [];
     localParticipant = {
+      setTrackSubscriptionPermissions: (
+        all: boolean,
+        list: Array<{ participantIdentity: string; allowAll: boolean }>,
+      ) => {
+        this.allowed.push({
+          all,
+          identities: list.filter((entry) => entry.allowAll).map((entry) => entry.participantIdentity),
+          beforePublish: this.published.length === 0,
+        });
+      },
       publishTrack: async (_track: unknown, options: { name: string }) => {
         this.published.push(options.name);
       },
@@ -692,6 +705,8 @@ it("talks privately only while held, and releases the microphone when the page c
   const talk = button(/Hold · talk/);
   fireEvent.pointerDown(talk);
   await waitFor(() => expect(lk.state.rooms[0]?.published).toEqual(["talkback:inv-1"]));
+  // Only Ada may receive this talkback, set before the track is published.
+  expect(lk.state.rooms[0].allowed).toEqual([{ all: false, identities: ["guest-ada"], beforePublish: true }]);
   expect(bodyOf(calls, "/webrtc/operator-token")).toEqual({ programId: "main show" });
   expect(lk.state.rooms[0].connectedTo).toEqual(["wss://livekit.example", "fictional-operator-token"]);
   expect(button(/Talking… release to stop/)).toHaveAttribute("aria-pressed", "true");

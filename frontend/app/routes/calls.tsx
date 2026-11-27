@@ -320,6 +320,11 @@ export default function CallsRoute() {
         closeTalkback();
         return;
       }
+      // Only the guest this talkback is for may receive it: LiveKit enforces subscription permissions on the server,
+      // so no other guest, and no renderer, can subscribe to it whatever their page asks for.
+      room.localParticipant.setTrackSubscriptionPermissions(false, [
+        { participantIdentity: participant.identity, allowAll: true }
+      ]);
       await room.localParticipant.publishTrack(track, {
         name: `talkback:${participant.invitationId}`
       });
