@@ -505,7 +505,7 @@ export function ProgramSongSequenceEditor({
                               type='button'
                               onClick={() => toggleHighRotation(index, displayItem)}
                               disabled={!displayItem.highRotation && highRotationCount >= 12}
-                              className={`flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:bg-transparent ${displayItem.highRotation ? 'text-amber-300' : 'text-text-secondary opacity-0 group-hover:opacity-100'} disabled:cursor-not-allowed disabled:opacity-30`}
+                              className={`flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:bg-transparent ${displayItem.highRotation ? 'text-amber-300' : 'text-text-secondary opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100'} disabled:cursor-not-allowed disabled:opacity-30`}
                               title={
                                 displayItem.highRotation
                                   ? 'Remove from high rotation'

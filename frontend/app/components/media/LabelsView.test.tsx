@@ -281,3 +281,12 @@ it("says when the selected label has no media", () => {
   setup({ selectedId: "Empty", labels: [label("Empty", [])] });
   expect(screen.getByText("No media with this label")).toBeInTheDocument();
 });
+
+// Touch has no hover, so the label's row controls must not stay at opacity 0 there (class guard; touch is checked in a capture).
+it("keeps a label's row controls visible on a touch screen, where there is no hover", () => {
+  const { props } = setup({ selectedId: "Ninety" });
+  const drawer = within(screen.getByRole("complementary", { name: "Ninety details" }));
+  const up = drawer.getByRole("button", { name: "Move Asset n2 up" });
+  expect(up.parentElement!.className).toContain("[@media(hover:none)]:opacity-100");
+  expect(props.onReorder).not.toHaveBeenCalled();
+});
