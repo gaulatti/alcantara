@@ -918,7 +918,6 @@ describe('operator Stop halts the radio sequence', () => {
   it('stays halted and logs when the stopped rotation cannot be persisted', async () => {
     const s = session();
     await stoppedOnTrackOne(s);
-    s.prisma.programState.update.mockRejectedValueOnce(new Error('db down'));
     const logged = jest
       .spyOn(
         (s.engine as unknown as { logger: { error: (m: string) => void } })
@@ -934,6 +933,8 @@ describe('operator Stop halts the radio sequence', () => {
     const command = s.lastCommand();
     s.started(command);
     await settle();
+    // The Stop's own write fails: the start before it also writes, to clear the cued mark.
+    s.prisma.programState.update.mockRejectedValueOnce(new Error('db down'));
     s.engine.handleStopSong('radio-1');
     await settle();
     expect(logged).toHaveBeenCalledWith(
