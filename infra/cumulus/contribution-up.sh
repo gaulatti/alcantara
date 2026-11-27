@@ -46,11 +46,12 @@ remote "umask 077 && mkdir -p $remote_dir/contribution"
 printf 'ALCANTARA_API_URL=%s\nPROGRAM_ID=%s\nCONTRIBUTION_RTMP_URL=%s\n%s\n' "$api" "$program" "$rtmp" "$key_line" |
   remote "umask 077 && cat > $remote_dir/contribution.env.new && mv -f $remote_dir/contribution.env.new $remote_dir/contribution.env"
 key_line=
-scp -q -o BatchMode=yes "$here/compose.contribution.yml" "$target:.alcantara-contribution/"
+scp -q -o BatchMode=yes "$here/compose.contribution.yml" "$here/contribution-run.sh" "$target:.alcantara-contribution/"
 scp -q -o BatchMode=yes "$here/contribution/Dockerfile" "$here/contribution/package.json" "$here/contribution/worker.mjs" \
   "$target:.alcantara-contribution/contribution/"
 
-remote "cd $remote_dir && ALCANTARA_SERVICE_DIR=$remote_dir $docker_cmd compose -f compose.contribution.yml up -d --build"
+# Cumulus has no docker compose; contribution-run.sh applies the same settings with plain docker.
+remote "sh $remote_dir/contribution-run.sh \"$docker_cmd\""
 remote "i=0; until [ \"\$($docker_cmd inspect -f {{.State.Health.Status}} alcantara-contribution)\" = healthy ]; do i=\$((i + 1)); [ \$i -lt 60 ] || exit 1; sleep 2; done" || {
   echo "The contribution worker did not report healthy within two minutes" >&2
   exit 1

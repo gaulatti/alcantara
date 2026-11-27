@@ -86,7 +86,7 @@ infra/helix/return-runner-up.sh --from-container <backend-ssh-target> <ssh-targe
 infra/cumulus/contribution-up.sh <cumulus-ssh-target>
 ```
 
-It renders the renderer key inside the running `alcantara-backend` container on the same host into a 0600 `contribution.env` (never printed, never written locally), copies the worker, builds and starts it, and waits for it to report healthy. `CONTRIBUTION_PROGRAM_ID` (default `modoitaliano.fm`), `CONTRIBUTION_RTMP_URL` (default `rtmp://palazzo:1935/live/contribution`) and `ALCANTARA_BACKEND_DOCKER` (for example `sudo docker`) change its defaults. Stop it with `docker compose -f compose.contribution.yml down` in `~/.alcantara-contribution` on cumulus; Palazzo then simply has no live input.
+It renders the renderer key inside the running `alcantara-backend` container on the same host into a 0600 `contribution.env` (never printed, never written locally), copies the worker, builds and starts it, and waits for it to report healthy. `CONTRIBUTION_PROGRAM_ID` (default `modoitaliano.fm`), `CONTRIBUTION_RTMP_URL` (default `rtmp://palazzo:1935/live/contribution`) and `ALCANTARA_BACKEND_DOCKER` (for example `sudo docker`) change its defaults. Stop it with `docker rm -f alcantara-contribution` on cumulus (cumulus has no docker compose, so `contribution-run.sh` starts it with plain docker and the compose file's settings); Palazzo then simply has no live input.
 
 ## Network Ports: Public vs. Private
 

@@ -51,7 +51,7 @@ test('contribution-up.sh writes the key only through ssh input, then builds, sta
   assert.match(run.calls, /ssh .*operator@cumulus\.example\.test sh -c 'docker exec alcantara-backend node scripts\/print-return-runner-env\.mjs'/);
   assert.match(run.calls, /umask 077 && cat > \$HOME\/\.alcantara-contribution\/contribution\.env\.new && mv -f/);
   assert.match(run.calls, /scp .*worker\.mjs/);
-  assert.match(run.calls, /docker compose -f compose\.contribution\.yml up -d --build/);
+  assert.match(run.calls, /sh \$HOME\/\.alcantara-contribution\/contribution-run\.sh \"docker\"/);
   assert.match(run.stdout, /healthy on operator@cumulus\.example\.test/);
 });
 
@@ -67,7 +67,7 @@ test('contribution-up.sh takes another program, address and docker command', () 
   assert.match(run.sent, /^PROGRAM_ID=harbor\.fm$/m);
   assert.match(run.sent, /^CONTRIBUTION_RTMP_URL=rtmp:\/\/palazzo-b:1935\/live\/x$/m);
   assert.match(run.calls, /sudo docker exec alcantara-backend/);
-  assert.match(run.calls, /sudo docker compose -f compose\.contribution\.yml/);
+  assert.match(run.calls, /contribution-run\.sh \"sudo docker\"/);
 });
 
 test('contribution-up.sh leaves cumulus unchanged without a key, and fails when the worker is not healthy', () => {
@@ -87,4 +87,12 @@ test('contribution-up.sh leaves cumulus unchanged without a key, and fails when 
   const usage = spawnSync('sh', [script], { encoding: 'utf8' });
   assert.equal(usage.status, 1);
   assert.match(usage.stderr, /usage:/);
+});
+
+test('the plain-docker runner applies the same caps and network as the compose file, with no published port', () => {
+  const runner = fs.readFileSync(path.join(repo, 'infra/cumulus/contribution-run.sh'), 'utf8');
+  assert.match(runner, /--cpus 0\.5 --memory 256m --memory-swap 256m/);
+  assert.match(runner, /--restart always --network broadcast-control/);
+  assert.match(runner, /--env-file "\$dir\/contribution\.env"/);
+  assert.doesNotMatch(runner, / -p | --publish|--network host|--privileged/);
 });
