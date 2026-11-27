@@ -41,6 +41,12 @@ type ReturnAudioBus = 'master' | 'monitor' | `aux-${number}`;
 type CommandStatus = 'accepted' | 'rejected' | 'read' | 'acknowledged';
 
 const MAX_GUESTS = 6;
+/**
+ * The program room's participant cap, set when the room is created. Six guest slots (MAX_GUESTS, enforced by the
+ * invitations), plus the return router and the contribution worker (each takes a slot), plus operators and the pre-fade
+ * listeners. Eight was too few: six guests with the router and worker filled it before any operator joined.
+ */
+const PROGRAM_ROOM_MAX_PARTICIPANTS = 24;
 const SESSION_LEASE_MS = 60_000;
 const LOST_CALL_SWEEP_MS = 30_000;
 // Only long enough to connect: the guest page asks /webrtc/join again for every join, and once connected LiveKit
@@ -1427,7 +1433,7 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       if (!rooms.length)
         await this.roomService.createRoom({
           name: roomName,
-          maxParticipants: 8,
+          maxParticipants: PROGRAM_ROOM_MAX_PARTICIPANTS,
           emptyTimeout: 300,
           departureTimeout: 60,
         });

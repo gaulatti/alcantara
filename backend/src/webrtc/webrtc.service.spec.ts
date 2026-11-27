@@ -134,7 +134,7 @@ describe('WebrtcService', () => {
       }),
     );
     expect(livekit.createRoom).toHaveBeenCalledWith(
-      expect.objectContaining({ maxParticipants: 8, departureTimeout: 60 }),
+      expect.objectContaining({ maxParticipants: 24, departureTimeout: 60 }),
     );
   });
 

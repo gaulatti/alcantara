@@ -192,7 +192,7 @@ describe('WebrtcService invitation/session and LiveKit boundary', () => {
     expect(result).not.toHaveProperty('tokenHash');
     expect(createRoom).toHaveBeenCalledWith({
       name: 'alcantara-news',
-      maxParticipants: 8,
+      maxParticipants: 24,
       emptyTimeout: 300,
       departureTimeout: 60,
     });
