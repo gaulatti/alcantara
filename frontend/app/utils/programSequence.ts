@@ -78,6 +78,8 @@ export type ProgramSongSequenceItem =
 export type ProgramSongSequence = BaseSequence<ProgramSongSequenceItem> & {
   /** When a rotation that does not loop ran out; the engine turned it manual then. Absent otherwise (walk part 4). */
   endedAt?: number;
+  /** The item the engine left the cursor on without airing it (a Stop, a rotation that ran out). */
+  cuedItemId?: string;
 };
 
 /**
@@ -592,6 +594,7 @@ export function normalizeProgramSongSequence(
   // Kept through every save (a Loop toggle among them), so the rotation stays ended until the engine starts it.
   if (typeof record.endedAt === 'number' && Number.isFinite(record.endedAt) && record.endedAt > 0)
     sequence.endedAt = record.endedAt;
+  if (typeof record.cuedItemId === 'string' && record.cuedItemId) sequence.cuedItemId = record.cuedItemId;
   return sequence;
 }
 

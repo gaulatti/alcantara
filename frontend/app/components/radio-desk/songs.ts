@@ -59,6 +59,7 @@ export interface NextUpSong extends NextUp {
 /**
  * What Cue next would cue: the head of the Play Next queue, else the song after the one on air in
  * the rotation (the first one when nothing is on air, the first again when the rotation loops).
+ * After a Stop or a rotation that ran out, the song the engine cued without airing it.
  */
 export function nextUp({
   sequence,
@@ -100,6 +101,13 @@ export function nextUp({
   });
   if (queued) return { ...describe(queued, "queue"), entryId: queuedEntry!.id };
   if (leaves.length === 0) return null;
+
+  // The cursor is on a song that has not aired: it is next, not the one after it. A cursor since moved is not cued.
+  const cued =
+    sequence.cuedItemId === sequence.activeItemId
+      ? byId.get(sequence.cuedItemId ?? "")
+      : undefined;
+  if (cued && cued !== current) return describe(cued, "rotation");
 
   const anchor =
     current ??

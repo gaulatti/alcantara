@@ -70,3 +70,25 @@ describe("nextUp and the queue entry on air", () => {
     expect(nextUp({ sequence, queue, playback: airing(null, "a:playback") })).toMatchObject({ itemId: "a", via: "queue" });
   });
 });
+
+describe("nextUp and the song the engine cued", () => {
+  const cued = { ...sequence, activeItemId: "b", cuedItemId: "b" } as ProgramSongSequence;
+
+  it("names the cued song, off air or over a song taken from outside the rotation", () => {
+    expect(nextUp({ sequence: cued, queue: [], playback: null })).toMatchObject({ itemId: "b", via: "rotation" });
+    expect(nextUp({ sequence: cued, queue: [], playback: airing(null, "x:playback") })).toMatchObject({ itemId: "b" });
+  });
+
+  it("follows the queue first, and moves on once the cued song is on air", () => {
+    const queue = [{ id: "q1", itemId: "c", enqueuedAt: 1 }];
+    expect(nextUp({ sequence: cued, queue, playback: null })).toMatchObject({ itemId: "c", via: "queue" });
+    expect(nextUp({ sequence: cued, queue: [], playback: airing(null, "b:playback") })).toMatchObject({ itemId: "c" });
+  });
+
+  it("ignores a mark the cursor has left", () => {
+    const moved = { ...cued, activeItemId: "a" } as ProgramSongSequence;
+    expect(nextUp({ sequence: moved, queue: [], playback: null })).toMatchObject({ itemId: "b" });
+    const gone = { ...cued, activeItemId: "c", cuedItemId: "a" } as ProgramSongSequence;
+    expect(nextUp({ sequence: gone, queue: [], playback: null })).toMatchObject({ itemId: "a" });
+  });
+});

@@ -55,6 +55,8 @@ it("shows the end in the strip as a warning, with nothing scheduled", () => {
 it("keeps endedAt through normalising, so a Loop toggle saves it, and drops a malformed one", () => {
   const stored = { mode: "manual", loop: false, items: [], activeItemId: null, startedAt: 1 };
   expect(normalizeProgramSongSequence({ ...stored, endedAt: 4_102_444_800_000 })?.endedAt).toBe(4_102_444_800_000);
+  expect(normalizeProgramSongSequence({ ...stored, cuedItemId: "x" })?.cuedItemId).toBe("x");
+  expect(normalizeProgramSongSequence({ ...stored, cuedItemId: "" })).not.toHaveProperty("cuedItemId");
   for (const bad of [undefined, "soon", Number.NaN, 0])
     expect(normalizeProgramSongSequence({ ...stored, endedAt: bad })).not.toHaveProperty("endedAt");
 });

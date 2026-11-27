@@ -1483,7 +1483,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       this.metrics.recordSongQueueAction('preempted');
       this.releaseQueueClaimAfterPlaybackStops(programId, replacedQueueEntryId);
     }
-    this.clearRotationEnded(programId, state);
+    this.noteStarted(programId, state, state.activeSong.itemId);
     this.emitPlaybackActive(programId, state.activeSong);
     void this.publishNowPlaying(programId, state.activeSong);
     this.startProgress(programId);
@@ -1546,7 +1546,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         !stopped.queueEntryId &&
         !stopped.itemId.startsWith(CATALOG_ITEM_PREFIX)
       ) {
-        advanceProgramSongSequence(halted, stopped.itemId);
+        // Not on the last song of a rotation that does not loop: the cursor stays on it, and it has aired.
+        if (advanceProgramSongSequence(halted, stopped.itemId))
+          halted.cuedItemId = halted.activeItemId!;
       }
       state.sequence = halted;
       void this.persistPlaylistCursorForQueue(programId, halted).catch(
@@ -3578,15 +3580,24 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     this.publishStopped(programId);
   }
 
-  /** Any start ends a rotation's ended state (walk part 4); saved and broadcast only when it was set. */
-  private clearRotationEnded(programId: string, state: SongEngineState): void {
-    if (!state.sequence?.endedAt) return;
+  /**
+   * Any start ends a rotation's ended state (walk part 4), and the start of the cued song ends its being cued. Saved
+   * and broadcast only when one of them was set.
+   */
+  private noteStarted(
+    programId: string,
+    state: SongEngineState,
+    itemId: string,
+  ): void {
+    const cuedAired = state.sequence?.cuedItemId === itemId;
+    if (!state.sequence?.endedAt && !cuedAired) return;
     const resumed = normalizeProgramSongSequence(state.sequence)!;
     delete resumed.endedAt;
+    if (cuedAired) delete resumed.cuedItemId;
     state.sequence = resumed;
     void this.persistPlaylistCursorForQueue(programId, resumed).catch((error) =>
       this.logger.error(
-        `Could not clear the ended rotation on ${programId}: ${String(error)}`,
+        `Could not clear the ended or cued rotation on ${programId}: ${String(error)}`,
       ),
     );
   }
@@ -3603,6 +3614,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       mode: 'manual',
       // Rewound to the top, so a start (Autoplay, "Starts the rotation now") plays the rotation from the beginning.
       activeItemId: normalized.items[0]?.id ?? null,
+      cuedItemId: normalized.items[0]?.id,
       endedAt: Date.now(),
     };
     this.metrics.recordTrackTransition('rotation-ended');
@@ -4080,7 +4092,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       ? announced.playbackId
       : (queueEntry?.playbackRequestId ?? randomUUID());
     this.rememberSong(state, playbackRequestId, resolved.songId);
-    this.clearRotationEnded(programId, state);
+    this.noteStarted(programId, state, resolved.id);
     if (handoff) {
       state.announcement = null;
       if (promote) {

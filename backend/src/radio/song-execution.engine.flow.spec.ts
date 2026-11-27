@@ -2381,6 +2381,8 @@ describe('SongExecutionEngine when a rotation that does not loop runs out', () =
     ]);
     expect(stored(ctx)).toMatchObject({ mode: 'manual', loop: false, activeItemId: 'song-a' });
     expect(stored(ctx).endedAt).toBe(Date.parse('2099-01-01T10:00:00.000Z'));
+    // Rewound, and the top song has not aired since: the desk offers it as next.
+    expect(stored(ctx)).toHaveProperty('cuedItemId', 'song-a');
     expect(ctx.metrics.recordTrackTransition).toHaveBeenCalledWith('rotation-ended');
     expect(ctx.events).toContainEqual(
       expect.objectContaining({
@@ -2443,7 +2445,7 @@ describe('SongExecutionEngine when a rotation that does not loop runs out', () =
     ctx.engine.handleManualSong('radio-1', 'https://example.test/live.mp3');
     await flush(80);
     expect(stateOf(ctx.engine).sequence).not.toHaveProperty('endedAt');
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Could not clear the ended rotation on radio-1'));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Could not clear the ended or cued rotation on radio-1'));
   });
 
   it('never ends a rotation that loops, nor a manual one', async () => {
@@ -2460,6 +2462,56 @@ describe('SongExecutionEngine when a rotation that does not loop runs out', () =
     await flush(120);
     expect(manual.metrics.recordTrackTransition).not.toHaveBeenCalledWith('rotation-ended');
     expect((manual.store.current!.songSequence as { endedAt?: number }).endedAt).toBeUndefined();
+  });
+});
+
+// The cursor after a Stop is on a song that has not aired; the desk read it as the last one played and offered the
+// song after it, so Cue next and Take skipped one.
+describe('SongExecutionEngine cued song', () => {
+  const stored = (ctx: ReturnType<typeof setup>) =>
+    ctx.store.current!.songSequence as { activeItemId?: string; cuedItemId?: string };
+
+  it('marks the song a Stop cues, keeps the mark over another take, and clears it when that song starts', async () => {
+    const ctx = setup();
+    await startAutomatic(ctx);
+    ctx.engine.handleStopSong('radio-1');
+    await flush(80);
+    expect(stored(ctx)).toMatchObject({ activeItemId: 'song-b', cuedItemId: 'song-b' });
+    expect(ctx.events).toContainEqual(
+      expect.objectContaining({
+        type: 'song_queue_update',
+        songSequence: expect.objectContaining({ cuedItemId: 'song-b' }),
+      }),
+    );
+
+    ctx.engine.handleManualSong('radio-1', 'https://example.test/live.mp3');
+    await flush(80);
+    expect(stored(ctx).cuedItemId).toBe('song-b');
+
+    ctx.engine.handleManualSong('radio-1', SONG_B.audioUrl);
+    await flush(80);
+    expect(stored(ctx)).not.toHaveProperty('cuedItemId');
+    expect(stateOf(ctx.engine).sequence).not.toHaveProperty('cuedItemId');
+  });
+
+  it('clears the mark when Autoplay starts the cued song', async () => {
+    const ctx = setup();
+    await startAutomatic(ctx);
+    ctx.engine.handleStopSong('radio-1');
+    await flush(80);
+    ctx.engine.handleSequenceUpdated('radio-1', { ...stored(ctx), mode: 'autoplay' });
+    await flush(120);
+    expect(playedUrls(ctx)[1]).toBe(SONG_B.audioUrl);
+    expect(stored(ctx)).not.toHaveProperty('cuedItemId');
+  });
+
+  it('marks nothing when the Stop is on the last song of a rotation that does not loop', async () => {
+    const once = sequenceOf([SONG_A], 'autoplay', false);
+    const ctx = setup({ songSequence: once });
+    await startAutomatic(ctx, once);
+    ctx.engine.handleStopSong('radio-1');
+    await flush(80);
+    expect(stored(ctx)).not.toHaveProperty('cuedItemId');
   });
 });
 

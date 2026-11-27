@@ -48,6 +48,12 @@ export type ProgramSongSequence = BaseSequence<ProgramSongSequenceItem> & {
    * it. Absent on a rotation that did not end, and on one stored before the field existed.
    */
   endedAt?: number;
+  /**
+   * The item the engine left the cursor on without airing it: a Stop cues past the stopped song, and a rotation that
+   * ran out rewinds to the top. The desk offers it as next. It counts only while the cursor is still on it, and the
+   * start of that song clears it.
+   */
+  cuedItemId?: string;
 };
 
 export interface ProgramResolvedSongLeaf {
@@ -377,6 +383,8 @@ export function normalizeProgramSongSequence(
     record.endedAt > 0
   )
     sequence.endedAt = record.endedAt;
+  if (typeof record.cuedItemId === 'string' && record.cuedItemId)
+    sequence.cuedItemId = record.cuedItemId;
   return sequence;
 }
 
@@ -755,7 +763,8 @@ export function programSongSequenceStructure(
               key !== 'activeItemId' &&
               key !== 'startedAt' &&
               // Where the rotation stands, not an edit: the engine sets it when the rotation runs out.
-              key !== 'endedAt',
+              key !== 'endedAt' &&
+              key !== 'cuedItemId',
           )
           .map(([key, inner]) => [key, strip(inner)]),
       );
