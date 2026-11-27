@@ -421,6 +421,9 @@ it("shows the set-up form with a notice when the show has no radio settings yet"
   expect(await screen.findByText("Radio isn't set up yet")).toBeVisible();
   expect(screen.queryByText("The selected show does not expose a radio configuration.")).toBeNull();
   expect(screen.getByRole("button", { name: /Save radio settings/ })).toBeVisible();
+  // Nothing that works on saved settings stands between the notice and the form that creates them.
+  expect(screen.queryByText("Song similarity for night radio")).toBeNull();
+  expect(screen.queryByText("Prepared local playlist")).toBeNull();
 });
 
 it("creates the radio settings on the first save, and drops the notice once they exist", async () => {

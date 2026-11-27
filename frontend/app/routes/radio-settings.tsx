@@ -227,7 +227,16 @@ export default function RadioSettingsRoute() {
               </p>
             </Card>
           ) : null}
-          <RecoveryPlaylistPanel programId={programId} /><SongSimilarityPanel programId={programId} /><BrandingSection programId={programId} /><div className='grid items-start gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]'>
+          {/* Recovery and similarity work on saved settings: until there are some, the form that creates them comes
+              first and they are not offered (#875). */}
+          {settingsExist ? (
+            <>
+              <RecoveryPlaylistPanel programId={programId} />
+              <SongSimilarityPanel programId={programId} />
+              <BrandingSection programId={programId} />
+            </>
+          ) : null}
+          <div className='grid items-start gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]'>
           <Card variant='outlined' padding='lg' className='space-y-5'>
             <div>
               <h2 className='mt-1 text-xl font-semibold'>Radio playout</h2>
@@ -445,7 +454,9 @@ export default function RadioSettingsRoute() {
               </Button>
             </div>
           </Card>
-        </div></>
+        </div>
+          {!settingsExist ? <BrandingSection programId={programId} /> : null}
+        </>
       )}
     </AppPage>
   );
