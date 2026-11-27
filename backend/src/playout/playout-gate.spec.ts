@@ -125,6 +125,46 @@ describe('PlayoutHold', () => {
   });
 });
 
+describe('PlayoutHold at shutdown', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  // The old backend that let go of the lease is a standby that is going away: holding a straggler for 20 s kept its
+  // HTTP server from closing until Docker killed it (alcantara#873). It answers at once instead.
+  it('answers a held request as shutdown begins, and refuses new ones at once', async () => {
+    const metrics = new ManagedMetricsService();
+    const { lease } = standby();
+    const hold = new PlayoutHold(lease, metrics);
+    lease.start();
+    await jest.advanceTimersByTimeAsync(0);
+    const held = hold.admit('/program/main');
+    await jest.advanceTimersByTimeAsync(1_000);
+    lease.onModuleDestroy();
+    await expect(held).resolves.toEqual({ proceed: false });
+    await expect(hold.admit('/webrtc/on-air/stream')).resolves.toEqual({
+      proceed: false,
+    });
+    // The health checks and the scrape are still answered.
+    await expect(hold.admit('/health/ready')).resolves.toEqual({
+      proceed: true,
+    });
+    expect(
+      await metric(
+        metrics,
+        'alcantara_playout_held_requests_total{result="timeout"}',
+      ),
+    ).toMatch(/ 0$/);
+    expect(
+      await metric(
+        metrics,
+        'alcantara_playout_held_requests_total{result="rejected"}',
+      ),
+    ).toMatch(/ 2$/);
+    await expect(lease.waitUntilActive(HOLD_LIMIT_MS)).resolves.toBe(false);
+    await lease.beforeApplicationShutdown();
+  });
+});
+
 describe('installPlayoutGate', () => {
   it('answers a refused request 503 with Retry-After, and lets an admitted one through', async () => {
     let hook: (

@@ -97,7 +97,7 @@ export class PlayoutLease
   private activeAt: Date | null = null;
   private stoppingAt: number | null = null;
   private readonly pending: Array<() => unknown> = [];
-  private readonly waiters = new Set<() => void>();
+  private readonly waiters = new Set<(active: boolean) => void>();
   private connection: LeaseConnection | null = null;
   private attemptTimer: NodeJS.Timeout | null = null;
   private livenessTimer: NodeJS.Timeout | null = null;
@@ -138,14 +138,15 @@ export class PlayoutLease
     return undefined;
   }
 
-  /** Resolves when the instance becomes active, or false after `timeoutMs`. */
+  /** Resolves when the instance becomes active, or false after `timeoutMs` or once it is shutting down. */
   waitUntilActive(timeoutMs: number): Promise<boolean> {
     if (this.state === 'active') return Promise.resolve(true);
+    if (this.stopping) return Promise.resolve(false);
     return new Promise((resolve) => {
-      const done = () => {
+      const done = (active: boolean) => {
         clearTimeout(timer);
         this.waiters.delete(done);
-        resolve(true);
+        resolve(active);
       };
       const timer = setTimeout(() => {
         this.waiters.delete(done);
@@ -177,6 +178,14 @@ export class PlayoutLease
     this.stopping = true;
     if (this.attemptTimer) clearTimeout(this.attemptTimer);
     this.attemptTimer = null;
+    // Nothing waits on an instance that is going away: a held request is answered (503, try again) at once, so it
+    // cannot keep the HTTP server from closing, and its retry reaches the instance that takes over.
+    for (const waiter of [...this.waiters]) waiter(false);
+  }
+
+  /** True from the first shutdown phase on: this instance will not take the lock, nor serve a held request. */
+  get shuttingDown(): boolean {
+    return this.stopping;
   }
 
   /**
@@ -285,7 +294,7 @@ export class PlayoutLease
     this.logger.log(
       `PLAYOUT_ACTIVE ${this.activeAt.toISOString()} (activation ${this.activeAt.getTime() - startedAt} ms): this instance drives playout`,
     );
-    for (const waiter of [...this.waiters]) waiter();
+    for (const waiter of [...this.waiters]) waiter(true);
   }
 
   private async run(start: () => unknown): Promise<void> {

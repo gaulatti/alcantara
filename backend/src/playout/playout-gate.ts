@@ -39,7 +39,9 @@ export class PlayoutHold {
   async admit(url: string): Promise<HoldDecision> {
     if (this.lease.current === 'active' || isNeverHeld(url))
       return { proceed: true };
-    if (this.held >= MAX_HELD) {
+    // A standby that is shutting down, or an instance that already let go of the lease, never holds: the request
+    // is refused at once, and its retry reaches the instance that takes over (alcantara#873).
+    if (this.held >= MAX_HELD || this.lease.shuttingDown) {
       this.metrics.recordPlayoutHold('rejected', 0);
       return { proceed: false };
     }
@@ -48,7 +50,8 @@ export class PlayoutHold {
     try {
       const active = await this.lease.waitUntilActive(HOLD_LIMIT_MS);
       this.metrics.recordPlayoutHold(
-        active ? 'served' : 'timeout',
+        // Let go at shutdown counts as refused, not as a hold that ran out.
+        active ? 'served' : this.lease.shuttingDown ? 'rejected' : 'timeout',
         (this.now() - startedAt) / 1000,
       );
       return { proceed: active };
