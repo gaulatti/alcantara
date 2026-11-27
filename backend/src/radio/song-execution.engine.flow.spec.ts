@@ -711,12 +711,13 @@ describe('SongExecutionEngine high rotation selection', () => {
     expect(highRotationActions(ctx)).toEqual([]);
   });
 
-  it('plays nothing when the sequence cursor was cleared', async () => {
+  // GM's rule (walk part 5): a cleared cursor fills only on an explicit switch into Autoplay or Shuffle. An update
+  // that keeps the mode leaves it cleared, and nothing plays.
+  it('plays nothing when an update that keeps the mode clears the cursor', async () => {
     const ctx = setup();
-    ctx.engine.handleSequenceUpdated('radio-1', {
-      ...sequenceOf([NORMAL, SONG_B]),
-      activeItemId: null,
-    });
+    const cleared = { ...sequenceOf([NORMAL, SONG_B]), activeItemId: null };
+    ctx.engine.handleSequenceUpdated('radio-1', cleared);
+    ctx.engine.handleSequenceUpdated('radio-1', cleared);
     ctx.engine.handlePalazzoSnapshot('radio-1', idle());
     await flush(40);
     expect(ctx.radioService.playSong).not.toHaveBeenCalled();
@@ -2459,5 +2460,78 @@ describe('SongExecutionEngine when a rotation that does not loop runs out', () =
     await flush(120);
     expect(manual.metrics.recordTrackTransition).not.toHaveBeenCalledWith('rotation-ended');
     expect((manual.store.current!.songSequence as { endedAt?: number }).endedAt).toBeUndefined();
+  });
+});
+
+// GM's rule (walk part 5): a Stop leaves the rotation with no cursor. An explicit switch into Autoplay or Shuffle starts
+// at the first song in the order that plays, for every client; the watchdog, a restart, an update that keeps the mode
+// and Loop start nothing.
+describe('a rotation with no cursor', () => {
+  const STOPPED = { ...sequenceOf([SONG_A, SONG_B], 'manual'), activeItemId: null };
+  const switchedFromStop = async (next: unknown) => {
+    const ctx = setup();
+    ctx.engine.handleSequenceUpdated('radio-1', STOPPED);
+    ctx.engine.handlePalazzoSnapshot('radio-1', idle());
+    await flush(40);
+    ctx.engine.handleSequenceUpdated('radio-1', next);
+    await flush(60);
+    return ctx;
+  };
+
+  it('starts at the first song when switched to Autoplay', async () => {
+    const ctx = await switchedFromStop({ ...STOPPED, mode: 'autoplay' });
+    expect(playedUrls(ctx)).toEqual([SONG_A.audioUrl]);
+  });
+
+  it('starts at the first song of the shuffle order when switched to Shuffle', async () => {
+    const ctx = await switchedFromStop({
+      ...STOPPED,
+      mode: 'shuffle',
+      shuffleOrder: [SONG_B.id, SONG_A.id],
+    });
+    expect(playedUrls(ctx)).toEqual([SONG_B.audioUrl]);
+  });
+
+  it('starts nothing when switched to Manual', async () => {
+    const ctx = await switchedFromStop({ ...STOPPED, loop: false });
+    expect(playedUrls(ctx)).toEqual([]);
+  });
+
+  it('starts nothing for a Loop change while the mode stays automatic', async () => {
+    const ctx = setup();
+    const automatic = { ...STOPPED, mode: 'autoplay' };
+    // Before Palazzo answers, so the switch itself airs nothing; then the stored rotation comes back cleared.
+    ctx.engine.handleSequenceUpdated('radio-1', automatic);
+    ctx.engine.handleSequenceUpdated('radio-1', { ...automatic, loop: false });
+    ctx.engine.handlePalazzoSnapshot('radio-1', idle());
+    await flush(60);
+    expect(playedUrls(ctx)).toEqual([]);
+  });
+
+  it('starts nothing after a restart, nor at the watchdog bound', async () => {
+    const ctx = setup();
+    ctx.prisma.radioSettings.findMany.mockResolvedValue([
+      {
+        palazzoUrl: 'http://palazzo:3100',
+        programState: {
+          programId: 'radio-1',
+          type: 'radio',
+          songSequence: { ...STOPPED, mode: 'autoplay' },
+          songQueue: [],
+          songRotation: null,
+        },
+      },
+    ]);
+    ctx.prisma.asRunRecord.findFirst.mockResolvedValue(null);
+    await ctx.engine.onModuleInit();
+    ctx.engine.handlePalazzoSnapshot('radio-1', idle(4));
+    await flush(80);
+    ctx.palazzo.state = { ...idle(4), live: { onAir: false } };
+    await ctx.engine.checkPlayback();
+    jest.setSystemTime(Date.now() + 46_000);
+    await ctx.engine.checkPlayback();
+    await flush(80);
+    ctx.engine.onModuleDestroy();
+    expect(playedUrls(ctx)).toEqual([]);
   });
 });

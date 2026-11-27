@@ -41,6 +41,7 @@ import type {
 import {
   activateProgramSongLeaf,
   activeProgramSongLeafId,
+  programSongPlayOrder,
   advanceProgramSongSequence,
   collectHighRotationProgramSongLeaves,
   collectProgramSongLeaves,
@@ -785,6 +786,18 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     const state = this.ensureState(programId);
     if (state.activeSong && state.sequence?.startedAt && seq)
       seq.startedAt = state.sequence.startedAt;
+    // GM's rule (walk part 5): an explicit switch into Autoplay or Shuffle with no cursor (a Stop leaves none) starts at
+    // the first song in the order that plays, for every client, as the desk shows it. Nothing else fills a missing
+    // cursor: the watchdog, a restart (hydrate never comes here), an update that keeps the mode, and Loop start nothing.
+    if (
+      seq &&
+      seq.activeItemId === null &&
+      (seq.mode === 'autoplay' || seq.mode === 'shuffle') &&
+      (state.sequence?.mode ?? null) !== seq.mode
+    ) {
+      const first = programSongPlayOrder(seq)[0];
+      if (first) seq.activeItemId = first.id;
+    }
     state.sequence = seq;
     this.updateHighRotationFavoriteMetric();
     if (
