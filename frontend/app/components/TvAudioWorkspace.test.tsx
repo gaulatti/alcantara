@@ -56,6 +56,7 @@ function props(): ComponentProps<typeof TvAudioWorkspace> {
       error: null,
     },
     music: {
+      programId: "test-program",
       sequence: {
         mode: "manual",
         loop: false,

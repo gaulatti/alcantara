@@ -938,6 +938,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   ) : (
                     <ProgramSongSequenceEditor
                       sequence={rotation}
+                      undoScope={programId}
                       songCatalog={songCatalog}
                       programSongPlayback={programSongPlayback}
                       onChange={(next) => {

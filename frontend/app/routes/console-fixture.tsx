@@ -379,6 +379,7 @@ export default function ConsoleFixture() {
           <div className="h-[32rem] w-full max-w-3xl overflow-hidden rounded-xl border border-sand/30">
             <ProgramSongSequenceEditor
               sequence={songs}
+              undoScope="fixture"
               view="queue"
               onChange={setSongs}
             />
@@ -721,6 +722,7 @@ export default function ConsoleFixture() {
                     : null,
               }}
               music={{
+                programId: "fixture",
                 sequence: songs,
                 songCatalog: [],
                 programSongPlayback: null,
