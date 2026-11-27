@@ -643,3 +643,24 @@ it("does not reconnect when the link closes after the console has left", async (
   await act(() => vi.advanceTimersByTimeAsync(5000));
   expect(FakeSocket.instances).toHaveLength(1);
 });
+
+it("says nothing about a TAKE that fails after the operator has switched show", async () => {
+  server.answer("POST /program/main/stage", () =>
+    Response.json({ version: 1, stagedSceneId: 2, stagedScene: desk }),
+  );
+  let fail!: (reason: Error) => void;
+  server.answer("POST /program/main/activate", () => new Promise<Response>((_resolve, reject) => (fail = reject)));
+  server.answer("GET /program/second/state", () => Response.json(programState([headlines, desk])));
+  const { view } = await openLink();
+  fireEvent.click(source("Fictional desk"));
+  await waitFor(() => expect(source("Fictional desk")).toHaveAttribute("aria-pressed", "true"));
+  fireEvent.click(screen.getByRole("button", { name: "TAKE TO PROGRAM" }));
+  await waitFor(() => expect(server.requests("POST /program/main/activate")).toHaveLength(1));
+  program.id = "second";
+  view.rerender(<Control />);
+  await act(async () => {
+    fail(new Error("Fictional late refusal"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  expect(screen.queryByText("Fictional late refusal")).toBeNull();
+});

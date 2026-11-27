@@ -116,3 +116,13 @@ it("opens the program recording panels from the recording summary", async () => 
   fireEvent.click(summary);
   await waitFor(() => expect(summary.closest("details")?.open).toBe(false));
 }, 15000);
+
+// The TV music list saves from the page itself, so a refusal is said there when no sheet is open.
+it("says on the TV audio desk that a refused removal was not saved", async () => {
+  open("tv", true);
+  const removers = await screen.findAllByRole("button", { name: /^Remove / });
+  fireEvent.click(removers[0]);
+  await waitFor(() => {
+    expect(screen.getAllByRole("alert").some((alert) => alert.classList.contains("text-terracotta"))).toBe(true);
+  }, { timeout: 4000 });
+}, 15000);
