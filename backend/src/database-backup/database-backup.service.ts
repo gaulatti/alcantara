@@ -1,3 +1,7 @@
+import {
+  PlayoutLease,
+  startWhenActive,
+} from '../playout/playout-lease.service';
 import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   Inject,
@@ -5,6 +9,7 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -47,6 +52,7 @@ export class DatabaseBackupService implements OnModuleInit, OnModuleDestroy {
     private readonly dumpRunner: DatabaseDumpRunner,
     @Inject(DATABASE_BACKUP_STORAGE)
     private readonly storage: DatabaseBackupStorage,
+    @Optional() private readonly lease?: PlayoutLease,
   ) {}
 
   onModuleInit(): void {
@@ -58,9 +64,12 @@ export class DatabaseBackupService implements OnModuleInit, OnModuleDestroy {
       );
       return;
     }
-    this.stopped = false;
-    this.logger.log('Hourly PostgreSQL backups are enabled');
-    this.scheduleNextBackup();
+    // Only the instance holding the playout lease (alcantara#873) backs up.
+    startWhenActive(this.lease, () => {
+      this.stopped = false;
+      this.logger.log('Hourly PostgreSQL backups are enabled');
+      this.scheduleNextBackup();
+    });
   }
 
   onModuleDestroy(): void {

@@ -62,6 +62,52 @@ Start-up hooks and timers left running, because none of them writes or claims:
 | As-run subscription | `src/as-run/as-run.service.ts` (`onModuleInit`) | Writes only on engine track events, which need Palazzo; the database would refuse the write anyway. |
 | Output-confidence timer | `src/radio/radio-output-confidence.service.ts` (`onModuleInit`) | Updates metrics in memory every 5 s. |
 
+## Playout lease and standby (alcantara#873)
+
+Exactly one backend instance drives playout. In production (`NODE_ENV=production`, not a candidate) an instance holds
+a PostgreSQL advisory lock (`pg_try_advisory_lock(873001)`) on a connection of its own, not a pooled Prisma one, and
+PostgreSQL frees the lock if the process or that connection dies. Until it holds the lock the instance is a
+**standby**: it boots, listens and answers `GET /`, `/health/*` and `/metrics`, and holds every other request,
+including WebSocket upgrades, until it becomes **active**. A held request waits at most 20 s, and at most 200 are held
+at once; past either it gets `503` with `Retry-After: 2`. The standby asks for the lock once a second.
+
+On taking the lock, the instance runs every writer and scheduler, in the order they registered, and only then reports
+active and releases the held requests. The writers and schedulers are:
+
+- the rotation engine's takeover (hydrate, recall the playing song, watchdog);
+- Palazzo telemetry;
+- the default program state;
+- the rundown;
+- the chart poll, the hourly backup, media analysis, the team gauge and media reconciliation;
+- the scope preflight, the similarity refresh and the WebRTC sweeps.
+
+`src/invariants/playout-singletons.spec.ts` fails when a provider starts a repeating timer outside `startWhenActive`
+without a stated reason, so this list cannot drift.
+
+While active, the lock connection is probed every 2 s. If it errors, ends or stops answering, the process exits with
+code 1 (`alcantara_playout_lease_lost_total`): an instance that may have lost the lock must not command Palazzo. Docker
+restarts it as a standby. If the database is away, nobody holds the lock and the radio stops advancing (Palazzo's filler
+covers air) until it returns. That is deliberate: two engines would double-command Palazzo.
+
+Locally, in CI and in tests (not `NODE_ENV=production`) the instance is active from the start: a single instance
+behaves exactly as before the lease. A deploy candidate is a permanent standby that never asks for the lock, and it
+does not hold requests (it serves read-only, as above).
+
+`GET /health/ready` answers `{"state":"standby"|"active","build":"<sha>"}`. An image without it answers 404, which
+the deploy reads as "no lease".
+
+On SIGTERM (`enableShutdownHooks()`, with Node exec'd as the container's main process) the instance ends its program
+streams and WebSocket clients (they reconnect and resync), stops its schedulers, closes the lock connection (which frees
+the lock for the next instance at once) and exits.
+
+Metrics:
+
+- `alcantara_playout_lease{state}` (1 for the current state);
+- `alcantara_playout_activation_seconds`;
+- `alcantara_playout_lease_lost_total`;
+- `alcantara_playout_held_requests_total{result="served|timeout|rejected"}`;
+- `alcantara_playout_hold_seconds`.
+
 ## Proof
 
 - `backend/test/deploy-candidate.e2e-spec.ts` runs against real PostgreSQL with the migrations applied. It seeds a running scheduled block and a due published block, then boots the full `AppModule` as a candidate. It checks that `GET /` answers, that a model write and a raw `UPDATE` are both refused with "read-only transaction", and that after 3.5 s (the rundown poll fires every second) both blocks and the program-state count are unchanged. It also seeds an enabled radio program mid-song (autoplay, a song on air, an active queue entry, a filler set): the engine loads it, the candidate still answers, and the program, its radio settings and the as-run log are unchanged. With the setting removed, the same test fails: a normal boot resets the running block and starts the due one.

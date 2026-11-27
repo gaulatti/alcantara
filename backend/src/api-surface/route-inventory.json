@@ -277,6 +277,12 @@
   },
   {
     "method": "GET",
+    "path": "/health/ready",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "GET",
     "path": "/instants",
     "public": false,
     "permission": "alcantara:instant:read"

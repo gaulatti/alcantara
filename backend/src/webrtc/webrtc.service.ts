@@ -1,3 +1,4 @@
+import { PlayoutLease, startWhenActive } from '../playout/playout-lease.service';
 import {
   BadRequestException,
   ConflictException,
@@ -8,6 +9,7 @@ import {
   type OnModuleInit,
   ServiceUnavailableException,
   UnauthorizedException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { GuestCommand, GuestInvitation, Prisma } from '@prisma/client';
@@ -79,15 +81,19 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
     private readonly metrics: ManagedMetricsService,
+    @Optional() private readonly lease?: PlayoutLease,
   ) {}
 
   onModuleInit() {
-    this.lostCallSweep = setInterval(() => {
-      // A database that is away is retried at the next sweep.
-      void this.countLostCalls().catch(() => undefined);
-      void this.enforceProgramRoomAdmission().catch(() => undefined);
-    }, LOST_CALL_SWEEP_MS);
-    this.lostCallSweep.unref();
+    // Only the instance holding the playout lease (alcantara#873) sweeps: the sweeps write and remove participants.
+    startWhenActive(this.lease, () => {
+      this.lostCallSweep = setInterval(() => {
+        // A database that is away is retried at the next sweep.
+        void this.countLostCalls().catch(() => undefined);
+        void this.enforceProgramRoomAdmission().catch(() => undefined);
+      }, LOST_CALL_SWEEP_MS);
+      this.lostCallSweep.unref();
+    });
   }
 
   onModuleDestroy() {

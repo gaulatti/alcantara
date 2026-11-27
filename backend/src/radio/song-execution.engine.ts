@@ -1,3 +1,7 @@
+import {
+  PlayoutLease,
+  startWhenActive,
+} from '../playout/playout-lease.service';
 import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   ActorContext,
@@ -596,9 +600,18 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     private readonly metrics: RadioMetricsService,
     @Optional() private readonly similarity?: SongSimilarityService,
     @Optional() private readonly songScope?: PlayoutSongScope,
+    @Optional() private readonly lease?: PlayoutLease,
   ) {}
 
+  /**
+   * Takes up every radio program (hydrate, recall the playing song) and starts the watchdog, once this instance holds
+   * the playout lease (alcantara#873): a standby must not adopt the song another instance is driving.
+   */
   async onModuleInit(): Promise<void> {
+    await startWhenActive(this.lease, () => this.takeOver());
+  }
+
+  private async takeOver(): Promise<void> {
     const settings = await this.prisma.radioSettings.findMany({
       where: { enabled: true },
       select: {

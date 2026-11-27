@@ -289,6 +289,7 @@ describe('SongExecutionEngine constructor metadata', () => {
   it('falls back to Object metadata when circular imports leave providers undefined', () => {
     jest.isolateModules(() => {
       jest.doMock('./radio.service', () => ({}));
+      jest.doMock('../playout/playout-lease.service', () => ({ ...jest.requireActual('../playout/playout-lease.service'), PlayoutLease: undefined }));
       jest.doMock('../program/flight.service', () => ({}));
       jest.doMock('../prisma.service', () => ({}));
       jest.doMock('./now-playing-publisher.service', () => ({}));
@@ -305,7 +306,7 @@ describe('SongExecutionEngine constructor metadata', () => {
             'design:paramtypes',
             isolated.SongExecutionEngine,
           ),
-        ).toEqual([Object, Object, Object, Object, Object, Object, Object]);
+        ).toEqual([Object, Object, Object, Object, Object, Object, Object, Object]);
       } finally {
         jest.dontMock('./radio.service');
         jest.dontMock('../program/flight.service');

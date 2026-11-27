@@ -8,11 +8,13 @@ interface Harness {
     register: jest.Mock;
     enableCors: jest.Mock;
     listen: jest.Mock;
+    enableShutdownHooks: jest.Mock;
     get: jest.Mock;
     getHttpAdapter: jest.Mock;
     getHttpServer: jest.Mock;
   };
   attachToServer: jest.Mock;
+  lease: { start: jest.Mock; current: string };
   assertTestAuthSafety: jest.Mock;
   loadDatabaseSecret: jest.Mock;
   loadRuntimeSecrets: jest.Mock;
@@ -31,11 +33,26 @@ async function runMain(options: {
   const order: string[] = [];
   const attachToServer = jest.fn();
   const httpServer = { marker: 'http-server' };
+  const lease = {
+    start: jest.fn(() => order.push('lease')),
+    current: 'standby',
+    waitUntilActive: jest.fn().mockResolvedValue(true),
+  };
+  const metrics = { recordPlayoutHold: jest.fn() };
   const app = {
     register: jest.fn().mockResolvedValue(undefined),
     enableCors: jest.fn(),
-    listen: jest.fn().mockResolvedValue(undefined),
-    get: jest.fn().mockReturnValue({ attachToServer }),
+    listen: jest.fn(async () => {
+      order.push('listen');
+    }),
+    enableShutdownHooks: jest.fn(),
+    get: jest.fn((token: { name?: string }) =>
+      token?.name === 'PlayoutLease'
+        ? lease
+        : token?.name === 'ManagedMetricsService'
+          ? metrics
+          : { attachToServer },
+    ),
     getHttpAdapter: jest.fn().mockReturnValue({
       getInstance: () => options.fastifyInstance,
     }),
@@ -76,6 +93,7 @@ async function runMain(options: {
     create,
     app,
     attachToServer,
+    lease,
     assertTestAuthSafety,
     loadDatabaseSecret,
     loadRuntimeSecrets,
@@ -115,7 +133,8 @@ describe('main bootstrap', () => {
     const server = { on: jest.fn() };
     const h = await runMain({ fastifyInstance: { server } });
 
-    expect(h.order).toEqual(['assert', 'db', 'runtime']);
+    expect(h.order).toEqual(['assert', 'db', 'runtime', 'listen', 'lease']);
+    expect(h.app.enableShutdownHooks).toHaveBeenCalledTimes(1);
     expect(h.create).toHaveBeenCalledTimes(1);
     expect(h.app.register).toHaveBeenCalledWith(mockMultipart, {
       limits: { files: 1, fileSize: 200 * 1024 * 1024 },
@@ -140,8 +159,26 @@ describe('main bootstrap', () => {
       'Idempotency-Key',
       'X-Renderer-Key',
     ]);
-    expect(h.attachToServer).toHaveBeenCalledWith(server);
+    // The realtime service gets the server with WebSocket upgrades passed through the standby hold (#873).
+    expect(Object.getPrototypeOf(h.attachToServer.mock.calls[0][0])).toBe(
+      server,
+    );
     expect(h.app.getHttpServer).not.toHaveBeenCalled();
+  });
+
+  it("holds a standby's requests through the fastify hook, and a deploy candidate neither holds nor gates upgrades", async () => {
+    const addHook = jest.fn();
+    const server = { on: jest.fn() };
+    await runMain({ fastifyInstance: { server, addHook } });
+    expect(addHook).toHaveBeenCalledWith('onRequest', expect.any(Function));
+
+    process.env.ALCANTARA_DEPLOY_CANDIDATE = '1';
+    const candidateHook = jest.fn();
+    const candidate = await runMain({
+      fastifyInstance: { server, addHook: candidateHook },
+    });
+    expect(candidateHook).not.toHaveBeenCalled();
+    expect(candidate.attachToServer).toHaveBeenCalledWith(server);
   });
 
   it('uses PORT over HTTP_PORT, and HTTP_PORT when PORT is unset', async () => {
@@ -166,20 +203,16 @@ describe('main bootstrap', () => {
   });
 
   it('falls back to the nest http server when the fastify server has no on()', async () => {
+    const attached = (h: Harness) =>
+      Object.getPrototypeOf(h.attachToServer.mock.calls[0][0]) as unknown;
     const withoutOn = await runMain({ fastifyInstance: { server: {} } });
-    expect(withoutOn.attachToServer).toHaveBeenCalledWith({
-      marker: 'http-server',
-    });
+    expect(attached(withoutOn)).toEqual({ marker: 'http-server' });
 
     const withoutServer = await runMain({ fastifyInstance: {} });
-    expect(withoutServer.attachToServer).toHaveBeenCalledWith({
-      marker: 'http-server',
-    });
+    expect(attached(withoutServer)).toEqual({ marker: 'http-server' });
 
     const withoutInstance = await runMain({ fastifyInstance: undefined });
-    expect(withoutInstance.attachToServer).toHaveBeenCalledWith({
-      marker: 'http-server',
-    });
+    expect(attached(withoutInstance)).toEqual({ marker: 'http-server' });
   });
 
   describe('CORS origin policy', () => {

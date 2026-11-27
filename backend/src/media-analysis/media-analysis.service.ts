@@ -1,3 +1,7 @@
+import {
+  PlayoutLease,
+  startWhenActive,
+} from '../playout/playout-lease.service';
 import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   Inject,
@@ -5,6 +9,7 @@ import {
   Logger,
   OnApplicationBootstrap,
   OnModuleDestroy,
+  Optional,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
@@ -213,6 +218,7 @@ export class MediaAnalysisService
     private readonly metrics: MediaAnalysisMetrics,
     @Inject(MEDIA_AUDIO_ANALYZER)
     private readonly analyzer: FfmpegAudioAnalyzer,
+    @Optional() private readonly lease?: PlayoutLease,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -220,6 +226,11 @@ export class MediaAnalysisService
       this.logger.log('Deploy candidate: media analysis is not scheduled');
       return;
     }
+    // Only the instance holding the playout lease (alcantara#873) analyses.
+    await startWhenActive(this.lease, () => this.startAnalysis());
+  }
+
+  private async startAnalysis(): Promise<void> {
     if (!(await this.analyzer.available(TOOL_CHECK_TIMEOUT_MS))) {
       this.logger.error(
         'Media analysis is not scheduled: ffmpeg or ffprobe is not installed',

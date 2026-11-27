@@ -1,9 +1,14 @@
+import {
+  PlayoutLease,
+  startWhenActive,
+} from '../playout/playout-lease.service';
 import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   Injectable,
   Logger,
   OnApplicationBootstrap,
   OnModuleDestroy,
+  Optional,
 } from '@nestjs/common';
 import { MediaAssetKind, Prisma } from '@prisma/client';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
@@ -64,6 +69,7 @@ export class MediaAssetsReconciliationService
   constructor(
     private readonly prisma: PrismaService,
     private readonly metrics: ManagedMetricsService,
+    @Optional() private readonly lease?: PlayoutLease,
   ) {}
 
   private running: Promise<void> = Promise.resolve();
@@ -77,7 +83,10 @@ export class MediaAssetsReconciliationService
       this.logger.log('Deploy candidate: media assets are not reconciled');
       return;
     }
-    this.running = this.reconcileAndFill();
+    // Only the instance holding the playout lease (alcantara#873) reconciles: it writes.
+    startWhenActive(this.lease, () => {
+      this.running = this.reconcileAndFill();
+    });
   }
 
   async onModuleDestroy(): Promise<void> {

@@ -1,3 +1,4 @@
+import { PlayoutLease, startWhenActive } from '../playout/playout-lease.service';
 import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   BadRequestException,
@@ -5,6 +6,7 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PompeiiService } from '../auth/pompeii.service';
@@ -109,6 +111,7 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly metrics: RadioMetricsService,
     private readonly pompeii: PompeiiService,
+    @Optional() private readonly lease?: PlayoutLease,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -132,13 +135,16 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
       );
       return;
     }
-    this.refreshTimer = setInterval(() => {
-      if (!this.anyActive()) return;
-      void this.reloadEmbeddings().catch((error) =>
-        this.logger.error(`Similarity refresh failed: ${String(error)}`),
-      );
-    }, CATALOG_REFRESH_MS);
-    this.refreshTimer.unref?.();
+    // Only the instance holding the playout lease (alcantara#873) refreshes the catalog.
+    startWhenActive(this.lease, () => {
+      this.refreshTimer = setInterval(() => {
+        if (!this.anyActive()) return;
+        void this.reloadEmbeddings().catch((error) =>
+          this.logger.error(`Similarity refresh failed: ${String(error)}`),
+        );
+      }, CATALOG_REFRESH_MS);
+      this.refreshTimer.unref?.();
+    });
   }
 
   onModuleDestroy(): void {

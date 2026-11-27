@@ -105,6 +105,7 @@ describe('MediaAssetsReconciliationService metadata (coverage)', () => {
   it('records Object paramtypes when dependency imports are unresolved', () => {
     jest.isolateModules(() => {
       jest.doMock('../prisma.service', () => ({}));
+      jest.doMock('../playout/playout-lease.service', () => ({ ...jest.requireActual('../playout/playout-lease.service'), PlayoutLease: undefined }));
       jest.doMock('../observability/managed-metrics.service', () => ({}));
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const mod = require('./media-assets-reconciliation.service');
@@ -113,7 +114,7 @@ describe('MediaAssetsReconciliationService metadata (coverage)', () => {
           'design:paramtypes',
           mod.MediaAssetsReconciliationService,
         ),
-      ).toEqual([Object, Object]);
+      ).toEqual([Object, Object, Object]);
     });
     jest.dontMock('../prisma.service');
     jest.dontMock('../observability/managed-metrics.service');

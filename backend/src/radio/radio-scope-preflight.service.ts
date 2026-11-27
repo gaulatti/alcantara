@@ -1,8 +1,10 @@
+import { PlayoutLease, startWhenActive } from '../playout/playout-lease.service';
 import {
   Injectable,
   Logger,
   OnApplicationBootstrap,
   OnModuleDestroy,
+  Optional,
 } from '@nestjs/common';
 import { isDeployCandidate } from '../config/deploy-candidate';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
@@ -26,16 +28,20 @@ export class RadioScopePreflightService
   constructor(
     private readonly prisma: PrismaService,
     private readonly metrics: ManagedMetricsService,
+    @Optional() private readonly lease?: PlayoutLease,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
     if (isDeployCandidate()) return;
-    this.timer = setInterval(
-      () => void this.refresh(),
-      RADIO_SCOPE_PREFLIGHT_INTERVAL_MS,
-    );
-    this.timer.unref();
-    await this.refresh();
+    // Only the instance holding the playout lease (alcantara#873) runs it.
+    await startWhenActive(this.lease, async () => {
+      this.timer = setInterval(
+        () => void this.refresh(),
+        RADIO_SCOPE_PREFLIGHT_INTERVAL_MS,
+      );
+      this.timer.unref();
+      await this.refresh();
+    });
   }
 
   onModuleDestroy(): void {

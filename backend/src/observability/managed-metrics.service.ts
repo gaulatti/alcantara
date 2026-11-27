@@ -67,6 +67,9 @@ export const WEBRTC_ICE_PATHS = ['udp', 'tcp', 'relay'] as const;
 /** Operator cues stored on guests (alcantara_webrtc_guest_cues_total). */
 export const GUEST_CUES = ['standby', 'live', 'wrap'] as const;
 export type GuestCue = (typeof GUEST_CUES)[number];
+/** Requests a standby held for the playout lease (alcantara_playout_held_requests_total), alcantara#873. */
+export const PLAYOUT_HOLD_RESULTS = ['served', 'timeout', 'rejected'] as const;
+export type PlayoutHoldResult = (typeof PLAYOUT_HOLD_RESULTS)[number];
 /** Return runner polls (alcantara_webrtc_return_router_polls_total). */
 export const RETURN_ROUTER_POLL_RESULTS = [
   'ok',
@@ -425,6 +428,11 @@ export class ManagedMetricsService {
   private readonly returnRoutersRunning: Gauge;
   private readonly returnRunnerLastPoll: Gauge;
   private readonly returnAudioTickets: Counter;
+  private readonly playoutLease: Gauge;
+  private readonly playoutLeaseLost: Counter;
+  private readonly playoutActivation: Histogram;
+  private readonly playoutHeld: Counter;
+  private readonly playoutHold: Histogram;
   private readonly guestCues: Counter;
   private readonly onAirGuests: Gauge;
   private readonly mcpAuth: Counter<string>;
@@ -700,6 +708,37 @@ export class ManagedMetricsService {
       registers: [this.registry],
     });
     for (const cue of GUEST_CUES) this.guestCues.labels(cue).inc(0);
+    this.playoutLease = new Gauge({
+      name: 'alcantara_playout_lease',
+      help: "This instance's playout lease state (alcantara#873): 1 for the current state, standby or active.",
+      labelNames: ['state'],
+      registers: [this.registry],
+    });
+    this.playoutLeaseLost = new Counter({
+      name: 'alcantara_playout_lease_lost_total',
+      help: 'Times the active instance lost its playout lease connection and stopped so no second engine could run.',
+      registers: [this.registry],
+    });
+    this.playoutActivation = new Histogram({
+      name: 'alcantara_playout_activation_seconds',
+      help: 'Time from taking the playout lease to running every writer and scheduler.',
+      buckets: [0.1, 0.5, 1, 2, 5, 10, 30, 60],
+      registers: [this.registry],
+    });
+    this.playoutHeld = new Counter({
+      name: 'alcantara_playout_held_requests_total',
+      help: 'Requests a standby held until it took the playout lease, by bounded result.',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    this.playoutHold = new Histogram({
+      name: 'alcantara_playout_hold_seconds',
+      help: 'How long a standby held a request before serving or refusing it.',
+      buckets: [0.1, 0.5, 1, 2, 5, 10, 20],
+      registers: [this.registry],
+    });
+    for (const result of PLAYOUT_HOLD_RESULTS)
+      this.playoutHeld.labels(result).inc(0);
     for (const result of RETURN_ROUTER_POLL_RESULTS)
       this.returnRouterPolls.labels(result).inc(0);
     for (const result of RETURN_AUDIO_TICKET_RESULTS)
@@ -1109,6 +1148,24 @@ export class ManagedMetricsService {
   setReturnRouters(wanted: number, running: number): void {
     this.returnRoutersWanted.set(wanted);
     this.returnRoutersRunning.set(running);
+  }
+
+  setPlayoutLeaseState(state: 'standby' | 'active'): void {
+    this.playoutLease.labels('standby').set(state === 'standby' ? 1 : 0);
+    this.playoutLease.labels('active').set(state === 'active' ? 1 : 0);
+  }
+
+  recordPlayoutLeaseLost(): void {
+    this.playoutLeaseLost.inc();
+  }
+
+  recordPlayoutActivation(seconds: number): void {
+    this.playoutActivation.observe(seconds);
+  }
+
+  recordPlayoutHold(result: PlayoutHoldResult, seconds: number): void {
+    this.playoutHeld.labels(result).inc();
+    this.playoutHold.observe(seconds);
   }
 
   recordReturnAudioTicket(result: ReturnAudioTicketResult): void {

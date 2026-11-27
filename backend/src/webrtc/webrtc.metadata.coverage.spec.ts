@@ -51,12 +51,14 @@ describe('webrtc decorator parameter metadata', () => {
       ConfigService: {},
     }));
     jest.doMock('../prisma.service', () => ({ PrismaService: {} }));
+    jest.doMock('../playout/playout-lease.service', () => ({ ...jest.requireActual('../playout/playout-lease.service'), PlayoutLease: undefined }));
     jest.doMock('../observability/managed-metrics.service', () => ({
       ManagedMetricsService: {},
     }));
     jest.isolateModules(() => {
       const { WebrtcService } = require('./webrtc.service');
       expect(Reflect.getMetadata('design:paramtypes', WebrtcService)).toEqual([
+        Object,
         Object,
         Object,
         Object,

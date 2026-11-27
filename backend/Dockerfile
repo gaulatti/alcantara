@@ -40,4 +40,5 @@ ENV ALCANTARA_BUILD_VERSION=${ALCANTARA_BUILD_VERSION}
 # The live backend migrates at start. A deploy candidate does not: deploy/cumulus.sh already ran the
 # migration as its own step from this same image, and a second migration inside the candidate made one
 # transient database error fail the whole deploy (gaulatti/alcantara#271).
-CMD ["sh", "-c", "if [ -n \"$ALCANTARA_DEPLOY_CANDIDATE\" ]; then pnpm start:prod; else pnpm run db:migrate:deploy && pnpm start:prod; fi"]
+# Node is exec'd as the container's main process, so SIGTERM reaches it and the shutdown hooks run (alcantara#873).
+CMD ["sh", "-c", "if [ -n \"$ALCANTARA_DEPLOY_CANDIDATE\" ]; then exec node dist/src/main; else pnpm run db:migrate:deploy && exec node dist/src/main; fi"]

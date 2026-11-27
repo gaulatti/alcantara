@@ -1,3 +1,7 @@
+import {
+  PlayoutLease,
+  startWhenActive,
+} from '../playout/playout-lease.service';
 import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   BadRequestException,
@@ -253,6 +257,8 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     ProgramPlayingTrack
   >();
   private trackEventsSubscription: Subscription | null = null;
+  /** Ends every program stream when the process shuts down (alcantara#873). */
+  private readonly closing$ = new Subject<void>();
   /** Applies each program's track events in order across cover lookups. */
   private readonly trackEventChains = new Map<string, Promise<void>>();
   private eventListeners:
@@ -277,6 +283,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly songScope?: PlayoutSongScope,
     @Optional() private readonly sceneAssets?: SceneAssetScope,
     @Optional() private readonly programTeams?: ProgramTeamAccess,
+    @Optional() private readonly lease?: PlayoutLease,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -293,12 +300,17 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       );
     // A deploy candidate (#223) writes no program state.
     if (isDeployCandidate()) return;
-    await this.ensureDefaultProgramState();
+    // Only the instance holding the playout lease (alcantara#873) writes program state.
+    await startWhenActive(this.lease, () => this.ensureDefaultProgramState());
   }
 
   onModuleDestroy(): void {
     this.trackEventsSubscription?.unsubscribe();
     this.trackEventsSubscription = null;
+    // Shutting down (alcantara#873): end every program stream, so the server can close and the clients reconnect to
+    // the instance that takes over.
+    this.closing$.next();
+    this.closing$.complete();
   }
 
   /**
@@ -4333,6 +4345,9 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       };
 
       this.metrics?.recordProgramSseConnection(1);
+      const closingSubscription = this.closing$.subscribe(() =>
+        subscriber.complete(),
+      );
       const liveSubscription = subject.subscribe({
         next: (data) => {
           if (snapshotDelivered) {
@@ -4411,6 +4426,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         closed = true;
         if (heartbeatTimer) clearInterval(heartbeatTimer);
         liveSubscription.unsubscribe();
+        closingSubscription.unsubscribe();
         this.metrics?.recordProgramSseConnection(-1);
       };
     });

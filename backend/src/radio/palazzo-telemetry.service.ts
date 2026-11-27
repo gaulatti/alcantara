@@ -1,3 +1,7 @@
+import {
+  PlayoutLease,
+  startWhenActive,
+} from '../playout/playout-lease.service';
 import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   Injectable,
@@ -67,6 +71,7 @@ export class PalazzoRadioTelemetryService
     private readonly overlaps: ProgramBusOverlapDetector,
     /** Reads this service's playout reports to judge a take (D4); bound here, since the engine depends on it. */
     @Optional() private readonly radio?: RadioService,
+    @Optional() private readonly lease?: PlayoutLease,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -76,7 +81,8 @@ export class PalazzoRadioTelemetryService
       this.logger.log('Deploy candidate: no Palazzo telemetry is started');
       return;
     }
-    await this.startAll();
+    // Only the instance holding the playout lease (alcantara#873) follows Palazzo.
+    await startWhenActive(this.lease, () => this.startAll());
   }
 
   onModuleDestroy(): void {

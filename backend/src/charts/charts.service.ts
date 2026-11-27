@@ -1,3 +1,7 @@
+import {
+  PlayoutLease,
+  startWhenActive,
+} from '../playout/playout-lease.service';
 import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   Injectable,
@@ -133,6 +137,7 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     @Optional() private readonly metrics?: ManagedMetricsService,
     @Optional() private readonly config?: ConfigService,
+    @Optional() private readonly lease?: PlayoutLease,
   ) {}
 
   /**
@@ -158,10 +163,13 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
       );
       return;
     }
-    void this.refreshCache();
-    this.refreshTimer = setInterval(() => {
+    // Only the instance holding the playout lease (alcantara#873) polls.
+    startWhenActive(this.lease, () => {
       void this.refreshCache();
-    }, REFRESH_MS);
+      this.refreshTimer = setInterval(() => {
+        void this.refreshCache();
+      }, REFRESH_MS);
+    });
   }
 
   onModuleDestroy() {

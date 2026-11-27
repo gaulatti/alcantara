@@ -1,3 +1,4 @@
+import { PlayoutModule } from './playout/playout.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
@@ -32,6 +33,7 @@ import { AccessModule } from './access/access.module';
 
 @Module({
   imports: [
+    PlayoutModule,
     ConfigModule.forRoot({
       isGlobal: true,
     }),

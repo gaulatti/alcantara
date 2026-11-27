@@ -651,9 +651,9 @@ test('the deployed containers do not migrate again; the one migration runs befor
   const start = dockerfile.split('\n').find((line) => line.startsWith('CMD '));
   assert.ok(start);
   // Candidate branch: starts the server with no migration.
-  assert.match(start, /if \[ -n \\"\$ALCANTARA_DEPLOY_CANDIDATE\\" \]; then pnpm start:prod;/);
-  // Anywhere else the image still migrates, then starts.
-  assert.match(start, /else pnpm run db:migrate:deploy && pnpm start:prod; fi/);
+  assert.match(start, /if \[ -n \\"\$ALCANTARA_DEPLOY_CANDIDATE\\" \]; then exec node dist\/src\/main;/);
+  // Anywhere else the image still migrates, then starts; Node is exec'd so SIGTERM reaches it (#873).
+  assert.match(start, /else pnpm run db:migrate:deploy && exec node dist\/src\/main; fi/);
   // The deploy step that proves the image can migrate stays.
   const migrate = deployScript.indexOf('pnpm run db:migrate:deploy');
   const candidate = deployScript.indexOf('docker run -d --name alcantara-backend-candidate');

@@ -1203,6 +1203,7 @@ describe('FlightService module load without injectable classes', () => {
   it('records Object parameter metadata when a dependency class is not yet defined', () => {
     jest.isolateModules(() => {
       jest.doMock('../prisma.service', () => ({ PrismaService: undefined }));
+      jest.doMock('../playout/playout-lease.service', () => ({ ...jest.requireActual('../playout/playout-lease.service'), PlayoutLease: undefined }));
       jest.doMock('../auth/pompeii.service', () => ({
         PompeiiService: undefined,
       }));
@@ -1222,6 +1223,7 @@ describe('FlightService module load without injectable classes', () => {
         loaded.FlightService,
       ) as Array<{ name: string }>;
       expect(types.map((type) => type.name)).toEqual([
+        'Object',
         'Object',
         'Object',
         'Object',

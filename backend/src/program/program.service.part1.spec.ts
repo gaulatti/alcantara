@@ -1037,6 +1037,7 @@ describe('ProgramService constructor metadata with unresolved imports', () => {
   it('falls back to Object for dependency types that are undefined at decoration time', () => {
     jest.isolateModules(() => {
       jest.doMock('../prisma.service', () => ({}));
+      jest.doMock('../playout/playout-lease.service', () => ({ ...jest.requireActual('../playout/playout-lease.service'), PlayoutLease: undefined }));
       jest.doMock('../radio/radio.service', () => ({}));
       jest.doMock('../radio/song-execution.engine', () => ({}));
       jest.doMock('../observability/managed-metrics.service', () => ({}));
@@ -1055,6 +1056,7 @@ describe('ProgramService constructor metadata with unresolved imports', () => {
           isolated.ProgramService,
         ) as Array<{ name: string }>;
         expect(types.map((type) => type.name)).toEqual([
+          'Object',
           'Object',
           'Object',
           'Object',

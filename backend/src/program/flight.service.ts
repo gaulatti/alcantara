@@ -1,4 +1,8 @@
 import {
+  PlayoutLease,
+  startWhenActive,
+} from '../playout/playout-lease.service';
+import {
   AutomationEngineUnavailableError,
   isRadioOnlyEngineOff,
   radioEngineReadiness,
@@ -14,6 +18,7 @@ import {
   OnModuleInit,
   OnModuleDestroy,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import {
   FLIGHT_SEQUENCE_CHANGE_FIELDS,
@@ -115,10 +120,7 @@ export function normalizeRecipeUse(
   ) {
     return undefined;
   }
-  const labelId =
-    params.labelId === undefined
-      ? undefined
-      : (params.labelId as string | null);
+  const labelId = params.labelId === undefined ? undefined : params.labelId;
   return {
     useId,
     recipeId,
@@ -169,7 +171,7 @@ function normalizeFlightCue(value: unknown): FlightCue | null {
     'voiceFadeOutSeconds',
   ] as const) {
     if (typeof value[field] === 'number' && Number.isFinite(value[field])) {
-      cue[field] = value[field] as number;
+      cue[field] = value[field];
     }
   }
 
@@ -311,6 +313,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     private readonly metrics: RadioMetricsService,
     private readonly recorder: OperatorChangeRecorder,
     private readonly pompeii: PompeiiService,
+    @Optional() private readonly lease?: PlayoutLease,
   ) {}
 
   private readonly refusedSongScopes = new Set<string>();
@@ -349,6 +352,11 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       );
       return;
     }
+    // Only the instance holding the playout lease (alcantara#873) runs the rundown.
+    await startWhenActive(this.lease, () => this.startRundown());
+  }
+
+  private async startRundown(): Promise<void> {
     // Runtime timers cannot survive a process restart. Preserve the one-time
     // start claim and rotation; mark interrupted blocks accurately in the UI.
     const interrupted = await this.prisma.flightSequence.updateMany({
@@ -1167,7 +1175,12 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     if (scheduledAt && data.loop === true)
       throw new BadRequestException('a clocked log cannot loop');
     if (scheduledAt && items.length)
-      await this.refuseOutsideFixedStartWindow(state.id, null, scheduledAt, items);
+      await this.refuseOutsideFixedStartWindow(
+        state.id,
+        null,
+        scheduledAt,
+        items,
+      );
 
     try {
       const sequence = await this.prisma.flightSequence.create({
@@ -2027,7 +2040,12 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         }
         const skipped = this.cuesPassedOver(current, index);
         void (due <= target
-          ? this.executeCueAtIndex(runtime.programId, index, generation, 'fixed_start')
+          ? this.executeCueAtIndex(
+              runtime.programId,
+              index,
+              generation,
+              'fixed_start',
+            )
           : this.executeCueAtIndex(runtime.programId, index, generation));
         void this.logCuesSkippedByFixedStart(current, skipped);
       },
@@ -2036,7 +2054,10 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** The cues between the one on air and a fixed start the block jumps to: they never air. */
-  private cuesPassedOver(runtime: FlightRuntimeState, index: number): FlightCue[] {
+  private cuesPassedOver(
+    runtime: FlightRuntimeState,
+    index: number,
+  ): FlightCue[] {
     return runtime.items.slice(runtime.activeIndex + 1, index);
   }
 
