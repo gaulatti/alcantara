@@ -114,3 +114,21 @@ ALCANTARA_APP_URL=http://localhost:5391 pnpm --filter @gaulatti/alcantara-e2e to
 | `timeline-pin-drag` | A timeline pin moves by a touch drag | passes |
 
 A `failed` case exits 1. A `skipped` case is one whose data is absent on the stack, with its reason.
+
+## Console smoke check (`console-smoke.mjs`)
+
+A read-only check of the key console routes in Chromium, signed out, after a deploy. It loads `/` (the console and the radio desk), `/calls`, `/flight` (the rundown) and `/guest` with a token that does not exist. It clicks nothing, uses no credentials, and changes nothing on the server.
+
+A route fails on an uncaught page error, a JavaScript or CSS file that does not load (a request failure or an HTTP status of 400 or more), a blank page, or, for a protected route, no sign-in screen. The sign-in screen is the expected result for the protected routes when signed out, so it passes. One JSON line is printed per route, then a summary. The script exits 1 if any route fails.
+
+```bash
+pnpm --filter @gaulatti/alcantara-e2e console-smoke
+```
+
+From cumulus, in the Playwright image, the same way as the return proof (`ALCANTARA_APP_URL` defaults to production):
+
+```bash
+docker run --rm --init --ipc=host -e ALCANTARA_APP_URL=https://alcantara.gaulatti.com mcr.microsoft.com/playwright:v1.65.0-noble bash -c 'set -e; mkdir /w && cd /w && curl -fsSL https://codeload.github.com/gaulatti/alcantara/tar.gz/main | tar xz --strip-components=1 && npx -y pnpm@9 install --frozen-lockfile --filter @gaulatti/alcantara-e2e >/dev/null && npx -y pnpm@9 --filter @gaulatti/alcantara-e2e console-smoke'
+```
+
+`SMOKE_TIMEOUT_MS` (default 60000) bounds each route.
