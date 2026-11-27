@@ -54,6 +54,11 @@ const MAX_GUESTS = 6;
  */
 const PROGRAM_ROOM_MAX_PARTICIPANTS = 24;
 const SESSION_LEASE_MS = 60_000;
+/**
+ * How long after its lease ran out an admitted session still comes back without being admitted again: a phone that
+ * slept or sat in another app. Later than this, the same browser is screened like anyone else.
+ */
+export const REJOIN_WINDOW_MS = 5 * 60_000;
 const LOST_CALL_SWEEP_MS = 30_000;
 /** The on-air stream sends the current list at least this often, so its reader can tell a live stream from a stuck one. */
 export const ON_AIR_REFRESH_MS = 5_000;
@@ -478,36 +483,62 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       activeSessionId: sessionId,
       activeSessionUntil: new Date(now.getTime() + SESSION_LEASE_MS),
     };
-    // Screening applies to each new session: the session that was admitted keeps its admission when it reconnects;
-    // any other session starts waiting again, cleared in the same write that claims the invitation.
-    const sameSession = await this.prisma.guestInvitation.updateMany({
-      where: { ...open, activeSessionId: sessionId },
+    // Screening applies to each new session: the session that was admitted keeps its admission when it reconnects
+    // while its lease is live, or within REJOIN_WINDOW_MS of it running out; any other session, and that one later
+    // than that, starts waiting again, cleared in the same write that claims the invitation. The server decides this:
+    // the page only presents its session token.
+    const reconnected = await this.prisma.guestInvitation.updateMany({
+      where: {
+        ...open,
+        activeSessionId: sessionId,
+        activeSessionUntil: { gte: now },
+      },
       data: lease,
     });
-    const newSession =
-      sameSession.count === 1
+    // A session whose lease ran out was away: it keeps its admission but comes back off air until cued again.
+    const returned =
+      reconnected.count === 1
         ? null
         : await this.prisma.guestInvitation.updateMany({
             where: {
               ...open,
-              OR: [
-                { activeSessionId: null },
-                { activeSessionUntil: { lt: now } },
-              ],
+              activeSessionId: sessionId,
+              activeSessionUntil: {
+                gte: new Date(now.getTime() - REJOIN_WINDOW_MS),
+              },
             },
-            data: { ...lease, admittedAt: null },
+            data: { ...lease, cue: 'standby', cueSessionId: null },
           });
-    if (sameSession.count !== 1 && newSession?.count !== 1) {
+    const sameSession = reconnected.count === 1 || returned?.count === 1;
+    const newSession = sameSession
+      ? null
+      : await this.prisma.guestInvitation.updateMany({
+          where: {
+            ...open,
+            OR: [
+              { activeSessionId: null },
+              { activeSessionUntil: { lt: now } },
+            ],
+          },
+          data: {
+            ...lease,
+            admittedAt: null,
+            cue: 'standby',
+            cueSessionId: null,
+          },
+        });
+    if (!sameSession && newSession?.count !== 1) {
       this.metrics.recordWebrtcJoin('guest', 'other');
       throw new ConflictException(
         'This invitation is already active in another session.',
       );
     }
-    // A new session is off air until cued again in it.
-    if (newSession?.count === 1) this.onAirChanges.next(invitation.programId);
+    // A new session, or one back from being away, is off air until cued again.
+    if (newSession?.count === 1 || returned?.count === 1)
+      this.onAirChanges.next(invitation.programId);
 
     const identity = this.guestIdentity(invitation.id);
-    const admitted = sameSession.count === 1 && Boolean(invitation.admittedAt);
+    const admitted = sameSession && Boolean(invitation.admittedAt);
     // Until admitted, the guest's token opens only a room of their own: nothing of theirs can reach a strip, a return
     // or air, and the program's consumers need no change.
     const roomName = admitted

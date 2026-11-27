@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { RoomServiceClient } from 'livekit-server-sdk';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { WebrtcController } from './webrtc.controller';
-import { WebrtcService } from './webrtc.service';
+import { REJOIN_WINDOW_MS, WebrtcService } from './webrtc.service';
 
 // Screening before air: a guest waits in a room of their own until the operator admits or declines them.
 
@@ -117,18 +117,91 @@ describe('screening before air', () => {
     // Not the session that holds the invitation; the lease is free or lapsed, so a new session claims it.
     prisma.guestInvitation.updateMany
       .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 0 })
       .mockResolvedValueOnce({ count: 1 });
     const joined = await service.redeemInvitation(token, undefined);
     expect(joined).toMatchObject({ admission: 'waiting', roomName: screening });
     expect(claims(joined.token).video.room).toBe(screening);
-    const [sameSession, newSession] =
+    const [sameSession, returned, newSession] =
       prisma.guestInvitation.updateMany.mock.calls.map(([call]) => call);
     expect(sameSession.data).not.toHaveProperty('admittedAt');
+    expect(returned.data).not.toHaveProperty('admittedAt');
     expect(newSession.where.OR).toEqual([
       { activeSessionId: null },
       { activeSessionUntil: { lt: expect.any(Date) } },
     ]);
-    expect(newSession.data).toMatchObject({ admittedAt: null });
+    expect(newSession.data).toMatchObject({
+      admittedAt: null,
+      cue: 'standby',
+      cueSessionId: null,
+    });
+  });
+
+  // alcantara#875: the server, not the page, decides who skips the waiting room. These drive the join against an
+  // invitation row that applies each update's conditions, at chosen times after the guest was last heard.
+  describe('coming back without being admitted again', () => {
+    const away = async (afterLeaseMs: number, presentSession = true) => {
+      const fixture = setup();
+      const { service, prisma, invitation } = fixture;
+      const row = invitation as unknown as Record<string, unknown>;
+      prisma.guestInvitation.updateMany.mockImplementation(
+        async ({ where, data }: any) => {
+          const until = row.activeSessionUntil as Date | null;
+          const matches = (condition: any) =>
+            (!('activeSessionId' in condition) ||
+              condition.activeSessionId === row.activeSessionId) &&
+            (!condition.activeSessionUntil?.gte ||
+              (until !== null && until >= condition.activeSessionUntil.gte)) &&
+            (!condition.activeSessionUntil?.lt ||
+              (until !== null && until < condition.activeSessionUntil.lt));
+          if (!matches(where) || (where.OR && !where.OR.some(matches)))
+            return { count: 0 };
+          Object.assign(row, data);
+          return { count: 1 };
+        },
+      );
+      const first = await service.redeemInvitation(token, undefined);
+      // The producer admits and cues them live; then the phone goes to sleep.
+      row.admittedAt = new Date();
+      row.cue = 'live';
+      row.cueSessionId = row.activeSessionId;
+      row.activeSessionUntil = new Date(Date.now() - afterLeaseMs);
+      const back = await service.redeemInvitation(
+        token,
+        presentSession ? first.sessionToken : undefined,
+      );
+      return { back, row };
+    };
+
+    it('keeps admission and the cue for a session whose lease is still live', async () => {
+      const { back, row } = await away(-30_000);
+      expect(back.admission).toBe('admitted');
+      expect(row.cue).toBe('live');
+    });
+
+    it('keeps admission within five minutes of the lease running out, off air until cued again', async () => {
+      const { back, row } = await away(REJOIN_WINDOW_MS - 10_000);
+      expect(back).toMatchObject({
+        admission: 'admitted',
+        roomName: 'alcantara-main',
+      });
+      expect(row).toMatchObject({ cue: 'standby', cueSessionId: null });
+    });
+
+    it('screens the same session again once the window has passed', async () => {
+      const { back, row } = await away(REJOIN_WINDOW_MS + 10_000);
+      expect(back).toMatchObject({ admission: 'waiting', roomName: screening });
+      expect(row).toMatchObject({
+        admittedAt: null,
+        cue: 'standby',
+        cueSessionId: null,
+      });
+    });
+
+    it('screens a browser that presents no session, however recently the lease ran out', async () => {
+      const { back } = await away(1_000, false);
+      expect(back.admission).toBe('waiting');
+    });
   });
 
   it('keeps an existing screening room and says when LiveKit cannot make one', async () => {
