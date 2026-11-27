@@ -26,7 +26,7 @@ export function RundownLibrary({
   onAdd,
   recipes,
   onAddRecipe,
-  footnote = "Drag onto the timeline, or select and press Enter to add at the end.",
+  footnote = "Drag onto the timeline, tap Add, or select and press Enter to add at the end.",
   initialFilter = "all",
 }: {
   songs: SongCatalogItem[];
@@ -183,12 +183,27 @@ export function RundownLibrary({
           >
             <span className="rundown-library-title">{row.title}</span>
             <span className="rundown-library-detail">{row.detail}</span>
-            <span className="rundown-library-length">
-              {row.group === "stop"
-                ? "Stop"
-                : row.durationMs == null
-                  ? "No length"
-                  : formatRundownDuration(row.durationMs)}
+            <span className="rundown-library-end">
+              <span className="rundown-library-length">
+                {row.group === "stop"
+                  ? "Stop"
+                  : row.durationMs == null
+                    ? "No length"
+                    : formatRundownDuration(row.durationMs)}
+              </span>
+              {/* Touch has no drag and no double-click: Add is the way to add a row on a phone or tablet. */}
+              <button
+                type="button"
+                className="rundown-library-add"
+                aria-label={`Add ${row.title} to the rundown`}
+                disabled={disabled || (recipeMode && row.entry.type !== "song")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  add(row.entry);
+                }}
+              >
+                Add
+              </button>
             </span>
           </li>
         ))}

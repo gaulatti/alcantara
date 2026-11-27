@@ -100,7 +100,7 @@ export function RundownRecipeFixture() {
           onAdd={() => undefined}
           recipes={[{ id: 1, name: "Song" }]}
           onAddRecipe={() => undefined}
-          footnote="Select an item and press Enter, or double-click it, to add it at the end."
+          footnote="Select an item and press Enter, double-click it, or tap Add, to add it at the end."
         />
       </div>
     </main>
