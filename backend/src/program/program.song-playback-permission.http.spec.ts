@@ -20,7 +20,10 @@ import { RendererAuthService } from '../renderer-keys/renderer-auth.service';
 describe('song-playback read (HTTP)', () => {
   let app: NestFastifyApplication;
   let origin: string;
-  const getProgramSongPlayback = jest.fn(async () => ({ isPlaying: false, version: 1 }));
+  const getProgramSongPlayback = jest.fn(async () => ({
+    isPlaying: false,
+    version: 1,
+  }));
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -58,7 +61,9 @@ describe('song-playback read (HTTP)', () => {
         { provide: APP_GUARD, useExisting: PompeiiAuthorizationGuard },
       ],
     }).compile();
-    app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    app = moduleRef.createNestApplication<NestFastifyApplication>(
+      new FastifyAdapter(),
+    );
     await app.listen(0, '127.0.0.1');
     origin = await app.getUrl();
   });
@@ -68,13 +73,19 @@ describe('song-playback read (HTTP)', () => {
   });
 
   it('has no write route: a POST to the song playback is not found', async () => {
-    const response = await fetch(`${origin}/program/station/song-playback`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const response = await fetch(`${origin}/program/station/song-playback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
     expect(response.status).toBe(404);
     expect(getProgramSongPlayback).not.toHaveBeenCalled();
   });
 
   it('keeps the read public', async () => {
-    expect((await fetch(`${origin}/program/station/song-playback`)).status).toBe(200);
+    expect(
+      (await fetch(`${origin}/program/station/song-playback`)).status,
+    ).toBe(200);
     expect(getProgramSongPlayback).toHaveBeenCalledWith('station');
   });
 });

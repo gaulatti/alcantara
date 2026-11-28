@@ -2968,7 +2968,9 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     const state = await this.getProgramStateRecord(programId);
     this.assertProgramSupportsVisualConfiguration(state, 'scenes');
 
-    const scene = await (await this.programLibraryClient(state.programId)).scene.findUnique({
+    const scene = await (
+      await this.programLibraryClient(state.programId)
+    ).scene.findUnique({
       where: { id: sceneId },
     });
     if (!scene) {
@@ -3129,7 +3131,9 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     const state = await this.getProgramStateRecord(programId);
     this.assertProgramSupportsVisualConfiguration(state, 'media groups');
 
-    const mediaGroup = await (await this.programLibraryClient(state.programId)).mediaGroup.findUnique({
+    const mediaGroup = await (
+      await this.programLibraryClient(state.programId)
+    ).mediaGroup.findUnique({
       where: { id: mediaGroupId },
       select: { id: true },
     });
@@ -3252,7 +3256,9 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     const state = await this.getProgramStateRecord(programId);
     this.assertProgramSupportsVisualConfiguration(state, 'stingers');
 
-    const stinger = await (await this.programLibraryClient(state.programId)).stinger.findUnique({
+    const stinger = await (
+      await this.programLibraryClient(state.programId)
+    ).stinger.findUnique({
       where: { id: stingerId },
       select: { id: true },
     });
@@ -3824,9 +3830,13 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
    * The library a program may attach (gaulatti/alcantara#122): its team's scenes, media groups and stingers, or every
    * row for a program with no team (local and test programs have none).
    */
-  private async programLibraryClient(programId: string): Promise<PrismaService> {
+  private async programLibraryClient(
+    programId: string,
+  ): Promise<PrismaService> {
     const teamId = await readProgramTeam(this.prisma, programId);
-    return teamId && teamId > 0 ? (forTeam(this.prisma, teamId) as unknown as PrismaService) : this.prisma;
+    return teamId && teamId > 0
+      ? (forTeam(this.prisma, teamId) as unknown as PrismaService)
+      : this.prisma;
   }
 
   /**

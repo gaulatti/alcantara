@@ -22,7 +22,11 @@ describe('program control routes (HTTP)', () => {
   let app: NestFastifyApplication;
   let origin: string;
   const getState = jest.fn(async () => ({ programId: 'station', version: 3 }));
-  const getProgramAudioBus = jest.fn(async () => ({ songSequence: { items: [] }, songQueue: [], mixerSettings: {} }));
+  const getProgramAudioBus = jest.fn(async () => ({
+    songSequence: { items: [] },
+    songQueue: [],
+    mixerSettings: {},
+  }));
   const getPublicState = jest.fn(async () => ({ programId: 'station' }));
   const getEventStream = jest.fn(() =>
     of({ data: JSON.stringify({ type: 'program_state_snapshot' }) }),
@@ -50,7 +54,12 @@ describe('program control routes (HTTP)', () => {
         TestAuthService,
         {
           provide: ProgramService,
-          useValue: { getState, getPublicState, getEventStream, getProgramAudioBus },
+          useValue: {
+            getState,
+            getPublicState,
+            getEventStream,
+            getProgramAudioBus,
+          },
         },
         { provide: FlightService, useValue: {} },
         { provide: ProgramTemplateService, useValue: {} },
@@ -88,9 +97,15 @@ describe('program control routes (HTTP)', () => {
     ).accessToken;
 
   it('refuses the control state and stream without sign-in, reading nothing', async () => {
-    expect((await fetch(`${origin}/program/station/control/state`)).status).toBe(401);
-    expect((await fetch(`${origin}/program/station/control/events`)).status).toBe(401);
-    expect((await fetch(`${origin}/program/station/control/audio-bus`)).status).toBe(401);
+    expect(
+      (await fetch(`${origin}/program/station/control/state`)).status,
+    ).toBe(401);
+    expect(
+      (await fetch(`${origin}/program/station/control/events`)).status,
+    ).toBe(401);
+    expect(
+      (await fetch(`${origin}/program/station/control/audio-bus`)).status,
+    ).toBe(401);
     expect(getState).not.toHaveBeenCalled();
     expect(getProgramAudioBus).not.toHaveBeenCalled();
     expect(getEventStream).not.toHaveBeenCalled();
@@ -99,27 +114,38 @@ describe('program control routes (HTTP)', () => {
   it('refuses a token that is not one', async () => {
     const headers = { Authorization: 'Bearer not-a-token' };
     expect(
-      (await fetch(`${origin}/program/station/control/state`, { headers })).status,
+      (await fetch(`${origin}/program/station/control/state`, { headers }))
+        .status,
     ).toBe(401);
     expect(getState).not.toHaveBeenCalled();
   });
 
   it('serves the whole state and the control stream to a signed-in viewer', async () => {
     const headers = { Authorization: `Bearer ${await tokenFor('viewer')}` };
-    const state = await fetch(`${origin}/program/station/control/state`, { headers });
+    const state = await fetch(`${origin}/program/station/control/state`, {
+      headers,
+    });
     expect(state.status).toBe(200);
     expect(await state.json()).toEqual({ programId: 'station', version: 3 });
     expect(getState).toHaveBeenCalledWith('station');
 
-    const events = await fetch(`${origin}/program/station/control/events`, { headers });
+    const events = await fetch(`${origin}/program/station/control/events`, {
+      headers,
+    });
     expect(events.status).toBe(200);
     expect(events.headers.get('content-type')).toContain('text/event-stream');
     expect(await events.text()).toContain('program_state_snapshot');
     expect(getEventStream).toHaveBeenCalledWith('station', 'control');
 
-    const bus = await fetch(`${origin}/program/station/control/audio-bus`, { headers });
+    const bus = await fetch(`${origin}/program/station/control/audio-bus`, {
+      headers,
+    });
     expect(bus.status).toBe(200);
-    expect(await bus.json()).toEqual({ songSequence: { items: [] }, songQueue: [], mixerSettings: {} });
+    expect(await bus.json()).toEqual({
+      songSequence: { items: [] },
+      songQueue: [],
+      mixerSettings: {},
+    });
     expect(getProgramAudioBus).toHaveBeenCalledWith('station');
   });
 

@@ -7,7 +7,11 @@ import type { FlightCue } from './flight.types';
  */
 export const RUNDOWN_SHADOW_FIELDS = ['cue', 'scene', 'song'] as const;
 export type RundownShadowField = (typeof RUNDOWN_SHADOW_FIELDS)[number];
-export const RUNDOWN_SHADOW_RESULTS = ['agree', 'disagree', 'unsupported'] as const;
+export const RUNDOWN_SHADOW_RESULTS = [
+  'agree',
+  'disagree',
+  'unsupported',
+] as const;
 export type RundownShadowResult = (typeof RUNDOWN_SHADOW_RESULTS)[number];
 
 /** What is on air as the executor and the program see it. */
@@ -22,7 +26,8 @@ export function compareShadow(
   desired: FlightDesiredState,
   observed: ShadowObservation,
 ): Record<RundownShadowField, 'agree' | 'disagree'> {
-  const same = (left: unknown, right: unknown) => (left === right ? 'agree' : 'disagree');
+  const same = (left: unknown, right: unknown) =>
+    left === right ? 'agree' : 'disagree';
   return {
     cue: same(desired.activeCueId, observed.activeCueId),
     scene: same(desired.scene?.sceneId ?? null, observed.sceneId),
@@ -39,5 +44,9 @@ const SHORTEST_OBSERVED_WAIT_MS = 200;
  */
 export function shadowObserves(cue: FlightCue): boolean {
   if (cue.kind === 'waitForSongEnd') return true;
-  return cue.kind === 'wait' && typeof cue.durationMs === 'number' && cue.durationMs >= SHORTEST_OBSERVED_WAIT_MS;
+  return (
+    cue.kind === 'wait' &&
+    typeof cue.durationMs === 'number' &&
+    cue.durationMs >= SHORTEST_OBSERVED_WAIT_MS
+  );
 }
