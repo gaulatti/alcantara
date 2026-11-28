@@ -92,6 +92,24 @@ describe("the radio desk for an account that may only view", () => {
     expect(screen.getByRole("button", { name: /search songs/i })).toBeEnabled();
   });
 
+  it("disables playout mode, loop, shuffle, the pads and the recovery buttons, and keeps pre-listen", async () => {
+    const onTriggerInstant = vi.fn();
+    const onSaveSongSequence = vi.fn();
+    show(panel({ onTriggerInstant, onSaveSongSequence, instants: [{ id: 5, name: "Sweeper", enabled: true }] }));
+    await screen.findByText(NOTICE);
+    for (const name of [/^Manual$/, /^Autoplay$/, /shuffle playlist/i, /loop playlist/i, /start with fallback/i, /stop session/i]) {
+      const control = screen.getByRole("button", { name, hidden: true });
+      expect(control).toBeDisabled();
+      fireEvent.click(control);
+    }
+    const pad = screen.getByRole("button", { name: "Sweeper" });
+    expect(pad).toBeDisabled();
+    fireEvent.click(pad);
+    expect(onTriggerInstant).not.toHaveBeenCalled();
+    expect(onSaveSongSequence).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Pre-listen Sweeper" })).toBeEnabled();
+  });
+
   it("still shows a failure that is not a refusal", async () => {
     show(panel({ songCatalogLoadError: "HTTP 500" }));
     expect(await screen.findByText("Song library did not load: HTTP 500")).toBeVisible();

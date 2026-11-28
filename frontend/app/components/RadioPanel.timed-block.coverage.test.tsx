@@ -32,7 +32,7 @@ afterEach(() => {
 function mount(overrides: Parameters<typeof radioPanelProps>[0] = {}) {
   return render(
     <MemoryRouter>
-      <RadioMonitorProvider>
+      <RadioMonitorProvider programId="radio-demo">
         <RadioPanel {...radioPanelProps(overrides)} />
       </RadioMonitorProvider>
     </MemoryRouter>,

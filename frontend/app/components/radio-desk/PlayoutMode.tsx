@@ -15,7 +15,10 @@ export function PlayoutMode({
   activeItemId,
   playing,
   onChange,
+  disabled = false,
 }: {
+  /** No mode, shuffle or loop can be changed. */
+  disabled?: boolean;
   sequence: ProgramSongSequence;
   /** The song on air, or the selected one. */
   activeItemId: string | null;
@@ -41,7 +44,7 @@ export function PlayoutMode({
   // press is not a surprise. Loop gets no such note: it only decides what happens at the end of the list.
   const hintId = useId();
   const startsNow =
-    !playing && sequence.mode === "manual" && sequence.items.length > 0;
+    !disabled && !playing && sequence.mode === "manual" && sequence.items.length > 0;
   const describedBy = startsNow ? hintId : undefined;
   const button = (pressed: boolean) =>
     `inline-flex h-7 items-center gap-1 rounded-[6px] px-2.5 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${pressed ? "bg-accent-blue/20 text-accent-blue" : "text-text-secondary hover:text-text-primary"}`;
@@ -55,6 +58,7 @@ export function PlayoutMode({
         <button
           type="button"
           aria-pressed={sequence.mode === "manual"}
+          disabled={disabled}
           onClick={() => setMode("manual")}
           className={button(sequence.mode === "manual")}
         >
@@ -64,6 +68,7 @@ export function PlayoutMode({
           type="button"
           aria-pressed={sequence.mode === "autoplay"}
           aria-describedby={describedBy}
+          disabled={disabled}
           onClick={() => setMode("autoplay")}
           className={button(sequence.mode === "autoplay")}
         >
@@ -74,7 +79,7 @@ export function PlayoutMode({
           aria-label="Shuffle playlist"
           aria-pressed={sequence.mode === "shuffle"}
           aria-describedby={describedBy}
-          disabled={sequence.items.length < 2}
+          disabled={disabled || sequence.items.length < 2}
           title={
             sequence.mode === "shuffle"
               ? "Shuffle is active; reshuffle playlist"
@@ -101,6 +106,7 @@ export function PlayoutMode({
         type="button"
         aria-label={`Loop playlist: ${sequence.loop !== false ? "on" : "off"}`}
         aria-pressed={sequence.loop !== false}
+        disabled={disabled}
         onClick={() =>
           onChange({ ...sequence, loop: sequence.loop === false ? true : false })
         }

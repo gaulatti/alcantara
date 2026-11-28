@@ -25,6 +25,8 @@ interface InstantsPanelProps {
   onTrigger: (id: number) => void;
   /** Pre-fade listen per pad (the radio desk): plays here only, never triggers the pad (#835). */
   preListen?: { activeId: number | null; onToggle: (instant: InstantItem) => void };
+  /** When given, no pad can be triggered and each says why; pre-listen stays. */
+  disabledHelp?: string;
 }
 
 export function InstantsPanel({
@@ -35,6 +37,7 @@ export function InstantsPanel({
   onSearchChange,
   onTrigger,
   preListen,
+  disabledHelp,
 }: InstantsPanelProps) {
   // The time left of a playing sounder, redrawn each second while any plays (#298).
   const anyPlaying = Object.keys(playback).length > 0;
@@ -88,8 +91,8 @@ export function InstantsPanel({
                     key={instant.id}
                     type="button"
                     onClick={() => onTrigger(instant.id)}
-                    disabled={!instant.enabled}
-                    title={`${instant.name}${shortcutLetter ? ` (${cartChordLabel(shortcutLetter, isMac)})` : ""}`}
+                    disabled={disabledHelp !== undefined || !instant.enabled}
+                    title={disabledHelp ?? `${instant.name}${shortcutLetter ? ` (${cartChordLabel(shortcutLetter, isMac)})` : ""}`}
                     className="console-cart"
                     data-playing={isPlaying}
                     aria-label={`${instant.name}${isPlaying ? " · playing" : ""}`}

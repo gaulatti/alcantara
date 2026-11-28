@@ -19,6 +19,13 @@ import {
 // handler in control.tsx runs against an eighteen-instant cartwall, where the old
 // map put k on slot 18.
 
+const account = vi.hoisted(() => ({ viewOnly: false }));
+vi.mock("../hooks/useFeatures", () => ({
+  useFeatures: () =>
+    account.viewOnly
+      ? { loading: false, context: null, hasPermission: () => false }
+      : { loading: true, context: null, hasPermission: () => false },
+}));
 vi.mock("../hooks/useSSE", () => ({ useSSE: () => ({ isConnected: false }) }));
 vi.mock("../utils/globalProgram", () => ({
   useGlobalProgramId: () => ["main"],
@@ -170,4 +177,17 @@ it("on Windows, Alt+F, Alt+E and Alt+D play nothing: those are the browser's men
     await new Promise((resolve) => setTimeout(resolve, 100));
   });
   expect(playRequests()).toEqual([]);
+});
+
+it("plays nothing on a chord for an account that may not fire sounders", async () => {
+  account.viewOnly = true;
+  open();
+  await screen.findByRole("button", { name: "Fictional clip 1" });
+  fireEvent.keyDown(document, { key: "q", code: "KeyQ", ctrlKey: true });
+  fireEvent.keyDown(document, { key: "q", code: "KeyQ", altKey: true });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  });
+  expect(playRequests()).toEqual([]);
+  account.viewOnly = false;
 });

@@ -12,6 +12,7 @@ import {
   useState,
 } from "react";
 import { useProgramEvents } from "../hooks/useProgramEvents";
+import { useFeatures } from "../hooks/useFeatures";
 import type { SSEConnectionState } from "../hooks/useSSE";
 import { fetchProgramControl } from "../services/programControl";
 import { cartModifierHeld, platformIsMac } from "../utils/cartModifier";
@@ -160,6 +161,9 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export default function Control() {
+  const { loading: featuresLoading, hasPermission } = useFeatures();
+  // Until the permissions are read, nothing is assumed: the server refuses what is not allowed.
+  const mayFireInstants = !(featuresLoading === false && !hasPermission("alcantara:instant:operate"));
   const consolePreferences = useConsolePreferences();
   const [activeProgramId] = useGlobalProgramId();
   const activeProgramIdRef = useRef(activeProgramId);
@@ -2944,8 +2948,9 @@ export default function Control() {
         return;
       }
 
-      // A cart plays on this platform's modifier only (Ctrl on macOS, Alt elsewhere).
-      if (!cartModifierHeld(event, platformIsMac())) {
+      // A cart plays on this platform's modifier only (Ctrl on macOS, Alt elsewhere), and only for an account that
+      // may fire one.
+      if (!mayFireInstants || !cartModifierHeld(event, platformIsMac())) {
         return;
       }
 
@@ -2972,6 +2977,7 @@ export default function Control() {
     takeStagedSceneLive,
     triggerInstant,
     stageSceneForProgram,
+    mayFireInstants,
   ]);
 
   const [radioPlayoutError, setRadioPlayoutError] = useState<string | null>(null);

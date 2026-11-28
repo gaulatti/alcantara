@@ -851,7 +851,9 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
               {timedBlockOnAir ? (
                 <span className="console-count">{`${activeLog!.items.length} events`}</span>
               ) : (
+                <DisabledHelp help={viewOnlyHelp}>
                 <PlayoutMode
+                  disabled={viewOnly}
                   sequence={rotation}
                   activeItemId={liveLeaf?.id ?? null}
                   playing={programSongPlayback?.isPlaying === true}
@@ -866,6 +868,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     );
                   }}
                 />
+                </DisabledHelp>
               )}
             </div>
             {viewOnly ? (
@@ -1383,6 +1386,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     playback={instantPlayback}
                     onSearchChange={onInstantSearchChange}
                     onTrigger={onTriggerInstant}
+                    disabledHelp={viewOnlyHelp}
                   />
                 )}
               </div>
@@ -1471,7 +1475,9 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     size="xs"
                     variant="secondary"
                     onClick={() => void commandRecovery("start")}
+                    {...(viewOnly ? { title: VIEW_ONLY_CONTROL } : {})}
                     disabled={
+                      viewOnly ||
                       recoveryBusy ||
                       playoutDown ||
                       !recovery?.preparedVersion ||
@@ -1494,8 +1500,9 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                         void commandRecovery("stop");
                     }}
                     disabled={
-                      recoveryBusy || !recovery?.automation?.filler.ready
+                      viewOnly || recoveryBusy || !recovery?.automation?.filler.ready
                     }
+                    disabledHelp={viewOnlyHelp}
                   >
                     Hold · stop session
                   </HoldButton>
@@ -1508,7 +1515,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
           </aside>
         </div>
       </div>
-      {timedBlockOnAir ? (
+      {timedBlockOnAir ? viewOnly ? null : (
       <PlaybackBar
         sequence={rotation}
         programSongPlayback={programSongPlayback}
