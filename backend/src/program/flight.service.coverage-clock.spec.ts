@@ -79,6 +79,20 @@ function harness() {
   };
 }
 
+// A station with team 7 and a program of that team: the program's reads go through the client forTeam builds, which
+// stands in here as `scoped`; the team-0 harness has no `$extends`, so its reads cannot take that path.
+function onTeamSeven(
+  prisma: any,
+  internals: any,
+  scoped: Record<string, unknown>,
+) {
+  internals.pompeii = { teamId: 7 };
+  prisma.program = {
+    findUnique: jest.fn().mockResolvedValue({ teamId: 7 }),
+  };
+  prisma.$extends = jest.fn(() => scoped);
+}
+
 const playable = {
   id: 1,
   enabled: true,
@@ -1001,6 +1015,33 @@ describe('FlightService tagged log generation', () => {
     expect(recorded).not.toHaveBeenCalledWith('generation-failed');
   });
 
+  it("reads the labels through the program team's client when the station has a team", async () => {
+    const { service, prisma, internals } = harness();
+    const scoped = {
+      mediaLabel: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'a', name: 'A' }]),
+      },
+      song: { findMany: jest.fn().mockResolvedValue([playable]) },
+    };
+    onTeamSeven(prisma, internals, scoped);
+    prisma.flightSequence.findFirst.mockResolvedValue(draft());
+    mockedParseRules.mockReturnValue(rules);
+    mockedGenerate.mockReturnValue([
+      { id: 'g', kind: 'playSong', songId: 1, clockOffsetSeconds: 0 },
+    ]);
+
+    await service.generateTaggedLog('radio-1', 7, { revision: 2 });
+
+    expect((prisma as any).$extends).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'team-7' }),
+    );
+    expect(scoped.mediaLabel.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ['a', 'b'] } },
+      select: { id: true, name: true },
+    });
+    expect(prisma.mediaLabel.findMany).not.toHaveBeenCalled();
+  });
+
   it('fails when the generated items are not playable', async () => {
     const { service, prisma, recorded } = harness();
     prisma.flightSequence.findFirst.mockResolvedValue(draft());
@@ -1127,6 +1168,36 @@ describe('FlightService rundown filling', () => {
     ]);
     expect(result).toBe(preview);
     expect(recorded).toHaveBeenCalledWith('filled');
+  });
+
+  it("reads the filler tag through the program team's client when the station has a team", async () => {
+    const { service, prisma, internals } = harness();
+    const scoped = {
+      mediaLabel: { findUnique: jest.fn().mockResolvedValue({ id: 'music' }) },
+      song: { findMany: jest.fn().mockResolvedValue([playable]) },
+    };
+    onTeamSeven(prisma, internals, scoped);
+    prisma.flightSequence.findFirst.mockResolvedValue(draft());
+    mockedParseFiller.mockReturnValue({
+      labelId: 'music',
+      artistSeparation: 0,
+    });
+    const preview = {
+      items: [{ id: 'a', kind: 'playSong', songId: 1, clockOffsetSeconds: 0 }],
+      warnings: [],
+    };
+    mockedFill.mockReturnValue(preview);
+
+    await expect(service.fillRundown('radio-1', 7, input)).resolves.toBe(
+      preview,
+    );
+    expect((prisma as any).$extends).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'team-7' }),
+    );
+    expect(scoped.mediaLabel.findUnique).toHaveBeenCalledWith({
+      where: { id: 'music' },
+    });
+    expect(prisma.mediaLabel.findUnique).not.toHaveBeenCalled();
   });
 
   it('fails when the filler tag is gone or the preview is unplayable', async () => {
