@@ -1,10 +1,5 @@
 src/artist-labels/artist-labels.service.spec.ts
 src/artist-labels/artist-labels.service.ts
-src/broadcast-destinations/broadcast-destination-keys.service.spec.ts
-src/broadcast-destinations/broadcast-destination-keys.service.ts
-src/broadcast-destinations/broadcast-destinations.service.coverage.spec.ts
-src/broadcast-destinations/broadcast-destinations.service.ts
-src/broadcast-destinations/destination-test.service.spec.ts
 src/charts/charts.service.metadata.spec.ts
 src/cors.http.spec.ts
 src/database-backup/database-backup.service.coverage.spec.ts

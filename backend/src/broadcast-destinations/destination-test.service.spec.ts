@@ -48,7 +48,9 @@ describe('DestinationTestService', () => {
   it("reads the destination through the caller's team, and unscoped only for team 0", async () => {
     const team = build();
     await team.service.test('d1', 'user-1', 7);
-    expect(team.prisma.$extends).toHaveBeenCalledWith(expect.objectContaining({ name: 'team-7' }));
+    expect(team.prisma.$extends).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'team-7' }),
+    );
     const local = build();
     await local.service.test('d1', 'user-1', 0);
     expect(local.prisma.$extends).not.toHaveBeenCalled();

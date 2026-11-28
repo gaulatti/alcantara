@@ -269,7 +269,9 @@ describe('BroadcastDestinationsService coverage', () => {
       await h.service.listDestinations(7);
       await h.service.listCatalog(7);
       expect(h.prisma.$extends).toHaveBeenCalledTimes(2);
-      expect(h.prisma.$extends).toHaveBeenCalledWith(expect.objectContaining({ name: 'team-7' }));
+      expect(h.prisma.$extends).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'team-7' }),
+      );
       await h.service.listDestinations(0);
       await h.service.listCatalog();
       expect(h.prisma.$extends).toHaveBeenCalledTimes(2);

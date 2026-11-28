@@ -77,20 +77,8 @@
     "@typescript-eslint/no-unsafe-assignment": 1,
     "@typescript-eslint/no-unsafe-return": 1
   },
-  "src/broadcast-destinations/broadcast-destination-keys.service.spec.ts": {
-    "prettier/prettier": 1
-  },
-  "src/broadcast-destinations/broadcast-destination-keys.service.ts": {
-    "prettier/prettier": 2
-  },
-  "src/broadcast-destinations/broadcast-destinations.service.coverage.spec.ts": {
-    "prettier/prettier": 1
-  },
   "src/broadcast-destinations/broadcast-destinations.service.spec.ts": {
     "@typescript-eslint/no-unsafe-member-access": 8
-  },
-  "src/broadcast-destinations/broadcast-destinations.service.ts": {
-    "prettier/prettier": 3
   },
   "src/broadcast-destinations/broadcast-destinations.team-routes.tenancy.spec.ts": {
     "@typescript-eslint/require-await": 4
@@ -102,8 +90,7 @@
     "@typescript-eslint/no-unsafe-assignment": 1,
     "@typescript-eslint/no-unsafe-call": 1,
     "@typescript-eslint/no-unsafe-member-access": 2,
-    "@typescript-eslint/no-unsafe-return": 1,
-    "prettier/prettier": 1
+    "@typescript-eslint/no-unsafe-return": 1
   },
   "src/charts/charts.service.metadata.spec.ts": {
     "@typescript-eslint/no-unsafe-return": 1,

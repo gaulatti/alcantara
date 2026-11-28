@@ -59,7 +59,9 @@ export class BroadcastDestinationsService {
    * filters and checks below stay as they were.
    */
   private teamDb(callerTeam: number): PrismaService {
-    return callerTeam > 0 ? (forTeam(this.prisma, callerTeam) as unknown as PrismaService) : this.prisma;
+    return callerTeam > 0
+      ? (forTeam(this.prisma, callerTeam) as unknown as PrismaService)
+      : this.prisma;
   }
 
   /**
@@ -68,7 +70,9 @@ export class BroadcastDestinationsService {
    * in-process callers that pass nothing see every destination, as before.
    */
   async listDestinations(callerTeam = 0) {
-    const destinations = await this.teamDb(callerTeam).broadcastDestination.findMany({
+    const destinations = await this.teamDb(
+      callerTeam,
+    ).broadcastDestination.findMany({
       where: callerTeam === 0 ? undefined : { teamId: callerTeam },
       orderBy: [{ position: 'asc' }, { id: 'asc' }],
     });
@@ -82,7 +86,9 @@ export class BroadcastDestinationsService {
 
   /** The catalog of the caller's team (every destination where no team is configured). */
   async listCatalog(callerTeam = 0) {
-    const destinations = await this.teamDb(callerTeam).broadcastDestination.findMany({
+    const destinations = await this.teamDb(
+      callerTeam,
+    ).broadcastDestination.findMany({
       where: callerTeam === 0 ? undefined : { teamId: callerTeam },
       orderBy: [{ position: 'asc' }, { id: 'asc' }],
     });
