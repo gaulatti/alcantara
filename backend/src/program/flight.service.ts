@@ -436,9 +436,17 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         });
       } catch (error) {
         this.recoveryFailed(error);
-        await this.prisma.flightSequence
-          .update({ where: { id: row.id }, data: { isRunning: false } })
-          .catch(() => undefined);
+        // Start-up goes on whatever this write does.
+        try {
+          await this.prisma.flightSequence.update({
+            where: { id: row.id },
+            data: { isRunning: false },
+          });
+        } catch {
+          this.logger.error(
+            `Rundown recovery could not mark sequence ${row.id} not running`,
+          );
+        }
       }
     }
   }

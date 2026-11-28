@@ -323,6 +323,9 @@ describe('manual rundown recovery on backend start', () => {
     await write.service.onModuleInit();
     expect(await write.counts()).toEqual(only('failed'));
     expect(logged).toHaveBeenCalledWith('Rundown recovery failed: Error');
+    expect(logged).toHaveBeenCalledWith(
+      'Rundown recovery could not mark sequence 7 not running',
+    );
     expect(write.runtime()).toBeUndefined();
   });
 
