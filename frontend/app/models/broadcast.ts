@@ -337,6 +337,12 @@ export interface FlightSequence {
   lastStartedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Present on a block made from a daypart clock (gaulatti/alcantara#124). */
+  daypart?: {
+    clockId: number;
+    start: string | null;
+    outcome: string | null;
+  };
   /**
    * The cues the as-run logged as not aired (gaulatti/alcantara#726). Absent from a backend that
    * predates it; the rundown then marks rows by position alone.

@@ -44,6 +44,7 @@ export default [
       route('layouts', 'routes/layouts.tsx'),
       ...developmentRoutes,
       route('flight', 'routes/flight.tsx'),
+      route('dayparts', 'routes/dayparts.tsx'),
       route('access', 'routes/access.tsx')
     ]),
     route('overlay', 'routes/overlay.tsx')

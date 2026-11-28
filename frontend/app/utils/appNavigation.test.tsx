@@ -17,6 +17,7 @@ describe("program-aware application navigation", () => {
     expect(labels("radio")).toEqual([
       "Radio desk",
       "Rundown",
+      "Dayparts",
       "Guest calls",
       "Media",
       "Shows",
