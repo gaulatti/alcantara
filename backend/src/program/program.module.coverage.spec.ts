@@ -23,6 +23,7 @@ import { SceneAssetScope } from './scene-asset-scope';
 import { ProgramTemplateService } from './program-template.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { RecipeMcpTools } from '../mcp/capabilities/recipes';
+import { DaypartMcpTools } from '../mcp/capabilities/dayparts';
 import { RecipesController } from './recipes.controller';
 import { RecipesService } from './recipes.service';
 import { RadioService } from '../radio/radio.service';
@@ -188,6 +189,7 @@ describe('ProgramModule wiring', () => {
       RadioClocksService,
       RadioDaypartsService,
       RadioDaypartPlanner,
+      DaypartMcpTools,
       ProgramTeamAccess,
       { provide: APP_INTERCEPTOR, useClass: ProgramTeamInterceptor },
       {

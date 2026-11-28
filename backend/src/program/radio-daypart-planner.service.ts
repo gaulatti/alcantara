@@ -42,6 +42,14 @@ interface PlannedGrid {
   dayparts: PlannedDaypart[];
 }
 
+const daypartAt = (dayparts: PlannedDaypart[], hour: DaypartHour) =>
+  dayparts.find(
+    (entry) =>
+      entry.dayOfWeek === hour.dayOfWeek &&
+      entry.startHour <= hour.hour &&
+      hour.hour < entry.endHour,
+  );
+
 /**
  * gaulatti/alcantara#124: makes the coming hours of each daypart grid into ordinary published radio logs, from the
  * hour's clock, with the log generator and the publish checks an operator uses. A log a person made at an hour
@@ -71,6 +79,58 @@ export class RadioDaypartPlanner implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy(): void {
     if (this.timer) clearInterval(this.timer);
+  }
+
+  /**
+   * The hours of the grid that begin in the next `ahead` hours: the log already made for one, or the cues its clock
+   * would give it now. Writes nothing. Each unmade hour is proposed by itself, so the picks can differ when made.
+   */
+  async preview(programId: string, ahead: number, now = Date.now()) {
+    const grid = (await this.prisma.radioDaypartGrid.findFirst({
+      where: { programState: { programId: programId.trim() } },
+      include: { dayparts: { include: { clock: true } } },
+    })) as unknown as Omit<PlannedGrid, 'programState'> | null;
+    if (!grid) return { timeZone: null, hours: [] };
+    const hours: Array<Record<string, unknown>> = [];
+    for (const hour of hoursStartingWithin(
+      now,
+      now + ahead * 60 * 60_000,
+      grid.timeZone,
+    )) {
+      const daypart = daypartAt(grid.dayparts, hour);
+      if (!daypart) continue;
+      const existing = await this.prisma.flightSequence.findFirst({
+        where: { programStateId: grid.programStateId, scheduledAt: hour.at },
+      });
+      const entry: Record<string, unknown> = {
+        startsAt: hour.at.toISOString(),
+        localTime: hour.label,
+        clockId: daypart.clock.id,
+        name: daypart.clock.name,
+        start: daypart.start,
+        log: existing
+          ? {
+              id: existing.id,
+              madeFromClock: existing.clockId !== null,
+              published: existing.publishedAt !== null,
+              outcome: existing.daypartOutcome,
+            }
+          : null,
+      };
+      if (!existing)
+        try {
+          entry.items = await this.flights.previewTaggedLog(
+            programId,
+            hour.at,
+            daypart.clock.rules,
+          );
+        } catch (error) {
+          entry.problem =
+            error instanceof Error ? error.message : 'unknown error';
+        }
+      hours.push(entry);
+    }
+    return { timeZone: grid.timeZone, hours };
   }
 
   async tick(now = Date.now()): Promise<void> {
@@ -114,12 +174,7 @@ export class RadioDaypartPlanner implements OnModuleInit, OnModuleDestroy {
     );
     const wanted = new Map<number, [DaypartHour, PlannedDaypart]>();
     for (const hour of hours) {
-      const daypart = grid.dayparts.find(
-        (entry) =>
-          entry.dayOfWeek === hour.dayOfWeek &&
-          entry.startHour <= hour.hour &&
-          hour.hour < entry.endHour,
-      );
+      const daypart = daypartAt(grid.dayparts, hour);
       if (daypart) wanted.set(hour.at.getTime(), [hour, daypart]);
     }
     await this.takeBack(grid, from, wanted);

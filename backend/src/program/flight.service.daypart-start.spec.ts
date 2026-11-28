@@ -196,3 +196,37 @@ describe('daypart block start', () => {
     expect(h.program.getRotationOnAir).not.toHaveBeenCalled();
   });
 });
+
+describe('daypart log service', () => {
+  it('proposes what a block would hold without writing it', async () => {
+    const h = setup();
+    const propose = jest
+      .spyOn(h.internals, 'proposeCues')
+      .mockResolvedValue(['a song']);
+    Object.assign(h.prisma.programState, {
+      findUnique: jest.fn().mockResolvedValue({ id: 3 }),
+    });
+    await expect(
+      h.service.previewTaggedLog('fm', new Date(AT), { slots: [] }),
+    ).resolves.toEqual(['a song']);
+    expect(propose).toHaveBeenCalledWith('fm', 3, new Date(AT), {
+      slots: [],
+    });
+    expect(h.prisma.flightSequence.update).not.toHaveBeenCalled();
+  });
+
+  it('says which blocks came from a clock, and only those', () => {
+    const h = setup();
+    const plain = h.internals.toFlightSequence({ id: 1, items: [] });
+    expect(plain).not.toHaveProperty('daypart');
+    expect(
+      h.internals.toFlightSequence({
+        id: 1,
+        items: [],
+        clockId: 5,
+        daypartStart: 'soft',
+        daypartOutcome: 'skipped',
+      }).daypart,
+    ).toEqual({ clockId: 5, start: 'soft', outcome: 'skipped' });
+  });
+});

@@ -71,6 +71,14 @@ const EXTRA_CAPABILITIES: Record<string, [string, McpTier]> = {
   radio_get_audio_levels: ['radio.read', 'R'],
   // gaulatti/alcantara#424: add one use of a rundown recipe to a rundown, which has no route of its own.
   program_add_recipe_use_by_id: ['flight.manage', 'W'],
+  // gaulatti/alcantara#124: radio clocks and the weekly daypart grid.
+  program_list_radio_clocks_by_id: ['flight.read', 'R'],
+  program_get_radio_dayparts_by_id: ['flight.read', 'R'],
+  program_preview_radio_dayparts_by_id: ['flight.read', 'R'],
+  program_create_radio_clock_by_id: ['flight.manage', 'W'],
+  program_update_radio_clock_by_id: ['flight.manage', 'W'],
+  program_delete_radio_clock_by_id: ['flight.manage', 'D'],
+  program_set_radio_dayparts_by_id: ['flight.manage', 'W'],
 };
 
 function permissionKey(short: string): string {

@@ -456,64 +456,89 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         throw new ConflictException(
           'The log changed. Reload before generating.',
         );
-      const rules = parseRadioLogRules(data.rules);
-      const labelIds = [...new Set(rules.slots.map((slot) => slot.labelId))];
-      const songDb = await this.programSongDb('generate', programId);
-      const [labels, songs, previous] = await Promise.all([
-        this.prisma.mediaLabel.findMany({
-          where: { id: { in: labelIds } },
-          select: { id: true, name: true },
-        }),
-        songDb
-          ? songDb.song.findMany({
-              where: {
-                enabled: true,
-                audioUrl: { not: '' },
-                asset: { labels: { some: { labelId: { in: labelIds } } } },
-              },
-              select: {
-                id: true,
-                artist: true,
-                durationMs: true,
-                asset: {
-                  select: {
-                    labels: {
-                      where: { labelId: { in: labelIds } },
-                      select: { labelId: true, position: true },
-                    },
-                  },
-                },
-              },
-            })
-          : [],
-        this.prisma.flightSequence.findMany({
-          where: {
-            programStateId: state.id,
-            publishedAt: { not: null },
-            scheduledAt: { lt: sequence.scheduledAt },
-          },
-          orderBy: { scheduledAt: 'desc' },
-          take: 24,
-          select: { items: true },
-        }),
-      ]);
-      const previousSongIds = previous
-        .reverse()
-        .flatMap((log) =>
-          normalizeFlightItems(log.items).flatMap((cue) =>
-            cue.kind === 'playSong' && cue.songId ? [cue.songId] : [],
-          ),
-        );
-      const items = generateRadioLog(rules, songs, labels, previousSongIds);
-      const preflight = await this.preflightClockItems(programId, items);
-      if (!preflight.ready)
-        throw new BadRequestException(preflight.issues.join('; '));
+      const items = await this.proposeCues(
+        programId,
+        state.id,
+        sequence.scheduledAt,
+        data.rules,
+      );
       this.metrics.recordRadioLogResult('generated');
       return { items };
     } catch (cause) {
       this.metrics.recordRadioLogResult('generation-failed');
       throw cause;
     }
+  }
+
+  /** What a block at `scheduledAt` would hold under these rules, checked as a publish checks it. Writes nothing. */
+  async previewTaggedLog(
+    programId: string,
+    scheduledAt: Date,
+    rules: unknown,
+  ): Promise<FlightCue[]> {
+    const state = await this.getProgramStateRecord(programId);
+    return this.proposeCues(programId, state.id, scheduledAt, rules);
+  }
+
+  private async proposeCues(
+    programId: string,
+    programStateId: number,
+    scheduledAt: Date,
+    ruleInput: unknown,
+  ): Promise<FlightCue[]> {
+    const rules = parseRadioLogRules(ruleInput);
+    const labelIds = [...new Set(rules.slots.map((slot) => slot.labelId))];
+    const songDb = await this.programSongDb('generate', programId);
+    const [labels, songs, previous] = await Promise.all([
+      this.prisma.mediaLabel.findMany({
+        where: { id: { in: labelIds } },
+        select: { id: true, name: true },
+      }),
+      songDb
+        ? songDb.song.findMany({
+            where: {
+              enabled: true,
+              audioUrl: { not: '' },
+              asset: { labels: { some: { labelId: { in: labelIds } } } },
+            },
+            select: {
+              id: true,
+              artist: true,
+              durationMs: true,
+              asset: {
+                select: {
+                  labels: {
+                    where: { labelId: { in: labelIds } },
+                    select: { labelId: true, position: true },
+                  },
+                },
+              },
+            },
+          })
+        : [],
+      this.prisma.flightSequence.findMany({
+        where: {
+          programStateId,
+          publishedAt: { not: null },
+          scheduledAt: { lt: scheduledAt },
+        },
+        orderBy: { scheduledAt: 'desc' },
+        take: 24,
+        select: { items: true },
+      }),
+    ]);
+    const previousSongIds = previous
+      .reverse()
+      .flatMap((log) =>
+        normalizeFlightItems(log.items).flatMap((cue) =>
+          cue.kind === 'playSong' && cue.songId ? [cue.songId] : [],
+        ),
+      );
+    const items = generateRadioLog(rules, songs, labels, previousSongIds);
+    const preflight = await this.preflightClockItems(programId, items);
+    if (!preflight.ready)
+      throw new BadRequestException(preflight.issues.join('; '));
+    return items;
   }
 
   async fillRundown(
@@ -2651,6 +2676,16 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       revision: seq.revision ?? 1,
       lastStartedAt: seq.lastStartedAt ?? null,
       createdAt: seq.createdAt,
+      // Present only on a block made from a daypart clock (gaulatti/alcantara#124).
+      ...(seq.clockId != null
+        ? {
+            daypart: {
+              clockId: seq.clockId as number,
+              start: seq.daypartStart as string | null,
+              outcome: seq.daypartOutcome as string | null,
+            },
+          }
+        : {}),
       updatedAt: seq.updatedAt,
     };
   }

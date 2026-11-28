@@ -772,6 +772,21 @@ Names, URLs, descriptions, chart identifiers and the ids of a replaced list are 
 records, the change is never blocked: a record that cannot be stored is logged and counted under
 `alcantara_operator_change_records_total{target,result}` with the targets above, and an automatic change writes nothing.
 
+## Radio clocks and dayparts (#124)
+
+File: `backend/src/mcp/capabilities/dayparts.ts` (`DaypartMcpTools`), calling the services the console routes call.
+Clock names, proposed cues and the reason an hour cannot be filled are user text under `untrusted`.
+
+| Capability | Permission | Tier | What it does |
+|---|---|---|---|
+| `program_list_radio_clocks_by_id` | `flight.read` | R | The program's clocks with their revision and radio log rules. |
+| `program_get_radio_dayparts_by_id` | `flight.read` | R | The weekly grid: time zone, revision and dayparts. An empty grid means nothing is generated. |
+| `program_preview_radio_dayparts_by_id` | `flight.read` | R | For each grid hour beginning in the next `hours` (1-24, default 2): the log already made for it, or the cues its clock would give it, or why it cannot be filled. Writes nothing. |
+| `program_create_radio_clock_by_id` | `flight.manage` | W | Creates a clock. It fills no hour until the grid names it. |
+| `program_update_radio_clock_by_id` | `flight.manage` | W | Changes a clock at the revision read. Hours already made keep their songs. |
+| `program_delete_radio_clock_by_id` | `flight.manage` | D | Deletes a clock no daypart uses. Not recoverable. |
+| `program_set_radio_dayparts_by_id` | `flight.manage` | W | Replaces the weekly grid at the revision read; the hours it names are then made and published up to two hours ahead. An empty list stops that. |
+
 ## Every registered capability by name (#220)
 
 `backend/src/mcp/mcp.docs.spec.ts` fails when a capability is registered but is not the first cell of a row in this file, or when a row names one that is not registered. Most capabilities have a row in the sections above; the ones below are listed here from the registry's own specs (name, permission, tier, first sentence of the description). Full arguments come from `list_capabilities`.

@@ -21,6 +21,7 @@ import { RadioClocksService } from './radio-clocks.service';
 import { RadioDaypartsController } from './radio-dayparts.controller';
 import { RadioDaypartsService } from './radio-dayparts.service';
 import { RadioDaypartPlanner } from './radio-daypart-planner.service';
+import { DaypartMcpTools } from '../mcp/capabilities/dayparts';
 import {
   ARTIST_LABEL_LOOKUP,
   type ArtistLabelLookup,
@@ -51,6 +52,7 @@ import { ArtistLabelsService } from '../artist-labels/artist-labels.service';
     RadioClocksService,
     RadioDaypartsService,
     RadioDaypartPlanner,
+    DaypartMcpTools,
     // Here, so it shares this module's database client.
     ProgramTeamAccess,
     { provide: APP_INTERCEPTOR, useClass: ProgramTeamInterceptor },

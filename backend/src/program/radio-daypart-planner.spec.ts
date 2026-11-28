@@ -431,3 +431,60 @@ describe('planner decorator metadata under unresolved circular imports', () => {
       jest.dontMock(path);
   });
 });
+
+describe('daypart preview', () => {
+  const preview = (options: Parameters<typeof setup>[0], ahead = 3) => {
+    const made = setup(options);
+    const previewTaggedLog = jest.fn().mockResolvedValue(['a song']);
+    Object.assign(made.flights, { previewTaggedLog });
+    Object.assign(made.prisma.radioDaypartGrid, {
+      findFirst: jest.fn().mockResolvedValue(made.grid),
+    });
+    return {
+      ...made,
+      previewTaggedLog,
+      read: () => made.planner.preview(' fm ', ahead, NOW),
+    };
+  };
+
+  it('is empty without a grid', async () => {
+    const made = preview({});
+    Object.assign(made.prisma.radioDaypartGrid, {
+      findFirst: jest.fn().mockResolvedValue(null),
+    });
+    await expect(made.read()).resolves.toEqual({ timeZone: null, hours: [] });
+  });
+
+  it('shows the log made for an hour, what a clock would give, or why not', async () => {
+    const made = preview({
+      dayparts: [{ ...monday, endHour: 9 }],
+      rows: [row({ id: 7, clockId: 5, publishedAt: new Date(NOW) })],
+    });
+    made.previewTaggedLog
+      .mockResolvedValueOnce(['a song'])
+      .mockRejectedValueOnce(new Error('no song has this tag'));
+    const { hours } = await made.read();
+    expect(hours.map((hour) => hour.log)).toEqual([
+      { id: 7, madeFromClock: true, published: true, outcome: null },
+      null,
+      null,
+    ]);
+    expect(hours[1]).toMatchObject({
+      startsAt: '2026-12-07T07:00:00.000Z',
+      localTime: '2026-12-07 07:00 +00:00',
+      clockId: 5,
+      start: 'soft',
+      items: ['a song'],
+    });
+    expect(hours[2]).toMatchObject({ problem: 'no song has this tag' });
+    expect(made.flights.createFlightSequence).not.toHaveBeenCalled();
+  });
+
+  it('skips hours outside the grid and words an unknown failure', async () => {
+    const made = preview({});
+    made.previewTaggedLog.mockRejectedValue('no');
+    const { hours } = await made.read();
+    expect(hours).toHaveLength(1);
+    expect(hours[0]).toMatchObject({ problem: 'unknown error' });
+  });
+});
