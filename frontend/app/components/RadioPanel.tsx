@@ -63,6 +63,8 @@ import {
   goFlight,
 } from "../services/flight";
 import type { FlightSequence } from "../models/broadcast";
+import { RadioFillerLines, RadioFillerStatus } from "./radio-desk/RadioFillerStatus";
+import type { FillerLegState } from "../models/filler";
 
 interface RadioMixerChannelState {
   volume: number;
@@ -89,6 +91,8 @@ interface RadioPanelProps {
     output: OutputConfidence;
     logs: FlightSequence[];
     recovery: RecoveryStatus;
+    /** The program's radio filler leg, as the filler endpoint answers it. */
+    filler?: FillerLegState;
   };
   programId: string;
   playoutError?: string | null;
@@ -1429,6 +1433,14 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                 {recoveryUnavailable && recovery ? (
                   <p>Last known: {recoveryHeadline(recovery).toLowerCase()}.</p>
                 ) : null}
+                {fixtureData ? (
+                  fixtureData.filler ? <RadioFillerLines leg={fixtureData.filler} /> : null
+                ) : (
+                  <RadioFillerStatus
+                    programId={programId}
+                    refreshKey={`${recovery?.automation?.filler.activeVersion ?? ""}:${recovery?.automation?.filler.ready ?? ""}`}
+                  />
+                )}
                 <p>
                   Starting binds the prepared playlist. Stopping clears program
                   audio and the binding.
