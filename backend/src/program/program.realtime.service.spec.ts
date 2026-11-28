@@ -1,9 +1,33 @@
-import { createServer, Server } from 'node:http';
+import { createServer, IncomingMessage, Server } from 'node:http';
 import { AddressInfo, createConnection } from 'node:net';
 import { Logger } from '@nestjs/common';
-import { WebSocket } from 'ws';
+import { WebSocket as UntypedWebSocket } from 'ws';
 import { ProgramRealtimeService } from './program.realtime.service';
 import { RealtimeTicketService } from '../auth/realtime-ticket.service';
+
+// `ws` ships no types in this package set. These specs use only the socket surface below, so this is the typed view of
+// the client they get; it is a cast, not a new behaviour.
+interface TestSocket {
+  readonly readyState: number;
+  send(data: string | Buffer, options?: { binary?: boolean }): void;
+  close(): void;
+  terminate(): void;
+  on(event: 'message', listener: (data: Buffer) => void): this;
+  on(event: 'error', listener: (error: Error) => void): this;
+  once(event: 'open', listener: () => void): this;
+  once(event: 'error', listener: (error: Error) => void): this;
+  once(
+    event: 'unexpected-response',
+    listener: (request: unknown, response: IncomingMessage) => void,
+  ): this;
+}
+interface TestSocketClass {
+  new (address: string): TestSocket;
+  readonly OPEN: number;
+  readonly CLOSED: number;
+}
+const WebSocket = UntypedWebSocket as unknown as TestSocketClass;
+type WebSocket = TestSocket;
 
 async function until(predicate: () => boolean): Promise<void> {
   const deadline = Date.now() + 3000;
@@ -19,9 +43,9 @@ describe('ProgramRealtimeService actual WebSocket boundary', () => {
   let service: ProgramRealtimeService;
   let baseUrl: string;
   let sockets: WebSocket[];
-  let listener: (event: any) => void;
-  let programs: any;
-  let flights: any;
+  let listener: (event: unknown) => void;
+  let programs: Record<string, jest.Mock>;
+  let flights: Record<string, jest.Mock>;
   let tickets: RealtimeTicketService;
   let unsubscribe: jest.Mock;
 
@@ -29,7 +53,7 @@ describe('ProgramRealtimeService actual WebSocket boundary', () => {
     sockets = [];
     unsubscribe = jest.fn();
     programs = {
-      addEventListener: jest.fn((callback) => {
+      addEventListener: jest.fn((callback: (event: unknown) => void) => {
         listener = callback;
         return unsubscribe;
       }),
@@ -53,7 +77,11 @@ describe('ProgramRealtimeService actual WebSocket boundary', () => {
     };
     flights = { handleSongEnded: jest.fn() };
     tickets = new RealtimeTicketService();
-    service = new ProgramRealtimeService(programs, flights, tickets);
+    service = new ProgramRealtimeService(
+      programs as never,
+      flights as never,
+      tickets,
+    );
     server = createServer();
     service.attachToServer(server);
     await new Promise<void>((resolve) =>
@@ -321,8 +349,8 @@ describe('ProgramRealtimeService actual WebSocket boundary', () => {
     const renderer = await connect('program', 'news');
     news.packets.length = 0;
     sports.packets.length = 0;
-    const meter = { main: { vu: 0.1 } } as any;
-    const playback = { token: 'song-1' } as any;
+    const meter = { main: { vu: 0.1 } } as never;
+    const playback = { token: 'song-1' } as never;
     service.broadcastAudioMeterUpdate(' news ', meter);
     service.broadcastSongPlaybackUpdate('news', playback);
     await until(
