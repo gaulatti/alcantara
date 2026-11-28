@@ -3821,10 +3821,12 @@ describe('the next song across a handover', () => {
     await settle();
     expect(stale.playbackId).toBe(played.id);
     expect(next.palazzo.announced).toHaveLength(2);
-    expect(next.palazzo.queued?.id).not.toBe(played.id);
+    // Read afresh: the engine has queued another since the line above emptied it.
+    const queued = (next.palazzo as FakePalazzo).queued;
+    expect(queued?.id).not.toBe(played.id);
     expect(record(next)).toMatchObject({
       forRequestId: played.id,
-      playbackId: next.palazzo.queued!.id,
+      playbackId: queued!.id,
     });
   });
 

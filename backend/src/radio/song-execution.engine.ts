@@ -402,7 +402,7 @@ type StoredAnnouncement = Pick<
   | 'leaf'
   | 'cycleReset'
   | 'bumper'
-> & { bootId?: string; songId: number | null };
+> & { bootId?: string | null; songId: number | null };
 
 /** The spot chosen for a bumper slot, once per song (gaulatti/alcantara#232). */
 interface BumperChoice {
