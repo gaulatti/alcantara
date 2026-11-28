@@ -4801,3 +4801,103 @@ describe('an active song gone stale while Palazzo is connected', () => {
     expect(refresh.mock.calls.length - before).toBe(2);
   });
 });
+
+describe('the announced next on air with its start and the previous end both lost', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-11-17T12:00:00.000Z'));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  /** A song on air with its successor announced; Palazzo then moves to it and both events are lost. */
+  const movedOnSilently = async () => {
+    const h = harness();
+    let playing: { id: string; url: string } | null = null;
+    h.engine.setPalazzoTelemetry({
+      isReconciled: () => true,
+      currentState: jest.fn(() =>
+        Promise.resolve(
+          playing
+            ? snapshot('boot-1', 95, playing)
+            : { ...snapshot('boot-1', 95, null), live: { onAir: false } },
+        ),
+      ),
+    } as never);
+    await onAir(h);
+    h.engine.handlePalazzoStatus(PROGRAM, { connection: 'connected' } as never);
+    const first = h.palazzo.current!;
+    const next = h.palazzo.queued!;
+    // Palazzo moves on; neither the end of the first nor the start of the next reaches the engine.
+    h.palazzo.current = next;
+    h.palazzo.queued = null;
+    playing = next;
+    const commandsBefore = h.palazzo.commands.length;
+    const tick = async (seconds: number) => {
+      jest.advanceTimersByTime(seconds * 1000);
+      await h.engine.checkPlayback();
+      await settle();
+    };
+    return {
+      h,
+      first,
+      next,
+      tick,
+      newCommands: () => h.palazzo.commands.slice(commandsBefore),
+      setPlaying: (track: { id: string; url: string } | null) => {
+        playing = track;
+      },
+    };
+  };
+
+  it('E1: a stale read promotes the announced next as at a handoff, and commands nothing', async () => {
+    const { h, first, next, tick, newCommands } = await movedOnSilently();
+    expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(first.url);
+    await tick(16);
+
+    expect(h.metrics.snapshot().engineResyncs['stale_active:playing']).toBe(1);
+    const onAir = h.engine.getPlaybackState(PROGRAM);
+    expect(onAir?.audioUrl).toBe(next.url);
+    expect(onAir?.telemetryStale).toBe(false);
+    expect(newCommands()).toHaveLength(0);
+    // The rotation goes on from it: its own successor is announced.
+    expect(h.palazzo.queued?.url).toBeDefined();
+    expect(h.palazzo.queued?.url).not.toBe(next.url);
+  });
+
+  it('E2: an unissued_playback read promotes it the same way', async () => {
+    const { h, next, newCommands } = await movedOnSilently();
+    await (
+      h.engine as unknown as {
+        resync(programId: string, trigger: string): Promise<void>;
+      }
+    ).resync(PROGRAM, 'unissued_playback');
+    await settle();
+
+    expect(
+      h.metrics.snapshot().engineResyncs['unissued_playback:playing'],
+    ).toBe(1);
+    expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(next.url);
+    expect(newCommands()).toHaveLength(0);
+  });
+
+  it("E3: an operator's take wins: a stale read of the announced next never replaces it", async () => {
+    const { h, next, tick, newCommands } = await movedOnSilently();
+    h.engine.handleManualSong(
+      PROGRAM,
+      SONGS[4].url,
+      SONGS[4].title,
+      SONGS[4].artist,
+      200_000,
+    );
+    await settle();
+    // Palazzo's state still names the announced next while the take has not started.
+    h.palazzo.current = next;
+    await tick(16);
+
+    expect(newCommands().map((command) => command.url)).toEqual([SONGS[4].url]);
+    expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(SONGS[4].url);
+    expect(
+      h.metrics.snapshot().engineResyncs['stale_active:playing'],
+    ).toBeUndefined();
+  });
+});
