@@ -36,8 +36,8 @@ const sse = vi.hoisted(() => ({
   onMessage: null as null | ((data: unknown) => void),
   onConnection: null as null | ((state: string) => void),
 }));
-vi.mock("../hooks/useSSE", () => ({
-  useSSE: ({
+vi.mock("../hooks/useProgramEvents", () => ({
+  useProgramEvents: ({
     onMessage,
     onConnectionStateChange,
   }: {

@@ -6,7 +6,7 @@ import { controlServer, stubConsoleBrowser, type ControlServer } from "../../tes
 // gaulatti/alcantara#404 (group A, control.tsx): a TV mixer channel's take preset. Pressing a preset
 // fades the channel to it in steps; a second press restarts the fade; a zero fade lands at once.
 
-vi.mock("../hooks/useSSE", () => ({ useSSE: () => ({ isConnected: true }) }));
+vi.mock("../hooks/useProgramEvents", () => ({ useProgramEvents: () => ({ isConnected: true }) }));
 vi.mock("../utils/globalProgram", () => ({ useGlobalProgramId: () => ["main"] }));
 const prefs = vi.hoisted(() => ({ workspace: "audio" as string }));
 vi.mock("../contexts/ConsolePreferencesContext", async (original) => {
@@ -29,7 +29,7 @@ function open() {
     "GET /scenes": Response.json([]),
     "GET /instants": Response.json([]),
     "GET /songs?limit=0": Response.json({ data: [] }),
-    "GET /program/main/state": Response.json({
+    "GET /program/main/control/state": Response.json({
       id: 1,
       programId: "main",
       type: "tv",
@@ -41,7 +41,7 @@ function open() {
       mediaGroups: [],
     }),
     "GET /program/main/media-groups": Response.json([]),
-    "GET /program/main/audio-bus": Response.json({
+    "GET /program/main/control/audio-bus": Response.json({
       mixerSettings: { mainMasterVolume: 0.8, songMasterVolume: 0.6 },
       songSequence: { mode: "manual", items: [], activeItemId: null, intervalMs: 4000, loop: true, startedAt: 1 },
       songQueue: [],

@@ -1,14 +1,15 @@
 import { apiUrl } from '../utils/apiBaseUrl';
+import { fetchProgramControl } from './programControl';
 import type { ProgramState, ProgramAudioBusSettings, BroadcastSettings, ProgramAudioMeterLevels, ProgramSongPlaybackState, SceneInstantPlaybackState } from '../models/broadcast';
 
 export async function fetchProgramState(targetProgramId: string): Promise<unknown> {
-  const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/state`));
+  const res = await fetchProgramControl(targetProgramId, 'state');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
 export async function fetchProgramAudioBusSettings(targetProgramId: string): Promise<ProgramAudioBusSettings | null> {
-  const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/audio-bus`));
+  const res = await fetchProgramControl(targetProgramId, 'audio-bus');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }

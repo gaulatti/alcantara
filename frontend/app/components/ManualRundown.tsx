@@ -31,7 +31,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiUrl } from "../utils/apiBaseUrl";
 import { TRANSITION_OPTIONS } from "../utils/transitionOptions";
 import { useGlobalProgramId } from "../utils/globalProgram";
-import { useSSE } from "../hooks/useSSE";
+import { useProgramEvents } from "../hooks/useProgramEvents";
+import { fetchProgramControl } from "../services/programControl";
 import type {
   FlightCue,
   FlightCueKind,
@@ -163,9 +164,9 @@ export default function ManualRundown() {
     async (cancelled: () => boolean) => {
       const [seqData, stateRes] = await Promise.all([
         fetchFlightSequences(activeProgramId),
-        fetch(
-          apiUrl(`/program/${encodeURIComponent(activeProgramId)}/state`),
-        ).then((res) => (res.ok ? res.json() : null)),
+        fetchProgramControl(activeProgramId, "state").then((res) =>
+          res.ok ? res.json() : null,
+        ),
       ]);
 
       if (cancelled()) return;
@@ -273,8 +274,8 @@ export default function ManualRundown() {
   const streamConnectedFor = useRef<string | null>(null);
   const shownProgramRef = useRef(activeProgramId);
   shownProgramRef.current = activeProgramId;
-  useSSE({
-    url: apiUrl(`/program/${encodeURIComponent(activeProgramId)}/events`),
+  useProgramEvents({
+    programId: activeProgramId,
     onMessage: handleSSE,
     onConnectionStateChange: (connection) => {
       if (connection !== "connected") return;

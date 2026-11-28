@@ -28,6 +28,7 @@ import {
 } from "../services/recipes";
 import { fetchFlightSequences } from "../services/flight";
 import { apiUrl } from "../utils/apiBaseUrl";
+import { fetchProgramControl } from "../services/programControl";
 import { TRANSITION_OPTIONS } from "../utils/transitionOptions";
 
 /**
@@ -196,7 +197,7 @@ export function RecipeEditor({
         await Promise.all([
           fetchRecipes(programId),
           fetchFlightSequences(programId),
-          fetch(apiUrl(`/program/${encodeURIComponent(programId)}/state`)).then(
+          fetchProgramControl(programId, "state").then(
             (response) => (response.ok ? response.json() : null),
           ),
           fetch(apiUrl("/songs?page=1&limit=1000")).then((response) =>

@@ -11,7 +11,9 @@ import {
   useRef,
   useState,
 } from "react";
-import { useSSE, type SSEConnectionState } from "../hooks/useSSE";
+import { useProgramEvents } from "../hooks/useProgramEvents";
+import type { SSEConnectionState } from "../hooks/useSSE";
+import { fetchProgramControl } from "../services/programControl";
 import { cartModifierHeld, platformIsMac } from "../utils/cartModifier";
 import {
   OVERLAY_COMPONENTS,
@@ -1646,9 +1648,7 @@ export default function Control() {
 
   const fetchProgramState = async (targetProgramId: string) => {
     try {
-      const res = await fetch(
-        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/state`),
-      );
+      const res = await fetchProgramControl(targetProgramId, "state");
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
@@ -1679,9 +1679,7 @@ export default function Control() {
       if (showLoading) {
         setIsLoadingMixerLevels(true);
       }
-      const res = await fetch(
-        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/audio-bus`),
-      );
+      const res = await fetchProgramControl(targetProgramId, "audio-bus");
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
@@ -3210,8 +3208,8 @@ export default function Control() {
     ],
   );
 
-  useSSE({
-    url: apiUrl(`/program/${encodeURIComponent(activeProgramId)}/events`),
+  useProgramEvents({
+    programId: activeProgramId,
     onMessage: handleProgramEvent,
     onConnectionStateChange: setProgramSseConnectionState,
   });

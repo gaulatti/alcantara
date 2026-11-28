@@ -53,6 +53,7 @@ import {
   type PreflightEvent,
 } from "../services/flight";
 import { apiUrl } from "../utils/apiBaseUrl";
+import { fetchProgramControl } from "../services/programControl";
 import { useGlobalProgramId } from "../utils/globalProgram";
 
 function nextLocalStart(): string {
@@ -166,7 +167,7 @@ export default function ScheduledRundown({
         fetchFlightSequences(programId),
         fetch(apiUrl("/songs?page=1&limit=200")),
         fetch(apiUrl("/instants")),
-        fetch(apiUrl(`/program/${encodeURIComponent(programId)}/audio-bus`)),
+        fetchProgramControl(programId, "audio-bus"),
       ]);
     if (!songResponse.ok || !clipResponse.ok)
       throw new Error("Radio library is unavailable");

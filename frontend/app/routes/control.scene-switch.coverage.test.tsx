@@ -22,8 +22,8 @@ import {
 const sse = vi.hoisted(() => ({
   onMessage: null as null | ((data: unknown) => void),
 }));
-vi.mock("../hooks/useSSE", () => ({
-  useSSE: (options: { onMessage?: (data: unknown) => void }) => {
+vi.mock("../hooks/useProgramEvents", () => ({
+  useProgramEvents: (options: { onMessage?: (data: unknown) => void }) => {
     sse.onMessage = options.onMessage ?? null;
     return { isConnected: true };
   },
@@ -85,7 +85,7 @@ function open() {
     "GET /scenes": Response.json([first, second]),
     "GET /instants": Response.json([]),
     "GET /songs?limit=0": Response.json({ data: [] }),
-    "GET /program/main/state": Response.json({
+    "GET /program/main/control/state": Response.json({
       id: 1,
       programId: "main",
       type: "tv",

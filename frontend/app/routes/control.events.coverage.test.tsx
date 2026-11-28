@@ -11,8 +11,8 @@ import { controlServer, stubConsoleBrowser, type ControlServer } from "../../tes
 
 const sse = vi.hoisted(() => ({ send: (_: unknown) => {} }));
 const prefs = vi.hoisted(() => ({ workspace: "director" as string }));
-vi.mock("../hooks/useSSE", () => ({
-  useSSE: (options: { onMessage: (data: unknown) => void }) => {
+vi.mock("../hooks/useProgramEvents", () => ({
+  useProgramEvents: (options: { onMessage: (data: unknown) => void }) => {
     sse.send = options.onMessage;
     return { isConnected: true };
   },
@@ -81,11 +81,11 @@ function open(type: "radio" | "tv") {
     "GET /scenes": Response.json([headlines, desk]),
     "GET /instants": Response.json([]),
     "GET /songs?limit=0": Response.json([]),
-    "GET /program/main/state": Response.json(
+    "GET /program/main/control/state": Response.json(
       type === "radio" ? { ...tvState(), type: "radio", scenes: [], activeSceneId: null } : tvState(),
     ),
     "GET /program/main/media-groups": Response.json([]),
-    "GET /program/main/audio-bus": Response.json({ version: 1, songSequence: rotation, songQueue: [] }),
+    "GET /program/main/control/audio-bus": Response.json({ version: 1, songSequence: rotation, songQueue: [] }),
   });
   render(
     <MemoryRouter>
@@ -239,7 +239,7 @@ it("shows the staged scene's background audio as taken, reported and stopped", a
     "GET /scenes": Response.json([bedScene]),
     "GET /instants": Response.json([]),
     "GET /songs?limit=0": Response.json([]),
-    "GET /program/main/state": Response.json(
+    "GET /program/main/control/state": Response.json(
       tvState({ activeSceneId: null, stagedSceneId: 3, stagedScene: bedScene, scenes: [{ id: 3, sceneId: 3, position: 0, scene: bedScene }] }),
     ),
     "GET /program/main/media-groups": Response.json([]),
