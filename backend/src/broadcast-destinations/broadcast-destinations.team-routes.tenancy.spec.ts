@@ -6,7 +6,6 @@ import { AlanaClient, AlanaRequestError } from './alana.client';
 import { BroadcastDestinationsService } from './broadcast-destinations.service';
 import { ProgramTeamAccess } from '../tenancy/program-team-access';
 
-
 // #122 slice 5: the destination routes that took no team (the program view, retire and restore, reorder, and the
 // selection a start or reload checks) read and write through the caller's team, against the real scoped client.
 describe("destination routes confined to the caller's team, against Postgres", () => {
@@ -94,9 +93,9 @@ describe("destination routes confined to the caller's team, against Postgres", (
     expect(
       ids((await service.getProgramState(programId, other)).destinations),
     ).toEqual([theirs]);
-    expect(ids((await service.getProgramState(programId)).destinations)).toEqual(
-      expect.arrayContaining([mineA, mineB, theirs]),
-    );
+    expect(
+      ids((await service.getProgramState(programId)).destinations),
+    ).toEqual(expect.arrayContaining([mineA, mineB, theirs]));
   });
 
   it("a caller's program state and reconcile never reach another team's downstream entries or runtime rows", async () => {
@@ -183,7 +182,7 @@ describe("destination routes confined to the caller's team, against Postgres", (
     }
   });
 
-  it("reconciles a program no team owns, and still reconciles when the owner lookup fails or hangs", async () => {
+  it('reconciles a program no team owns, and still reconciles when the owner lookup fails or hangs', async () => {
     const liveState = (overrides: Record<string, unknown> = {}) =>
       ({
         requestedState: 'stopped',
@@ -208,12 +207,20 @@ describe("destination routes confined to the caller's team, against Postgres", (
         teams,
       );
     const failing = new ProgramTeamAccess(
-      { program: { findUnique: jest.fn(async () => { throw new Error('lookup down'); }) } } as never,
+      {
+        program: {
+          findUnique: jest.fn(async () => {
+            throw new Error('lookup down');
+          }),
+        },
+      } as never,
       { teamId: 0 } as never,
       { recordProgramTeamCheck: jest.fn() } as never,
     );
     const hung = new ProgramTeamAccess(
-      { program: { findUnique: jest.fn(() => new Promise(() => undefined)) } } as never,
+      {
+        program: { findUnique: jest.fn(() => new Promise(() => undefined)) },
+      } as never,
       { teamId: 0 } as never,
       { recordProgramTeamCheck: jest.fn() } as never,
     );
@@ -222,21 +229,35 @@ describe("destination routes confined to the caller's team, against Postgres", (
     const hungProgram = `${prefix}-hung-tv`;
     const all = [unowned, failingProgram, hungProgram];
     try {
-      await prisma.program.create({ data: { programId: unowned, teamId: null } });
+      await prisma.program.create({
+        data: { programId: unowned, teamId: null },
+      });
       await prisma.programState.createMany({
         data: all.map((id) => ({ programId: id, type: 'tv' })),
       });
-      await services(new ProgramTeamAccess(prisma, { teamId: 0 } as never, { recordProgramTeamCheck: jest.fn() } as never)).getProgramState(unowned, team);
+      await services(
+        new ProgramTeamAccess(
+          prisma,
+          { teamId: 0 } as never,
+          { recordProgramTeamCheck: jest.fn() } as never,
+        ),
+      ).getProgramState(unowned, team);
       await services(failing).getProgramState(failingProgram, team);
       await services(hung).getProgramState(hungProgram, team);
       for (const id of all) {
         expect(
-          await prisma.broadcastDestinationRuntime.findUnique({ where: { programId: id } }),
+          await prisma.broadcastDestinationRuntime.findUnique({
+            where: { programId: id },
+          }),
         ).not.toBeNull();
       }
     } finally {
-      await prisma.broadcastDestinationRuntime.deleteMany({ where: { programId: { in: all } } });
-      await prisma.programState.deleteMany({ where: { programId: { in: all } } });
+      await prisma.broadcastDestinationRuntime.deleteMany({
+        where: { programId: { in: all } },
+      });
+      await prisma.programState.deleteMany({
+        where: { programId: { in: all } },
+      });
       await prisma.program.deleteMany({ where: { programId: { in: all } } });
     }
   });
@@ -267,11 +288,17 @@ describe("destination routes confined to the caller's team, against Postgres", (
       { recordBroadcastDestination: jest.fn() } as never,
       {} as never,
       { cancelDeletion: jest.fn(), scheduleDeletion: jest.fn() } as never,
-      new ProgramTeamAccess(prisma, { teamId: 0 } as never, { recordProgramTeamCheck: jest.fn() } as never),
+      new ProgramTeamAccess(
+        prisma,
+        { teamId: 0 } as never,
+        { recordProgramTeamCheck: jest.fn() } as never,
+      ),
     );
     const view = await withSelections.getProgramState(programId, team);
     expect(view.downstream.activeDestinations?.destinationIds).toEqual([mineA]);
-    expect(view.downstream.pendingDestinations?.destinationIds).toEqual([mineA]);
+    expect(view.downstream.pendingDestinations?.destinationIds).toEqual([
+      mineA,
+    ]);
   });
 
   it("retires and restores the caller's destination, and finds no other team's", async () => {
@@ -279,8 +306,11 @@ describe("destination routes confined to the caller's team, against Postgres", (
       NotFoundException,
     );
     expect(
-      (await prisma.broadcastDestination.findUniqueOrThrow({ where: { id: theirs } }))
-        .retiredAt,
+      (
+        await prisma.broadcastDestination.findUniqueOrThrow({
+          where: { id: theirs },
+        })
+      ).retiredAt,
     ).toBeNull();
 
     const retired = await service.setRetired(mineB, true, team);
@@ -292,9 +322,9 @@ describe("destination routes confined to the caller's team, against Postgres", (
 
   it("reorders exactly the caller's catalog and leaves another team's order alone", async () => {
     for (const order of [[mineA], [mineB, mineA, theirs]]) {
-      await expect(
-        service.reorderDestinations(order, team),
-      ).rejects.toThrow('Destination order must include the complete catalog');
+      await expect(service.reorderDestinations(order, team)).rejects.toThrow(
+        'Destination order must include the complete catalog',
+      );
     }
 
     const catalog = await service.reorderDestinations([mineB, mineA], team);

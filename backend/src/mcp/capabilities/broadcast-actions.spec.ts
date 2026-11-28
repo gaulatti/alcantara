@@ -282,10 +282,9 @@ describe('broadcast destination writes', () => {
       'destination_retire_destination',
       { destination_id: 'youtube' },
       () =>
-        b.controllers.destinations.retireDestination(
-          'youtube',
-          { user: { sub: 'u', authorization: { teamId: 0 } } },
-        ),
+        b.controllers.destinations.retireDestination('youtube', {
+          user: { sub: 'u', authorization: { teamId: 0 } },
+        }),
       [d.setRetired],
     );
     await parity(
@@ -293,10 +292,9 @@ describe('broadcast destination writes', () => {
       'destination_restore_destination',
       { destination_id: 'youtube' },
       () =>
-        b.controllers.destinations.restoreDestination(
-          'youtube',
-          { user: { sub: 'u', authorization: { teamId: 0 } } },
-        ),
+        b.controllers.destinations.restoreDestination('youtube', {
+          user: { sub: 'u', authorization: { teamId: 0 } },
+        }),
       [d.setRetired],
     );
     await parity(

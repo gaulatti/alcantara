@@ -31,7 +31,8 @@ export function isolateEnv(): () => void {
   }
   return () => {
     for (const name of Object.keys(process.env)) {
-      if (ISOLATED_PREFIXES.some((prefix) => name.startsWith(prefix))) delete process.env[name];
+      if (ISOLATED_PREFIXES.some((prefix) => name.startsWith(prefix)))
+        delete process.env[name];
     }
     Object.assign(process.env, saved);
   };

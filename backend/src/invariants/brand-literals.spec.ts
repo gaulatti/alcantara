@@ -35,9 +35,15 @@ describe('Brand-literal ratchet invariant', () => {
     const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'brand-unreadable-'));
     const treeDir = path.join(baseDir, 'tree');
     fs.mkdirSync(treeDir, { recursive: true });
-    fs.writeFileSync(path.join(treeDir, 'readable.ts'), 'export const x = 1;\n');
+    fs.writeFileSync(
+      path.join(treeDir, 'readable.ts'),
+      'export const x = 1;\n',
+    );
     // A link to nothing: listed as a file, and unreadable.
-    fs.symlinkSync(path.join(baseDir, 'missing-target.ts'), path.join(treeDir, 'dangling.ts'));
+    fs.symlinkSync(
+      path.join(baseDir, 'missing-target.ts'),
+      path.join(treeDir, 'dangling.ts'),
+    );
 
     try {
       const scan = scanTree(treeDir, 'test-tree', ['fifthbell'], []);
