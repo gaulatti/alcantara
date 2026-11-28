@@ -26,17 +26,39 @@ export interface DemoSong {
 
 /** The demo songs the seed adds, one tone each. The seeded songs 9001 and 9002 keep their existing audio. */
 export const DEMO_SONGS: readonly DemoSong[] = [
-  { id: 9101, file: 'demo-tone-9101.ogg', key: 'radio-demo/demo-tone-9101.ogg' },
-  { id: 9102, file: 'demo-tone-9102.ogg', key: 'radio-demo/demo-tone-9102.ogg' },
-  { id: 9103, file: 'demo-tone-9103.ogg', key: 'radio-demo/demo-tone-9103.ogg' },
-  { id: 9104, file: 'demo-tone-9104.ogg', key: 'radio-demo/demo-tone-9104.ogg' },
+  {
+    id: 9101,
+    file: 'demo-tone-9101.ogg',
+    key: 'radio-demo/demo-tone-9101.ogg',
+  },
+  {
+    id: 9102,
+    file: 'demo-tone-9102.ogg',
+    key: 'radio-demo/demo-tone-9102.ogg',
+  },
+  {
+    id: 9103,
+    file: 'demo-tone-9103.ogg',
+    key: 'radio-demo/demo-tone-9103.ogg',
+  },
+  {
+    id: 9104,
+    file: 'demo-tone-9104.ogg',
+    key: 'radio-demo/demo-tone-9104.ogg',
+  },
 ];
 
 /** The demo song ids, in seed order. */
 export const DEMO_SONG_IDS = DEMO_SONGS.map((song) => song.id);
 
 /** The directory the tone files are committed in. The Compose backend container mounts backend/prisma, so it has them. */
-export const DEMO_AUDIO_DIR = join(__dirname, '..', '..', 'prisma', 'seed-audio');
+export const DEMO_AUDIO_DIR = join(
+  __dirname,
+  '..',
+  '..',
+  'prisma',
+  'seed-audio',
+);
 
 export type DemoAudioEnvironment = Readonly<Record<string, string | undefined>>;
 
@@ -49,7 +71,9 @@ export function demoAudioUrl(publicBase: string, key: string): string {
 export function demoAudioClient(environment: DemoAudioEnvironment): S3Client {
   const endpoint = readMediaS3Endpoint(environment);
   if (!endpoint) {
-    throw new Error(`${MEDIA_S3_ENDPOINT} must name the local media store to seed the demo audio`);
+    throw new Error(
+      `${MEDIA_S3_ENDPOINT} must name the local media store to seed the demo audio`,
+    );
   }
   return new S3Client({
     endpoint,
@@ -70,8 +94,12 @@ export async function seedDemoAudio(
   assertLocalMediaSafety(environment);
   const bucket = (environment.MEDIA_S3_BUCKET ?? '').trim();
   const publicBase = readLocalMediaPublicBase(environment);
-  if (!bucket) throw new Error('MEDIA_S3_BUCKET is required to seed the demo audio');
-  if (!publicBase) throw new Error(`${LOCAL_MEDIA_PUBLIC_BASE_URL} must name the local media store to seed the demo audio`);
+  if (!bucket)
+    throw new Error('MEDIA_S3_BUCKET is required to seed the demo audio');
+  if (!publicBase)
+    throw new Error(
+      `${LOCAL_MEDIA_PUBLIC_BASE_URL} must name the local media store to seed the demo audio`,
+    );
 
   const urls = new Map<number, string>();
   for (const song of DEMO_SONGS) {

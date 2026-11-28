@@ -1,5 +1,11 @@
 import { createHash } from 'node:crypto';
-import { DEMO_SONGS, DEMO_SONG_IDS, demoAudioClient, demoAudioUrl, seedDemoAudio } from './demo-audio';
+import {
+  DEMO_SONGS,
+  DEMO_SONG_IDS,
+  demoAudioClient,
+  demoAudioUrl,
+  seedDemoAudio,
+} from './demo-audio';
 
 // gaulatti/alcantara#206: each demo song's audio is uploaded to the local bucket and served from its public base,
 // the one place a recovery playlist or a filler may read it from outside production.
@@ -27,7 +33,10 @@ function fakeClient() {
   };
 }
 
-const sha256 = (body: unknown) => createHash('sha256').update(body as Buffer).digest('hex');
+const sha256 = (body: unknown) =>
+  createHash('sha256')
+    .update(body as Buffer)
+    .digest('hex');
 
 it('keeps the demo songs apart from the seeded songs, which keep their existing audio', () => {
   expect(new Set(DEMO_SONG_IDS).size).toBe(DEMO_SONG_IDS.length);
@@ -45,7 +54,9 @@ it('gives each demo song its own object key', () => {
 });
 
 it('builds a demo audio URL under the public base, without a doubled slash', () => {
-  expect(demoAudioUrl(`${BASE}/`, 'radio-demo/demo-tone-9101.ogg')).toBe(`${BASE}/radio-demo/demo-tone-9101.ogg`);
+  expect(demoAudioUrl(`${BASE}/`, 'radio-demo/demo-tone-9101.ogg')).toBe(
+    `${BASE}/radio-demo/demo-tone-9101.ogg`,
+  );
 });
 
 it('uploads one tone per demo song to the local bucket and returns each song its own URL', async () => {
@@ -73,29 +84,41 @@ it('uploads a distinct tone for each demo song, so no two songs share a checksum
 
 it('refuses to seed in production, before anything is uploaded', async () => {
   const { sent, client } = fakeClient();
-  await expect(seedDemoAudio({ ...LOCAL, NODE_ENV: 'production' }, client)).rejects.toThrow();
+  await expect(
+    seedDemoAudio({ ...LOCAL, NODE_ENV: 'production' }, client),
+  ).rejects.toThrow();
   expect(sent).toHaveLength(0);
 });
 
 it('names the variable that is missing, never its value', async () => {
   const { client } = fakeClient();
-  await expect(seedDemoAudio({ ...LOCAL, LOCAL_MEDIA_PUBLIC_BASE_URL: undefined }, client)).rejects.toThrow(
+  await expect(
+    seedDemoAudio({ ...LOCAL, LOCAL_MEDIA_PUBLIC_BASE_URL: undefined }, client),
+  ).rejects.toThrow(
     'LOCAL_MEDIA_PUBLIC_BASE_URL must name the local media store',
   );
-  await expect(seedDemoAudio({ ...LOCAL, MEDIA_S3_BUCKET: '  ' }, client)).rejects.toThrow(
-    'MEDIA_S3_BUCKET is required',
-  );
-  await expect(seedDemoAudio({ ...LOCAL, MEDIA_S3_BUCKET: undefined }, client)).rejects.toThrow(
-    'MEDIA_S3_BUCKET is required',
-  );
+  await expect(
+    seedDemoAudio({ ...LOCAL, MEDIA_S3_BUCKET: '  ' }, client),
+  ).rejects.toThrow('MEDIA_S3_BUCKET is required');
+  await expect(
+    seedDemoAudio({ ...LOCAL, MEDIA_S3_BUCKET: undefined }, client),
+  ).rejects.toThrow('MEDIA_S3_BUCKET is required');
   // Without an endpoint the existing local-media guard refuses a bucket first, and it names the variable.
-  await expect(seedDemoAudio({ ...LOCAL, MEDIA_S3_ENDPOINT: undefined }, client)).rejects.toThrow('MEDIA_S3_ENDPOINT');
+  await expect(
+    seedDemoAudio({ ...LOCAL, MEDIA_S3_ENDPOINT: undefined }, client),
+  ).rejects.toThrow('MEDIA_S3_ENDPOINT');
 });
 
 it('refuses a public media base, even outside production', async () => {
   const { sent, client } = fakeClient();
   await expect(
-    seedDemoAudio({ ...LOCAL, LOCAL_MEDIA_PUBLIC_BASE_URL: 'https://media.example.com/bucket' }, client),
+    seedDemoAudio(
+      {
+        ...LOCAL,
+        LOCAL_MEDIA_PUBLIC_BASE_URL: 'https://media.example.com/bucket',
+      },
+      client,
+    ),
   ).rejects.toThrow();
   expect(sent).toHaveLength(0);
 });
@@ -103,5 +126,7 @@ it('refuses a public media base, even outside production', async () => {
 it('builds the client only for the local endpoint, and refuses without one', () => {
   expect(demoAudioClient(LOCAL)).toBeDefined();
   expect(demoAudioClient({ ...LOCAL, AWS_REGION: undefined })).toBeDefined();
-  expect(() => demoAudioClient({ ...LOCAL, MEDIA_S3_ENDPOINT: undefined })).toThrow('MEDIA_S3_ENDPOINT');
+  expect(() =>
+    demoAudioClient({ ...LOCAL, MEDIA_S3_ENDPOINT: undefined }),
+  ).toThrow('MEDIA_S3_ENDPOINT');
 });
