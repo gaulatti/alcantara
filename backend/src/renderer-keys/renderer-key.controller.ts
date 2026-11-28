@@ -8,7 +8,10 @@ import {
 import { RendererKeyService } from './renderer-key.service';
 
 /** What a rotation's operator change record may say: the key is named, never valued; its version is valued. */
-const ROTATION_FIELDS = { named: ['rendererKey'], valued: ['version'] } as const;
+const ROTATION_FIELDS = {
+  named: ['rendererKey'],
+  valued: ['version'],
+} as const;
 
 /** A program's renderer key (gaulatti/alcantara#884), issued and rotated by its operators. */
 @Controller('program/:programId/renderer-key')
@@ -32,7 +35,8 @@ export class RendererKeyController {
   @Header('Cache-Control', 'no-store')
   async rotate(@Param('programId') programId: string) {
     const actor = this.recorder.actor();
-    const { key, metadata, previousVersion } = await this.keys.rotate(programId);
+    const { key, metadata, previousVersion } =
+      await this.keys.rotate(programId);
     await this.recorder.record({
       actor,
       target: 'program',

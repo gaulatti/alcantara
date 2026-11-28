@@ -24,8 +24,11 @@ function setup() {
   const rows = new Map<number, Row>();
   const prisma = {
     programState: {
-      findUnique: jest.fn(async ({ where }: { where: { programId: string } }) =>
-        programs.has(where.programId) ? { id: programs.get(where.programId)! } : null,
+      findUnique: jest.fn(
+        async ({ where }: { where: { programId: string } }) =>
+          programs.has(where.programId)
+            ? { id: programs.get(where.programId)! }
+            : null,
       ),
     },
     programRendererKey: {
@@ -43,7 +46,9 @@ function setup() {
               : [...rows.values()].find((r) => r.keyHash === where.keyHash);
           if (!row) return null;
           if (!include) return { ...row };
-          const programId = [...programs].find(([, id]) => id === row.programStateId)![0];
+          const programId = [...programs].find(
+            ([, id]) => id === row.programStateId,
+          )![0];
           return { ...row, programState: { programId } };
         },
       ),
@@ -55,7 +60,12 @@ function setup() {
         }: {
           where: { programStateId: number };
           create: Row;
-          update: { keyHash: string; rotatedAt: Date; lastUsedAt: null; version: { increment: number } };
+          update: {
+            keyHash: string;
+            rotatedAt: Date;
+            lastUsedAt: null;
+            version: { increment: number };
+          };
         }) => {
           const previous = rows.get(where.programStateId);
           const row: Row = previous
@@ -72,7 +82,13 @@ function setup() {
         },
       ),
       update: jest.fn(
-        async ({ where, data }: { where: { programStateId: number }; data: { lastUsedAt: Date } }) => {
+        async ({
+          where,
+          data,
+        }: {
+          where: { programStateId: number };
+          data: { lastUsedAt: Date };
+        }) => {
           const row = rows.get(where.programStateId)!;
           row.lastUsedAt = data.lastUsedAt;
           return { ...row };
@@ -95,7 +111,9 @@ function setup() {
 
 describe('RendererKeyService', () => {
   it('hashes a key as its SHA-256, so a stored hash can be checked but never read back', () => {
-    expect(hashRendererKey('k')).toBe(createHash('sha256').update('k').digest('hex'));
+    expect(hashRendererKey('k')).toBe(
+      createHash('sha256').update('k').digest('hex'),
+    );
   });
 
   it('issues a random key once, storing only its hash, and reports metadata that never carries either', async () => {
@@ -163,29 +181,43 @@ describe('RendererKeyService', () => {
     advance(1);
     await service.match(a.key, 'station-a');
     expect(prisma.programRendererKey.update).toHaveBeenCalledTimes(2);
-    expect((await service.metadata('station-a')).lastUsedAt).toBe('2026-11-28T10:01:00.000Z');
+    expect((await service.metadata('station-a')).lastUsedAt).toBe(
+      '2026-11-28T10:01:00.000Z',
+    );
     const b = await service.rotate('station-a');
     await service.match(b.key, 'station-a');
     expect(prisma.programRendererKey.update).toHaveBeenCalledTimes(3);
   });
 
   it('never fails the caller when the last use cannot be written', async () => {
-    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
     const { service, prisma } = setup();
     const a = await service.rotate('station-a');
-    prisma.programRendererKey.update.mockRejectedValueOnce(new TypeError('db down'));
+    prisma.programRendererKey.update.mockRejectedValueOnce(
+      new TypeError('db down'),
+    );
     await expect(service.match(a.key, 'station-a')).resolves.toBe('program');
-    expect(warn).toHaveBeenCalledWith('Renderer key last use was not recorded: TypeError');
+    expect(warn).toHaveBeenCalledWith(
+      'Renderer key last use was not recorded: TypeError',
+    );
     prisma.programRendererKey.update.mockRejectedValueOnce('not an error');
-    jest.spyOn(service, 'now').mockReturnValue(Date.parse('2026-11-28T11:00:00.000Z'));
+    jest
+      .spyOn(service, 'now')
+      .mockReturnValue(Date.parse('2026-11-28T11:00:00.000Z'));
     await expect(service.match(a.key, 'station-a')).resolves.toBe('program');
-    expect(warn).toHaveBeenCalledWith('Renderer key last use was not recorded: unknown');
+    expect(warn).toHaveBeenCalledWith(
+      'Renderer key last use was not recorded: unknown',
+    );
     warn.mockRestore();
   });
 
   it('refuses a program that does not exist', async () => {
     const { service } = setup();
-    await expect(service.metadata('nowhere')).rejects.toThrow(NotFoundException);
+    await expect(service.metadata('nowhere')).rejects.toThrow(
+      NotFoundException,
+    );
     await expect(service.rotate('nowhere')).rejects.toThrow(NotFoundException);
   });
 
@@ -198,12 +230,14 @@ describe('RendererKeyService', () => {
     jest.isolateModules(() => {
       jest.doMock('../prisma.service', () => ({}));
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { RendererKeyService: Isolated } = require('./renderer-key.service') as {
-        RendererKeyService: new (...args: never[]) => unknown;
-      };
-      expect(Reflect.getMetadata('design:paramtypes', Isolated)).toEqual([Object]);
+      const { RendererKeyService: Isolated } =
+        require('./renderer-key.service') as {
+          RendererKeyService: new (...args: never[]) => unknown;
+        };
+      expect(Reflect.getMetadata('design:paramtypes', Isolated)).toEqual([
+        Object,
+      ]);
     });
     jest.dontMock('../prisma.service');
   });
 });
-

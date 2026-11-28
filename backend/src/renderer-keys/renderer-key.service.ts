@@ -24,7 +24,8 @@ export function hashRendererKey(key: string): string {
   return createHash('sha256').update(key, 'utf8').digest('hex');
 }
 
-const iso = (value: Date | null | undefined) => (value ? value.toISOString() : null);
+const iso = (value: Date | null | undefined) =>
+  value ? value.toISOString() : null;
 
 /**
  * One renderer key per program (gaulatti/alcantara#884). A key is 32 random bytes; only its SHA-256 is stored, so a
@@ -73,8 +74,19 @@ export class RendererKeyService {
     const now = new Date(this.now());
     const saved = await this.prisma.programRendererKey.upsert({
       where: { programStateId: program.id },
-      create: { programStateId: program.id, keyHash, version: 1, createdAt: now, rotatedAt: now },
-      update: { keyHash, version: { increment: 1 }, rotatedAt: now, lastUsedAt: null },
+      create: {
+        programStateId: program.id,
+        keyHash,
+        version: 1,
+        createdAt: now,
+        rotatedAt: now,
+      },
+      update: {
+        keyHash,
+        version: { increment: 1 },
+        rotatedAt: now,
+        lastUsedAt: null,
+      },
     });
     this.lastUsedWrites.delete(program.id);
     return {
@@ -95,7 +107,10 @@ export class RendererKeyService {
    * Whose a presented key is: this program's, another program's, or nobody's. A match records the key's last use, at
    * most once a minute per program.
    */
-  async match(presented: string | undefined, programId: string): Promise<RendererKeyMatch> {
+  async match(
+    presented: string | undefined,
+    programId: string,
+  ): Promise<RendererKeyMatch> {
     if (!presented) return 'none';
     const key = await this.prisma.programRendererKey.findUnique({
       where: { keyHash: hashRendererKey(presented) },

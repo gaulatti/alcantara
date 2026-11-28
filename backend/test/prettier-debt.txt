@@ -78,16 +78,6 @@ src/radio/song-execution.engine.telemetry.spec.ts
 src/radio/song-sequence.utils.coverage.spec.ts
 src/radio/song-similarity.service.metadata.spec.ts
 src/radio/song-similarity.service.ts
-src/renderer-keys/place-renderer-keys.spec.ts
-src/renderer-keys/renderer-auth.http.spec.ts
-src/renderer-keys/renderer-auth.service.spec.ts
-src/renderer-keys/renderer-auth.service.ts
-src/renderer-keys/renderer-key.controller.ts
-src/renderer-keys/renderer-key.http.spec.ts
-src/renderer-keys/renderer-key.service.spec.ts
-src/renderer-keys/renderer-key.service.ts
-src/renderer-keys/renderer-write.guard.spec.ts
-src/renderer-keys/renderer-write.http.spec.ts
 src/seed/demo-audio.spec.ts
 src/seed/demo-audio.ts
 src/tenancy/direct-tenant-access.spec.ts

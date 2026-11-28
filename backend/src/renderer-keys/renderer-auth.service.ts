@@ -13,7 +13,10 @@ import {
 } from '../observability/managed-metrics.service';
 import { RendererKeyService } from './renderer-key.service';
 
-function sameSecret(presented: string | undefined, expected: string | undefined): boolean {
+function sameSecret(
+  presented: string | undefined,
+  expected: string | undefined,
+): boolean {
   if (!presented || !expected) return false;
   const left = Buffer.from(presented);
   const right = Buffer.from(expected);
@@ -52,7 +55,9 @@ export class RendererAuthService {
     }
     if (this.isShared(presented)) {
       this.metrics.recordRendererAuth(endpoint, 'shared', 'accepted');
-      this.logger.warn(`Shared renderer key accepted for program ${programId} on ${endpoint}`);
+      this.logger.warn(
+        `Shared renderer key accepted for program ${programId} on ${endpoint}`,
+      );
       return;
     }
     this.metrics.recordRendererAuth(endpoint, 'none', 'refused');
@@ -75,17 +80,28 @@ export class RendererAuthService {
   }
 
   /** A program write's signed-in session check, counted by its result. */
-  recordSession(endpoint: RendererWriteEndpoint, result: 'accepted' | 'refused'): void {
+  recordSession(
+    endpoint: RendererWriteEndpoint,
+    result: 'accepted' | 'refused',
+  ): void {
     this.metrics.recordRendererAuth(endpoint, 'session', result);
   }
 
   /** A program write with no credential, still accepted until that is refused: counted and logged with its program. */
-  acceptUncredentialed(endpoint: RendererWriteEndpoint, programId: string): void {
+  acceptUncredentialed(
+    endpoint: RendererWriteEndpoint,
+    programId: string,
+  ): void {
     this.metrics.recordRendererAuth(endpoint, 'none', 'accepted');
-    this.logger.warn(`Uncredentialed ${endpoint} accepted for program ${programId}`);
+    this.logger.warn(
+      `Uncredentialed ${endpoint} accepted for program ${programId}`,
+    );
   }
 
   private isShared(presented: string | undefined): boolean {
-    return sameSecret(presented, this.config.get<string>('WEBRTC_RENDERER_KEY'));
+    return sameSecret(
+      presented,
+      this.config.get<string>('WEBRTC_RENDERER_KEY'),
+    );
   }
 }

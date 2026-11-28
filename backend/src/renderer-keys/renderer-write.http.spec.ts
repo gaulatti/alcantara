@@ -30,10 +30,16 @@ describe('renderer credential on the program writes (HTTP)', () => {
   let metrics: ManagedMetricsService;
   let warn: jest.SpyInstance;
   const updateProgramAudioMeter = jest.fn(async () => ({ ok: true }));
-  const completeSceneCountdown = jest.fn(async () => ({ programId: 'station-a' }));
+  const completeSceneCountdown = jest.fn(async () => ({
+    programId: 'station-a',
+  }));
   const keys = {
     match: jest.fn(async (presented: string | undefined, programId: string) =>
-      presented === KEY_A ? (programId === 'station-a' ? 'program' : 'other-program') : 'none',
+      presented === KEY_A
+        ? programId === 'station-a'
+          ? 'program'
+          : 'other-program'
+        : 'none',
     ),
   };
 
@@ -57,7 +63,10 @@ describe('renderer credential on the program writes (HTTP)', () => {
       controllers: [ProgramController, TestAuthController],
       providers: [
         TestAuthService,
-        { provide: ProgramService, useValue: { updateProgramAudioMeter, completeSceneCountdown } },
+        {
+          provide: ProgramService,
+          useValue: { updateProgramAudioMeter, completeSceneCountdown },
+        },
         { provide: FlightService, useValue: {} },
         { provide: ProgramTemplateService, useValue: {} },
         { provide: ManagedMetricsService, useValue: metrics },
@@ -77,7 +86,9 @@ describe('renderer credential on the program writes (HTTP)', () => {
         { provide: APP_GUARD, useExisting: PompeiiAuthorizationGuard },
       ],
     }).compile();
-    app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    app = moduleRef.createNestApplication<NestFastifyApplication>(
+      new FastifyAdapter(),
+    );
     await app.listen(0, '127.0.0.1');
     origin = await app.getUrl();
   });
@@ -88,72 +99,177 @@ describe('renderer credential on the program writes (HTTP)', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
   });
   afterEach(() => warn.mockRestore());
 
   const tokenFor = async (identity: string) =>
-    ((await (await fetch(`${origin}/__test/session?identity=${identity}`)).json()) as { accessToken: string })
-      .accessToken;
+    (
+      (await (
+        await fetch(`${origin}/__test/session?identity=${identity}`)
+      ).json()) as { accessToken: string }
+    ).accessToken;
 
   const WRITES: Array<[string, string, jest.Mock]> = [
     ['audio-meter', 'audio_meter', updateProgramAudioMeter],
     ['countdown/complete', 'countdown_complete', completeSceneCountdown],
   ];
-  const post = (path: string, programId: string, headers: Record<string, string> = {}) =>
+  const post = (
+    path: string,
+    programId: string,
+    headers: Record<string, string> = {},
+  ) =>
     fetch(`${origin}/program/${programId}/${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify({}),
     });
 
-  it.each(WRITES)('%s still takes a request with no credential, counted and logged with its program', async (path, endpoint, handler) => {
-    expect((await post(path, 'station-a')).status).toBeLessThan(300);
-    expect(handler).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith(`Uncredentialed ${endpoint} accepted for program station-a`);
-  });
+  it.each(WRITES)(
+    '%s still takes a request with no credential, counted and logged with its program',
+    async (path, endpoint, handler) => {
+      expect((await post(path, 'station-a')).status).toBeLessThan(300);
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith(
+        `Uncredentialed ${endpoint} accepted for program station-a`,
+      );
+    },
+  );
 
-  it.each(WRITES)("%s takes a signed-in operator, and refuses a viewer and a token that is not one", async (path, _endpoint, handler) => {
-    expect((await post(path, 'station-a', { Authorization: `Bearer ${await tokenFor('operator-a')}` })).status).toBeLessThan(300);
-    expect(handler).toHaveBeenCalledTimes(1);
-    expect((await post(path, 'station-a', { Authorization: `Bearer ${await tokenFor('viewer')}` })).status).toBe(403);
-    expect((await post(path, 'station-a', { Authorization: 'Bearer not-a-token' })).status).toBe(401);
-    expect(handler).toHaveBeenCalledTimes(1);
-    expect(warn).not.toHaveBeenCalled();
-  });
+  it.each(WRITES)(
+    '%s takes a signed-in operator, and refuses a viewer and a token that is not one',
+    async (path, _endpoint, handler) => {
+      expect(
+        (
+          await post(path, 'station-a', {
+            Authorization: `Bearer ${await tokenFor('operator-a')}`,
+          })
+        ).status,
+      ).toBeLessThan(300);
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(
+        (
+          await post(path, 'station-a', {
+            Authorization: `Bearer ${await tokenFor('viewer')}`,
+          })
+        ).status,
+      ).toBe(403);
+      expect(
+        (await post(path, 'station-a', { Authorization: 'Bearer not-a-token' }))
+          .status,
+      ).toBe(401);
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(warn).not.toHaveBeenCalled();
+    },
+  );
 
-  it.each(WRITES)("%s takes this program's key and the shared key, and refuses any other key", async (path, _endpoint, handler) => {
-    expect((await post(path, 'station-a', { 'X-Renderer-Key': KEY_A })).status).toBeLessThan(300);
-    expect((await post(path, 'station-b', { 'X-Renderer-Key': SHARED })).status).toBeLessThan(300);
-    expect(handler).toHaveBeenCalledTimes(2);
-    expect((await post(path, 'station-b', { 'X-Renderer-Key': KEY_A })).status).toBe(403);
-    expect((await post(path, 'station-a', { 'X-Renderer-Key': 'not-a-key' })).status).toBe(401);
-    expect((await post(path, 'station-a', { 'X-Renderer-Key': '' })).status).toBe(401);
-    expect(handler).toHaveBeenCalledTimes(2);
-  });
+  it.each(WRITES)(
+    "%s takes this program's key and the shared key, and refuses any other key",
+    async (path, _endpoint, handler) => {
+      expect(
+        (await post(path, 'station-a', { 'X-Renderer-Key': KEY_A })).status,
+      ).toBeLessThan(300);
+      expect(
+        (await post(path, 'station-b', { 'X-Renderer-Key': SHARED })).status,
+      ).toBeLessThan(300);
+      expect(handler).toHaveBeenCalledTimes(2);
+      expect(
+        (await post(path, 'station-b', { 'X-Renderer-Key': KEY_A })).status,
+      ).toBe(403);
+      expect(
+        (await post(path, 'station-a', { 'X-Renderer-Key': 'not-a-key' }))
+          .status,
+      ).toBe(401);
+      expect(
+        (await post(path, 'station-a', { 'X-Renderer-Key': '' })).status,
+      ).toBe(401);
+      expect(handler).toHaveBeenCalledTimes(2);
+    },
+  );
 
-  it.each(WRITES)('%s judges a failed session by the renderer key also presented', async (path, _endpoint, handler) => {
-    const viewer = `Bearer ${await tokenFor('viewer')}`;
-    expect((await post(path, 'station-a', { Authorization: 'Bearer expired-or-not-a-token', 'X-Renderer-Key': KEY_A })).status).toBeLessThan(300);
-    expect((await post(path, 'station-a', { Authorization: viewer, 'X-Renderer-Key': SHARED })).status).toBeLessThan(300);
-    expect(handler).toHaveBeenCalledTimes(2);
-    expect((await post(path, 'station-b', { Authorization: 'Bearer expired-or-not-a-token', 'X-Renderer-Key': KEY_A })).status).toBe(403);
-    expect((await post(path, 'station-a', { Authorization: viewer, 'X-Renderer-Key': 'not-a-key' })).status).toBe(401);
-    expect(handler).toHaveBeenCalledTimes(2);
-  });
+  it.each(WRITES)(
+    '%s judges a failed session by the renderer key also presented',
+    async (path, _endpoint, handler) => {
+      const viewer = `Bearer ${await tokenFor('viewer')}`;
+      expect(
+        (
+          await post(path, 'station-a', {
+            Authorization: 'Bearer expired-or-not-a-token',
+            'X-Renderer-Key': KEY_A,
+          })
+        ).status,
+      ).toBeLessThan(300);
+      expect(
+        (
+          await post(path, 'station-a', {
+            Authorization: viewer,
+            'X-Renderer-Key': SHARED,
+          })
+        ).status,
+      ).toBeLessThan(300);
+      expect(handler).toHaveBeenCalledTimes(2);
+      expect(
+        (
+          await post(path, 'station-b', {
+            Authorization: 'Bearer expired-or-not-a-token',
+            'X-Renderer-Key': KEY_A,
+          })
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await post(path, 'station-a', {
+            Authorization: viewer,
+            'X-Renderer-Key': 'not-a-key',
+          })
+        ).status,
+      ).toBe(401);
+      expect(handler).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it('counts each write by endpoint, credential and result, with no key in any label', async () => {
     const text = await metrics.render('');
-    const lines = text.split('\n').filter((line) => line.startsWith('alcantara_webrtc_renderer_auth_total{'));
+    const lines = text
+      .split('\n')
+      .filter((line) =>
+        line.startsWith('alcantara_webrtc_renderer_auth_total{'),
+      );
     for (const endpoint of ['audio_meter', 'countdown_complete'])
       expect(lines).toEqual(
         expect.arrayContaining([
-          expect.stringMatching(new RegExp(`^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="none",result="accepted"\\} 1$`)),
-          expect.stringMatching(new RegExp(`^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="session",result="accepted"\\} 1$`)),
-          expect.stringMatching(new RegExp(`^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="session",result="refused"\\} 6$`)),
-          expect.stringMatching(new RegExp(`^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="program",result="accepted"\\} 2$`)),
-          expect.stringMatching(new RegExp(`^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="shared",result="accepted"\\} 2$`)),
-          expect.stringMatching(new RegExp(`^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="none",result="refused"\\} 3$`)),
+          expect.stringMatching(
+            new RegExp(
+              `^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="none",result="accepted"\\} 1$`,
+            ),
+          ),
+          expect.stringMatching(
+            new RegExp(
+              `^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="session",result="accepted"\\} 1$`,
+            ),
+          ),
+          expect.stringMatching(
+            new RegExp(
+              `^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="session",result="refused"\\} 6$`,
+            ),
+          ),
+          expect.stringMatching(
+            new RegExp(
+              `^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="program",result="accepted"\\} 2$`,
+            ),
+          ),
+          expect.stringMatching(
+            new RegExp(
+              `^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="shared",result="accepted"\\} 2$`,
+            ),
+          ),
+          expect.stringMatching(
+            new RegExp(
+              `^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="none",result="refused"\\} 3$`,
+            ),
+          ),
         ]),
       );
     for (const secret of [SHARED, KEY_A]) expect(text).not.toContain(secret);

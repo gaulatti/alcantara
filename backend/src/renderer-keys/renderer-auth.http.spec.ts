@@ -27,7 +27,11 @@ describe('renderer credential on every calls endpoint (HTTP)', () => {
   let metrics: ManagedMetricsService;
   const keys = {
     match: jest.fn(async (presented: string | undefined, programId: string) =>
-      presented === KEY_A ? (programId === 'station-a' ? 'program' : 'other-program') : 'none',
+      presented === KEY_A
+        ? programId === 'station-a'
+          ? 'program'
+          : 'other-program'
+        : 'none',
     ),
   };
 
@@ -52,14 +56,19 @@ describe('renderer credential on every calls endpoint (HTTP)', () => {
             guestInvitation: { findMany: jest.fn(async () => []) },
           },
         },
-        { provide: RadioMonitorService, useValue: { issue: jest.fn(async () => ({ ticket: 'fictional' })) } },
+        {
+          provide: RadioMonitorService,
+          useValue: { issue: jest.fn(async () => ({ ticket: 'fictional' })) },
+        },
         { provide: RendererKeyService, useValue: keys },
         RendererAuthService,
         WebrtcService,
         ReturnRouterService,
       ],
     }).compile();
-    app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    app = moduleRef.createNestApplication<NestFastifyApplication>(
+      new FastifyAdapter(),
+    );
     await app.listen(0, '127.0.0.1');
     origin = await app.getUrl();
     const webrtc = moduleRef.get(WebrtcService);
@@ -73,48 +82,82 @@ describe('renderer credential on every calls endpoint (HTTP)', () => {
   const post = (path: string, programId: string, key?: string) =>
     fetch(`${origin}/webrtc/${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(key ? { 'X-Renderer-Key': key } : {}) },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(key ? { 'X-Renderer-Key': key } : {}),
+      },
       body: JSON.stringify({ programId }),
     });
   const get = (path: string, key?: string) =>
-    fetch(`${origin}/webrtc/${path}`, { headers: key ? { 'X-Renderer-Key': key } : {} });
+    fetch(`${origin}/webrtc/${path}`, {
+      headers: key ? { 'X-Renderer-Key': key } : {},
+    });
   /** The stream's status alone: the stream itself stays open, so the request is ended once the answer starts. */
   const streamStatus = async (programId: string, key?: string) => {
     const controller = new AbortController();
-    const response = await fetch(`${origin}/webrtc/on-air/stream?programId=${programId}`, {
-      headers: key ? { 'X-Renderer-Key': key } : {},
-      signal: controller.signal,
-    });
+    const response = await fetch(
+      `${origin}/webrtc/on-air/stream?programId=${programId}`,
+      {
+        headers: key ? { 'X-Renderer-Key': key } : {},
+        signal: controller.signal,
+      },
+    );
     controller.abort();
     return response.status;
   };
 
-  const PROGRAM_ENDPOINTS: Array<[string, (programId: string, key?: string) => Promise<number>]> = [
-    ['renderer-token', async (p, k) => (await post('renderer-token', p, k)).status],
-    ['renderer-state', async (p, k) => (await post('renderer-state', p, k)).status],
-    ['renderer-source-token', async (p, k) => (await post('renderer-source-token', p, k)).status],
-    ['return-audio-ticket', async (p, k) => (await post('return-audio-ticket', p, k)).status],
+  const PROGRAM_ENDPOINTS: Array<
+    [string, (programId: string, key?: string) => Promise<number>]
+  > = [
+    [
+      'renderer-token',
+      async (p, k) => (await post('renderer-token', p, k)).status,
+    ],
+    [
+      'renderer-state',
+      async (p, k) => (await post('renderer-state', p, k)).status,
+    ],
+    [
+      'renderer-source-token',
+      async (p, k) => (await post('renderer-source-token', p, k)).status,
+    ],
+    [
+      'return-audio-ticket',
+      async (p, k) => (await post('return-audio-ticket', p, k)).status,
+    ],
     ['on-air', async (p, k) => (await get(`on-air?programId=${p}`, k)).status],
     ['on-air/stream', streamStatus],
   ];
 
-  it.each(PROGRAM_ENDPOINTS)('%s refuses a key for another program with 403', async (_name, call) => {
-    expect(await call('station-b', KEY_A)).toBe(403);
-  });
+  it.each(PROGRAM_ENDPOINTS)(
+    '%s refuses a key for another program with 403',
+    async (_name, call) => {
+      expect(await call('station-b', KEY_A)).toBe(403);
+    },
+  );
 
-  it.each(PROGRAM_ENDPOINTS)("%s takes the program's own key", async (_name, call) => {
-    expect(await call('station-a', KEY_A)).toBeLessThan(300);
-  });
+  it.each(PROGRAM_ENDPOINTS)(
+    "%s takes the program's own key",
+    async (_name, call) => {
+      expect(await call('station-a', KEY_A)).toBeLessThan(300);
+    },
+  );
 
-  it.each(PROGRAM_ENDPOINTS)('%s still takes the shared key, until it is removed', async (_name, call) => {
-    expect(await call('station-b', SHARED)).toBeLessThan(300);
-  });
+  it.each(PROGRAM_ENDPOINTS)(
+    '%s still takes the shared key, until it is removed',
+    async (_name, call) => {
+      expect(await call('station-b', SHARED)).toBeLessThan(300);
+    },
+  );
 
-  it.each(PROGRAM_ENDPOINTS)('%s refuses the fleet key, a wrong key and no key with 401', async (_name, call) => {
-    expect(await call('station-a', FLEET)).toBe(401);
-    expect(await call('station-a', 'not-a-key')).toBe(401);
-    expect(await call('station-a')).toBe(401);
-  });
+  it.each(PROGRAM_ENDPOINTS)(
+    '%s refuses the fleet key, a wrong key and no key with 401',
+    async (_name, call) => {
+      expect(await call('station-a', FLEET)).toBe(401);
+      expect(await call('station-a', 'not-a-key')).toBe(401);
+      expect(await call('station-a')).toBe(401);
+    },
+  );
 
   it('takes the fleet key and the shared key on the router list, and refuses a program key there', async () => {
     expect((await get('return-routers', FLEET)).status).toBe(200);
@@ -125,16 +168,31 @@ describe('renderer credential on every calls endpoint (HTTP)', () => {
 
   it('counts each check by endpoint, credential and result, with no key in any label', async () => {
     const text = await metrics.render('');
-    const lines = text.split('\n').filter((line) => line.startsWith('alcantara_webrtc_renderer_auth_total{'));
+    const lines = text
+      .split('\n')
+      .filter((line) =>
+        line.startsWith('alcantara_webrtc_renderer_auth_total{'),
+      );
     expect(lines).toEqual(
       expect.arrayContaining([
-        expect.stringMatching(/^alcantara_webrtc_renderer_auth_total\{endpoint="renderer_token",credential="program",result="refused"\} [1-9]/),
-        expect.stringMatching(/^alcantara_webrtc_renderer_auth_total\{endpoint="on_air",credential="program",result="accepted"\} [1-9]/),
-        expect.stringMatching(/^alcantara_webrtc_renderer_auth_total\{endpoint="return_audio_ticket",credential="shared",result="accepted"\} [1-9]/),
-        expect.stringMatching(/^alcantara_webrtc_renderer_auth_total\{endpoint="return_routers",credential="fleet",result="accepted"\} 1$/),
-        expect.stringMatching(/^alcantara_webrtc_renderer_auth_total\{endpoint="renderer_state",credential="none",result="refused"\} [1-9]/),
+        expect.stringMatching(
+          /^alcantara_webrtc_renderer_auth_total\{endpoint="renderer_token",credential="program",result="refused"\} [1-9]/,
+        ),
+        expect.stringMatching(
+          /^alcantara_webrtc_renderer_auth_total\{endpoint="on_air",credential="program",result="accepted"\} [1-9]/,
+        ),
+        expect.stringMatching(
+          /^alcantara_webrtc_renderer_auth_total\{endpoint="return_audio_ticket",credential="shared",result="accepted"\} [1-9]/,
+        ),
+        expect.stringMatching(
+          /^alcantara_webrtc_renderer_auth_total\{endpoint="return_routers",credential="fleet",result="accepted"\} 1$/,
+        ),
+        expect.stringMatching(
+          /^alcantara_webrtc_renderer_auth_total\{endpoint="renderer_state",credential="none",result="refused"\} [1-9]/,
+        ),
       ]),
     );
-    for (const secret of [SHARED, FLEET, KEY_A]) expect(text).not.toContain(secret);
+    for (const secret of [SHARED, FLEET, KEY_A])
+      expect(text).not.toContain(secret);
   });
 });
