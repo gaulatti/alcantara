@@ -74,6 +74,16 @@ the version stays active until the next Stop.
 
 **Legacy recovery writer.** The `radio.manage` route `POST /radio/:id/recovery/prepare` is a second writer of the radio filler. Once a program radio filler exists, that route answers 409 ("the radio filler is managed by the program filler configuration"), so only `broadcast.manage` can change the policy. For every program without one it is unchanged. Its callers treat that as already prepared: the console's recovery playlist panel says the program filler is in use, and `radio_prepare_recovery` answers the recovery status with `alreadyPrepared`. The dead-air watchdog and a restart never prepare anything. The recovery status reports as `preparedVersion` the version a Start binds, and `programFillerVersion` when that is the program filler, so Start is offered with a filler and no older playlist.
 
+## On the radio desk
+
+Under **Recovery & session**, the Radio desk reads `GET /broadcast/programs/:id/fillers` and says, for the radio leg,
+which version is on air (`On air: filler-radio-…`) and which is prepared for the next Start with fallback, so an
+operator sees it without MCP. A leg a rename left empty says so and points to Configure; a leg with nothing says the
+recovery playlist applies. A program with no radio leg, a backend without the endpoint (404) and a caller without
+`broadcast.view` (403) show nothing; any other failure says the status is unavailable. It is read again after a Start
+or Stop with fallback (`frontend/app/components/radio-desk/RadioFillerStatus.tsx`). The console fixture's radio states
+show the fixture's radio leg: a prepared shuffle with nothing on air.
+
 ## Metrics
 
 | Metric | Labels |

@@ -29,6 +29,7 @@ import {
 import { dbToFader } from "../utils/audioTaper";
 import { normalizeTakeVolumePresetDb } from "../utils/broadcast";
 import { RadioPanel } from "../components/RadioPanel";
+import { FILLER_FIXTURE } from "../components/fillerFixture";
 
 const layout = {
   id: 1,
@@ -400,6 +401,8 @@ export default function ConsoleFixture() {
           <RadioPanel
             programId="fixture"
             fixtureData={withSampleAge(fixture, {
+              // The radio leg of the filler fixture: a prepared shuffle, nothing on air yet.
+              filler: FILLER_FIXTURE.legs.radio,
               monitorAudioUrl: new URL(
                 "/demo/tone.ogg",
                 window.location.origin,
