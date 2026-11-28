@@ -34,7 +34,13 @@ describe('ExternalSourcesModule', () => {
       ],
     })
       .overrideProvider(PrismaService)
-      .useValue({ externalSource: { findMany } })
+      // The team-scoped client (gaulatti/alcantara#122) as a pass-through.
+      .useValue({
+        externalSource: { findMany },
+        $extends(this: unknown) {
+          return this;
+        },
+      })
       .compile();
 
     expect(moduleRef.get(ExternalSourceSecurity)).toBeInstanceOf(

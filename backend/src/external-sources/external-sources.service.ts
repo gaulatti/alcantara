@@ -14,6 +14,7 @@ import {
   ExternalSourceSecurity,
   type SourceTransport,
 } from './external-source.security';
+import { forTeam } from '../tenancy/scoped-prisma';
 
 export type SourceAuthorization = { teamId: number; permissions: string[] };
 type SourceWithPrograms = ExternalSource & {
@@ -41,8 +42,17 @@ export class ExternalSourcesService {
     private readonly metrics: ManagedMetricsService,
   ) {}
 
+  /**
+   * The client for a caller's team (gaulatti/alcantara#122): confined to that team's sources, or unscoped for team 0
+   * (local). The explicit team filters below stay as they were. The credential transactions and the inventory count
+   * keep the base client: a batch transaction takes one client's queries, and the inventory counts every team.
+   */
+  private db(teamId: number): PrismaService {
+    return teamId > 0 ? (forTeam(this.prisma, teamId) as unknown as PrismaService) : this.prisma;
+  }
+
   async list(auth: SourceAuthorization) {
-    const rows = await this.prisma.externalSource.findMany({
+    const rows = await this.db(auth.teamId).externalSource.findMany({
       where: { teamId: auth.teamId },
       include: { programs: true },
       orderBy: [{ revokedAt: 'asc' }, { name: 'asc' }],
@@ -62,7 +72,7 @@ export class ExternalSourcesService {
     body: Record<string, unknown>,
     auth: SourceAuthorization,
   ) {
-    const active = await this.prisma.externalSource.count({
+    const active = await this.db(auth.teamId).externalSource.count({
       where: { teamId: auth.teamId, revokedAt: null },
     });
     if (active >= this.quota()) {
@@ -81,7 +91,7 @@ export class ExternalSourcesService {
     const normalizationProfile = parseNormalization(body.normalizationProfile);
     const push = transport === 'rtmp' || transport === 'whip';
     const credential = push ? this.issueCredential() : null;
-    const created = await this.prisma.externalSource.create({
+    const created = await this.db(auth.teamId).externalSource.create({
       data: {
         id,
         teamId: auth.teamId,
@@ -152,7 +162,7 @@ export class ExternalSourcesService {
       body.programIds === undefined
         ? null
         : await this.programIds(body.programIds);
-    const updated = await this.prisma.externalSource.update({
+    const updated = await this.db(auth.teamId).externalSource.update({
       where: { id },
       data: {
         ...(body.name === undefined
@@ -277,7 +287,7 @@ export class ExternalSourcesService {
     const health = boundedEnum(body.health, 'health', HEALTH);
     const ingressId = optionalBounded(body.ingressId, 255);
     const participantIdentity = optionalBounded(body.participantIdentity, 255);
-    const updated = await this.prisma.externalSource.update({
+    const updated = await this.db(auth.teamId).externalSource.update({
       where: { id },
       data: {
         lifecycle,
@@ -297,7 +307,7 @@ export class ExternalSourcesService {
     id: string,
     teamId: number,
   ): Promise<SourceWithPrograms> {
-    const row = await this.prisma.externalSource.findFirst({
+    const row = await this.db(teamId).externalSource.findFirst({
       where: { id, teamId },
       include: { programs: true },
     });
