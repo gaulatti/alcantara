@@ -22,9 +22,17 @@ import { ProgramTeamAccess } from '../tenancy/program-team-access';
 // controller and the real service, records who changed the radio settings (via=console) and never
 // lets a failing record fail the write.
 
+type PrismaMock = {
+  programState: { findUnique: jest.Mock };
+  radioSettings: { findUnique: jest.Mock; upsert: jest.Mock };
+  operatorChangeRecord: {
+    create: jest.Mock<Promise<object>, { data: unknown }[]>;
+  };
+};
+
 describe('PUT /radio/:programId/settings records its actor', () => {
   let app: INestApplication<App>;
-  let prisma: any;
+  let prisma: PrismaMock;
   let metrics: RadioMetricsService;
 
   beforeEach(async () => {

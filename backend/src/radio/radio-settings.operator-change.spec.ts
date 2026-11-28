@@ -1,5 +1,11 @@
 import { ActorContext } from '../auth/actor-context';
 import { RadioService } from './radio.service';
+import type { Logger } from '@nestjs/common';
+
+/** The operator change record the service stores; tests read its data back. */
+interface RecordCreate {
+  data: { summary: { changed: unknown; before: unknown; after: unknown } };
+}
 
 // gaulatti/alcantara#236: the radio settings write and its operator change record, with a mocked
 // Prisma client. The PostgreSQL write-path tests cover the same transaction against a real database.
@@ -7,7 +13,7 @@ import { RadioService } from './radio.service';
 function build(
   opts: { recordError?: Error; readError?: Error; before?: unknown } = {},
 ) {
-  const prisma: any = {
+  const prisma = {
     programState: {
       findUnique: jest.fn().mockResolvedValue({ id: 10 }),
     },
@@ -26,26 +32,34 @@ function build(
       }),
     },
     operatorChangeRecord: {
-      create: jest.fn().mockImplementation(async () => {
-        if (opts.recordError) throw opts.recordError;
-        return {};
-      }),
+      create: jest
+        .fn<Promise<object>, [RecordCreate]>()
+        .mockImplementation(async () => {
+          if (opts.recordError) throw opts.recordError;
+          return {};
+        }),
     },
     $transaction: jest.fn(),
   };
-  const palazzo: any = {
+  const palazzo = {
     validateBaseUrl: jest.fn((v: string) => v),
   };
-  const config: any = { get: jest.fn() };
-  const metrics: any = {
+  const config = { get: jest.fn() };
+  const metrics = {
     recordListenerConfiguration: jest.fn(),
     recordOperatorChangeRecord: jest.fn(),
   };
-  const service = new RadioService(prisma, palazzo, config, metrics, {
-    teamId: 0,
-  } as never);
+  const service = new RadioService(
+    prisma as never,
+    palazzo as never,
+    config as never,
+    metrics as never,
+    {
+      teamId: 0,
+    } as never,
+  );
   const warn = jest
-    .spyOn((service as any).logger, 'warn')
+    .spyOn((service as unknown as { logger: Logger }).logger, 'warn')
     .mockImplementation(() => undefined);
   return { service, prisma, metrics, warn };
 }

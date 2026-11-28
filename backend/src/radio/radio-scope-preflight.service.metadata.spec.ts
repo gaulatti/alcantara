@@ -3,7 +3,7 @@ describe('radio scope preflight decorator metadata', () => {
     jest.isolateModules(() => {
       jest.doMock('../prisma.service', () => ({}));
       jest.doMock('../playout/playout-lease.service', () => ({
-        ...jest.requireActual('../playout/playout-lease.service'),
+        ...jest.requireActual<object>('../playout/playout-lease.service'),
         PlayoutLease: undefined,
       }));
       jest.doMock('../observability/managed-metrics.service', () => ({}));

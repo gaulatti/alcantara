@@ -3,19 +3,28 @@ import { RadioService } from './radio.service';
 import { createHash } from 'node:crypto';
 import { RadioMetricsService } from './radio-metrics.service';
 
+/** The argument of a settings `update` call; the mock echoes its fields. */
+type Update = { update: object };
+/** The argument of a settings `update` by id; the mock merges its data. */
+type Data = { data: object };
+/** The argument of a settings upsert; tests read both halves back. */
+type Upsert = { create: object; update: object };
+
 describe('RadioService settings', () => {
   it('permits loopback listener fixtures locally and refuses them in production', async () => {
     const previousEnvironment = process.env.NODE_ENV;
     const prisma = {
       programState: { findUnique: jest.fn().mockResolvedValue({ id: 10 }) },
       radioSettings: {
-        upsert: jest.fn().mockImplementation(async ({ update }) => update),
+        upsert: jest
+          .fn()
+          .mockImplementation(async ({ update }: Update) => update),
       },
-    } as any;
+    };
     const service = new RadioService(
-      prisma,
-      {} as any,
-      {} as any,
+      prisma as never,
+      {} as never,
+      {} as never,
       new RadioMetricsService(),
       { teamId: 0 } as never,
     );
@@ -55,15 +64,21 @@ describe('RadioService settings', () => {
       radioSettings: {
         upsert: jest
           .fn()
-          .mockImplementation(async ({ update }) =>
+          .mockImplementation(async ({ update }: Update) =>
             Object.assign(settings, update),
           ),
       },
-    } as any;
+    };
     const metrics = new RadioMetricsService();
-    const service = new RadioService(prisma, {} as any, {} as any, metrics, {
-      teamId: 0,
-    } as never);
+    const service = new RadioService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      metrics,
+      {
+        teamId: 0,
+      } as never,
+    );
     await service.updateRadioSettings('radio', {
       listenerUrl: 'https://radio.example/stream?format=mp3',
     });
@@ -109,16 +124,16 @@ describe('RadioService settings', () => {
       const prisma = {
         programState: { findUnique: jest.fn().mockResolvedValue({ id: 10 }) },
         radioSettings: { upsert: jest.fn() },
-      } as any;
+      };
       const service = new RadioService(
-        prisma,
-        {} as any,
-        {} as any,
+        prisma as never,
+        {} as never,
+        {} as never,
         new RadioMetricsService(),
         { teamId: 0 } as never,
       );
       await expect(
-        service.updateRadioSettings('radio', { listenerUrl } as any),
+        service.updateRadioSettings('radio', { listenerUrl } as never),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.radioSettings.upsert).not.toHaveBeenCalled();
     },
@@ -127,13 +142,13 @@ describe('RadioService settings', () => {
     const prisma = {
       programState: { findUnique: jest.fn().mockResolvedValue({ id: 10 }) },
       radioSettings: {
-        upsert: jest.fn().mockImplementation(({ update }) => update),
+        upsert: jest.fn().mockImplementation(({ update }: Update) => update),
       },
-    } as any;
+    };
     const service = new RadioService(
-      prisma,
-      {} as any,
-      {} as any,
+      prisma as never,
+      {} as never,
+      {} as never,
       new RadioMetricsService(),
       { teamId: 0 } as never,
     );
@@ -160,7 +175,7 @@ describe('RadioService settings', () => {
           radioSettings: { palazzoUrl: 'http://palazzo:3100' },
         }),
       },
-    } as any;
+    };
     const palazzo = {
       playSong: jest.fn().mockResolvedValue({ playbackRequestId: 'song-1' }),
       stopSong: jest.fn().mockResolvedValue(undefined),
@@ -173,11 +188,11 @@ describe('RadioService settings', () => {
         liquidsoap: { running: true, connected: true },
         icecast: { connected: true },
       }),
-    } as any;
+    };
     const service = new RadioService(
-      prisma,
-      palazzo,
-      {} as any,
+      prisma as never,
+      palazzo as never,
+      {} as never,
       new RadioMetricsService(),
       { teamId: 0 } as never,
     );
@@ -231,11 +246,11 @@ describe('RadioService settings', () => {
     const prisma = {
       programState: { findUnique: jest.fn().mockResolvedValue({ id: 10 }) },
       radioSettings: { upsert: jest.fn() },
-    } as any;
+    };
     const service = new RadioService(
-      prisma,
-      {} as any,
-      {} as any,
+      prisma as never,
+      {} as never,
+      {} as never,
       new RadioMetricsService(),
       { teamId: 0 } as never,
     );
@@ -248,11 +263,13 @@ describe('RadioService settings', () => {
 // alcantara#875: a show with no radio settings starts from a blank form, and saving it must work.
 describe('RadioService settings from a blank form', () => {
   const build = () => {
-    const upsert = jest.fn().mockImplementation(async ({ create }) => create);
+    const upsert = jest
+      .fn<Promise<object>, [Upsert]>()
+      .mockImplementation(async ({ create }) => create);
     const prisma = {
       programState: { findUnique: jest.fn().mockResolvedValue({ id: 10 }) },
       radioSettings: { upsert },
-    } as any;
+    };
     const palazzo = {
       validateBaseUrl: jest.fn((value: string) => {
         if (!value.trim()) throw new BadRequestException('invalid URL');
@@ -260,9 +277,9 @@ describe('RadioService settings from a blank form', () => {
       }),
     };
     const service = new RadioService(
-      prisma,
+      prisma as never,
       palazzo as never,
-      {} as any,
+      {} as never,
       new RadioMetricsService(),
       { teamId: 0 } as never,
     );
@@ -359,11 +376,11 @@ describe('RadioService recovery playlist', () => {
       radioSettings: {
         update: jest
           .fn()
-          .mockImplementation(async ({ data }) =>
+          .mockImplementation(async ({ data }: Data) =>
             Object.assign(settings, data),
           ),
       },
-    } as any;
+    };
     const palazzo = {
       prepareFiller: jest.fn().mockResolvedValue(undefined),
       getAutomation: jest.fn().mockResolvedValue({
@@ -372,19 +389,25 @@ describe('RadioService recovery playlist', () => {
         actualState: 'stopped',
         filler: { activeVersion: null, ready: false },
       }),
-    } as any;
+    };
     const config = {
       get: (key: string) =>
         key === 'MEDIA_S3_BUCKET' ? 'media-test' : 'us-east-1',
-    } as any;
+    } as never;
     const request = jest
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('fixture audio'));
     try {
       const metrics = new RadioMetricsService();
-      const result = await new RadioService(prisma, palazzo, config, metrics, {
-        teamId: 0,
-      } as never).prepareRecoveryPlaylist('radio-1', [5]);
+      const result = await new RadioService(
+        prisma as never,
+        palazzo as never,
+        config,
+        metrics,
+        {
+          teamId: 0,
+        } as never,
+      ).prepareRecoveryPlaylist('radio-1', [5]);
       expect(result.selectedSongIds).toEqual([5]);
       expect(palazzo.prepareFiller).toHaveBeenCalledWith(
         'http://palazzo:3100',
@@ -424,16 +447,16 @@ describe('RadioService recovery playlist', () => {
             { id: 5, enabled: true, audioUrl: 'http://internal.test/audio' },
           ]),
       },
-    } as any;
-    const palazzo = { prepareFiller: jest.fn() } as any;
+    };
+    const palazzo = { prepareFiller: jest.fn() };
     const request = jest.spyOn(globalThis, 'fetch');
     try {
       const metrics = new RadioMetricsService();
       await expect(
         new RadioService(
-          prisma,
-          palazzo,
-          { get: () => 'media-test' } as any,
+          prisma as never,
+          palazzo as never,
+          { get: () => 'media-test' } as never,
           metrics,
           { teamId: 0 } as never,
         ).prepareRecoveryPlaylist('radio-1', [5]),
@@ -452,11 +475,11 @@ describe('RadioService recovery playlist', () => {
     const prisma = {
       programState: { findUnique: jest.fn().mockResolvedValue(null) },
       radioSettings: { upsert: jest.fn() },
-    } as any;
+    };
     const service = new RadioService(
-      prisma,
-      {} as any,
-      {} as any,
+      prisma as never,
+      {} as never,
+      {} as never,
       new RadioMetricsService(),
       { teamId: 0 } as never,
     );
@@ -476,12 +499,12 @@ describe('RadioService recovery playlist', () => {
           .fn()
           .mockResolvedValue({ id: 10, radioSettings: { id: 9 } }),
       },
-    } as any;
-    const palazzo = { getPlaybackState: jest.fn() } as any;
+    };
+    const palazzo = { getPlaybackState: jest.fn() };
     const service = new RadioService(
-      prisma,
-      palazzo,
-      {} as any,
+      prisma as never,
+      palazzo as never,
+      {} as never,
       new RadioMetricsService(),
       { teamId: 0 } as never,
     );

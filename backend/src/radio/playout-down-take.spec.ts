@@ -119,21 +119,27 @@ describe('PalazzoProgramClient.playoutReport', () => {
   it.each([
     ['telemetry.connected', {}],
     ['audio.levels', { song: { rms: 0.1, peak: 0.2 } }],
-    ['playback.position', { positionSeconds: 3, remainingSeconds: 100, status: 'playing' }],
+    [
+      'playback.position',
+      { positionSeconds: 3, remainingSeconds: 100, status: 'playing' },
+    ],
     ['heartbeat', { liquidsoapSequence: 9 }],
-  ] as const)('clears a fresh down report at once on %s', async (type, data) => {
-    const h = harness();
-    h.client.start();
-    await settle();
-    h.push(event(1, 'snapshot', { state: state(1, false) }));
-    await settle();
-    expect(h.client.playoutReport()).toBe('down');
-    h.push(event(2, type as PalazzoPlaybackEvent['type'], data));
-    await settle();
-    expect(h.client.playoutReport()).toBe('up');
-    expect(h.client.getStatus().playout).toBe('up');
-    h.client.stop();
-  });
+  ] as const)(
+    'clears a fresh down report at once on %s',
+    async (type, data) => {
+      const h = harness();
+      h.client.start();
+      await settle();
+      h.push(event(1, 'snapshot', { state: state(1, false) }));
+      await settle();
+      expect(h.client.playoutReport()).toBe('down');
+      h.push(event(2, type as PalazzoPlaybackEvent['type'], data));
+      await settle();
+      expect(h.client.playoutReport()).toBe('up');
+      expect(h.client.getStatus().playout).toBe('up');
+      h.client.stop();
+    },
+  );
 
   it('clears a down report on a snapshot showing Liquidsoap back', async () => {
     const h = harness();
@@ -156,9 +162,15 @@ describe('PalazzoProgramClient.playoutReport', () => {
     h.push(event(2, 'heartbeat', { liquidsoapSequence: 3 }));
     await settle();
     expect(h.client.playoutReport()).toBe('up');
-    h.push(event(3, 'telemetry.disconnected', { staleSince: '2026-11-26T15:00:00.000Z' }));
+    h.push(
+      event(3, 'telemetry.disconnected', {
+        staleSince: '2026-11-26T15:00:00.000Z',
+      }),
+    );
     await settle();
-    h.push(event(4, 'playout.queued', { programId: 'radio-1', playbackId: 'p1' }));
+    h.push(
+      event(4, 'playout.queued', { programId: 'radio-1', playbackId: 'p1' }),
+    );
     await settle();
     expect(h.client.playoutReport()).toBe('down');
     h.client.stop();
@@ -244,7 +256,11 @@ describe('RadioService refuses a take on a fresh playout-down report only', () =
     expect(reports.playoutReport).toHaveBeenCalledWith('radio-1');
     const text = metrics.render();
     expect(
-      metricLine(text, 'alcantara_radio_start_refused_total', 'reason="playout_down"'),
+      metricLine(
+        text,
+        'alcantara_radio_start_refused_total',
+        'reason="playout_down"',
+      ),
     ).toBe('alcantara_radio_start_refused_total{reason="playout_down"} 1');
   });
 
@@ -257,12 +273,20 @@ describe('RadioService refuses a take on a fresh playout-down report only', () =
       ).resolves.toBeUndefined();
       const text = metrics.render();
       expect(
-        metricLine(text, 'alcantara_radio_take_playout_unconfirmed_total', `report="${report}"`),
+        metricLine(
+          text,
+          'alcantara_radio_take_playout_unconfirmed_total',
+          `report="${report}"`,
+        ),
       ).toBe(
         `alcantara_radio_take_playout_unconfirmed_total{report="${report}"} 1`,
       );
       expect(
-        metricLine(text, 'alcantara_radio_start_refused_total', 'reason="playout_down"'),
+        metricLine(
+          text,
+          'alcantara_radio_start_refused_total',
+          'reason="playout_down"',
+        ),
       ).toBe('alcantara_radio_start_refused_total{reason="playout_down"} 0');
     },
   );
@@ -292,9 +316,10 @@ describe('RadioService refuses a take on a fresh playout-down report only', () =
   it('lets a simulcast take through on a fresh down report, counted as tv_leg', async () => {
     const simulcast = {
       programState: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({ type: 'both', radioSettings: { enabled: true } }),
+        findUnique: jest.fn().mockResolvedValue({
+          type: 'both',
+          radioSettings: { enabled: true },
+        }),
       },
     };
     const metrics = new RadioMetricsService();
@@ -311,10 +336,18 @@ describe('RadioService refuses a take on a fresh playout-down report only', () =
     ).resolves.toBeUndefined();
     const text = metrics.render();
     expect(
-      metricLine(text, 'alcantara_radio_take_playout_unconfirmed_total', 'report="tv_leg"'),
+      metricLine(
+        text,
+        'alcantara_radio_take_playout_unconfirmed_total',
+        'report="tv_leg"',
+      ),
     ).toBe('alcantara_radio_take_playout_unconfirmed_total{report="tv_leg"} 1');
     expect(
-      metricLine(text, 'alcantara_radio_start_refused_total', 'reason="playout_down"'),
+      metricLine(
+        text,
+        'alcantara_radio_start_refused_total',
+        'reason="playout_down"',
+      ),
     ).toBe('alcantara_radio_start_refused_total{reason="playout_down"} 0');
     // An unknown program is not radio-only either: its take is not refused.
     simulcast.programState.findUnique.mockResolvedValue(null);
@@ -351,9 +384,10 @@ describe('PalazzoRadioTelemetryService playout reports', () => {
     await telemetry.onModuleInit();
     expect(radioService.setPlayoutReports).toHaveBeenCalledWith(telemetry);
     expect(telemetry.playoutReport('radio-1')).toBeNull();
-    (
-      telemetry as unknown as { clients: Map<string, unknown> }
-    ).clients.set('radio-1', { playoutReport: () => 'down' });
+    (telemetry as unknown as { clients: Map<string, unknown> }).clients.set(
+      'radio-1',
+      { playoutReport: () => 'down' },
+    );
     expect(telemetry.playoutReport('radio-1')).toBe('down');
   });
 

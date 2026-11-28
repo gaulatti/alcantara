@@ -101,7 +101,7 @@ describe('SongExecutionEngine.getOnAirView', () => {
   it('tells the catalog song of the announced next song, from a catalog entry or a playlist leaf (gaulatti/alcantara#235)', () => {
     const e = engine();
     const announce = (itemId: string, sequence: unknown = null) =>
-      (e as any).states.set('p1', {
+      (e as unknown as { states: Map<string, unknown> }).states.set('p1', {
         sequence,
         frozen: false,
         activeSong: null,

@@ -5,6 +5,13 @@ import {
   parsePalazzoState,
 } from './palazzo-contract';
 
+type Obj = Record<string, unknown>;
+type StateShape = {
+  liquidsoap: Obj;
+  icecast: Obj;
+  levels: Record<string, Obj>;
+};
+
 const level = () => ({ rms: 0.1, peak: 0.2 });
 
 const validTrack = () => ({
@@ -26,7 +33,7 @@ const validIntro = () => ({
   status: 'playing',
 });
 
-const validState = (): Record<string, any> => ({
+const validState = (): Record<string, any> & StateShape => ({
   schemaVersion: 1,
   instanceId: 'inst',
   bootId: 'boot',
@@ -47,7 +54,7 @@ const validState = (): Record<string, any> => ({
   levels: { song: level(), instant: level(), output: level() },
 });
 
-const mutate = (change: (state: Record<string, any>) => void) => {
+const mutate = (change: (state: ReturnType<typeof validState>) => void) => {
   const state = validState();
   change(state);
   return state;
@@ -118,13 +125,13 @@ describe('parsePalazzoState coverage', () => {
     ['an invalid track', mutate((s) => (s.track = { bad: true }))],
     ['an undefined track', mutate((s) => delete s.track)],
     ['an invalid intro', mutate((s) => (s.intro = { bad: true }))],
-    ['missing levels', mutate((s) => delete s.levels)],
-    ['missing liquidsoap', mutate((s) => delete s.liquidsoap)],
+    ['missing levels', mutate((s) => delete (s as Obj).levels)],
+    ['missing liquidsoap', mutate((s) => delete (s as Obj).liquidsoap)],
     ['non-boolean running', mutate((s) => (s.liquidsoap.running = 1))],
     ['non-boolean connected', mutate((s) => (s.liquidsoap.connected = 1))],
     ['a numeric staleSince', mutate((s) => (s.liquidsoap.staleSince = 5))],
     ['a numeric lastSampleAt', mutate((s) => (s.liquidsoap.lastSampleAt = 5))],
-    ['missing icecast', mutate((s) => delete s.icecast)],
+    ['missing icecast', mutate((s) => delete (s as Obj).icecast)],
     ['non-boolean icecast', mutate((s) => (s.icecast.connected = 'y'))],
     ['negative position', mutate((s) => (s.positionSeconds = -1))],
     ['non-numeric position', mutate((s) => (s.positionSeconds = 'x'))],
@@ -238,11 +245,11 @@ describe('parsePalazzoIntro (via state) coverage', () => {
 
 describe('parsePalazzoLevels (via state) coverage', () => {
   it.each([
-    ['non-object levels', mutate((s) => (s.levels = 'x'))],
+    ['non-object levels', mutate((s) => ((s as Obj).levels = 'x'))],
     ['missing song', mutate((s) => delete s.levels.song)],
     ['missing instant', mutate((s) => delete s.levels.instant)],
     ['missing output', mutate((s) => delete s.levels.output)],
-    ['a non-object level', mutate((s) => (s.levels.song = 'x'))],
+    ['a non-object level', mutate((s) => ((s.levels as Obj).song = 'x'))],
     ['a non-finite rms', mutate((s) => (s.levels.song.rms = Infinity))],
     ['a non-numeric peak', mutate((s) => (s.levels.song.peak = '1'))],
     ['an invalid intro level', mutate((s) => (s.levels.intro = { rms: 'x' }))],

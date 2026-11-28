@@ -2,6 +2,14 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
 
+type Column = { column_name: string; column_default: string | null };
+type PgClient = {
+  connect(): Promise<void>;
+  query<Row>(sql: string): Promise<{ rows: Row[] }>;
+  end(): Promise<void>;
+};
+type PgClientClass = new (config: { connectionString?: string }) => PgClient;
+
 // gaulatti/alcantara#164: the defaults for NEW RadioSettings rows match production
 // (similarityMode 'on', bumperEnabled true). No existing row is changed by the migration.
 
@@ -42,10 +50,10 @@ describe('RadioSettings defaults for new rows (#164)', () => {
   const describeDb = url ? describe : describe.skip;
   describeDb('against a migrated database', () => {
     it('reports the new column defaults', async () => {
-      const client = new Client({ connectionString: url });
+      const client = new (Client as PgClientClass)({ connectionString: url });
       await client.connect();
       try {
-        const rows = await client.query(
+        const rows = await client.query<Column>(
           `SELECT column_name, column_default FROM information_schema.columns
            WHERE table_name = 'RadioSettings' AND column_name IN ('bumperEnabled', 'similarityMode')`,
         );

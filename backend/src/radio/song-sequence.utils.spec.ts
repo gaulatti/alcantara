@@ -7,6 +7,11 @@ import {
   activeProgramSongLeafId,
   removeProgramSongLeavesInPlace,
 } from './song-sequence.utils';
+import type { ProgramSongSequence } from './song-sequence.utils';
+
+type Tree = ProgramSongSequence & {
+  items: Array<{ id: string; sequence: Tree }>;
+};
 
 describe('program song sequence catalog identity', () => {
   it('preserves a stable songId through normalization and resolution', () => {
@@ -256,7 +261,7 @@ describe('leaf removal helpers (#327)', () => {
   });
 
   it('removes leaves at any depth and moves a cursor that pointed at a removed item to the first remaining one', () => {
-    const sequence = make('block', 'b') as any;
+    const sequence = make('block', 'b') as Tree;
     const removed = removeProgramSongLeavesInPlace(
       sequence,
       new Set(['a', 'b']),
@@ -273,7 +278,7 @@ describe('leaf removal helpers (#327)', () => {
   });
 
   it('leaves an untouched cursor and a missing one alone, and stops at the depth limit', () => {
-    const sequence = make('a', null) as any;
+    const sequence = make('a', null) as Tree;
     removeProgramSongLeavesInPlace(sequence, new Set(['c']));
     expect(sequence.activeItemId).toBe('a');
     expect(

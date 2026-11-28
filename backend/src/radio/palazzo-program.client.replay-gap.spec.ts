@@ -141,7 +141,7 @@ async function run(frames: ReturnType<typeof envelope>[]) {
 }
 
 describe('PalazzoProgramClient: replay.gap', () => {
-  let warn: jest.SpyInstance;
+  let warn: jest.SpyInstance<void, unknown[]>;
   beforeEach(() => {
     warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
   });

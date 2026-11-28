@@ -1,13 +1,15 @@
 import { RadioOutputConfidenceService } from './radio-output-confidence.service';
 
+type Observed = Parameters<RadioOutputConfidenceService['observe']>[0];
+
 const T0 = Date.parse('2026-10-02T10:00:00.000Z');
 
 function build() {
   const metrics = {
-    recordOutputConfidenceTransition: jest.fn(),
+    recordOutputConfidenceTransition: jest.fn<void, [string]>(),
     recordOutputSilentPrograms: jest.fn(),
   };
-  const service = new RadioOutputConfidenceService(metrics as any);
+  const service = new RadioOutputConfidenceService(metrics as never);
   return { service, metrics };
 }
 
@@ -16,9 +18,9 @@ const leg = (connection: string, programId = 'p') =>
     type: 'radio_leg_status',
     programId,
     status: { connection },
-  }) as any;
+  }) as Observed;
 const playback = (isPlaying: boolean, type = 'song_playback_active') =>
-  ({ type, programId: 'p', playback: { isPlaying } }) as any;
+  ({ type, programId: 'p', playback: { isPlaying } }) as Observed;
 const levels = (sampledAt: number | string, rms: number) =>
   ({
     type: 'audio_levels',
@@ -28,7 +30,7 @@ const levels = (sampledAt: number | string, rms: number) =>
         ? new Date(sampledAt).toISOString()
         : sampledAt,
     levels: { output: { rms, peak: rms } },
-  }) as any;
+  }) as Observed;
 
 describe('RadioOutputConfidenceService coverage', () => {
   beforeEach(() => {

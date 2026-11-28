@@ -107,6 +107,8 @@ function playing(
   };
 }
 
+type FindManyArgs = [{ where: { audioUrl: string } }];
+
 function setup(songs: Array<Record<string, unknown>> = [CATALOGUE_SONG]) {
   const store: { current: Record<string, unknown> | null } = {
     current: {
@@ -124,7 +126,7 @@ function setup(songs: Array<Record<string, unknown>> = [CATALOGUE_SONG]) {
     instant: { findUnique: jest.fn().mockResolvedValue(null) },
     song: {
       findMany: jest
-        .fn()
+        .fn<Promise<unknown[]>, FindManyArgs>()
         .mockImplementation(({ where }: { where: { audioUrl: string } }) =>
           Promise.resolve(songs.filter((s) => s.audioUrl === where.audioUrl)),
         ),
@@ -239,7 +241,7 @@ function playingAt(
   };
 }
 
-let warnSpy: jest.SpyInstance;
+let warnSpy: jest.SpyInstance<void, unknown[]>;
 
 beforeEach(() => {
   jest.useFakeTimers();

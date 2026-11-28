@@ -68,7 +68,7 @@ describe('RadioController coverage', () => {
         palazzoUrl: 'b',
         enabled: true,
       });
-      const data = { palazzoUrl: 'b' } as any;
+      const data = { palazzoUrl: 'b' } as never;
       await expect(controller.updateSettings('p', data)).resolves.toEqual({
         palazzoUrl: 'b',
         enabled: true,

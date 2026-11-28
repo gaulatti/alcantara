@@ -7,16 +7,18 @@ jest.mock('./radio-monitor.service', () => ({
   RadioMonitorService: undefined,
 }));
 
+type ControllerModule = typeof import('./radio-monitor.controller');
+
 describe('RadioMonitorController metadata', () => {
   it('falls back to Object metadata when dependencies and Promise are unresolved', () => {
     const globals = globalThis as { Promise?: PromiseConstructor };
     const originalPromise = globals.Promise;
-    let loaded: typeof import('./radio-monitor.controller');
+    let loaded: ControllerModule;
     jest.isolateModules(() => {
       globals.Promise = undefined;
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        loaded = require('./radio-monitor.controller');
+        loaded = require('./radio-monitor.controller') as ControllerModule;
       } finally {
         globals.Promise = originalPromise;
       }

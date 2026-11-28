@@ -1,6 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
 import { RadioService } from './radio.service';
 
+type Normalizer = {
+  normalizeSimilarityPayload(data: Record<string, unknown>): unknown;
+};
+
 function normalize(data: Record<string, unknown>) {
   const service = new RadioService(
     {} as any,
@@ -9,7 +13,7 @@ function normalize(data: Record<string, unknown>) {
     {} as any,
     { teamId: 0 } as never,
   );
-  return (service as any).normalizeSimilarityPayload(data);
+  return (service as unknown as Normalizer).normalizeSimilarityPayload(data);
 }
 
 describe('RadioService similarity payload', () => {

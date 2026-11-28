@@ -1,10 +1,31 @@
 import { PalazzoRadioTelemetryService } from './palazzo-telemetry.service';
 
-const mockClients: any[] = [];
+// A loose view of the client options: tests feed the callbacks partial
+// snapshots, events and statuses.
+type ClientOpts = {
+  programId: string;
+  programType: string;
+  palazzoUrl: string;
+  callbacks: {
+    onSnapshot: (programId: string, state: unknown) => void;
+    onEvent: (programId: string, event: unknown) => void;
+    onStatus: (programId: string, status: unknown) => void;
+    validateInstance: (programId: string, instanceId: string) => string;
+  };
+};
+type MockClient = {
+  options: ClientOpts;
+  start: jest.Mock;
+  stop: jest.Mock;
+  status: unknown;
+  getStatus: jest.Mock;
+};
+
+const mockClients: MockClient[] = [];
 
 jest.mock('./palazzo-program.client', () => ({
-  PalazzoProgramClient: jest.fn().mockImplementation((options: any) => {
-    const client = {
+  PalazzoProgramClient: jest.fn().mockImplementation((options: ClientOpts) => {
+    const client: MockClient = {
       options,
       start: jest.fn(),
       stop: jest.fn(),
@@ -45,11 +66,11 @@ function build() {
     reset: jest.fn(),
   };
   const service = new PalazzoRadioTelemetryService(
-    prisma as any,
-    engine as any,
-    metrics as any,
-    machineClient as any,
-    overlaps as any,
+    prisma as never,
+    engine as never,
+    metrics as never,
+    machineClient as never,
+    overlaps as never,
   );
   jest.spyOn(service['logger'], 'log').mockImplementation();
   jest.spyOn(service['logger'], 'error').mockImplementation();

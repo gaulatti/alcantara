@@ -97,7 +97,7 @@ describe('public Palazzo reconnect, polling and shutdown boundaries', () => {
 
   it('retries unavailable SSE without duplicating an already running polling timer', async () => {
     const transport = jest
-      .fn()
+      .fn<Promise<Response>, [string, RequestInit]>()
       .mockRejectedValue(new Error('local transport unavailable'));
     const { client, observers, metrics } = fixture(transport);
     try {
@@ -121,7 +121,7 @@ describe('public Palazzo reconnect, polling and shutdown boundaries', () => {
 
   it('honors shutdown requested by a status observer before starting fallback polling', async () => {
     const transport = jest
-      .fn()
+      .fn<Promise<Response>, [string, RequestInit]>()
       .mockRejectedValue(new Error('local SSE unavailable'));
     const { client, observers } = fixture(transport, {
       onStatus: (_program, status) => {

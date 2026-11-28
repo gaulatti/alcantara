@@ -4,11 +4,21 @@ import { createHash } from 'node:crypto';
 import { PalazzoInstantRefusedException, RadioService } from './radio.service';
 import { PalazzoMachineError } from './palazzo-machine.client';
 
+type UpsertArg = {
+  create: Record<string, unknown>;
+  update: Record<string, unknown>;
+};
+type PalazzoCall = [string, string, PalazzoCommand, ...unknown[]];
+type PalazzoCommand = Record<string, unknown> & { playbackId?: unknown };
+type CallMock = jest.Mock<Promise<unknown>, unknown[]>;
+type PalazzoMock = jest.Mock<Promise<unknown>, PalazzoCall>;
+type Built = ReturnType<typeof build>;
+
 const BUCKET = 'media-bucket';
 const AUDIO_URL = `https://${BUCKET}.s3.amazonaws.com/a.mp3`;
 
 function build(settings: Record<string, unknown> | null = defaultSettings()) {
-  const prisma: any = {
+  const prisma = {
     programState: {
       findUnique: jest
         .fn()
@@ -17,8 +27,11 @@ function build(settings: Record<string, unknown> | null = defaultSettings()) {
         ),
     },
     radioSettings: {
-      upsert: jest.fn().mockImplementation(async (arg) => arg),
+      upsert: jest.fn().mockImplementation(async (arg: UpsertArg) => arg),
       update: jest.fn().mockResolvedValue({}),
+    } as unknown as {
+      upsert: jest.Mock<Promise<UpsertArg>, [UpsertArg]>;
+      update: jest.Mock;
     },
     song: {
       findMany: jest.fn().mockResolvedValue([]),
@@ -31,14 +44,14 @@ function build(settings: Record<string, unknown> | null = defaultSettings()) {
     // No program radio filler configured (gaulatti/alcantara#126).
     fillerLeg: { findUnique: jest.fn().mockResolvedValue(null) },
   };
-  const palazzo: any = {
+  const palazzo = {
     getAutomation: jest.fn().mockResolvedValue({ lastSequence: 4 }),
-    commandAutomation: jest.fn().mockResolvedValue(undefined),
-    prepareFiller: jest.fn().mockResolvedValue(undefined),
+    commandAutomation: jest.fn().mockResolvedValue(undefined) as CallMock,
+    prepareFiller: jest.fn().mockResolvedValue(undefined) as CallMock,
     validateBaseUrl: jest.fn((v: string) => `valid:${v}`),
-    playSong: jest.fn(),
+    playSong: jest.fn<Promise<unknown>, PalazzoCall>(),
     stopSong: jest.fn().mockResolvedValue(undefined),
-    playInstant: jest.fn().mockResolvedValue(undefined),
+    playInstant: jest.fn().mockResolvedValue(undefined) as PalazzoMock,
     updateMixer: jest.fn().mockResolvedValue(undefined),
     getPlaybackState: jest.fn(),
     stopInstants: jest.fn().mockResolvedValue(undefined),
@@ -54,17 +67,23 @@ function build(settings: Record<string, unknown> | null = defaultSettings()) {
     MEDIA_S3_BUCKET: BUCKET,
     AWS_REGION: 'us-east-1',
   };
-  const config: any = { get: jest.fn((key: string) => configValues[key]) };
-  const metrics: any = {
+  const config = { get: jest.fn((key: string) => configValues[key]) };
+  const metrics = {
     recordRecoveryPreparation: jest.fn(),
     recordListenerConfiguration: jest.fn(),
     recordAnalysisDrop: jest.fn(),
     recordCueGroup: jest.fn(),
     recordEngineDegraded: jest.fn(),
   };
-  const service = new RadioService(prisma, palazzo, config, metrics, {
-    teamId: 0,
-  } as never);
+  const service = new RadioService(
+    prisma as never,
+    palazzo as never,
+    config as never,
+    metrics as never,
+    {
+      teamId: 0,
+    } as never,
+  );
   jest.spyOn(service['logger'], 'error').mockImplementation();
   return { service, prisma, palazzo, config, configValues, metrics };
 }
@@ -1085,8 +1104,9 @@ describe('RadioService coverage', () => {
       jest.spyOn(built.service['logger'], 'warn').mockImplementation();
       return built;
     }
-    const sent = (palazzo: any) => palazzo.playSong.mock.calls.at(-1)[2];
-    const play = (service: any) =>
+    const sent = (palazzo: Built['palazzo']) =>
+      (palazzo.playSong.mock.calls.at(-1) as PalazzoCall)[2];
+    const play = (service: RadioService) =>
       service.playSong(
         'p',
         'u',
@@ -1382,12 +1402,12 @@ describe('RadioService coverage', () => {
     it.each([
       [
         'the song lookup',
-        (prisma: any) =>
+        (prisma: Built['prisma']) =>
           prisma.song.findUnique.mockRejectedValue(new Error('db down')),
       ],
       [
         'the analysis lookup',
-        (prisma: any) =>
+        (prisma: Built['prisma']) =>
           prisma.mediaAssetAnalysis.findUnique.mockRejectedValue(
             new Error('db down'),
           ),

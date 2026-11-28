@@ -13,7 +13,10 @@ import type { DeadAirTarget } from './song-execution.engine';
 const PROGRAM = 'radio-demo.fm';
 const T0 = Date.parse('2026-11-27T03:00:00.000Z');
 
-function playing(requestId: string, over: Partial<PalazzoPlaybackState> = {}): PalazzoPlaybackState {
+function playing(
+  requestId: string,
+  over: Partial<PalazzoPlaybackState> = {},
+): PalazzoPlaybackState {
   return {
     schemaVersion: 1,
     instanceId: 'palazzo-a',
@@ -21,7 +24,12 @@ function playing(requestId: string, over: Partial<PalazzoPlaybackState> = {}): P
     sequence: 1,
     availability: 'available',
     status: 'playing',
-    liquidsoap: { running: true, connected: true, staleSince: null, lastSampleAt: null },
+    liquidsoap: {
+      running: true,
+      connected: true,
+      staleSince: null,
+      lastSampleAt: null,
+    },
     icecast: { connected: true },
     track: {
       playbackRequestId: requestId,
@@ -54,7 +62,13 @@ function setup() {
     deadAirPrograms: jest.fn(() => [PROGRAM]),
     deadAirTarget: jest.fn(
       (): DeadAirTarget =>
-        target ?? { ok: true, mode: 'shuffle', playbackRequestId: song, startedAt, replayable: true },
+        target ?? {
+          ok: true,
+          mode: 'shuffle',
+          playbackRequestId: song,
+          startedAt,
+          replayable: true,
+        },
     ),
     resendForDeadAir: jest.fn((_p: string, id: string): string | null => {
       if (id !== song) return null;
@@ -67,26 +81,47 @@ function setup() {
       return true;
     }),
   };
-  let snapshot: PalazzoPlaybackState | null | (() => PalazzoPlaybackState | null) = null;
+  let snapshot:
+    | PalazzoPlaybackState
+    | null
+    | (() => PalazzoPlaybackState | null) = null;
   const telemetry = {
     currentState: jest.fn(() =>
-      Promise.resolve(typeof snapshot === 'function' ? snapshot() : (snapshot ?? playing(song))),
+      Promise.resolve(
+        typeof snapshot === 'function'
+          ? snapshot()
+          : (snapshot ?? playing(song)),
+      ),
     ),
   };
-  let mixer: Record<string, unknown> | Error = { songMuted: false, songVolume: 1, mainVolume: 1 };
+  let mixer: Record<string, unknown> | Error = {
+    songMuted: false,
+    songVolume: 1,
+    mainVolume: 1,
+  };
   // gaulatti/alcantara#20: never called; a configured radio filler must not matter to the watchdog's steps.
   const prepareRecoveryPlaylist = jest.fn();
   const radio = {
     prepareRecoveryPlaylist,
-    getMixer: jest.fn(() => (mixer instanceof Error ? Promise.reject(mixer) : Promise.resolve(mixer))),
-  };
-  let presence: { guestsLive: number; hostMics: number } | Error = { guestsLive: 0, hostMics: 0 };
-  const webrtc = {
-    onAirPresence: jest.fn(() =>
-      presence instanceof Error ? Promise.reject(presence) : Promise.resolve(presence),
+    getMixer: jest.fn(() =>
+      mixer instanceof Error ? Promise.reject(mixer) : Promise.resolve(mixer),
     ),
   };
-  const lease = { current: 'active', whenActive: jest.fn((start: () => void) => start()) };
+  let presence: { guestsLive: number; hostMics: number } | Error = {
+    guestsLive: 0,
+    hostMics: 0,
+  };
+  const webrtc = {
+    onAirPresence: jest.fn(() =>
+      presence instanceof Error
+        ? Promise.reject(presence)
+        : Promise.resolve(presence),
+    ),
+  };
+  const lease = {
+    current: 'active',
+    whenActive: jest.fn((start: () => void) => start()),
+  };
   const watchdog = new DeadAirWatchdogService(
     engine as never,
     confidence,
@@ -98,8 +133,16 @@ function setup() {
   );
 
   // The output confidence as the engine feeds it: connected, a song playing, and a level sample every second.
-  confidence.observe({ type: 'radio_leg_status', programId: PROGRAM, status: { connection: 'connected' } } as never);
-  confidence.observe({ type: 'playback_update', programId: PROGRAM, playback: { isPlaying: true } } as never);
+  confidence.observe({
+    type: 'radio_leg_status',
+    programId: PROGRAM,
+    status: { connection: 'connected' },
+  } as never);
+  confidence.observe({
+    type: 'playback_update',
+    programId: PROGRAM,
+    playback: { isPlaying: true },
+  } as never);
   let clock = T0;
   const level = (at: number, rms: number) =>
     confidence.observe({
@@ -120,7 +163,9 @@ function setup() {
     metrics
       .render()
       .split('\n')
-      .filter((line) => /^alcantara_radio_dead_air_/.test(line) && !/ 0$/.test(line));
+      .filter(
+        (line) => /^alcantara_radio_dead_air_/.test(line) && !/ 0$/.test(line),
+      );
   return {
     prepareRecoveryPlaylist,
     watchdog,
@@ -161,9 +206,15 @@ describe('DeadAirWatchdogService', () => {
   let error: jest.SpyInstance;
   let log: jest.SpyInstance;
   beforeEach(() => {
-    warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-    error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-    log = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    error = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+    log = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
   });
   afterEach(() => jest.restoreAllMocks());
 
@@ -171,11 +222,15 @@ describe('DeadAirWatchdogService', () => {
     const h = setup();
     h.watchdog.onModuleInit();
     h.watchdog.onModuleDestroy();
-    const lines = h.metrics.render().split('\n').filter((line) => line.startsWith('alcantara_radio_dead_air_'));
+    const lines = h.metrics
+      .render()
+      .split('\n')
+      .filter((line) => line.startsWith('alcantara_radio_dead_air_'));
     expect(lines).toEqual([
       ...['resend', 'advance', 'give_up'].flatMap((step) =>
         ['recovered', 'still_silent', 'held'].map(
-          (result) => `alcantara_radio_dead_air_steps_total{step="${step}",result="${result}"} 0`,
+          (result) =>
+            `alcantara_radio_dead_air_steps_total{step="${step}",result="${result}"} 0`,
         ),
       ),
       'alcantara_radio_dead_air_unrecovered_programs 0',
@@ -198,10 +253,17 @@ describe('DeadAirWatchdogService', () => {
     expect(warn).toHaveBeenCalledWith(
       `Dead air on ${PROGRAM}: resend (quiet_for_ms=24000, lease=active, mode=shuffle, live_on_air=false, guests_live=0, host_mics=0, mixer=ok, request=play-1, guards=ok)`,
     );
-    expect(h.status()).toEqual({ step: 'resend', gaveUp: false, held: null, since: new Date(T0 + 25_000).toISOString() });
+    expect(h.status()).toEqual({
+      step: 'resend',
+      gaveUp: false,
+      held: null,
+      since: new Date(T0 + 25_000).toISOString(),
+    });
 
     await h.run(DEAD_AIR_ACT_MS + 2 * DEAD_AIR_TICK_MS, 0.08);
-    expect(h.steps()).toEqual(['alcantara_radio_dead_air_steps_total{step="resend",result="recovered"} 1']);
+    expect(h.steps()).toEqual([
+      'alcantara_radio_dead_air_steps_total{step="resend",result="recovered"} 1',
+    ]);
     expect(h.status()).toBeNull();
     expect(h.engine.advanceForDeadAir).not.toHaveBeenCalled();
   });
@@ -227,14 +289,21 @@ describe('DeadAirWatchdogService', () => {
     await h.run(45_000);
     expect(h.engine.advanceForDeadAir).not.toHaveBeenCalled();
     await h.run(50_000);
-    expect(h.engine.advanceForDeadAir).toHaveBeenCalledWith(PROGRAM, 'replay-of-play-1');
+    expect(h.engine.advanceForDeadAir).toHaveBeenCalledWith(
+      PROGRAM,
+      'replay-of-play-1',
+    );
     expect(h.status()).toMatchObject({ step: 'advance', gaveUp: false });
 
     // The next song never starts: the wait runs from when the step was sent.
     await h.run(65_000);
     expect(h.status()).toMatchObject({ step: 'advance', gaveUp: false });
     await h.run(70_000);
-    expect(h.status()).toMatchObject({ step: 'give_up', gaveUp: true, held: null });
+    expect(h.status()).toMatchObject({
+      step: 'give_up',
+      gaveUp: true,
+      held: null,
+    });
     expect(error).toHaveBeenCalledWith(
       expect.stringMatching(
         /^DEAD AIR on radio-demo\.fm: could not recover \(quiet_for_ms=\d+, steps=resend\+advance, every step taken left the air silent\)/,
@@ -254,55 +323,134 @@ describe('DeadAirWatchdogService', () => {
     // Heard again: the banner and the gauge clear, and give_up is not counted as recovered.
     await h.run(205_000, 0.1);
     expect(h.status()).toBeNull();
-    expect(log).toHaveBeenCalledWith(`Dead air on ${PROGRAM} ended: the radio is heard again`);
-    expect(h.steps()).not.toContain('alcantara_radio_dead_air_unrecovered_programs 1');
+    expect(log).toHaveBeenCalledWith(
+      `Dead air on ${PROGRAM} ended: the radio is heard again`,
+    );
+    expect(h.steps()).not.toContain(
+      'alcantara_radio_dead_air_unrecovered_programs 1',
+    );
     expect(h.steps().filter((line) => line.includes('recovered'))).toEqual([]);
     // Every step ran, up to giving up, and none prepared or replaced a recovery playlist.
     expect(h.prepareRecoveryPlaylist).not.toHaveBeenCalled();
   });
 
   it.each([
-    ['live_on_air', (h: ReturnType<typeof setup>) => h.setSnapshot(playing('play-1', { live: { onAir: true } }))],
-    ['live_unknown', (h: ReturnType<typeof setup>) => h.setSnapshot(playing('play-1', { live: undefined }))],
-    ['palazzo_unread', (h: ReturnType<typeof setup>) => h.setSnapshot(() => null)],
-    ['palazzo_degraded', (h: ReturnType<typeof setup>) => h.setSnapshot(playing('play-1', { availability: 'degraded' }))],
-    ['not_playing', (h: ReturnType<typeof setup>) => h.setSnapshot(playing('play-1', { status: 'idle' }))],
-    ['other_track', (h: ReturnType<typeof setup>) => h.setSnapshot(playing('someone-else'))],
+    [
+      'live_on_air',
+      (h: ReturnType<typeof setup>) =>
+        h.setSnapshot(playing('play-1', { live: { onAir: true } })),
+    ],
+    [
+      'live_unknown',
+      (h: ReturnType<typeof setup>) =>
+        h.setSnapshot(playing('play-1', { live: undefined })),
+    ],
+    [
+      'palazzo_unread',
+      (h: ReturnType<typeof setup>) => h.setSnapshot(() => null),
+    ],
+    [
+      'palazzo_degraded',
+      (h: ReturnType<typeof setup>) =>
+        h.setSnapshot(playing('play-1', { availability: 'degraded' })),
+    ],
+    [
+      'not_playing',
+      (h: ReturnType<typeof setup>) =>
+        h.setSnapshot(playing('play-1', { status: 'idle' })),
+    ],
+    [
+      'other_track',
+      (h: ReturnType<typeof setup>) => h.setSnapshot(playing('someone-else')),
+    ],
     [
       'spot_or_intro',
       (h: ReturnType<typeof setup>) =>
-        h.setSnapshot(playing('play-1', { intro: { status: 'playing' } as never })),
+        h.setSnapshot(
+          playing('play-1', { intro: { status: 'playing' } as never }),
+        ),
     ],
     [
       'spot_or_intro',
       (h: ReturnType<typeof setup>) =>
         h.setSnapshot(
           playing('play-1', {
-            levels: { song: { rms: 0, peak: 0 }, instant: { rms: 0, peak: 0.2 }, output: { rms: 0, peak: 0 } },
+            levels: {
+              song: { rms: 0, peak: 0 },
+              instant: { rms: 0, peak: 0.2 },
+              output: { rms: 0, peak: 0 },
+            },
           }),
         ),
     ],
-    ['mixer_muted', (h: ReturnType<typeof setup>) => h.setMixer({ songMuted: true, songVolume: 1, mainVolume: 1 })],
-    ['mixer_muted', (h: ReturnType<typeof setup>) => h.setMixer({ songMuted: false, songVolume: 0, mainVolume: 1 })],
-    ['mixer_muted', (h: ReturnType<typeof setup>) => h.setMixer({ songMuted: false, songVolume: 1, mainVolume: 0 })],
-    ['mixer_unread', (h: ReturnType<typeof setup>) => h.setMixer(new Error('mixer'))],
-    ['guest_live', (h: ReturnType<typeof setup>) => h.setPresence({ guestsLive: 1, hostMics: 0 })],
-    ['host_mic_live', (h: ReturnType<typeof setup>) => h.setPresence({ guestsLive: 0, hostMics: 1 })],
-    ['calls_unread', (h: ReturnType<typeof setup>) => h.setPresence(new Error('livekit'))],
-    ['standby', (h: ReturnType<typeof setup>) => h.setTarget({ ok: false, reason: 'standby' })],
-    ['not_automatic', (h: ReturnType<typeof setup>) => h.setTarget({ ok: false, reason: 'not_automatic' })],
-  ])('holds on %s: nothing is sent, the hold is counted and logged once, and the desk is told', async (hold, arrange) => {
-    const h = setup();
-    arrange(h);
-    await h.run(60_000);
-    expect(h.engine.resendForDeadAir).not.toHaveBeenCalled();
-    expect(h.engine.advanceForDeadAir).not.toHaveBeenCalled();
-    expect(h.radio).not.toHaveProperty('updateMixer');
-    expect(h.status()).toMatchObject({ step: null, gaveUp: false, held: hold });
-    const expectedStep = 'resend';
-    expect(h.steps()).toEqual([`alcantara_radio_dead_air_steps_total{step="${expectedStep}",result="held"} 1`]);
-    expect(warn.mock.calls.filter(([line]) => String(line).includes(`held by ${hold}`))).toHaveLength(1);
-  });
+    [
+      'mixer_muted',
+      (h: ReturnType<typeof setup>) =>
+        h.setMixer({ songMuted: true, songVolume: 1, mainVolume: 1 }),
+    ],
+    [
+      'mixer_muted',
+      (h: ReturnType<typeof setup>) =>
+        h.setMixer({ songMuted: false, songVolume: 0, mainVolume: 1 }),
+    ],
+    [
+      'mixer_muted',
+      (h: ReturnType<typeof setup>) =>
+        h.setMixer({ songMuted: false, songVolume: 1, mainVolume: 0 }),
+    ],
+    [
+      'mixer_unread',
+      (h: ReturnType<typeof setup>) => h.setMixer(new Error('mixer')),
+    ],
+    [
+      'guest_live',
+      (h: ReturnType<typeof setup>) =>
+        h.setPresence({ guestsLive: 1, hostMics: 0 }),
+    ],
+    [
+      'host_mic_live',
+      (h: ReturnType<typeof setup>) =>
+        h.setPresence({ guestsLive: 0, hostMics: 1 }),
+    ],
+    [
+      'calls_unread',
+      (h: ReturnType<typeof setup>) => h.setPresence(new Error('livekit')),
+    ],
+    [
+      'standby',
+      (h: ReturnType<typeof setup>) =>
+        h.setTarget({ ok: false, reason: 'standby' }),
+    ],
+    [
+      'not_automatic',
+      (h: ReturnType<typeof setup>) =>
+        h.setTarget({ ok: false, reason: 'not_automatic' }),
+    ],
+  ])(
+    'holds on %s: nothing is sent, the hold is counted and logged once, and the desk is told',
+    async (hold, arrange) => {
+      const h = setup();
+      arrange(h);
+      await h.run(60_000);
+      expect(h.engine.resendForDeadAir).not.toHaveBeenCalled();
+      expect(h.engine.advanceForDeadAir).not.toHaveBeenCalled();
+      expect(h.radio).not.toHaveProperty('updateMixer');
+      expect(h.status()).toMatchObject({
+        step: null,
+        gaveUp: false,
+        held: hold,
+      });
+      const expectedStep = 'resend';
+      expect(h.steps()).toEqual([
+        `alcantara_radio_dead_air_steps_total{step="${expectedStep}",result="held"} 1`,
+      ]);
+      expect(
+        warn.mock.calls.filter(([line]) =>
+          String(line).includes(`held by ${hold}`),
+        ),
+      ).toHaveLength(1);
+    },
+  );
 
   it('holds when the song changes between its reads and the act, and when the engine refuses the step', async () => {
     const h = setup();
@@ -328,7 +476,13 @@ describe('DeadAirWatchdogService', () => {
     expect(g.status()).toMatchObject({ step: null, held: 'changed' });
 
     const a = setup();
-    a.setTarget({ ok: true, mode: 'shuffle', playbackRequestId: 'play-1', startedAt: T0, replayable: false });
+    a.setTarget({
+      ok: true,
+      mode: 'shuffle',
+      playbackRequestId: 'play-1',
+      startedAt: T0,
+      replayable: false,
+    });
     a.engine.advanceForDeadAir.mockReturnValue(false);
     await a.run(25_000);
     expect(a.status()).toMatchObject({ step: null, held: 'changed' });
@@ -336,7 +490,13 @@ describe('DeadAirWatchdogService', () => {
 
   it('skips the replay for a song it may not play again, and for a song that is already a replay', async () => {
     const h = setup();
-    h.setTarget({ ok: true, mode: 'shuffle', playbackRequestId: 'play-1', startedAt: T0, replayable: false });
+    h.setTarget({
+      ok: true,
+      mode: 'shuffle',
+      playbackRequestId: 'play-1',
+      startedAt: T0,
+      replayable: false,
+    });
     await h.run(25_000);
     expect(h.engine.resendForDeadAir).not.toHaveBeenCalled();
     expect(h.engine.advanceForDeadAir).toHaveBeenCalledWith(PROGRAM, 'play-1');
@@ -349,7 +509,10 @@ describe('DeadAirWatchdogService', () => {
     expect(g.status()).toBeNull();
     await g.run(60_000);
     expect(g.engine.resendForDeadAir).toHaveBeenCalledTimes(1);
-    expect(g.engine.advanceForDeadAir).toHaveBeenCalledWith(PROGRAM, 'replay-of-play-1');
+    expect(g.engine.advanceForDeadAir).toHaveBeenCalledWith(
+      PROGRAM,
+      'replay-of-play-1',
+    );
   });
 
   it('goes straight to giving up on a fourth episode within the hour', async () => {
@@ -366,7 +529,9 @@ describe('DeadAirWatchdogService', () => {
     await h.run(at + 25_000);
     expect(h.engine.resendForDeadAir).toHaveBeenCalledTimes(3);
     expect(h.status()).toMatchObject({ step: 'give_up', gaveUp: true });
-    expect(error).toHaveBeenCalledWith(expect.stringContaining('steps=none, more than 3 episodes this hour'));
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining('steps=none, more than 3 episodes this hour'),
+    );
   });
 
   it('does nothing on a lost reading, and ends the episode without a recovery when nothing is expected any more', async () => {
@@ -383,7 +548,9 @@ describe('DeadAirWatchdogService', () => {
     g.confidence.observe({ type: 'song_off_air', programId: PROGRAM } as never);
     await g.watchdog.tick(g.now());
     expect(g.status()).toBeNull();
-    expect(g.steps()).toEqual(['alcantara_radio_dead_air_steps_total{step="resend",result="held"} 1']);
+    expect(g.steps()).toEqual([
+      'alcantara_radio_dead_air_steps_total{step="resend",result="held"} 1',
+    ]);
   });
 
   it('forgets a program that is no longer radio, skips a program still being judged, and survives a failed pass', async () => {
@@ -397,7 +564,8 @@ describe('DeadAirWatchdogService', () => {
     const g = setup();
     let release!: () => void;
     g.telemetry.currentState.mockImplementation(
-      () => new Promise((resolve) => (release = () => resolve(playing('play-1')))),
+      () =>
+        new Promise((resolve) => (release = () => resolve(playing('play-1')))),
     );
     await g.run(20_000);
     g.level(T0 + 21_000, 0);
@@ -416,12 +584,16 @@ describe('DeadAirWatchdogService', () => {
       throw new TypeError('boom');
     });
     await expect(f.watchdog.tick(T0 + 21_000)).resolves.toBeUndefined();
-    expect(error).toHaveBeenCalledWith(`Dead-air watchdog pass failed on ${PROGRAM}: TypeError`);
+    expect(error).toHaveBeenCalledWith(
+      `Dead-air watchdog pass failed on ${PROGRAM}: TypeError`,
+    );
     f.engine.deadAirTarget.mockImplementation(() => {
       throw 'not an error';
     });
     await f.watchdog.tick(T0 + 21_000);
-    expect(error).toHaveBeenCalledWith(`Dead-air watchdog pass failed on ${PROGRAM}: unknown`);
+    expect(error).toHaveBeenCalledWith(
+      `Dead-air watchdog pass failed on ${PROGRAM}: unknown`,
+    );
   });
 
   it('runs every 5 s once this instance holds the lease, stops on shutdown, and never starts after it', async () => {
@@ -443,7 +615,9 @@ describe('DeadAirWatchdogService', () => {
       late.lease.whenActive.mockImplementation((start: () => void) => {
         grant = start;
       });
-      const lateTick = jest.spyOn(late.watchdog, 'tick').mockResolvedValue(undefined);
+      const lateTick = jest
+        .spyOn(late.watchdog, 'tick')
+        .mockResolvedValue(undefined);
       late.watchdog.onModuleInit();
       late.watchdog.onModuleDestroy();
       grant();
@@ -497,7 +671,13 @@ describe('DeadAirWatchdogService', () => {
     g.engine.deadAirTarget.mockImplementation(() => {
       reads += 1;
       return reads % 2 === 1
-        ? { ok: true, mode: 'shuffle', playbackRequestId: 'play-1', startedAt: T0, replayable: true }
+        ? {
+            ok: true,
+            mode: 'shuffle',
+            playbackRequestId: 'play-1',
+            startedAt: T0,
+            replayable: true,
+          }
         : { ok: false, reason: 'busy' };
     });
     await g.run(25_000);
@@ -536,11 +716,14 @@ describe('DeadAirWatchdogService', () => {
         '../playout/playout-lease.service',
       ])
         jest.doMock(path, () => ({}));
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { DeadAirWatchdogService: Isolated } = require('./dead-air-watchdog.service') as {
-        DeadAirWatchdogService: new (...args: never[]) => unknown;
-      };
-      expect(Reflect.getMetadata('design:paramtypes', Isolated)).toEqual(Array(7).fill(Object));
+      const { DeadAirWatchdogService: Isolated } =
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        require('./dead-air-watchdog.service') as {
+          DeadAirWatchdogService: new (...args: never[]) => unknown;
+        };
+      expect(Reflect.getMetadata('design:paramtypes', Isolated)).toEqual(
+        Array(7).fill(Object),
+      );
     });
     for (const path of [
       './song-execution.engine',
@@ -554,4 +737,3 @@ describe('DeadAirWatchdogService', () => {
       jest.dontMock(path);
   });
 });
-

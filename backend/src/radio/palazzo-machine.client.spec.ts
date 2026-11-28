@@ -6,6 +6,8 @@ import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { RadioMetricsService } from './radio-metrics.service';
 
+type FetchArgs = [string, { headers: Record<string, string>; body: string }];
+
 const PROGRAM_ID = 'radio-1';
 const BASE_URL = 'http://palazzo:3100';
 
@@ -17,7 +19,7 @@ function config(values: Record<string, string> = {}) {
         PALAZZO_ALLOWED_URLS: BASE_URL,
         ...values,
       })[key],
-  } as any;
+  } as unknown as ConfigService;
 }
 
 function state(introProgramId = PROGRAM_ID) {
@@ -90,7 +92,7 @@ describe('PalazzoMachineClient', () => {
 
   it('retries an idempotent song command with the same scoped IDs', async () => {
     const fetchImpl = jest
-      .fn()
+      .fn<Promise<Response>, FetchArgs>()
       .mockResolvedValueOnce(new Response('{}', { status: 503 }))
       .mockResolvedValueOnce(
         Response.json({
@@ -130,7 +132,7 @@ describe('PalazzoMachineClient', () => {
   });
 
   it('sends a song and intro as one idempotent program-scoped command', async () => {
-    const fetchImpl = jest.fn().mockResolvedValue(
+    const fetchImpl = jest.fn<Promise<Response>, FetchArgs>().mockResolvedValue(
       Response.json({
         ok: true,
         playbackRequestId: 'song-1',
@@ -174,7 +176,7 @@ describe('PalazzoMachineClient', () => {
   });
 
   it('sends segue and loudness on the song command when provided', async () => {
-    const fetchImpl = jest.fn().mockResolvedValue(
+    const fetchImpl = jest.fn<Promise<Response>, FetchArgs>().mockResolvedValue(
       Response.json({
         ok: true,
         playbackRequestId: 'song-1',
@@ -203,7 +205,7 @@ describe('PalazzoMachineClient', () => {
       },
     });
 
-    const body = JSON.parse(fetchImpl.mock.calls[0][1].body);
+    const body: unknown = JSON.parse(fetchImpl.mock.calls[0][1].body);
     expect(body).toEqual({
       song: {
         programId: PROGRAM_ID,
@@ -225,7 +227,7 @@ describe('PalazzoMachineClient', () => {
   });
 
   it('produces byte-identical request body when segue and loudness are absent', async () => {
-    const fetchImpl = jest.fn().mockResolvedValue(
+    const fetchImpl = jest.fn<Promise<Response>, FetchArgs>().mockResolvedValue(
       Response.json({
         ok: true,
         playbackRequestId: 'song-1',
@@ -263,8 +265,8 @@ describe('PalazzoMachineClient', () => {
 
     const invalidCases: Array<{
       duration?: number;
-      segue?: any;
-      loudness?: any;
+      segue?: unknown;
+      loudness?: unknown;
     }> = [
       { segue: null },
       { segue: 'not-an-object' },
@@ -374,8 +376,8 @@ describe('PalazzoMachineClient', () => {
           playbackId: 'song-test',
           url: 'https://media.example/song.mp3',
           duration: testCase.duration,
-          segue: testCase.segue,
-          loudness: testCase.loudness,
+          segue: testCase.segue as never,
+          loudness: testCase.loudness as never,
         }),
       ).rejects.toMatchObject({ reason: 'rejected' });
     }

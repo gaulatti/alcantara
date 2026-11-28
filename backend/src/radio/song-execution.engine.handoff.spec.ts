@@ -89,6 +89,22 @@ function snapshot(
 
 type AnnounceAnswer = 'accepted' | 'not_ready' | 'rejected' | 'unsupported';
 
+/** Arguments of a recorded Palazzo call; tests read them by position. */
+type Args = unknown[];
+
+/** The playout upsert the engine writes; tests read the stored position. */
+type Upsert = { update: { positionMs: number } };
+type Write = Promise<unknown>;
+
+/** The program-state lookup the heard-playout write goes through. */
+type FindArgs = { select?: { id?: boolean } };
+
+/** The slice of the Prisma mock the heard-playout test replaces. */
+interface PrismaView {
+  radioPlayoutHeard: unknown;
+  programState: { findUnique: (args: FindArgs) => Promise<unknown> };
+}
+
 /**
  * A Palazzo per the contract, seen through RadioService: a song command and
  * a stop flush the announced song; an announcement replaces the previous one;
@@ -124,7 +140,7 @@ class FakePalazzo {
 
   readonly radioService = {
     getRadioSettings: jest.fn(() => Promise.resolve(this.settings)),
-    playInstant: jest.fn().mockResolvedValue(undefined),
+    playInstant: jest.fn<Promise<void>, Args>().mockResolvedValue(undefined),
     playSong: jest.fn(
       (
         _programId: string,
@@ -725,11 +741,11 @@ describe('next-song announcement and handoff', () => {
 
     it('stores what Palazzo reports, at most every 5 s for one song', async () => {
       const h = harness();
-      const upsert = jest.fn().mockResolvedValue({});
-      const prisma = h.prisma as unknown as Record<string, any>;
+      const upsert = jest.fn<Write, [Upsert]>().mockResolvedValue({});
+      const prisma = h.prisma as unknown as PrismaView;
       prisma.radioPlayoutHeard = { upsert };
       const find = prisma.programState.findUnique;
-      prisma.programState.findUnique = jest.fn((args: any) =>
+      prisma.programState.findUnique = jest.fn((args: FindArgs) =>
         args.select?.id ? Promise.resolve({ id: 7 }) : find(args),
       );
       await onAir(h);
@@ -755,14 +771,14 @@ describe('next-song announcement and handoff', () => {
 
       // A program with no row is not written.
       const writes = upsert.mock.calls.length;
-      prisma.programState.findUnique = jest.fn((args: any) =>
+      prisma.programState.findUnique = jest.fn((args: FindArgs) =>
         args.select?.id ? Promise.resolve(null) : find(args),
       );
       jest.advanceTimersByTime(6_000);
       report(9);
       await settle();
       expect(upsert.mock.calls).toHaveLength(writes);
-      prisma.programState.findUnique = jest.fn((args: any) =>
+      prisma.programState.findUnique = jest.fn((args: FindArgs) =>
         args.select?.id ? Promise.resolve({ id: 7 }) : find(args),
       );
 

@@ -3,11 +3,13 @@ import { PassThrough } from 'node:stream';
 import { StreamableFile } from '@nestjs/common';
 import { RadioMonitorController } from './radio-monitor.controller';
 
+type Open = jest.Mock<Promise<unknown>, [string, string, AbortSignal]>;
+
 function build() {
-  const monitor = { issue: jest.fn(), open: jest.fn() };
-  const controller = new RadioMonitorController(monitor as any);
+  const monitor = { issue: jest.fn(), open: jest.fn() as Open };
+  const controller = new RadioMonitorController(monitor as never);
   const raw = new EventEmitter();
-  return { controller, monitor, raw, reply: { raw: raw as any } };
+  return { controller, monitor, raw, reply: { raw: raw as never } };
 }
 
 describe('RadioMonitorController coverage', () => {

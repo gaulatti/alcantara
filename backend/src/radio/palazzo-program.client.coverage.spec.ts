@@ -57,12 +57,21 @@ function event(
   };
 }
 
+type Internals = {
+  stopped: boolean;
+  pollInFlight: boolean;
+  connection: string;
+  instanceId: string | null;
+  currentBootId: string | null;
+  lastSequence: number;
+};
+
 function build(options: Record<string, unknown> = {}) {
   const metrics = {
     recordReconnectAttempt: jest.fn(),
     recordReconnectFailure: jest.fn(),
-    recordEventIgnored: jest.fn(),
-    recordSnapshotReconciliation: jest.fn(),
+    recordEventIgnored: jest.fn<void, [string]>(),
+    recordSnapshotReconciliation: jest.fn<void, [string]>(),
     recordConnectionState: jest.fn(),
   };
   const callbacks = {
@@ -79,9 +88,9 @@ function build(options: Record<string, unknown> = {}) {
     programId: PROGRAM,
     programType: 'radio',
     palazzoUrl: URL,
-    metrics: metrics as any,
+    metrics: metrics as never,
     callbacks,
-    machineClient: machineClient as any,
+    machineClient: machineClient as never,
     ...options,
   });
   return { client, metrics, callbacks, machineClient };
@@ -90,7 +99,7 @@ function build(options: Record<string, unknown> = {}) {
 /** Cursor as if a snapshot for boot-a/inst-a at sequence 5 was accepted. */
 function primed(options: Record<string, unknown> = {}) {
   const ctx = build(options);
-  const c = ctx.client as any;
+  const c = ctx.client as unknown as Internals;
   c.instanceId = 'inst-a';
   c.currentBootId = 'boot-a';
   c.lastSequence = 5;
@@ -429,7 +438,7 @@ describe('PalazzoProgramClient coverage', () => {
         event('track.ended', 7, { data: { programId: 5 } }),
       );
       await client['acceptEvent'](
-        event('playback.position', 8, { data: undefined as any }),
+        event('playback.position', 8, { data: undefined }),
       );
       expect(callbacks.onEvent).toHaveBeenCalledTimes(3);
     });
@@ -473,7 +482,7 @@ describe('PalazzoProgramClient coverage', () => {
       const { client, metrics, machineClient } = build();
       machineClient.getPlaybackState.mockRejectedValue(new Error('down'));
       await expect(
-        client['acceptEvent'](event('snapshot', 5, { data: undefined as any })),
+        client['acceptEvent'](event('snapshot', 5, { data: undefined })),
       ).rejects.toThrow('malformed Palazzo snapshot');
       expect(metrics.recordEventIgnored).toHaveBeenCalledWith('malformed');
     });
@@ -777,12 +786,12 @@ describe('PalazzoProgramClient coverage', () => {
     });
 
     it.each([
-      ['stopped', (c: any) => (c.stopped = true)],
-      ['in flight', (c: any) => (c.pollInFlight = true)],
-      ['connected', (c: any) => (c.connection = 'connected')],
+      ['stopped', (c: Internals) => (c.stopped = true)],
+      ['in flight', (c: Internals) => (c.pollInFlight = true)],
+      ['connected', (c: Internals) => (c.connection = 'connected')],
     ])('skips polling when %s', async (_n, arrange) => {
       const { client, machineClient } = build();
-      arrange(client);
+      arrange(client as never);
       await client['pollOnce']();
       expect(machineClient.getPlaybackState).not.toHaveBeenCalled();
     });

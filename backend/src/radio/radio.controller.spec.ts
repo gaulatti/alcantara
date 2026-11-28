@@ -10,14 +10,14 @@ it('does not reconnect Palazzo when only listener configuration changes', async 
       enabled: true,
       listenerUrl: 'https://radio.example/stream',
     }),
-  } as any;
-  const telemetry = { handleRadioSettingsChanged: jest.fn() } as any;
+  };
+  const telemetry = { handleRadioSettingsChanged: jest.fn() };
   const controller = new RadioController(
-    service,
-    {} as any,
-    {} as any,
-    telemetry,
-    {} as any,
+    service as never,
+    {} as never,
+    {} as never,
+    telemetry as never,
+    {} as never,
     undefined as never,
   );
   await controller.updateSettings('radio', {

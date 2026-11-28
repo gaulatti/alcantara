@@ -138,7 +138,7 @@ function createClient(
         NODE_ENV: 'test',
         PALAZZO_ALLOWED_URLS: 'http://palazzo:3100',
       })[key],
-  } as any;
+  } as never;
   const machineClient = new PalazzoMachineClient(
     config,
     metrics,
@@ -434,10 +434,10 @@ describe('PalazzoProgramClient', () => {
   it('falls back to polling the state endpoint when SSE fails', async () => {
     const state = idleState('palazzo-a', 'boot-1', 3);
     const sseFailure = jest
-      .fn()
+      .fn<Promise<Response>, []>()
       .mockRejectedValue(new Error('connection refused'));
     const stateFetch = jest
-      .fn()
+      .fn<Promise<Response>, []>()
       .mockImplementation(
         async () => new Response(JSON.stringify(state), { status: 200 }),
       );
@@ -614,7 +614,7 @@ describe('PalazzoProgramClient', () => {
       { headers: { 'Content-Type': 'text/event-stream' } },
     );
     const request = jest
-      .fn()
+      .fn<Promise<Response>, [string, RequestInit]>()
       .mockResolvedValueOnce(response)
       .mockResolvedValue(sseResponse([]));
     const { client, callbacks } = createClient(

@@ -10,10 +10,14 @@ type FakeClient = {
   stop: jest.Mock;
   snapshot: () => void;
 };
+type MockOptions = {
+  programId: unknown;
+  callbacks: { onStatus(programId: string, status: object): void };
+};
 const mockClients: FakeClient[] = [];
 
 jest.mock('./palazzo-program.client', () => ({
-  PalazzoProgramClient: jest.fn().mockImplementation((options: any) => {
+  PalazzoProgramClient: jest.fn().mockImplementation((options: MockOptions) => {
     const status = {
       programId: options.programId as string,
       connection: 'connected',

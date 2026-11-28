@@ -14,6 +14,21 @@ import type { FlightService } from '../program/flight.service';
 import type { PrismaService } from '../prisma.service';
 import type { NowPlayingPublisherService } from './now-playing-publisher.service';
 import type { RadioMetricsService } from './radio-metrics.service';
+import type { ProgramSongSequence } from './song-sequence.utils';
+
+/** The private engine surface these tests read and drive. */
+interface EngineView {
+  states: {
+    get(programId: string): {
+      sequence: ProgramSongSequence;
+      activeSong: unknown;
+    };
+  };
+  sequenceAfterEnd(
+    sequence: ProgramSongSequence,
+    ended: { itemId: string; queueEntryId: string | null },
+  ): { next: ProgramSongSequence | null; hasSuccessor: boolean };
+}
 
 /**
  * gaulatti/alcantara#327: removing leaves from a live playlist never rewrites the cursor from an
@@ -55,6 +70,12 @@ const stored = () => ({
     leaf('e', 5),
   ],
 });
+
+/** The nested block of the stored playlist. */
+type Block = Extract<
+  ReturnType<typeof stored>['items'][number],
+  { kind: 'sequence' }
+>;
 
 function harness(
   opts: { updateCounts?: number[]; row?: Record<string, unknown> | null } = {},
@@ -131,10 +152,10 @@ describe('SongExecutionEngine.removeSongLeaves (#327)', () => {
       {
         ...expected.items[2],
         sequence: {
-          ...(expected.items[2] as any).sequence,
+          ...(expected.items[2] as Block).sequence,
           items: [leaf('c', 3)],
         },
-      } as any,
+      } as Block,
       expected.items[3],
     ];
     expect((h.stored() as any).songSequence).toEqual(expected);
@@ -222,7 +243,9 @@ describe('SongExecutionEngine.removeSongLeaves (#327)', () => {
       activeItemId: 'e',
     });
     await remove(h, ['e'], { keepRotation: true });
-    const live = (h.engine as any).states.get('radio-1').sequence;
+    const live = (h.engine as unknown as EngineView).states.get(
+      'radio-1',
+    ).sequence;
     expect(live.activeItemId).toBe('block');
     expect(activeProgramSongLeafId(live)).toBe('d');
   });
@@ -239,7 +262,8 @@ describe('SongExecutionEngine.removeSongLeaves (#327)', () => {
         ...stored(),
         activeItemId: 'b',
       });
-      (h.engine as any).states.get('radio-1').activeSong = song;
+      (h.engine as unknown as EngineView).states.get('radio-1').activeSong =
+        song;
       const result = await remove(h, ['b'], { keepRotation: true });
       expect(result.cursorMovedTo).toBe('c');
       expect(result.songSequence.cuedItemId).toBe('c');
@@ -255,7 +279,9 @@ describe('SongExecutionEngine.removeSongLeaves (#327)', () => {
       activeItemId: 'b',
       cuedItemId: 'b',
     };
-    const { next, hasSuccessor } = (h.engine as any).sequenceAfterEnd(left, {
+    const { next, hasSuccessor } = (
+      h.engine as unknown as EngineView
+    ).sequenceAfterEnd(left, {
       itemId: 'a',
       queueEntryId: null,
     });
@@ -319,15 +345,17 @@ describe('SongExecutionEngine.removeSongLeaves (#327)', () => {
     // The engine advances to leaf "e" after the row was read and before it is written.
     h.prisma.programState.updateMany.mockImplementationOnce(
       ({ data }: { data: object }) => {
-        const live = (h.engine as any).states.get('radio-1');
+        const live = (h.engine as unknown as EngineView).states.get('radio-1');
         live.sequence.activeItemId = 'e';
         live.sequence.startedAt = 9_999;
-        (h as any).wrote = data;
+        (h as typeof h & { wrote?: object }).wrote = data;
         return Promise.resolve({ count: 1 });
       },
     );
     const result = await remove(h, ['b']);
-    const live = (h.engine as any).states.get('radio-1').sequence;
+    const live = (h.engine as unknown as EngineView).states.get(
+      'radio-1',
+    ).sequence;
     expect(live.activeItemId).toBe('e');
     expect(live.startedAt).toBe(9_999);
     expect(live.items.map((i: { id: string }) => i.id)).toEqual([
@@ -397,12 +425,16 @@ describe('SongExecutionEngine.removeSongLeaves (#327)', () => {
       activeItemId: null,
     });
     h.prisma.programState.updateMany.mockImplementationOnce(() => {
-      (h.engine as any).states.get('radio-1').sequence.activeItemId = 'a';
+      (h.engine as unknown as EngineView).states.get(
+        'radio-1',
+      ).sequence.activeItemId = 'a';
       return Promise.resolve({ count: 1 });
     });
     const result = await remove(h, ['a', 'b', 'c', 'd', 'e']);
     expect(result.removed).toHaveLength(5);
-    const live = (h.engine as any).states.get('radio-1').sequence;
+    const live = (h.engine as unknown as EngineView).states.get(
+      'radio-1',
+    ).sequence;
     expect(activeProgramSongLeafId(live)).toBeNull();
   });
 

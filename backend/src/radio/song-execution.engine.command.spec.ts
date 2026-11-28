@@ -63,6 +63,8 @@ function idle(sequence = 1): PalazzoPlaybackState {
   };
 }
 
+type PlaySongMock = jest.Mock<Promise<unknown>, unknown[]>;
+
 function setup(
   persisted: {
     type?: string;
@@ -100,7 +102,7 @@ function setup(
     },
   };
   const radioService = {
-    playSong: jest.fn().mockResolvedValue({ ok: true }),
+    playSong: jest.fn().mockResolvedValue({ ok: true }) as PlaySongMock,
     playInstant: jest.fn().mockResolvedValue(undefined),
     getRadioSettings: jest.fn().mockResolvedValue(null),
   };

@@ -21,7 +21,7 @@ function build(
     fillerSongIds: [5],
     fillerVersion: 'filler-legacy',
   };
-  const prisma: any = {
+  const prisma = {
     programState: {
       findUnique: jest
         .fn()
@@ -41,7 +41,7 @@ function build(
       }),
     },
   };
-  const palazzo: any = {
+  const palazzo = {
     getAutomation: jest.fn().mockResolvedValue({
       lastSequence: 4,
       requestedState: 'stopped',
@@ -52,12 +52,12 @@ function build(
     prepareFiller: jest.fn(),
     validateBaseUrl: jest.fn((value: string) => value),
   };
-  const metrics: any = { recordRecoveryPreparation: jest.fn() };
+  const metrics = { recordRecoveryPreparation: jest.fn() };
   const service = new RadioService(
-    prisma,
-    palazzo,
+    prisma as never,
+    palazzo as never,
     { get: jest.fn() } as any,
-    metrics,
+    metrics as never,
     { teamId: 0 } as never,
   );
   return { service, prisma, palazzo, metrics, leg: () => radioLeg };

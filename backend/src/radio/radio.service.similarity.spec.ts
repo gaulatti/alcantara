@@ -1,15 +1,21 @@
 import { BadRequestException } from '@nestjs/common';
 import { RadioService } from './radio.service';
+import type { PrismaService } from '../prisma.service';
+
+type UpsertArg = { update: unknown; create: unknown };
+type PrismaView = {
+  radioSettings: { upsert: jest.Mock<Promise<UpsertArg>, [UpsertArg]> };
+};
 
 function build() {
-  const prisma: any = {
+  const prisma = {
     programState: {
       findUnique: jest.fn().mockResolvedValue({ id: 10, radioSettings: null }),
     },
     radioSettings: {
-      upsert: jest.fn().mockImplementation(async (arg) => arg),
+      upsert: jest.fn().mockImplementation(async (arg: unknown) => arg),
     },
-  };
+  } as unknown as PrismaService & PrismaView;
   const palazzo: any = { validateBaseUrl: jest.fn((v: string) => v) };
   const config: any = { get: jest.fn() };
   const metrics: any = { recordListenerConfiguration: jest.fn() };

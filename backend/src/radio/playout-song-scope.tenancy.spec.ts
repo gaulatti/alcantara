@@ -13,6 +13,33 @@ import { SongExecutionEngine } from './song-execution.engine';
 const CI_DATABASE_URL =
   'postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci?schema=public';
 
+type RadioView = {
+  findSongForAnalysis(
+    programId: string,
+    url: string,
+    songId: number | undefined,
+    exclude: unknown[],
+  ): Promise<unknown>;
+};
+type PublisherView = {
+  resolveArtworkUrl(
+    programId: string,
+    track: { audioUrl: string },
+  ): Promise<unknown>;
+};
+type ProgramView = {
+  storedCoverUrl(programId: string, url: string): Promise<unknown>;
+};
+type EngineView = {
+  stillWithheld(): boolean;
+  recogniseInheritedTrack(
+    programId: string,
+    state: object,
+    event: { track: { url: string } },
+    source: string,
+  ): Promise<void>;
+};
+
 // The playout switch's gate (gaulatti/alcantara#122), through the four real methods: a program reads its team's song,
 // and a song only another team has, or a program with no team, is still read and counted.
 describe('playout song reads and the program team, against Postgres', () => {
@@ -94,7 +121,7 @@ describe('playout song reads and the program team, against Postgres', () => {
       metrics,
       { teamId: team } as never,
       scope,
-    ) as any;
+    ) as unknown as RadioView;
   const analysis = (programId: string, url: string, songId?: number) =>
     radio().findSongForAnalysis(programId, url, songId, []);
 
@@ -119,7 +146,7 @@ describe('playout song reads and the program team, against Postgres', () => {
       undefined,
       undefined,
       scope,
-    ) as any;
+    ) as unknown as PublisherView;
     const artwork = (programId: string, file: string) =>
       publisher.resolveArtworkUrl(programId, { audioUrl: address(file) });
     await expect(artwork(mine, 'shared')).resolves.toBe(cover('own-shared'));
@@ -138,7 +165,7 @@ describe('playout song reads and the program team, against Postgres', () => {
       undefined,
       undefined,
       scope,
-    ) as any;
+    ) as unknown as ProgramView;
     const coverOf = (programId: string, file: string) =>
       service.storedCoverUrl(programId, address(file));
     await expect(coverOf(mine, 'shared')).resolves.toBe(cover('own-shared'));
@@ -157,7 +184,7 @@ describe('playout song reads and the program team, against Postgres', () => {
       metrics,
       undefined,
       scope,
-    ) as any;
+    ) as unknown as EngineView;
     // The track is no longer withheld when the answer arrives, so only the lookup runs.
     jest.spyOn(engine, 'stillWithheld').mockReturnValue(false);
     const read = jest.spyOn(scope, 'read');

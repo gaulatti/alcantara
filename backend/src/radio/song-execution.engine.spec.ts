@@ -102,6 +102,31 @@ const TWO_SONG_SEQUENCE = {
   ],
 };
 
+// Typed views of the collaborator mocks whose recorded calls the tests read.
+// The engine always sends a request id; tests that need the URL as a string
+// cast it, and the tests that read every argument cast the whole call.
+type PlaySongParams = Parameters<RadioService['playSong']>;
+type PlaySongArgs = [
+  programId: string,
+  audioUrl: unknown,
+  title: string | undefined,
+  artist: string | undefined,
+  playbackRequestId: string,
+  coverUrl?: PlaySongParams[5],
+  intro?: PlaySongParams[6],
+  songId?: PlaySongParams[7],
+  duration?: PlaySongParams[8],
+  segue?: PlaySongParams[9],
+  loudness?: PlaySongParams[10],
+];
+type PlaySong = jest.Mock<ReturnType<RadioService['playSong']>, PlaySongArgs>;
+type PlayInstant = jest.Mock<
+  ReturnType<RadioService['playInstant']>,
+  Parameters<RadioService['playInstant']>
+>;
+type Propose = SongSimilarityService['propose'];
+type FindById = jest.Mock<Promise<unknown>, [{ where: { id: number } }]>;
+
 function createEngine(opts: {
   reconciled: boolean;
   radio?: boolean;
@@ -118,7 +143,7 @@ function createEngine(opts: {
   const prisma = {
     radioSettings: { findMany: jest.fn().mockResolvedValue([]) },
     songIntro: { findUnique: jest.fn().mockResolvedValue(null) },
-    instant: { findUnique: jest.fn().mockResolvedValue(null) },
+    instant: { findUnique: jest.fn().mockResolvedValue(null) as FindById },
     programState: {
       findUnique: jest
         .fn()
@@ -136,8 +161,8 @@ function createEngine(opts: {
     publishStopped: jest.fn().mockResolvedValue(undefined),
   };
   const radioService = {
-    playSong: jest.fn().mockResolvedValue({ ok: true }),
-    playInstant: jest.fn().mockResolvedValue(undefined),
+    playSong: jest.fn().mockResolvedValue({ ok: true }) as PlaySong,
+    playInstant: jest.fn().mockResolvedValue(undefined) as PlayInstant,
     getRadioSettings: jest.fn().mockResolvedValue(null),
   };
   const flightService = {
@@ -796,7 +821,7 @@ describe('SongExecutionEngine authoritative playback', () => {
       shuffleOrder: ['song-3', 'song-1', 'song-4', 'song-2'],
       activeItemId: 'song-3',
     };
-    const played = (radio: { playSong: jest.Mock }) =>
+    const played = (radio: { playSong: PlaySong }) =>
       radio.playSong.mock.calls.map(
         (call) => /song-(\d)/.exec(call[1] as string)![0],
       );
@@ -2151,7 +2176,7 @@ describe('SongExecutionEngine intro degradation and station bumper boundaries', 
         ({
           audioUrl: `https://media.test/${where.id}.mp3`,
           name: 'Station ident',
-        }) as any,
+        }) as never,
     );
     endCurrent(f);
     await flush(20);
@@ -2950,7 +2975,7 @@ describe('similarity picker in the engine', () => {
     return { ...harness, similarity, similarityRows };
   }
 
-  const playedUrls = (radioService: { playSong: jest.Mock }) =>
+  const playedUrls = (radioService: { playSong: PlaySong }) =>
     radioService.playSong.mock.calls.map((call) => call[1] as string);
 
   async function endCurrent(
@@ -3091,7 +3116,7 @@ describe('similarity picker in the engine', () => {
 
   it('on: passes a cycle reset to the artist cycle when the picker asks for one', async () => {
     const h = await build('on');
-    const original = h.similarity.propose.bind(h.similarity);
+    const original = h.similarity.propose.bind(h.similarity) as Propose;
     jest.spyOn(h.similarity, 'propose').mockImplementation((...args) => {
       const proposal = original(...args);
       return {
@@ -3142,7 +3167,7 @@ describe('similarity picker in the engine', () => {
             'error',
           )
           .mockImplementation();
-        const run = () =>
+        const run = (): unknown =>
           internals.resolveWithSimilarity.call(
             h.engine,
             'radio-1',

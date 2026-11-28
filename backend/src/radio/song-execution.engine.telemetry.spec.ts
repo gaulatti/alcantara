@@ -65,6 +65,11 @@ function idle(sequence = 1): PalazzoPlaybackState {
   };
 }
 
+type PlaySongMock = jest.Mock<Promise<unknown>, unknown[]>;
+type UpdateArgs = [{ data: Record<string, unknown> }];
+type Where = { where: Record<string, unknown> };
+type Data = { data: Record<string, unknown> };
+
 function setup(
   persisted: {
     type?: string;
@@ -94,7 +99,7 @@ function setup(
         .fn()
         .mockImplementation(() => Promise.resolve(store.current)),
       update: jest
-        .fn()
+        .fn<Promise<unknown>, UpdateArgs>()
         .mockImplementation(({ data }: { data: Record<string, unknown> }) => {
           store.current = { ...(store.current ?? {}), ...data };
           return Promise.resolve(store.current);
@@ -102,7 +107,7 @@ function setup(
     },
   };
   const radioService = {
-    playSong: jest.fn().mockResolvedValue({ ok: true }),
+    playSong: jest.fn().mockResolvedValue({ ok: true }) as PlaySongMock,
     playInstant: jest.fn().mockResolvedValue(undefined),
     getRadioSettings: jest.fn().mockResolvedValue(null),
   };
@@ -290,7 +295,7 @@ describe('SongExecutionEngine constructor metadata', () => {
     jest.isolateModules(() => {
       jest.doMock('./radio.service', () => ({}));
       jest.doMock('../playout/playout-lease.service', () => ({
-        ...jest.requireActual('../playout/playout-lease.service'),
+        ...jest.requireActual<object>('../playout/playout-lease.service'),
         PlayoutLease: undefined,
       }));
       jest.doMock('../program/flight.service', () => ({}));
@@ -1092,7 +1097,7 @@ describe('a start missed across a reconnect', () => {
         song: { findFirst: jest.fn().mockResolvedValue(null) },
         mediaAsset: { findFirst: jest.fn().mockResolvedValue(null) },
         asRunRecord: {
-          findFirst: jest.fn(async ({ where }) =>
+          findFirst: jest.fn(async ({ where }: Where) =>
             rows.find(
               (row) =>
                 row.playbackRequestId === where.playbackRequestId &&
@@ -1100,7 +1105,7 @@ describe('a start missed across a reconnect', () => {
             ),
           ),
           findMany: jest.fn().mockResolvedValue([]),
-          create: jest.fn(async ({ data }) => (rows.push(data), data)),
+          create: jest.fn(async ({ data }: Data) => (rows.push(data), data)),
         },
       } as never,
       // The station with no team; harmless while the service does not read it (gaulatti/alcantara#705).
@@ -1246,7 +1251,7 @@ describe('the song of each playback', () => {
       {
         song: {
           findFirst: jest.fn(async () => ({ id: 9101, assetId: null })),
-          findUnique: jest.fn(async ({ where }) => ({
+          findUnique: jest.fn(async ({ where }: Where) => ({
             id: where.id,
             assetId: null,
           })),
@@ -1255,7 +1260,7 @@ describe('the song of each playback', () => {
         asRunRecord: {
           findFirst: jest.fn().mockResolvedValue(null),
           findMany: jest.fn().mockResolvedValue([]),
-          create: jest.fn(async ({ data }) => (rows.push(data), data)),
+          create: jest.fn(async ({ data }: Data) => (rows.push(data), data)),
         },
       } as never,
       { teamId: 0 } as never,

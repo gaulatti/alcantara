@@ -4,7 +4,7 @@ import 'reflect-metadata';
 // when a constructor dependency is unresolved at decoration time.
 jest.mock('../prisma.service', () => ({ PrismaService: undefined }));
 jest.mock('../playout/playout-lease.service', () => ({
-  ...jest.requireActual('../playout/playout-lease.service'),
+  ...jest.requireActual<object>('../playout/playout-lease.service'),
   PlayoutLease: undefined,
 }));
 jest.mock('./radio-metrics.service', () => ({

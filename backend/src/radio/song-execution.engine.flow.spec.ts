@@ -97,6 +97,9 @@ function playing(
   };
 }
 
+type InstantMock = jest.Mock<Promise<unknown>, unknown[]>;
+type UpdateArgs = [{ data: Record<string, unknown> }];
+
 function setup(
   persisted: {
     type?: string;
@@ -131,7 +134,7 @@ function setup(
         .fn()
         .mockImplementation(() => Promise.resolve(store.current)),
       update: jest
-        .fn()
+        .fn<Promise<unknown>, UpdateArgs>()
         .mockImplementation(({ data }: { data: Record<string, unknown> }) => {
           store.current = { ...(store.current ?? {}), ...data };
           return Promise.resolve(store.current);
@@ -140,7 +143,7 @@ function setup(
   };
   const radioService = {
     playSong: jest.fn().mockResolvedValue({ ok: true }),
-    playInstant: jest.fn().mockResolvedValue(undefined),
+    playInstant: jest.fn().mockResolvedValue(undefined) as InstantMock,
     getRadioSettings: jest.fn().mockResolvedValue(null),
   };
   const flightService = {
@@ -286,8 +289,8 @@ async function startAutomatic(
   return activeRequestId(ctx.engine);
 }
 
-let logSpy: jest.SpyInstance;
-let warnSpy: jest.SpyInstance;
+let logSpy: jest.SpyInstance<void, unknown[]>;
+let warnSpy: jest.SpyInstance<void, unknown[]>;
 let errorSpy: jest.SpyInstance;
 
 beforeEach(() => {

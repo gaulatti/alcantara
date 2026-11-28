@@ -13,18 +13,53 @@ const leafOne = {
 };
 const leafTwo = { ...leafOne, id: 'song-2', title: 'Song two', songId: 102 };
 
+/** The proposal request the engine hands to the similarity service. */
+interface ProposeRequest {
+  currentSongId: number | null;
+  currentArtist: string;
+  leaves: { leaf: { id: string }; blocked: boolean }[];
+}
+
+/** One recorded `propose` call. */
+type Call = [string, ProposeRequest];
+
+/** The private engine surface these tests drive. */
+interface SimilarityEngineInternals {
+  resolveWithSimilarity(
+    programId: string,
+    state: Record<string, unknown>,
+    sequence: unknown,
+    favoriteCount: number,
+    mode: 'shadow' | 'on',
+    now: number,
+  ): unknown;
+  playNext(programId: string): boolean;
+}
+
+/** The slice of engine state the cycle-reset test seeds and reads back. */
+interface StartState {
+  sequence: unknown;
+  queue: unknown[];
+  queueBlocked: boolean;
+  pendingRequestIds: Set<string>;
+  pendingCycleReset: boolean;
+  activeSong: { cycleReset?: boolean };
+}
+
 function sequence() {
   return {
     mode: 'autoplay',
     loop: true,
     intervalMs: 500,
     items: [{ ...leafOne }, { ...leafTwo, highRotation: true }],
-  } as any;
+  } as unknown;
 }
 
 /** A bare engine with only the collaborators the similarity path touches. */
 function build() {
-  const engine = Object.create(SongExecutionEngine.prototype);
+  const engine = Object.create(
+    SongExecutionEngine.prototype,
+  ) as SimilarityEngineInternals;
   const similarity = { propose: jest.fn(), recordDecision: jest.fn() };
   const metrics = { recordSimilarityAction: jest.fn() };
   const logger = { error: jest.fn(), log: jest.fn() };
@@ -57,12 +92,12 @@ describe('SongExecutionEngine similarity coverage', () => {
     h.similarity.propose.mockReturnValue({ result: result(), leaf: null });
     h.baseline.mockReturnValue(null);
     h.resolve('shadow', { lastEnded: { songId: 101, artist: 'Artist one' } });
-    const [programId, request] = h.similarity.propose.mock.calls[0];
+    const [programId, request] = h.similarity.propose.mock.calls[0] as Call;
     expect(programId).toBe('radio-1');
     expect(request.currentSongId).toBe(101);
     expect(request.currentArtist).toBe('Artist one');
     expect(
-      request.leaves.map((entry: any) => [entry.leaf.id, entry.blocked]),
+      request.leaves.map((entry) => [entry.leaf.id, entry.blocked]),
     ).toEqual([
       ['song-1', false],
       ['song-2', true],
@@ -201,13 +236,13 @@ describe('SongExecutionEngine similarity coverage', () => {
   it('marks the started song as a cycle reset only for playlist picks', () => {
     const start = (pendingCycleReset: boolean) => {
       const h = build();
-      const state: Record<string, any> = {
+      const state = {
         sequence: sequence(),
         queue: [],
         queueBlocked: false,
         pendingRequestIds: new Set<string>(),
         pendingCycleReset,
-      };
+      } as unknown as StartState;
       Object.assign(h.engine, {
         flightService: { isClockedLogRunning: () => false },
         states: new Map([['radio-1', state]]),

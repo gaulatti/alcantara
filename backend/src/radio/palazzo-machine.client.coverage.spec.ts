@@ -2,6 +2,7 @@ import {
   PalazzoMachineClient,
   PalazzoMachineError,
 } from './palazzo-machine.client';
+import type { PalazzoSongCommand } from './palazzo-machine.client';
 
 const mockDelay = jest.fn<Promise<void>, [number, unknown, unknown]>();
 jest.mock('node:timers/promises', () => ({
@@ -22,9 +23,38 @@ const json = (
     headers: { 'content-type': 'application/json', ...headers },
   });
 
+/** The request init the client hands to fetch; tests read it back. */
+interface FetchInit {
+  method: string;
+  headers: Record<string, string>;
+  body: string;
+  signal: AbortSignal;
+}
+type FetchArgs = [string, FetchInit];
+type Fetched = Promise<Response>;
+type FetchMock = jest.Mock<Fetched, FetchArgs>;
+
+/** The song-play body the client sent, read for its intro. */
+
+/** An automation body a case mutates before the client parses it. */
+interface AutomationBody {
+  lastSequence: unknown;
+  requestedState: unknown;
+  actualState: unknown;
+  filler?: Record<string, unknown>;
+}
+
+function build(
+  values?: Record<string, string | undefined>,
+  fetchImpl?: FetchMock | null,
+): {
+  client: PalazzoMachineClient;
+  metrics: { recordMachineRequest: jest.Mock; recordMachineRetry: jest.Mock };
+  fetchImpl: FetchMock;
+};
 function build(
   values: Record<string, string | undefined> = {},
-  fetchImpl: any = jest.fn(),
+  fetchImpl: FetchMock | null = jest.fn(),
 ) {
   const config = {
     get: (key: string) =>
@@ -35,8 +65,8 @@ function build(
     recordMachineRetry: jest.fn(),
   };
   const client = new PalazzoMachineClient(
-    config as any,
-    metrics as any,
+    config as never,
+    metrics as never,
     fetchImpl === null ? undefined : fetchImpl,
   );
   return { client, metrics, fetchImpl };
@@ -47,10 +77,10 @@ const expectError = async (
   reason: string,
   status?: number,
 ) => {
-  const error = await promise.then(
+  const error = (await promise.then(
     () => undefined,
-    (e) => e,
-  );
+    (e: unknown) => e,
+  )) as PalazzoMachineError;
   expect(error).toBeInstanceOf(PalazzoMachineError);
   expect(error.reason).toBe(reason);
   expect(error.status).toBe(status);
@@ -180,17 +210,19 @@ describe('PalazzoMachineClient coverage', () => {
     });
 
     it('sends body, idempotency, sequence, filler version and event headers', async () => {
-      const fetchImpl = jest.fn().mockImplementation(async (url: string) =>
-        url.endsWith('/events')
-          ? new Response('x', {
-              headers: { 'content-type': 'text/event-stream' },
-            })
-          : json({
-              lastSequence: 3,
-              readiness: true,
-              filler: { activeVersion: 'v1' },
-            }),
-      );
+      const fetchImpl = jest
+        .fn<Fetched, FetchArgs>()
+        .mockImplementation(async (url: string) =>
+          url.endsWith('/events')
+            ? new Response('x', {
+                headers: { 'content-type': 'text/event-stream' },
+              })
+            : json({
+                lastSequence: 3,
+                readiness: true,
+                filler: { activeVersion: 'v1' },
+              }),
+        );
       const { client } = build({}, fetchImpl);
       await client.commandAutomation(BASE, PROGRAM, 'start', 3, 'key-1', 'v1');
       expect(fetchImpl).toHaveBeenCalledWith(`${ROUTE}/automation/start`, {
@@ -390,7 +422,7 @@ describe('PalazzoMachineClient coverage', () => {
       fadeInSeconds: 1,
       fadeOutSeconds: 2,
     };
-    const run = (body: unknown, command: any = song) => {
+    const run = (body: unknown, command: PalazzoSongCommand = song) => {
       const fetchImpl = jest.fn().mockResolvedValue(json(body));
       const ctx = build({}, fetchImpl);
       return { ...ctx, result: ctx.client.playSong(BASE, PROGRAM, command) };
@@ -500,7 +532,9 @@ describe('PalazzoMachineClient coverage', () => {
 
   describe('stop commands', () => {
     it('stops instants through the instant route', async () => {
-      const fetchImpl = jest.fn().mockResolvedValue(json({ ok: true }));
+      const fetchImpl = jest
+        .fn<Fetched, FetchArgs>()
+        .mockResolvedValue(json({ ok: true }));
       const { client, metrics } = build({}, fetchImpl);
       await client.stopInstants(BASE, PROGRAM);
       expect(fetchImpl.mock.calls[0][0]).toBe(`${ROUTE}/playback/instant/stop`);
@@ -531,7 +565,7 @@ describe('PalazzoMachineClient coverage', () => {
     const command = { playbackId: 'p', url: 'u', volume: 0.5 };
     it('succeeds on a matching echo', async () => {
       const fetchImpl = jest
-        .fn()
+        .fn<Fetched, FetchArgs>()
         .mockResolvedValue(json({ ok: true, playbackRequestId: 'p' }));
       const { client } = build({}, fetchImpl);
       await expect(client.playInstant(BASE, PROGRAM, command)).resolves.toEqual(
@@ -661,7 +695,7 @@ describe('PalazzoMachineClient coverage', () => {
         headers: { 'content-type': 'Text/Event-Stream; charset=utf-8' },
       });
     it('returns a stream response without a resume id', async () => {
-      const fetchImpl = jest.fn().mockResolvedValue(sse());
+      const fetchImpl = jest.fn<Fetched, FetchArgs>().mockResolvedValue(sse());
       const { client, metrics } = build({}, fetchImpl);
       const response = await client.connectEvents(
         BASE,
@@ -707,7 +741,7 @@ describe('PalazzoMachineClient coverage', () => {
       actualState: 'running',
       filler: { activeVersion: 'v1', ready: true },
     });
-    const run = (change: (b: any) => void) => {
+    const run = (change: (b: AutomationBody) => void) => {
       const body = valid();
       change(body);
       return build(
@@ -719,20 +753,20 @@ describe('PalazzoMachineClient coverage', () => {
     it('returns parsed automation with a null or string active version', async () => {
       await expect(run(() => undefined)).resolves.toEqual(valid());
       await expect(
-        run((b) => (b.filler.activeVersion = null)),
+        run((b) => (b.filler!.activeVersion = null)),
       ).resolves.toMatchObject({
         filler: { activeVersion: null, ready: true },
       });
     });
 
-    it.each<[string, (b: any) => void]>([
+    it.each<[string, (b: AutomationBody) => void]>([
       ['a non-integer sequence', (b) => (b.lastSequence = 1.5)],
       ['a non-string requested state', (b) => (b.requestedState = 1)],
       ['a non-string actual state', (b) => (b.actualState = 1)],
       ['a missing filler', (b) => delete b.filler],
-      ['a non-object filler', (b) => (b.filler = 'x')],
-      ['a non-string active version', (b) => (b.filler.activeVersion = 5)],
-      ['a non-boolean ready flag', (b) => (b.filler.ready = 'yes')],
+      ['a non-object filler', (b) => (b.filler = 'x' as never)],
+      ['a non-string active version', (b) => (b.filler!.activeVersion = 5)],
+      ['a non-boolean ready flag', (b) => (b.filler!.ready = 'yes')],
     ])('rejects %s', async (_n, change) => {
       await expectError(run(change), 'malformed');
     });
@@ -744,7 +778,7 @@ describe('PalazzoMachineClient coverage', () => {
     ];
     it('prepares a filler with an encoded version route', async () => {
       const fetchImpl = jest
-        .fn()
+        .fn<Fetched, FetchArgs>()
         .mockResolvedValue(
           json({ version: 'v 1', ready: true, status: 'ready' }),
         );
@@ -826,7 +860,9 @@ describe('PalazzoMachineClient coverage', () => {
       new Response('audio', { headers: { 'content-type': 'audio/mpeg' } });
 
     it('returns the live audio response', async () => {
-      const fetchImpl = jest.fn().mockResolvedValue(audio());
+      const fetchImpl = jest
+        .fn<Fetched, FetchArgs>()
+        .mockResolvedValue(audio());
       const { client, metrics } = build({}, fetchImpl);
       const response = await client.openOutput(
         BASE,
@@ -897,7 +933,7 @@ describe('PalazzoMachineClient coverage', () => {
         .openOutput(BASE, PROGRAM, new AbortController().signal)
         .then(
           () => undefined,
-          (e) => e,
+          (e: unknown) => e,
         );
       await jest.advanceTimersByTimeAsync(10_000);
       expect(await outcome).toEqual(new Error('aborted'));
@@ -922,7 +958,7 @@ describe('PalazzoMachineClient coverage', () => {
       const { client, metrics } = build({}, fetchImpl);
       const outcome = client.openOutput(BASE, PROGRAM, abort.signal).then(
         () => undefined,
-        (e) => e,
+        (e: unknown) => e,
       );
       abort.abort();
       expect(await outcome).toEqual(new Error('aborted'));

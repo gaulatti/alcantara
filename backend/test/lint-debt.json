@@ -502,31 +502,20 @@
   },
   "src/radio/dead-air-watchdog.service.spec.ts": {
     "@typescript-eslint/only-throw-error": 1,
-    "@typescript-eslint/require-await": 1,
-    "prettier/prettier": 68
+    "@typescript-eslint/require-await": 1
   },
   "src/radio/now-playing-publisher.service.coverage.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 21,
-    "@typescript-eslint/no-unsafe-call": 19,
-    "@typescript-eslint/no-unsafe-member-access": 35,
     "@typescript-eslint/unbound-method": 8
-  },
-  "src/radio/palazzo-contract.coverage.spec.ts": {
-    "@typescript-eslint/no-unsafe-member-access": 15
   },
   "src/radio/palazzo-contract.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": 1
   },
   "src/radio/palazzo-machine.client.coverage.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 9,
-    "@typescript-eslint/no-unsafe-member-access": 23,
-    "@typescript-eslint/no-unsafe-return": 3,
+    "@typescript-eslint/no-unsafe-assignment": 3,
+    "@typescript-eslint/no-unsafe-member-access": 1,
     "@typescript-eslint/require-await": 4
   },
   "src/radio/palazzo-machine.client.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 5,
-    "@typescript-eslint/no-unsafe-member-access": 6,
-    "@typescript-eslint/no-unsafe-return": 1,
     "@typescript-eslint/require-await": 2
   },
   "src/radio/palazzo-machine.client.timeout.spec.ts": {
@@ -541,49 +530,21 @@
     "@typescript-eslint/no-unsafe-return": 1
   },
   "src/radio/palazzo-program.client.coverage.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 6,
-    "@typescript-eslint/no-unsafe-member-access": 8,
-    "@typescript-eslint/no-unsafe-return": 2,
+    "@typescript-eslint/no-unsafe-assignment": 1,
     "@typescript-eslint/require-await": 6
   },
   "src/radio/palazzo-program.client.idle.spec.ts": {
     "@typescript-eslint/prefer-promise-reject-errors": 2
   },
-  "src/radio/palazzo-program.client.replay-gap.spec.ts": {
-    "@typescript-eslint/no-unsafe-member-access": 2
-  },
   "src/radio/palazzo-program.client.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 1,
-    "@typescript-eslint/no-unsafe-member-access": 2,
-    "@typescript-eslint/no-unsafe-return": 1,
     "@typescript-eslint/no-unused-vars": 1,
     "@typescript-eslint/require-await": 1
   },
-  "src/radio/palazzo-program.delivery-boundaries.spec.ts": {
-    "@typescript-eslint/no-unsafe-call": 2,
-    "@typescript-eslint/no-unsafe-member-access": 3
-  },
   "src/radio/palazzo-telemetry.service.coverage.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 9,
-    "@typescript-eslint/no-unsafe-call": 24,
-    "@typescript-eslint/no-unsafe-member-access": 38,
-    "@typescript-eslint/no-unsafe-return": 3,
     "@typescript-eslint/unbound-method": 3
-  },
-  "src/radio/palazzo-telemetry.service.metadata.spec.ts": {
-    "@typescript-eslint/no-unsafe-return": 1
   },
   "src/radio/palazzo-telemetry.service.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 1
-  },
-  "src/radio/playout-down-take.spec.ts": {
-    "prettier/prettier": 23
-  },
-  "src/radio/playout-song-scope.tenancy.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 3,
-    "@typescript-eslint/no-unsafe-call": 4,
-    "@typescript-eslint/no-unsafe-member-access": 4,
-    "@typescript-eslint/no-unsafe-return": 4
   },
   "src/radio/program-bus-overlap.detector.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 1,
@@ -591,19 +552,8 @@
     "@typescript-eslint/prefer-promise-reject-errors": 1,
     "@typescript-eslint/require-await": 2
   },
-  "src/radio/radio-delete.spec.ts": {
-    "@typescript-eslint/no-unsafe-call": 1,
-    "@typescript-eslint/no-unsafe-member-access": 2
-  },
   "src/radio/radio-library.tenancy.spec.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": 1
-  },
-  "src/radio/radio-monitor.controller.coverage.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 2,
-    "@typescript-eslint/no-unsafe-member-access": 1
-  },
-  "src/radio/radio-monitor.controller.metadata.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 1
   },
   "src/radio/radio-monitor.service.coverage.spec.ts": {
     "@typescript-eslint/require-await": 1
@@ -615,79 +565,27 @@
   "src/radio/radio-monitor.stream.http.spec.ts": {
     "@typescript-eslint/require-await": 1
   },
-  "src/radio/radio-output-confidence.service.coverage.spec.ts": {
-    "@typescript-eslint/no-unsafe-member-access": 1,
-    "@typescript-eslint/no-unsafe-return": 4
-  },
-  "src/radio/radio-rename.spec.ts": {
-    "@typescript-eslint/no-unsafe-call": 1,
-    "@typescript-eslint/no-unsafe-member-access": 2
-  },
-  "src/radio/radio-scope-preflight.service.metadata.spec.ts": {
-    "@typescript-eslint/no-unsafe-return": 1
-  },
-  "src/radio/radio-settings-new-row-defaults.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 2,
-    "@typescript-eslint/no-unsafe-call": 5,
-    "@typescript-eslint/no-unsafe-member-access": 6,
-    "@typescript-eslint/no-unsafe-return": 1
-  },
   "src/radio/radio-settings.operator-change.http.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 1,
-    "@typescript-eslint/no-unsafe-call": 1,
-    "@typescript-eslint/no-unsafe-member-access": 3,
     "@typescript-eslint/require-await": 6
   },
   "src/radio/radio-settings.operator-change.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 18,
-    "@typescript-eslint/no-unsafe-call": 4,
-    "@typescript-eslint/no-unsafe-member-access": 27,
     "@typescript-eslint/require-await": 2
-  },
-  "src/radio/radio.controller.coverage.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 1
-  },
-  "src/radio/radio.controller.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 2,
-    "@typescript-eslint/no-unsafe-call": 1,
-    "@typescript-eslint/no-unsafe-member-access": 3
   },
   "src/radio/radio.service.coverage.spec.ts": {
     "@typescript-eslint/no-base-to-string": 1,
-    "@typescript-eslint/no-unsafe-assignment": 106,
-    "@typescript-eslint/no-unsafe-call": 64,
-    "@typescript-eslint/no-unsafe-member-access": 150,
-    "@typescript-eslint/no-unsafe-return": 5,
     "@typescript-eslint/require-await": 5,
     "@typescript-eslint/unbound-method": 8
   },
-  "src/radio/radio.service.program-filler.spec.ts": {
-    "@typescript-eslint/no-unsafe-call": 7,
-    "@typescript-eslint/no-unsafe-return": 1
-  },
-  "src/radio/radio.service.similarity.coverage.spec.ts": {
-    "@typescript-eslint/no-unsafe-call": 1,
-    "@typescript-eslint/no-unsafe-member-access": 1,
-    "@typescript-eslint/no-unsafe-return": 2
-  },
   "src/radio/radio.service.similarity.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 5,
-    "@typescript-eslint/no-unsafe-member-access": 6,
-    "@typescript-eslint/no-unsafe-return": 1,
     "@typescript-eslint/require-await": 1
   },
   "src/radio/radio.service.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 16,
-    "@typescript-eslint/no-unsafe-call": 1,
-    "@typescript-eslint/no-unsafe-member-access": 17,
-    "@typescript-eslint/no-unsafe-return": 5,
     "@typescript-eslint/require-await": 6
   },
   "src/radio/radio.service.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": 1
   },
   "src/radio/song-execution.engine.command.spec.ts": {
-    "@typescript-eslint/no-unsafe-member-access": 2,
     "@typescript-eslint/restrict-template-expressions": 1
   },
   "src/radio/song-execution.engine.dead-air.spec.ts": {
@@ -695,62 +593,31 @@
   },
   "src/radio/song-execution.engine.flow.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 4,
-    "@typescript-eslint/no-unsafe-member-access": 4,
-    "@typescript-eslint/no-unsafe-return": 4,
     "@typescript-eslint/no-unused-vars": 2,
     "@typescript-eslint/require-await": 2,
     "@typescript-eslint/unbound-method": 1
   },
   "src/radio/song-execution.engine.handoff.spec.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": 1,
-    "@typescript-eslint/no-unsafe-assignment": 1,
-    "@typescript-eslint/no-unsafe-call": 3,
-    "@typescript-eslint/no-unsafe-member-access": 15,
-    "@typescript-eslint/no-unsafe-return": 4
+    "@typescript-eslint/no-unnecessary-type-assertion": 1
   },
   "src/radio/song-execution.engine.inherited.spec.ts": {
-    "@typescript-eslint/no-unsafe-member-access": 9,
     "@typescript-eslint/no-unused-vars": 4
   },
-  "src/radio/song-execution.engine.on-air-view.spec.ts": {
-    "@typescript-eslint/no-unsafe-return": 1
-  },
   "src/radio/song-execution.engine.remove-leaves.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 7,
-    "@typescript-eslint/no-unsafe-call": 10,
-    "@typescript-eslint/no-unsafe-member-access": 32
-  },
-  "src/radio/song-execution.engine.similarity.coverage.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 4,
-    "@typescript-eslint/no-unsafe-call": 3,
-    "@typescript-eslint/no-unsafe-member-access": 9,
-    "@typescript-eslint/no-unsafe-return": 3
+    "@typescript-eslint/no-unsafe-call": 2,
+    "@typescript-eslint/no-unsafe-member-access": 12
   },
   "src/radio/song-execution.engine.spec.ts": {
     "@typescript-eslint/await-thenable": 1,
-    "@typescript-eslint/no-unsafe-assignment": 71,
-    "@typescript-eslint/no-unsafe-call": 1,
-    "@typescript-eslint/no-unsafe-member-access": 55,
-    "@typescript-eslint/no-unsafe-return": 7,
+    "@typescript-eslint/no-unsafe-assignment": 1,
     "@typescript-eslint/no-unused-vars": 2,
     "@typescript-eslint/require-await": 5
   },
   "src/radio/song-execution.engine.telemetry.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 1,
-    "@typescript-eslint/no-unsafe-member-access": 5,
-    "@typescript-eslint/no-unsafe-return": 3,
     "@typescript-eslint/require-await": 5
   },
   "src/radio/song-execution.engine.ts": {
     "@typescript-eslint/no-unused-vars": 1
-  },
-  "src/radio/song-sequence.utils.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 2,
-    "@typescript-eslint/no-unsafe-call": 2,
-    "@typescript-eslint/no-unsafe-member-access": 5
-  },
-  "src/radio/song-similarity.service.metadata.spec.ts": {
-    "@typescript-eslint/no-unsafe-return": 1
   },
   "src/renderer-keys/place-renderer-keys.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 2,

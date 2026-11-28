@@ -43,21 +43,43 @@ const consumerRow = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-function build(prismaOverrides: Record<string, unknown> = {}, metrics?: any) {
-  const prisma: any = {
+// The argument a mock receives, read back only through a typed view.
+type U = unknown;
+type TransactionOp = { arg: { data: Record<string, unknown> } };
+type TxMock = jest.Mock<Promise<unknown[]>, [TransactionOp[]]>;
+type PrismaMock = {
+  nowPlayingConsumer: {
+    findMany: jest.Mock;
+    deleteMany: jest.Mock;
+    create: jest.Mock;
+  };
+  programState: { findUnique: jest.Mock };
+  song: { findFirst: jest.Mock };
+  $transaction: TxMock;
+};
+type MetricsMock = {
+  recordDependency: jest.Mock;
+  recordOutboundFetch: jest.Mock;
+};
+
+function build(
+  prismaOverrides: Record<string, unknown> = {},
+  metrics?: MetricsMock,
+) {
+  const prisma: PrismaMock = {
     nowPlayingConsumer: {
       findMany: jest.fn().mockResolvedValue([]),
       deleteMany: jest.fn().mockReturnValue('delete-op'),
-      create: jest.fn().mockImplementation((arg) => ({ op: 'create', arg })),
+      create: jest.fn().mockImplementation((arg: U) => ({ op: 'create', arg })),
     },
     programState: { findUnique: jest.fn() },
     song: { findFirst: jest.fn() },
-    $transaction: jest.fn().mockResolvedValue([]),
+    $transaction: jest.fn().mockResolvedValue([]) as TxMock,
     ...prismaOverrides,
   };
   const service = new NowPlayingPublisherService(
-    prisma as PrismaService,
-    metrics as ManagedMetricsService | undefined,
+    prisma as unknown as PrismaService,
+    metrics as unknown as ManagedMetricsService | undefined,
   );
   jest.spyOn(service['logger'], 'log').mockImplementation();
   jest.spyOn(service['logger'], 'warn').mockImplementation();
@@ -385,7 +407,7 @@ describe('NowPlayingPublisherService coverage', () => {
   describe('delivery results and metrics', () => {
     const run = async (
       response: ScriptedResponse | undefined,
-      metrics?: { recordDependency: jest.Mock; recordOutboundFetch: jest.Mock },
+      metrics?: MetricsMock,
     ) => {
       const { service, prisma, answer } = build({}, metrics);
       prisma.nowPlayingConsumer.findMany.mockResolvedValue([consumerRow()]);
