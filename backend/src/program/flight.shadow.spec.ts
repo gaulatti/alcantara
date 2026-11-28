@@ -260,6 +260,42 @@ describe('the rundown shadow', () => {
     expect(await shadow(f.metrics)).toMatchObject({ 'cue:agree': 2, 'song:agree': 1 });
   });
 
+  it('compares the song after a recipe-expanded song cue, which sends its song through the same path', async () => {
+    const f = setup();
+    f.programs.onAirSongId.mockReturnValue(5);
+    f.sequence().items = [
+      {
+        id: 'recipe-song',
+        kind: 'playSong',
+        songId: 5,
+        recipeUse: { useId: 'use-1', step: 1, recipeId: 3, recipeRevision: 2, songId: 5 },
+      },
+      { id: 'first', kind: 'wait', durationMs: 400 },
+      { id: 'second', kind: 'wait', durationMs: 400 },
+    ];
+    await f.service.start('news');
+    await flush();
+    await jest.advanceTimersByTimeAsync(400);
+    await flush();
+    expect(f.programs.takeCatalogSongOnAir).toHaveBeenCalledWith('news', expect.objectContaining({ id: 5 }), undefined);
+    expect(await shadow(f.metrics)).toMatchObject({ 'song:agree': 1, 'song:unsupported': 0, 'song:disagree': 0 });
+  });
+
+  it('sends a song for a Go that lands on a song cue through the same path, and counts the run unsupported', async () => {
+    const f = setup();
+    f.sequence().items = [
+      { id: 'hold', kind: 'wait', durationMs: 10_000 },
+      { id: 'song', kind: 'playSong', songId: 5 },
+      { id: 'after', kind: 'wait', durationMs: 10_000 },
+    ];
+    await f.service.start('news');
+    await flush();
+    await f.service.go('news');
+    await flush();
+    expect(f.programs.takeCatalogSongOnAir).toHaveBeenCalledWith('news', expect.objectContaining({ id: 5 }), undefined);
+    expect(await shadow(f.metrics)).toMatchObject({ 'song:unsupported': 2, 'song:agree': 0, 'song:disagree': 0 });
+  });
+
   it("counts a run the resolver does not model once, and compares nothing after it: an operator's Go, a clocked log", async () => {
     const f = setup();
     f.sequence().items = [
