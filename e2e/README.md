@@ -151,6 +151,22 @@ Not built, so not checked:
 - Last-frame hold.
 - Protection against reassigning a source that is routed to Program.
 
+## Source types (`sources-proof.mjs`, alcantara#51)
+
+What each source type can do on the local stack: whether it warms up and becomes a usable logical input.
+
+```bash
+docker compose up --build
+pnpm install
+pnpm --filter @gaulatti/alcantara-e2e browsers
+pnpm --filter @gaulatti/alcantara-e2e sources-proof
+```
+
+One JSON line per type: `pass`, `fail` or `not-built`. A caller and Alana's program feed identity are checked in a real
+call (Alana itself is not run). HLS, RTMP, WHIP and SRT are created in the registry and watched for
+`PROOF_WAIT_SECONDS` (20): nothing ingests them today, so they report `not-built`, as does MP4, which has no transport.
+The Sources page must say SRT is not available. It runs against a local stack only and removes what it creates.
+
 ## Program return proof (`return-proof-all.mjs`)
 
 A guest joins the real guest page in Chromium, WebKit and Firefox, then as a phone twice (`iphone`: WebKit with Playwright's iPhone 15 viewport, user agent and touch; `android`: Chromium with Pixel 7), one after another, and the level of the return that page plays is measured. `RETURN_RUNS=iphone,android` runs only those. `chromium-tcp` is Chromium with plain UDP forbidden to WebRTC, as behind an office or hotel Wi-Fi: it passes the same bar and also fails if the pair used was UDP. `chromium-relay` also allows only relayed paths (set on the page's connections by the harness, not by a product switch), as on a network that leaves only TCP 443: it must connect through a relay over TLS. It is not part of the default set. Until TURN over TLS is set up (`infra/README.md`) it fails with `no relay candidates offered`. Every run prints an `ice-path` line (candidate types, protocols and the server port, no addresses), and a run that cannot connect lists what the server offered. Nothing else is opened, so sound means the server's return router delivered it. It defaults to production and `modoitaliano.fm`.

@@ -164,4 +164,20 @@ describe('SourceRow', () => {
     );
     expect(screen.getByRole('button', { name: /preview/i })).toBeDisabled();
   });
+
+  it('says an SRT source is not available yet, and says it of no other transport', () => {
+    const row = (transport: string) => (
+      <table>
+        <tbody>
+          <SourceRow source={{ ...baseSource, transport }} isSelected={false} onToggleSelect={vi.fn()} />
+        </tbody>
+      </table>
+    );
+    const { rerender } = render(row('srt'));
+    expect(screen.getByText('SRT is not available yet')).toBeInTheDocument();
+    for (const transport of ['rtmp', 'whip', 'hls']) {
+      rerender(row(transport));
+      expect(screen.queryByText('SRT is not available yet')).not.toBeInTheDocument();
+    }
+  });
 });

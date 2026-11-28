@@ -15,7 +15,8 @@
     "touch": "node touch-regressions.mjs",
     "webrtc:matrix": "node webrtc-matrix.mjs",
     "browsers:all": "playwright install chromium webkit firefox",
-    "console-smoke": "node console-smoke.mjs"
+    "console-smoke": "node console-smoke.mjs",
+    "sources-proof": "node sources-proof.mjs"
   },
   "devDependencies": {
     "livekit-client": "2.21.0",

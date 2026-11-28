@@ -145,6 +145,10 @@ export function SourceRow({
         >
           {source.transport}
         </span>
+        {source.transport === 'srt' && (
+          // The registry stores an SRT source, but nothing can ingest it yet (gaulatti/alcantara#51).
+          <span className="mt-1 block normal-case text-amber-400">SRT is not available yet</span>
+        )}
       </td>
 
       {/* Lifecycle (All 8 distinctly formatted) */}
