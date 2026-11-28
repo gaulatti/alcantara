@@ -399,11 +399,17 @@ describe('PalazzoRadioTelemetryService coverage', () => {
           programState: { type: 'radio' },
         });
         await service.handleRadioSettingsChanged('a');
-        mockClients[0].status = {
+        const client = mockClients[0] as {
+          status: unknown;
+          options: {
+            callbacks: { onStatus: (id: string, status: unknown) => void };
+          };
+        };
+        client.status = {
           degraded: false,
           lastEventAt: '2026-10-02T10:00:00.000Z',
         };
-        mockClients[0].options.callbacks.onStatus('a', mockClients[0].status);
+        client.options.callbacks.onStatus('a', client.status);
         expect(metrics.recordStaleTelemetryPrograms).toHaveBeenLastCalledWith(
           0,
         );
