@@ -50,6 +50,7 @@ import type {
   FlightSequence,
 } from './flight.types';
 import { compareShadow, RUNDOWN_SHADOW_FIELDS, shadowObserves } from './flight-shadow';
+import { readProgramTeam } from '../tenancy/program-team';
 
 /** How a shadow observation treats the song: compared, not compared this time, or counted as unsupported. */
 type ShadowSong = 'compare' | 'skip' | 'unsupported';
@@ -362,12 +363,9 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     programId: string,
   ): Promise<PrismaService | null> {
     if (this.pompeii.teamId === 0) return this.prisma;
-    const program = await this.prisma.program.findUnique({
-      where: { programId },
-      select: { teamId: true },
-    });
-    if (program?.teamId && program.teamId > 0) {
-      return forTeam(this.prisma, program.teamId) as unknown as PrismaService;
+    const teamId = await readProgramTeam(this.prisma, programId);
+    if (teamId && teamId > 0) {
+      return forTeam(this.prisma, teamId) as unknown as PrismaService;
     }
     this.metrics.recordLogSongScopeRefusal(path);
     const key = `${path}|${programId}`;
