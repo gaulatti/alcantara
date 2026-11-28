@@ -18,7 +18,10 @@ export const LIVEKIT_SECRET_KEYS: readonly [
   'webrtcSessionSecret',
 ];
 
-export const OPTIONAL_WEBRTC_SECRET_KEYS: readonly ['webrtcRendererKey', 'webrtcFleetKey'];
+export const OPTIONAL_WEBRTC_SECRET_KEYS: readonly [
+  'webrtcRendererKey',
+  'webrtcFleetKey',
+];
 
 export const PROGRAM_KEYS_FIELD: 'webrtcProgramKeys';
 

@@ -113,10 +113,17 @@ describe('LiveKit configuration from the runtime secret', () => {
 
   it('takes the fleet key from the secret, and removes one left in the container when the secret has none', async () => {
     const fleet = 'f'.repeat(48);
-    const environment = production({ WEBRTC_FLEET_KEY: 'leftover-'.padEnd(40, 'x') });
-    await loadRuntimeSecrets(environment, secret({ ...REQUIRED, webrtcFleetKey: fleet }));
+    const environment = production({
+      WEBRTC_FLEET_KEY: 'leftover-'.padEnd(40, 'x'),
+    });
+    await loadRuntimeSecrets(
+      environment,
+      secret({ ...REQUIRED, webrtcFleetKey: fleet }),
+    );
     expect(environment.WEBRTC_FLEET_KEY).toBe(fleet);
-    const without = production({ WEBRTC_FLEET_KEY: 'leftover-'.padEnd(40, 'x') });
+    const without = production({
+      WEBRTC_FLEET_KEY: 'leftover-'.padEnd(40, 'x'),
+    });
     await loadRuntimeSecrets(without, secret(REQUIRED));
     expect(without).not.toHaveProperty('WEBRTC_FLEET_KEY');
   });
