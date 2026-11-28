@@ -27,3 +27,10 @@ The brand-literal ratchet invariant prevents new customer-branded code or files 
 ## Retired renderers (gaulatti/alcantara#382, #391)
 
 The Modo Italiano renderers (chyron, clock, bracket, podcast player and the Giorgia family) are `@modoitaliano/giorgia`'s. The local copies, their readers and the unused disclaimer were deleted, so `frontend/modoitaliano` is 22 and `frontend/giorgia` is 19. `frontend/app/scenes/packagedScenes.tsx` is the one place the app loads them, and `frontend/app/scenes/noLocalRenderers.test.ts` fails if a renderer named for the brand is added under `frontend/app/components/`.
+
+## Retired backend bracket naming
+
+The scene bracket's routes, service methods, draw timer and broadcast signals were the last `modoitaliano` names in
+`backend/src` (`scenes/scenes.controller.ts` and `scenes/scenes.service.ts`). They are generic now
+([Generic audience interaction and chart identity](generic-brand-fields.md)), so `backend/modoitaliano` is 0.
+

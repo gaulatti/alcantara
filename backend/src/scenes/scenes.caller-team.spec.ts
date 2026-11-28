@@ -11,9 +11,9 @@ describe('ScenesController team-scoped handlers', () => {
     'create',
     'update',
     'updateChyron',
-    'drawModoItalianoBracket',
-    'voteModoItalianoBracket',
-    'openModoItalianoBracketVoting',
+    'drawBracket',
+    'voteBracket',
+    'openBracketVoting',
     'remove',
   ] as const)('%s requires authorization', (name) => {
     const handler = ScenesController.prototype[name];

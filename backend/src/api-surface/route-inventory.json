@@ -1200,6 +1200,24 @@
     "permission": "alcantara:scene:manage"
   },
   {
+    "method": "POST",
+    "path": "/scenes/:id/bracket/draw",
+    "public": false,
+    "permission": "alcantara:scene:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/scenes/:id/bracket/vote",
+    "public": false,
+    "permission": "alcantara:scene:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/scenes/:id/bracket/voting/open",
+    "public": false,
+    "permission": "alcantara:scene:operate"
+  },
+  {
     "method": "PUT",
     "path": "/scenes/:id/chyron",
     "public": false,

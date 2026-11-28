@@ -15,7 +15,7 @@ import { forTeam } from '../tenancy/scoped-prisma';
 
 @Injectable()
 export class ScenesService {
-  private readonly modoItalianoBracketDraws = new Map<number, { timer: NodeJS.Timeout; drawId: number }>();
+  private readonly bracketDraws = new Map<number, { timer: NodeJS.Timeout; drawId: number }>();
   constructor(
     private prisma: PrismaService,
     private programService: ProgramService,
@@ -92,7 +92,7 @@ export class ScenesService {
     if (!existing) throw new BadRequestException('Scene not found');
     await this.validateExternalSourceReference(data.layoutId ?? existing.layoutId, data.externalSourceId === undefined ? existing.externalSourceId ?? undefined : data.externalSourceId ?? undefined, data.metadata, teamId);
 
-    this.cancelModoItalianoBracketDraw(id);
+    this.cancelBracketDraw(id);
     const scene = await this.db(teamId).scene.update({
       where: { id },
       data: updateData,
@@ -138,7 +138,7 @@ export class ScenesService {
     return scene;
   }
 
-  async drawModoItalianoBracket(id: number, data: { componentType?: string; seed?: number }, teamId = 0) {
+  async drawBracket(id: number, data: { componentType?: string; seed?: number }, teamId = 0) {
     const scene = await this.findOne(id, teamId);
     if (!scene) {
       throw new BadRequestException('Scene not found');
@@ -171,17 +171,9 @@ export class ScenesService {
     const seed = Number.isFinite(Number(data.seed)) ? Math.floor(Number(data.seed)) : now;
     const shuffledSongIds = this.seededShuffle(poolIds, seed);
     const durationSeconds = this.normalizeDrawDuration(bracket.drawDurationSeconds, bracket.drawSeed);
-    this.cancelModoItalianoBracketDraw(id);
+    this.cancelBracketDraw(id);
     const programIds = await this.programService.getProgramIdsByAssignedScene(id);
     for (const programId of programIds) {
-      this.programService.broadcastUpdate(programId, {
-        type: 'modoitaliano_bracket_draw_start',
-        sceneId: id,
-        componentType,
-        drawId: now,
-        durationSeconds,
-        songIds: shuffledSongIds,
-      });
       this.programService.broadcastUpdate(programId, {
         type: 'audience_interaction_draw_start',
         sceneId: id,
@@ -193,13 +185,13 @@ export class ScenesService {
     }
 
     const timer = setTimeout(() => {
-      void this.completeModoItalianoBracketDraw(id, componentType, now, shuffledSongIds[0], teamId);
+      void this.completeBracketDraw(id, componentType, now, shuffledSongIds[0], teamId);
     }, durationSeconds * 1000);
-    this.modoItalianoBracketDraws.set(id, { timer, drawId: now });
+    this.bracketDraws.set(id, { timer, drawId: now });
     return { drawId: now, durationSeconds, sceneId: id };
   }
 
-  async voteModoItalianoBracket(id: number, data: { componentType?: string; matchId?: number; voterId?: string; songId?: number | null }, teamId = 0) {
+  async voteBracket(id: number, data: { componentType?: string; matchId?: number; voterId?: string; songId?: number | null }, teamId = 0) {
     const matchId = Number(data.matchId);
     const voterId = typeof data.voterId === 'string' ? data.voterId.trim() : '';
     if (!Number.isInteger(matchId) || matchId < 1 || matchId > 15 || !voterId) throw new BadRequestException('Invalid vote');
@@ -234,38 +226,7 @@ export class ScenesService {
     return this.persistSceneMetadata(id, { ...metadata, [componentType]: nextBracket }, teamId);
   }
 
-  // Neutrally named entry points for callers outside this module (the MCP
-  // capabilities), so they need not carry the brand-bearing method names.
-  drawBracket(
-    id: number,
-    data: { componentType?: string; seed?: number },
-    teamId = 0,
-  ) {
-    return this.drawModoItalianoBracket(id, data, teamId);
-  }
-
-  voteBracket(
-    id: number,
-    data: {
-      componentType?: string;
-      matchId?: number;
-      voterId?: string;
-      songId?: number | null;
-    },
-    teamId = 0,
-  ) {
-    return this.voteModoItalianoBracket(id, data, teamId);
-  }
-
-  openBracketVoting(
-    id: number,
-    data: { componentType?: string; matchId?: number },
-    teamId = 0,
-  ) {
-    return this.openModoItalianoBracketVoting(id, data, teamId);
-  }
-
-  async openModoItalianoBracketVoting(id: number, data: { componentType?: string; matchId?: number }, teamId = 0) {
+  async openBracketVoting(id: number, data: { componentType?: string; matchId?: number }, teamId = 0) {
     const matchId = Number(data.matchId);
     if (!Number.isInteger(matchId) || matchId < 1 || matchId > 15) throw new BadRequestException('Invalid match');
     const scene = await this.findOne(id, teamId);
@@ -286,16 +247,16 @@ export class ScenesService {
     }, teamId);
   }
 
-  private async completeModoItalianoBracketDraw(
+  private async completeBracketDraw(
     sceneId: number,
     componentType: string,
     drawId: number,
     selectedSongId: number,
     teamId: number,
   ) {
-    const activeDraw = this.modoItalianoBracketDraws.get(sceneId);
+    const activeDraw = this.bracketDraws.get(sceneId);
     if (!activeDraw || activeDraw.drawId !== drawId) return;
-    this.modoItalianoBracketDraws.delete(sceneId);
+    this.bracketDraws.delete(sceneId);
     const scene = await this.findOne(sceneId, teamId);
     if (!scene) return;
     const metadata = this.parseMetadata(scene.metadata);
@@ -312,7 +273,6 @@ export class ScenesService {
     }, teamId);
     const programIds = await this.programService.getProgramIdsByAssignedScene(sceneId);
     for (const programId of programIds) {
-      this.programService.broadcastUpdate(programId, { type: 'modoitaliano_bracket_draw_end', sceneId, componentType, drawId });
       this.programService.broadcastUpdate(programId, {
         type: 'audience_interaction_draw_end',
         sceneId,
@@ -323,8 +283,8 @@ export class ScenesService {
   }
 
   // The requested component type when it declares audience interaction, else the bracket element of the scene's layout
-  // (settled by the scene's own state), else the legacy bracket key. An unrecognized request falls back as it always did,
-  // so existing callers keep working.
+  // (settled by the scene's own state), else the one key of the scene's state that names a bracket. A scene with none of
+  // these has no bracket, and the request is refused: no brand's key is assumed.
   private resolveBracketComponentType(
     requestedType: string | undefined,
     scene?: { layout?: { componentType?: string }; metadata?: unknown } | null,
@@ -335,7 +295,7 @@ export class ScenesService {
     if (fromLayout) return fromLayout;
     const fromState = bracketComponentFromState(stateKeys);
     if (fromState) return fromState;
-    return 'modoitaliano-bracket';
+    throw new BadRequestException('This scene has no bracket');
   }
 
   private isAudienceInteractionComponent(
@@ -349,11 +309,11 @@ export class ScenesService {
     );
   }
 
-  private cancelModoItalianoBracketDraw(sceneId: number) {
-    const activeDraw = this.modoItalianoBracketDraws.get(sceneId);
+  private cancelBracketDraw(sceneId: number) {
+    const activeDraw = this.bracketDraws.get(sceneId);
     if (!activeDraw) return;
     clearTimeout(activeDraw.timer);
-    this.modoItalianoBracketDraws.delete(sceneId);
+    this.bracketDraws.delete(sceneId);
   }
 
   private async persistSceneMetadata(id: number, metadata: Record<string, unknown>, teamId: number) {

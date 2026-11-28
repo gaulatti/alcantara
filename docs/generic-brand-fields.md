@@ -1,29 +1,35 @@
 # Generic Audience Interaction and Chart Identity
 
-Alcantara carries audience interaction and song chart data under generic names, next to the existing branded ones. This is live for every program: there is no setting to turn it on or off. The branded names stay, so existing clients keep working unchanged.
+Alcantara carries audience interaction and song chart data under generic names. This is live for every program: there is no setting to turn it on or off. Where a branded name still exists (the chart fields), it stays beside the generic one so existing clients keep working.
 
 ## Generic audience interaction brackets
+
+### Routes
+`POST /scenes/:id/bracket/draw`, `POST /scenes/:id/bracket/vote` and `POST /scenes/:id/bracket/voting/open` (permission
+`scene.operate`). The earlier branded paths (`/scenes/:id/modo-italiano-bracket/…`) answer exactly the same until every
+caller has moved to the generic ones; they are then removed. The MCP capabilities call the same service methods
+(`drawBracket`, `voteBracket`, `openBracketVoting`).
 
 ### Component support
 Bracket draws and votes run for the scene's audience-interaction component. The component type is chosen in this order:
 
 1. The requested `componentType`, when it is an audience-interaction component (its name contains `bracket` or `audience.interaction`, for example `harbor-light-bracket` or `poll.audience.interaction`).
 2. Otherwise the scene layout's `componentType`, when it is one.
-3. Otherwise `modoitaliano-bracket`, which is what every request used before. An unrecognized type still falls back to it instead of being refused.
+3. Otherwise the one key of the scene's metadata whose name contains `bracket`.
+
+A scene with none of these has no bracket, and the request is refused with `400 This scene has no bracket`, writing
+nothing. No brand's bracket key is assumed: the backend holds no renderer's name.
 
 The bracket state is read from and written to the scene metadata under that component type's key.
 
 ### Realtime broadcast signals
-During a bracket draw (`drawModoItalianoBracket`) the server broadcasts both the generic and the legacy events to every program the scene is assigned to:
+During a bracket draw the server broadcasts, to every program the scene is assigned to:
 
-- Generic:
-  - `audience_interaction_draw_start`, with `sceneId`, `componentType`, `drawId`, `durationSeconds` and the shuffled `songIds`.
-  - `audience_interaction_draw_end`, when the draw timer completes, alongside `scene_update`.
-- Legacy, unchanged:
-  - `modoitaliano_bracket_draw_start`
-  - `modoitaliano_bracket_draw_end`
+- `audience_interaction_draw_start`, with `sceneId`, `componentType`, `drawId`, `durationSeconds` and the shuffled `songIds`.
+- `audience_interaction_draw_end`, when the draw timer completes, alongside `scene_update`.
 
-Consumers can move to the generic events at their own pace.
+The branded `modoitaliano_bracket_draw_start` and `modoitaliano_bracket_draw_end` are no longer sent. No consumer read
+them: the program page listens to the generic events, and a program template can subscribe only to the generic signals.
 
 ## Song chart identity
 

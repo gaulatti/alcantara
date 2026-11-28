@@ -479,7 +479,7 @@ const ROWS: Row[] = [
       },
     ],
     rest: (c, a) =>
-      c.scenes.drawModoItalianoBracket(
+      c.scenes.drawBracket(
         '3',
         {
           componentType: a.component_type as string,
@@ -487,7 +487,7 @@ const ROWS: Row[] = [
         },
         SCENE_TEAM,
       ),
-    service: (f) => f.scenes.drawModoItalianoBracket,
+    service: (f) => f.scenes.drawBracket,
     confirm: ['3', scene.name],
   },
   {
@@ -505,7 +505,7 @@ const ROWS: Row[] = [
       },
     ],
     rest: (c, a) =>
-      c.scenes.voteModoItalianoBracket(
+      c.scenes.voteBracket(
         '3',
         {
           componentType: a.component_type as string,
@@ -515,14 +515,14 @@ const ROWS: Row[] = [
         },
         SCENE_TEAM,
       ),
-    service: (f) => f.scenes.voteModoItalianoBracket,
+    service: (f) => f.scenes.voteBracket,
     confirm: ['3', scene.name],
   },
   {
     name: 'scene_open_modo_italiano_bracket_voting',
     cases: [{ args: { scene_id: 3, match_id: 1 } }],
     rest: (c) =>
-      c.scenes.openModoItalianoBracketVoting(
+      c.scenes.openBracketVoting(
         '3',
         {
           componentType: undefined,
@@ -530,7 +530,7 @@ const ROWS: Row[] = [
         },
         SCENE_TEAM,
       ),
-    service: (f) => f.scenes.openModoItalianoBracketVoting,
+    service: (f) => f.scenes.openBracketVoting,
     confirm: ['3', scene.name],
   },
   {

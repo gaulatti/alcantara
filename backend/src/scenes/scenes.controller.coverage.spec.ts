@@ -10,9 +10,9 @@ describe('ScenesController', () => {
     create: jest.fn().mockResolvedValue('created'),
     update: jest.fn().mockResolvedValue('updated'),
     updateChyron: jest.fn().mockResolvedValue('chyron'),
-    drawModoItalianoBracket: jest.fn().mockResolvedValue('draw'),
-    voteModoItalianoBracket: jest.fn().mockResolvedValue('vote'),
-    openModoItalianoBracketVoting: jest.fn().mockResolvedValue('open'),
+    drawBracket: jest.fn().mockResolvedValue('draw'),
+    voteBracket: jest.fn().mockResolvedValue('vote'),
+    openBracketVoting: jest.fn().mockResolvedValue('open'),
     remove: jest.fn().mockResolvedValue('removed'),
   };
   const controller = new ScenesController(service as never);
@@ -41,9 +41,9 @@ describe('ScenesController', () => {
     ).resolves.toBe('chyron');
     expect(service.updateChyron).toHaveBeenCalledWith(6, 'hi', 7);
     await expect(
-      controller.drawModoItalianoBracket('7', { seed: 1 }, request),
+      controller.drawBracket('7', { seed: 1 }, request),
     ).resolves.toBe('draw');
-    expect(service.drawModoItalianoBracket).toHaveBeenCalledWith(
+    expect(service.drawBracket).toHaveBeenCalledWith(
       7,
       {
         seed: 1,
@@ -52,13 +52,13 @@ describe('ScenesController', () => {
     );
     const vote = { matchId: 1, voterId: 'v', songId: null };
     await expect(
-      controller.voteModoItalianoBracket('8', vote, request),
+      controller.voteBracket('8', vote, request),
     ).resolves.toBe('vote');
-    expect(service.voteModoItalianoBracket).toHaveBeenCalledWith(8, vote, 7);
+    expect(service.voteBracket).toHaveBeenCalledWith(8, vote, 7);
     await expect(
-      controller.openModoItalianoBracketVoting('9', { matchId: 2 }, request),
+      controller.openBracketVoting('9', { matchId: 2 }, request),
     ).resolves.toBe('open');
-    expect(service.openModoItalianoBracketVoting).toHaveBeenCalledWith(
+    expect(service.openBracketVoting).toHaveBeenCalledWith(
       9,
       {
         matchId: 2,

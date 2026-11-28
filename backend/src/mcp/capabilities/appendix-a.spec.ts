@@ -50,9 +50,9 @@ scenes	GET	/scenes/:id	scene.read	findOne	scene_find_one	R
 scenes	POST	/scenes	scene.manage	create	scene_create	W
 scenes	PUT	/scenes/:id	scene.manage	update	scene_update	W
 scenes	PUT	/scenes/:id/chyron	scene.operate	updateChyron	scene_update_chyron	A
-scenes	POST	/scenes/:id/modo-italiano-bracket/draw	scene.operate	drawModoItalianoBracket	scene_draw_modo_italiano_bracket	A
-scenes	POST	/scenes/:id/modo-italiano-bracket/vote	scene.operate	voteModoItalianoBracket	scene_vote_modo_italiano_bracket	A
-scenes	POST	/scenes/:id/modo-italiano-bracket/voting/open	scene.operate	openModoItalianoBracketVoting	scene_open_modo_italiano_bracket_voting	A
+scenes	POST	/scenes/:id/modo-italiano-bracket/draw	scene.operate	drawBracket	scene_draw_modo_italiano_bracket	A
+scenes	POST	/scenes/:id/modo-italiano-bracket/vote	scene.operate	voteBracket	scene_vote_modo_italiano_bracket	A
+scenes	POST	/scenes/:id/modo-italiano-bracket/voting/open	scene.operate	openBracketVoting	scene_open_modo_italiano_bracket_voting	A
 scenes	DELETE	/scenes/:id	scene.manage	remove	scene_remove	D
 layouts	GET	/layouts	layout.read	findAll	layout_find_all	R
 layouts	GET	/layouts/:id	layout.read	findOne	layout_find_one	R

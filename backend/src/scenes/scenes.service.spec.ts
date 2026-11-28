@@ -236,7 +236,7 @@ describe('ScenesService persisted scene and program events', () => {
         randomSongPoolIds: [1, 2, 3, 4, 4, '5', -1, null],
       }),
     );
-    const started = await f.service.drawModoItalianoBracket(7, { seed: 42 });
+    const started = await f.service.drawBracket(7, { seed: 42 });
     expect(started).toEqual({
       drawId: Date.now(),
       durationSeconds: 1,
@@ -244,7 +244,7 @@ describe('ScenesService persisted scene and program events', () => {
     });
     const start = f.programs.broadcastUpdate.mock.calls[0][1];
     expect(new Set(start.songIds)).toEqual(new Set([3, 4, 5]));
-    expect(start.type).toBe('modoitaliano_bracket_draw_start');
+    expect(start.type).toBe('audience_interaction_draw_start');
     await jest.advanceTimersByTimeAsync(1000);
     const saved = JSON.parse(f.current().metadata)['modoitaliano-giorgia-bracket'];
     expect(saved.matches[8]).toEqual({
@@ -257,7 +257,7 @@ describe('ScenesService persisted scene and program events', () => {
     expect(f.programs.broadcastUpdate).toHaveBeenCalledWith(
       'program-b',
       expect.objectContaining({
-        type: 'modoitaliano_bracket_draw_end',
+        type: 'audience_interaction_draw_end',
         drawId: started.drawId,
         sceneId: 7,
       }),
@@ -267,35 +267,48 @@ describe('ScenesService persisted scene and program events', () => {
   it('cancels an unfinished draw when the scene is edited', async () => {
     jest.useFakeTimers();
     const f = fixture(bracketMetadata({ drawDurationSeconds: 2 }));
-    await f.service.drawModoItalianoBracket(7, { seed: 1 });
+    await f.service.drawBracket(7, { seed: 1 });
     await f.service.update(7, { name: 'Edited during draw' });
     await jest.advanceTimersByTimeAsync(3000);
     expect(f.prisma.scene.update).toHaveBeenCalledTimes(1);
     expect(
       f.programs.broadcastUpdate.mock.calls.map((call) => call[1].type),
-    ).not.toContain('modoitaliano_bracket_draw_end');
+    ).not.toContain('audience_interaction_draw_end');
   });
 
   it('replaces a previous draw timer and uses the configured fallback duration', async () => {
     jest.useFakeTimers();
     const f = fixture(bracketMetadata({ drawDurationSeconds: 0, drawSeed: 2 }));
     expect(
-      (await f.service.drawModoItalianoBracket(7, { seed: NaN }))
+      (await f.service.drawBracket(7, { seed: NaN }))
         .durationSeconds,
     ).toBe(2);
     expect(
-      (await f.service.drawModoItalianoBracket(7, { seed: 4 })).durationSeconds,
+      (await f.service.drawBracket(7, { seed: 4 })).durationSeconds,
     ).toBe(2);
     await jest.advanceTimersByTimeAsync(2000);
     expect(f.prisma.scene.update).toHaveBeenCalledTimes(1);
   });
 
+  // A scene whose state names no bracket has none, and no brand's bracket key is assumed for it.
   it.each([null, 'invalid-json', '[]', 'null', '{}'])(
-    'rejects draw metadata without a quarterfinal contract: %p',
+    'refuses a draw on a scene with no bracket: %p',
     async (metadata) => {
       const f = fixture();
       f.current().metadata = metadata;
-      await expect(f.service.drawModoItalianoBracket(7, {})).rejects.toThrow(
+      await expect(f.service.drawBracket(7, {})).rejects.toThrow(
+        'This scene has no bracket',
+      );
+      expect(f.prisma.scene.update).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([{}, { startRound: 'final' }])(
+    'rejects a bracket without a quarterfinal contract: %p',
+    async (bracket) => {
+      const f = fixture();
+      f.current().metadata = JSON.stringify({ 'harbor-light-bracket': bracket });
+      await expect(f.service.drawBracket(7, {})).rejects.toThrow(
         'only available for quarterfinal',
       );
       expect(f.prisma.scene.update).not.toHaveBeenCalled();
@@ -304,7 +317,7 @@ describe('ScenesService persisted scene and program events', () => {
 
   it('rejects draws with an empty pool, a full bracket, or a missing scene', async () => {
     const f = fixture(bracketMetadata({ randomSongPoolIds: null }));
-    await expect(f.service.drawModoItalianoBracket(7, {})).rejects.toThrow(
+    await expect(f.service.drawBracket(7, {})).rejects.toThrow(
       'No available songs',
     );
     f.current().metadata = JSON.stringify(
@@ -312,11 +325,11 @@ describe('ScenesService persisted scene and program events', () => {
         matches: [9, 10, 11, 12].map((id) => ({ id, songAId: 1, songBId: 2 })),
       }),
     );
-    await expect(f.service.drawModoItalianoBracket(7, {})).rejects.toThrow(
+    await expect(f.service.drawBracket(7, {})).rejects.toThrow(
       'No available songs',
     );
     f.prisma.scene.findUnique.mockResolvedValueOnce(null);
-    await expect(f.service.drawModoItalianoBracket(7, {})).rejects.toThrow(
+    await expect(f.service.drawBracket(7, {})).rejects.toThrow(
       'Scene not found',
     );
   });
@@ -324,7 +337,7 @@ describe('ScenesService persisted scene and program events', () => {
   it('ignores a draw whose scene was removed before the timer completes', async () => {
     jest.useFakeTimers();
     const f = fixture(bracketMetadata({ drawDurationSeconds: 1 }));
-    await f.service.drawModoItalianoBracket(7, { seed: 1 });
+    await f.service.drawBracket(7, { seed: 1 });
     f.prisma.scene.findUnique.mockResolvedValueOnce(null);
     await jest.advanceTimersByTimeAsync(1000);
     expect(f.prisma.scene.update).not.toHaveBeenCalled();
@@ -334,7 +347,7 @@ describe('ScenesService persisted scene and program events', () => {
     const f = fixture(
       bracketMetadata({ votingWinnerId: 1, votingResultStartedAt: 123 }),
     );
-    await f.service.openModoItalianoBracketVoting(7, {
+    await f.service.openBracketVoting(7, {
       componentType: 'modoitaliano-giorgia-bracket',
       matchId: 9,
     });
@@ -352,10 +365,10 @@ describe('ScenesService persisted scene and program events', () => {
     async (matchId) => {
       const f = fixture(bracketMetadata());
       await expect(
-        f.service.openModoItalianoBracketVoting(7, { matchId }),
+        f.service.openBracketVoting(7, { matchId }),
       ).rejects.toBeInstanceOf(BadRequestException);
       await expect(
-        f.service.voteModoItalianoBracket(7, {
+        f.service.voteBracket(7, {
           matchId,
           voterId: 'a',
           songId: 1,
@@ -368,7 +381,7 @@ describe('ScenesService persisted scene and program events', () => {
   it('requires complete unresolved pairings before opening voting', async () => {
     const f = fixture(bracketMetadata());
     await expect(
-      f.service.openModoItalianoBracketVoting(7, { matchId: 1 }),
+      f.service.openBracketVoting(7, { matchId: 1 }),
     ).rejects.toThrow('not open for voting');
     f.current().metadata = JSON.stringify(
       bracketMetadata({
@@ -376,18 +389,18 @@ describe('ScenesService persisted scene and program events', () => {
       }),
     );
     await expect(
-      f.service.openModoItalianoBracketVoting(7, { matchId: 9 }),
+      f.service.openBracketVoting(7, { matchId: 9 }),
     ).rejects.toThrow('not open for voting');
     f.prisma.scene.findUnique.mockResolvedValueOnce(null);
     await expect(
-      f.service.openModoItalianoBracketVoting(7, { matchId: 9 }),
+      f.service.openBracketVoting(7, { matchId: 9 }),
     ).rejects.toThrow('Scene not found');
   });
 
   it('persists individual votes, requires a majority and advances the winning song to its actual next match', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-01-01T00:00:00Z'));
     const f = fixture(bracketMetadata());
-    await f.service.voteModoItalianoBracket(7, {
+    await f.service.voteBracket(7, {
       matchId: 9,
       voterId: ' a ',
       songId: 1,
@@ -395,7 +408,7 @@ describe('ScenesService persisted scene and program events', () => {
     let saved = JSON.parse(f.current().metadata)['modoitaliano-giorgia-bracket'];
     expect(saved.matchVotes['9']).toEqual({ a: 1 });
     expect(saved.votingWinnerId).toBeNull();
-    await f.service.voteModoItalianoBracket(7, {
+    await f.service.voteBracket(7, {
       componentType: 'modoitaliano-giorgia-bracket',
       matchId: 9,
       voterId: 'b',
@@ -410,7 +423,7 @@ describe('ScenesService persisted scene and program events', () => {
 
   it('allows withdrawing a vote without awarding a winner', async () => {
     const f = fixture(bracketMetadata({ matchVotes: { '9': { a: 1, b: 2 } } }));
-    await f.service.voteModoItalianoBracket(7, {
+    await f.service.voteBracket(7, {
       matchId: 9,
       voterId: 'a',
       songId: null,
@@ -433,7 +446,7 @@ describe('ScenesService persisted scene and program events', () => {
         ],
       }),
     );
-    await f.service.voteModoItalianoBracket(7, {
+    await f.service.voteBracket(7, {
       matchId: 15,
       voterId: 'a',
       songId: 2,
@@ -455,21 +468,21 @@ describe('ScenesService persisted scene and program events', () => {
       }),
     );
     await expect(
-      f.service.voteModoItalianoBracket(7, {
+      f.service.voteBracket(7, {
         matchId: 9,
         voterId: ' ',
         songId: 1,
       }),
     ).rejects.toThrow('Invalid vote');
     await expect(
-      f.service.voteModoItalianoBracket(7, {
+      f.service.voteBracket(7, {
         matchId: 9,
         voterId: 'missing',
         songId: 1,
       }),
     ).rejects.toThrow('Unknown voter');
     await expect(
-      f.service.voteModoItalianoBracket(7, {
+      f.service.voteBracket(7, {
         matchId: 9,
         voterId: 'a',
         songId: 99,
@@ -477,7 +490,7 @@ describe('ScenesService persisted scene and program events', () => {
     ).rejects.toThrow('Vote must be for a song');
     f.prisma.scene.findUnique.mockResolvedValueOnce(null);
     await expect(
-      f.service.voteModoItalianoBracket(7, {
+      f.service.voteBracket(7, {
         matchId: 9,
         voterId: 'a',
         songId: 1,

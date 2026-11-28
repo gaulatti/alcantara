@@ -75,23 +75,24 @@ export class ScenesController {
     );
   }
 
-  @Post(':id/modo-italiano-bracket/draw')
+  // The generic path is the contract; the earlier branded path answers the same until every caller has moved.
+  @Post([':id/bracket/draw', ':id/modo-italiano-bracket/draw'])
   @RequirePermission(ALCANTARA_PERMISSIONS.scene.operate)
-  async drawModoItalianoBracket(
+  async drawBracket(
     @Param('id') id: string,
     @Body() data: { componentType?: string; seed?: number },
     @Req() request: TeamRequest,
   ) {
-    return this.scenesService.drawModoItalianoBracket(
+    return this.scenesService.drawBracket(
       +id,
       data,
       callerTeam(request),
     );
   }
 
-  @Post(':id/modo-italiano-bracket/vote')
+  @Post([':id/bracket/vote', ':id/modo-italiano-bracket/vote'])
   @RequirePermission(ALCANTARA_PERMISSIONS.scene.operate)
-  async voteModoItalianoBracket(
+  async voteBracket(
     @Param('id') id: string,
     @Body()
     data: {
@@ -102,21 +103,21 @@ export class ScenesController {
     },
     @Req() request: TeamRequest,
   ) {
-    return this.scenesService.voteModoItalianoBracket(
+    return this.scenesService.voteBracket(
       +id,
       data,
       callerTeam(request),
     );
   }
 
-  @Post(':id/modo-italiano-bracket/voting/open')
+  @Post([':id/bracket/voting/open', ':id/modo-italiano-bracket/voting/open'])
   @RequirePermission(ALCANTARA_PERMISSIONS.scene.operate)
-  async openModoItalianoBracketVoting(
+  async openBracketVoting(
     @Param('id') id: string,
     @Body() data: { componentType?: string; matchId?: number },
     @Req() request: TeamRequest,
   ) {
-    return this.scenesService.openModoItalianoBracketVoting(
+    return this.scenesService.openBracketVoting(
       +id,
       data,
       callerTeam(request),

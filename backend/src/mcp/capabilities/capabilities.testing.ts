@@ -163,20 +163,6 @@ function sceneFakes(): Record<string, jest.Mock> {
       ),
     ]),
   );
-  // A neutral entry point (drawBracket, voteBracket, openBracketVoting) is a
-  // thin call to the method of the same verb that carries the long name; the
-  // fake does the same so both reach one mock.
-  for (const wrapper of ['drawBracket', 'voteBracket', 'openBracketVoting']) {
-    const target = names.find(
-      (name) =>
-        name !== wrapper &&
-        name.startsWith(wrapper.slice(0, 4)) &&
-        name.endsWith(wrapper.endsWith('Voting') ? 'Voting' : 'Bracket'),
-    )!;
-    fakes[wrapper] = jest.fn(
-      (...args: unknown[]) => fakes[target](...args) as unknown,
-    );
-  }
   return fakes;
 }
 

@@ -290,7 +290,7 @@ describe('ScenesService.update', () => {
         }),
         externalSourceId: null,
       });
-      await service.drawModoItalianoBracket(1, { seed: 3 });
+      await service.drawBracket(1, { seed: 3 });
       program.broadcastUpdate.mockClear();
       await service.update(1, { name: 'renamed' });
       program.broadcastUpdate.mockClear();
@@ -364,7 +364,7 @@ describe('ScenesService external source validation', () => {
   });
 });
 
-describe('ScenesService.drawModoItalianoBracket', () => {
+describe('ScenesService.drawBracket', () => {
   afterEach(() => jest.useRealTimers());
 
   const quarter = (extra: Record<string, unknown> = {}) => ({
@@ -376,7 +376,7 @@ describe('ScenesService.drawModoItalianoBracket', () => {
   it('rejects unknown scenes', async () => {
     const { service, prisma } = build();
     prisma.scene.findUnique.mockResolvedValue(null);
-    await expect(service.drawModoItalianoBracket(1, {})).rejects.toThrow(
+    await expect(service.drawBracket(1, {})).rejects.toThrow(
       'Scene not found',
     );
   });
@@ -386,17 +386,20 @@ describe('ScenesService.drawModoItalianoBracket', () => {
     for (const metadata of [
       JSON.stringify({ [TYPE]: { startRound: 'final' } }),
       JSON.stringify({ [TYPE]: 'not-an-object' }),
-      null,
-      'not json',
-      '[1]',
-      'null',
     ]) {
       prisma.scene.findUnique.mockResolvedValue({ id: 1, metadata });
       await expect(
-        service.drawModoItalianoBracket(1, { componentType: 'other' }),
+        service.drawBracket(1, { componentType: 'other' }),
       ).rejects.toThrow(
         'Bracket draw is only available for quarterfinal brackets',
       );
+    }
+    // A scene whose state names no bracket has none: no brand's bracket key is assumed for it.
+    for (const metadata of [null, 'not json', '[1]', 'null']) {
+      prisma.scene.findUnique.mockResolvedValue({ id: 1, metadata });
+      await expect(
+        service.drawBracket(1, { componentType: 'other' }),
+      ).rejects.toThrow('This scene has no bracket');
     }
   });
 
@@ -405,13 +408,13 @@ describe('ScenesService.drawModoItalianoBracket', () => {
     prisma.scene.findUnique.mockResolvedValue(
       sceneWith({ startRound: 'quarterfinals', randomSongPoolIds: 'none' }),
     );
-    await expect(service.drawModoItalianoBracket(1, {})).rejects.toThrow(
+    await expect(service.drawBracket(1, {})).rejects.toThrow(
       'No available songs or bracket slots remain for this draw',
     );
     prisma.scene.findUnique.mockResolvedValue(
       sceneWith(quarter({ randomSongPoolIds: [] })),
     );
-    await expect(service.drawModoItalianoBracket(1, {})).rejects.toThrow(
+    await expect(service.drawBracket(1, {})).rejects.toThrow(
       'No available songs or bracket slots remain for this draw',
     );
 
@@ -424,7 +427,7 @@ describe('ScenesService.drawModoItalianoBracket', () => {
     prisma.scene.findUnique.mockResolvedValue(
       sceneWith(quarter({ matches: full, randomSongPoolIds: [50] })),
     );
-    await expect(service.drawModoItalianoBracket(1, {})).rejects.toThrow(
+    await expect(service.drawBracket(1, {})).rejects.toThrow(
       'No available songs or bracket slots remain for this draw',
     );
 
@@ -433,7 +436,7 @@ describe('ScenesService.drawModoItalianoBracket', () => {
         quarter({ matches: [match(9, 10, null)], randomSongPoolIds: [10] }),
       ),
     );
-    await expect(service.drawModoItalianoBracket(1, {})).rejects.toThrow(
+    await expect(service.drawBracket(1, {})).rejects.toThrow(
       'No available songs or bracket slots remain for this draw',
     );
   });
@@ -450,7 +453,7 @@ describe('ScenesService.drawModoItalianoBracket', () => {
     prisma.scene.findUnique.mockResolvedValue(sceneWith(bracket));
     program.getProgramIdsByAssignedScene.mockResolvedValue(['p1', 'p2']);
 
-    const result = await service.drawModoItalianoBracket(1, {
+    const result = await service.drawBracket(1, {
       componentType: TYPE,
       seed: 7.9,
     });
@@ -459,23 +462,20 @@ describe('ScenesService.drawModoItalianoBracket', () => {
     expect(result).toEqual({ drawId: now, durationSeconds: 2, sceneId: 1 });
     const start = program.broadcastUpdate.mock.calls[0][1];
     expect(start).toMatchObject({
-      type: 'modoitaliano_bracket_draw_start',
+      type: 'audience_interaction_draw_start',
       sceneId: 1,
       componentType: TYPE,
       drawId: now,
       durationSeconds: 2,
     });
     expect([...start.songIds].sort()).toEqual([10, 11, 12]);
-    // Each of the two programs gets the legacy and the generic start signal.
-    expect(program.broadcastUpdate).toHaveBeenCalledTimes(4);
-    expect(program.broadcastUpdate.mock.calls[1][1]).toEqual({
-      ...start,
-      type: 'audience_interaction_draw_start',
-    });
+    // Each of the two programs gets the generic start signal, and no brand's.
+    expect(program.broadcastUpdate).toHaveBeenCalledTimes(2);
+    expect(program.broadcastUpdate.mock.calls[1][1]).toEqual(start);
 
     // the same seed yields the same order
     program.broadcastUpdate.mockClear();
-    await service.drawModoItalianoBracket(1, { seed: 7 });
+    await service.drawBracket(1, { seed: 7 });
     expect(program.broadcastUpdate.mock.calls[0][1].songIds).toEqual(
       start.songIds,
     );
@@ -491,7 +491,8 @@ describe('ScenesService.drawModoItalianoBracket', () => {
     });
     const types = program.broadcastUpdate.mock.calls.map((c) => c[1].type);
     expect(types).toContain('scene_update');
-    expect(types).toContain('modoitaliano_bracket_draw_end');
+    expect(types).toContain('audience_interaction_draw_end');
+    expect(types.some((type) => type.startsWith('modoitaliano'))).toBe(false);
   });
 
   it('falls back to the clock when the seed is not numeric and to default durations', async () => {
@@ -502,19 +503,19 @@ describe('ScenesService.drawModoItalianoBracket', () => {
       sceneWith(quarter({ drawSeed: 4.2 })),
     );
     await expect(
-      service.drawModoItalianoBracket(1, { seed: undefined }),
+      service.drawBracket(1, { seed: undefined }),
     ).resolves.toEqual({ drawId: 12345, durationSeconds: 4, sceneId: 1 });
 
     prisma.scene.findUnique.mockResolvedValue(
       sceneWith(quarter({ drawDurationSeconds: -1, drawSeed: 'nope' })),
     );
-    await expect(service.drawModoItalianoBracket(1, {})).resolves.toMatchObject(
+    await expect(service.drawBracket(1, {})).resolves.toMatchObject(
       { durationSeconds: 5 },
     );
     prisma.scene.findUnique.mockResolvedValue(
       sceneWith(quarter({ drawDurationSeconds: 'x', drawSeed: 0 })),
     );
-    await expect(service.drawModoItalianoBracket(1, {})).resolves.toMatchObject(
+    await expect(service.drawBracket(1, {})).resolves.toMatchObject(
       { durationSeconds: 5 },
     );
   });
@@ -526,9 +527,9 @@ describe('ScenesService.drawModoItalianoBracket', () => {
       sceneWith(quarter({ drawDurationSeconds: 3 })),
     );
     jest.setSystemTime(1000);
-    await service.drawModoItalianoBracket(1, { seed: 1 });
+    await service.drawBracket(1, { seed: 1 });
     jest.setSystemTime(1500);
-    await service.drawModoItalianoBracket(1, { seed: 1 });
+    await service.drawBracket(1, { seed: 1 });
     prisma.scene.update.mockClear();
     await jest.advanceTimersByTimeAsync(10_000);
     // only the second draw completes
@@ -540,12 +541,12 @@ describe('ScenesService draw completion guards', () => {
   const complete = (service: ScenesService, ...args: unknown[]) =>
     (
       service as unknown as {
-        completeModoItalianoBracketDraw: (...a: unknown[]) => Promise<void>;
+        completeBracketDraw: (...a: unknown[]) => Promise<void>;
       }
-    ).completeModoItalianoBracketDraw(...args);
+    ).completeBracketDraw(...args);
   const draws = (service: ScenesService) =>
-    (service as unknown as { modoItalianoBracketDraws: Map<number, unknown> })
-      .modoItalianoBracketDraws;
+    (service as unknown as { bracketDraws: Map<number, unknown> })
+      .bracketDraws;
 
   it('ignores completions without a matching active draw', async () => {
     const { service, prisma } = build();
@@ -593,7 +594,7 @@ describe('ScenesService draw completion guards', () => {
   });
 });
 
-describe('ScenesService.voteModoItalianoBracket', () => {
+describe('ScenesService.voteBracket', () => {
   const voters = [
     { id: 'a', name: 'A' },
     { id: 'b', name: 'B' },
@@ -601,8 +602,8 @@ describe('ScenesService.voteModoItalianoBracket', () => {
   ];
   const vote = (
     service: ScenesService,
-    data: Parameters<ScenesService['voteModoItalianoBracket']>[1],
-  ) => service.voteModoItalianoBracket(1, data);
+    data: Parameters<ScenesService['voteBracket']>[1],
+  ) => service.voteBracket(1, data);
 
   it('rejects malformed votes before reading the scene', async () => {
     const { service, prisma } = build();
@@ -641,7 +642,7 @@ describe('ScenesService.voteModoItalianoBracket', () => {
     }
     prisma.scene.findUnique.mockResolvedValue({ id: 1, metadata: null });
     await expect(vote(service, { matchId: 1, voterId: 'a' })).rejects.toThrow(
-      'Unknown voter',
+      'This scene has no bracket',
     );
   });
 
@@ -759,17 +760,17 @@ describe('ScenesService.voteModoItalianoBracket', () => {
   });
 });
 
-describe('ScenesService.openModoItalianoBracketVoting', () => {
+describe('ScenesService.openBracketVoting', () => {
   it('rejects invalid matches and unknown scenes', async () => {
     const { service, prisma } = build();
     for (const matchId of [0, 16, 2.5, Number.NaN, undefined]) {
       await expect(
-        service.openModoItalianoBracketVoting(1, { matchId }),
+        service.openBracketVoting(1, { matchId }),
       ).rejects.toThrow('Invalid match');
     }
     prisma.scene.findUnique.mockResolvedValue(null);
     await expect(
-      service.openModoItalianoBracketVoting(1, { matchId: 1 }),
+      service.openBracketVoting(1, { matchId: 1 }),
     ).rejects.toThrow('Scene not found');
   });
 
@@ -782,16 +783,16 @@ describe('ScenesService.openModoItalianoBracketVoting', () => {
     ]) {
       prisma.scene.findUnique.mockResolvedValue(sceneWith({ matches: [m] }));
       await expect(
-        service.openModoItalianoBracketVoting(1, { matchId: 1 }),
+        service.openBracketVoting(1, { matchId: 1 }),
       ).rejects.toThrow('This match is not open for voting');
     }
     prisma.scene.findUnique.mockResolvedValue({ id: 1, metadata: null });
     await expect(
-      service.openModoItalianoBracketVoting(1, { matchId: 3 }),
-    ).rejects.toThrow('This match is not open for voting');
+      service.openBracketVoting(1, { matchId: 3 }),
+    ).rejects.toThrow('This scene has no bracket');
     prisma.scene.findUnique.mockResolvedValue(sceneWith('scalar' as never));
     await expect(
-      service.openModoItalianoBracketVoting(1, {
+      service.openBracketVoting(1, {
         matchId: 3,
         componentType: 'x',
       }),
@@ -809,7 +810,7 @@ describe('ScenesService.openModoItalianoBracketVoting', () => {
       }),
     );
     program.getProgramIdsByAssignedScene.mockResolvedValue(['p']);
-    await service.openModoItalianoBracketVoting(1, { matchId: 1 });
+    await service.openBracketVoting(1, { matchId: 1 });
     expect(lastMetadata(prisma)[TYPE]).toMatchObject({
       activeVotingMatchId: 1,
       votingWinnerId: null,
@@ -838,12 +839,12 @@ describe('ScenesService bracket normalization', () => {
       }),
     );
     await expect(
-      service.openModoItalianoBracketVoting(1, { matchId: 3 }),
+      service.openBracketVoting(1, { matchId: 3 }),
     ).rejects.toThrow('This match is not open for voting');
     await expect(
-      service.openModoItalianoBracketVoting(1, { matchId: 4 }),
+      service.openBracketVoting(1, { matchId: 4 }),
     ).rejects.toThrow('This match is not open for voting');
-    await service.openModoItalianoBracketVoting(1, {
+    await service.openBracketVoting(1, {
       componentType: TYPE,
       matchId: 5,
     });
@@ -881,7 +882,7 @@ describe('ScenesService generic audience interaction bracket draws and voting', 
       layout: { componentType: GENERIC_TYPE },
     });
 
-    const drawPromise = service.drawModoItalianoBracket(1, {
+    const drawPromise = service.drawBracket(1, {
       componentType: GENERIC_TYPE,
       seed: 42,
     });
@@ -891,14 +892,6 @@ describe('ScenesService generic audience interaction bracket draws and voting', 
       durationSeconds: 1,
     });
 
-    expect(program.broadcastUpdate).toHaveBeenCalledWith('main', {
-      type: 'modoitaliano_bracket_draw_start',
-      sceneId: 1,
-      componentType: GENERIC_TYPE,
-      drawId: result.drawId,
-      durationSeconds: 1,
-      songIds: expect.any(Array),
-    });
     expect(program.broadcastUpdate).toHaveBeenCalledWith('main', {
       type: 'audience_interaction_draw_start',
       sceneId: 1,
@@ -910,12 +903,6 @@ describe('ScenesService generic audience interaction bracket draws and voting', 
 
     await jest.advanceTimersByTimeAsync(1000);
 
-    expect(program.broadcastUpdate).toHaveBeenCalledWith('main', {
-      type: 'modoitaliano_bracket_draw_end',
-      sceneId: 1,
-      componentType: GENERIC_TYPE,
-      drawId: result.drawId,
-    });
     expect(program.broadcastUpdate).toHaveBeenCalledWith('main', {
       type: 'audience_interaction_draw_end',
       sceneId: 1,
@@ -934,7 +921,7 @@ describe('ScenesService generic audience interaction bracket draws and voting', 
       layout: { componentType: 'unsupported-component' },
     });
 
-    await service.drawModoItalianoBracket(1, {
+    await service.drawBracket(1, {
       componentType: 'invalid-component',
       seed: 1,
     });
@@ -957,7 +944,7 @@ describe('ScenesService generic audience interaction bracket draws and voting', 
       layout: { componentType: GENERIC_TYPE },
     });
 
-    const result = await service.drawModoItalianoBracket(1, {});
+    const result = await service.drawBracket(1, {});
     expect(result.sceneId).toBe(1);
 
     prisma.scene.findUnique.mockResolvedValue({
@@ -966,7 +953,7 @@ describe('ScenesService generic audience interaction bracket draws and voting', 
       metadata: JSON.stringify({ [TYPE]: quarter() }),
       layout: { componentType: 'unknown' },
     });
-    const fallbackResult = await service.drawModoItalianoBracket(1, {});
+    const fallbackResult = await service.drawBracket(1, {});
     expect(fallbackResult.sceneId).toBe(1);
   });
 
@@ -985,14 +972,14 @@ describe('ScenesService generic audience interaction bracket draws and voting', 
       layout: { componentType: GENERIC_TYPE },
     });
 
-    await service.openModoItalianoBracketVoting(1, {
+    await service.openBracketVoting(1, {
       componentType: GENERIC_TYPE,
       matchId: 1,
     });
     const openMetadata = lastMetadata(prisma)[GENERIC_TYPE];
     expect(openMetadata.activeVotingMatchId).toBe(1);
 
-    await service.voteModoItalianoBracket(1, {
+    await service.voteBracket(1, {
       componentType: GENERIC_TYPE,
       matchId: 1,
       voterId: 'v1',
@@ -1014,7 +1001,7 @@ describe('ScenesService generic audience interaction bracket draws and voting', 
       }),
       layout: { componentType: 'poll.audience.interaction' },
     });
-    await service.openModoItalianoBracketVoting(1, {
+    await service.openBracketVoting(1, {
       componentType: 'poll.audience.interaction',
       matchId: 1,
     });
