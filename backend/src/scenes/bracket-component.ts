@@ -19,9 +19,14 @@ export function bracketComponentFromLayout(
   stateKeys: readonly string[] = [],
 ): string | null {
   if (typeof componentType !== 'string' || !componentType.trim()) return null;
-  const elements = componentType.split(',').map((element) => element.trim()).filter(Boolean);
+  const elements = componentType
+    .split(',')
+    .map((element) => element.trim())
+    .filter(Boolean);
   if (elements.length === 1) {
-    return namesBracket(elements[0]) || isAudienceInteraction(elements[0]) ? elements[0] : null;
+    return namesBracket(elements[0]) || isAudienceInteraction(elements[0])
+      ? elements[0]
+      : null;
   }
   const candidates = elements.filter(namesBracket);
   if (candidates.length === 1) return candidates[0];
@@ -33,7 +38,9 @@ export function bracketComponentFromLayout(
  * The bracket key of a scene's own state, when exactly one metadata key names a bracket. Used when the layout does not
  * settle the bracket element, so a scene that carries its bracket's state is drawn on that state.
  */
-export function bracketComponentFromState(stateKeys: readonly string[]): string | null {
+export function bracketComponentFromState(
+  stateKeys: readonly string[],
+): string | null {
   const keys = stateKeys.filter(namesBracket);
   return keys.length === 1 ? keys[0] : null;
 }

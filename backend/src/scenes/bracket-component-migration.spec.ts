@@ -3,12 +3,21 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const migration = require('../../scripts/migrate-bracket-component.cjs');
 
-const layout = { id: 2236, name: 'MI-Mundial', componentType: 'modoitaliano-bracket' };
-const scene = (id: number, metadata: Record<string, unknown>) => ({ id, metadata: JSON.stringify(metadata) });
+const layout = {
+  id: 2236,
+  name: 'MI-Mundial',
+  componentType: 'modoitaliano-bracket',
+};
+const scene = (id: number, metadata: Record<string, unknown>) => ({
+  id,
+  metadata: JSON.stringify(metadata),
+});
 
 // The real value of layout 2236 on production (dry run, 23:50 UTC): componentType is a comma-separated list.
-const REAL_LIST = 'modoitaliano-giorgia-clock,tournament-bracket,modoitaliano-bracket,slideshow';
-const REAL_LIST_MIGRATED = 'modoitaliano-giorgia-clock,tournament-bracket,modoitaliano-giorgia-bracket,slideshow';
+const REAL_LIST =
+  'modoitaliano-giorgia-clock,tournament-bracket,modoitaliano-bracket,slideshow';
+const REAL_LIST_MIGRATED =
+  'modoitaliano-giorgia-clock,tournament-bracket,modoitaliano-giorgia-bracket,slideshow';
 
 describe('bracket component migration', () => {
   it('replaces only the exact bracket element of the real comma-separated list, keeping order and the other elements', () => {
@@ -18,45 +27,107 @@ describe('bracket component migration', () => {
       scenes: [scene(74, { 'modoitaliano-bracket': { matches: [] } })],
     });
     expect(plan.refused).toBeUndefined();
-    expect(plan.layoutChange).toEqual({ componentTypeBefore: REAL_LIST, componentTypeAfter: REAL_LIST_MIGRATED });
+    expect(plan.layoutChange).toEqual({
+      componentTypeBefore: REAL_LIST,
+      componentTypeAfter: REAL_LIST_MIGRATED,
+    });
   });
 
   it('reverts the real list back to the legacy element at the same position', () => {
     const plan = migration.planBracketMigration({
       direction: 'revert',
-      layout: { id: 2236, name: 'MI-Mundial', componentType: REAL_LIST_MIGRATED },
+      layout: {
+        id: 2236,
+        name: 'MI-Mundial',
+        componentType: REAL_LIST_MIGRATED,
+      },
       scenes: [scene(74, { 'modoitaliano-giorgia-bracket': { matches: [] } })],
     });
-    expect(plan.layoutChange).toEqual({ componentTypeBefore: REAL_LIST_MIGRATED, componentTypeAfter: REAL_LIST });
+    expect(plan.layoutChange).toEqual({
+      componentTypeBefore: REAL_LIST_MIGRATED,
+      componentTypeAfter: REAL_LIST,
+    });
   });
 
   it('refuses a list with no bracket element, one with the bracket twice, and a lookalike that is only a substring', () => {
-    const absent = migration.planBracketMigration({ direction: 'apply', layout: { id: 2236, name: 'MI-Mundial', componentType: 'modoitaliano-giorgia-clock,slideshow' }, scenes: [] });
+    const absent = migration.planBracketMigration({
+      direction: 'apply',
+      layout: {
+        id: 2236,
+        name: 'MI-Mundial',
+        componentType: 'modoitaliano-giorgia-clock,slideshow',
+      },
+      scenes: [],
+    });
     expect(absent.refused).toMatch(/no modoitaliano-bracket element/);
-    const twice = migration.planBracketMigration({ direction: 'apply', layout: { id: 2236, name: 'MI-Mundial', componentType: 'modoitaliano-bracket,x,modoitaliano-bracket' }, scenes: [] });
+    const twice = migration.planBracketMigration({
+      direction: 'apply',
+      layout: {
+        id: 2236,
+        name: 'MI-Mundial',
+        componentType: 'modoitaliano-bracket,x,modoitaliano-bracket',
+      },
+      scenes: [],
+    });
     expect(twice.refused).toMatch(/appears 2 times/);
-    const lookalike = migration.planBracketMigration({ direction: 'apply', layout: { id: 2236, name: 'MI-Mundial', componentType: 'my-modoitaliano-bracket-v2,slideshow' }, scenes: [] });
+    const lookalike = migration.planBracketMigration({
+      direction: 'apply',
+      layout: {
+        id: 2236,
+        name: 'MI-Mundial',
+        componentType: 'my-modoitaliano-bracket-v2,slideshow',
+      },
+      scenes: [],
+    });
     expect(lookalike.refused).toMatch(/no modoitaliano-bracket element/);
   });
 
   it('treats a list already on the Giorgia element as applied', () => {
-    const plan = migration.planBracketMigration({ direction: 'apply', layout: { id: 2236, name: 'MI-Mundial', componentType: REAL_LIST_MIGRATED }, scenes: [] });
+    const plan = migration.planBracketMigration({
+      direction: 'apply',
+      layout: {
+        id: 2236,
+        name: 'MI-Mundial',
+        componentType: REAL_LIST_MIGRATED,
+      },
+      scenes: [],
+    });
     expect(plan.alreadyApplied).toBe(true);
   });
 
   it('refuses to move the legacy element onto a list that already has the Giorgia element', () => {
-    expect(migration.replaceListElement('a,modoitaliano-giorgia-bracket,modoitaliano-bracket', 'modoitaliano-bracket', 'modoitaliano-giorgia-bracket').refused).toMatch(/already in the list/);
+    expect(
+      migration.replaceListElement(
+        'a,modoitaliano-giorgia-bracket,modoitaliano-bracket',
+        'modoitaliano-bracket',
+        'modoitaliano-giorgia-bracket',
+      ).refused,
+    ).toMatch(/already in the list/);
   });
   it('moves the layout and the scene key to the Giorgia id, keeping the other keys in order', () => {
     const plan = migration.planBracketMigration({
       direction: 'apply',
       layout,
-      scenes: [scene(74, { 'modoitaliano-bracket': { matches: [] }, 'modoitaliano-giorgia-clock': { show: true } })],
+      scenes: [
+        scene(74, {
+          'modoitaliano-bracket': { matches: [] },
+          'modoitaliano-giorgia-clock': { show: true },
+        }),
+      ],
     });
-    expect(plan.layoutChange).toEqual({ componentTypeBefore: 'modoitaliano-bracket', componentTypeAfter: 'modoitaliano-giorgia-bracket' });
+    expect(plan.layoutChange).toEqual({
+      componentTypeBefore: 'modoitaliano-bracket',
+      componentTypeAfter: 'modoitaliano-giorgia-bracket',
+    });
     expect(plan.sceneChanges).toHaveLength(1);
-    expect(plan.sceneChanges[0].keysBefore).toEqual(['modoitaliano-bracket', 'modoitaliano-giorgia-clock']);
-    expect(plan.sceneChanges[0].keysAfter).toEqual(['modoitaliano-giorgia-bracket', 'modoitaliano-giorgia-clock']);
+    expect(plan.sceneChanges[0].keysBefore).toEqual([
+      'modoitaliano-bracket',
+      'modoitaliano-giorgia-clock',
+    ]);
+    expect(plan.sceneChanges[0].keysAfter).toEqual([
+      'modoitaliano-giorgia-bracket',
+      'modoitaliano-giorgia-clock',
+    ]);
     expect(JSON.parse(plan.sceneChanges[0].metadataAfter)).toEqual({
       'modoitaliano-giorgia-bracket': { matches: [] },
       'modoitaliano-giorgia-clock': { show: true },
@@ -74,8 +145,13 @@ describe('bracket component migration', () => {
       layout: { ...layout, componentType: 'modoitaliano-giorgia-bracket' },
       scenes: [scene(74, JSON.parse(applied.sceneChanges[0].metadataAfter))],
     });
-    expect(reverted.layoutChange).toEqual({ componentTypeBefore: 'modoitaliano-giorgia-bracket', componentTypeAfter: 'modoitaliano-bracket' });
-    expect(JSON.parse(reverted.sceneChanges[0].metadataAfter)).toEqual({ 'modoitaliano-bracket': { matches: [1] } });
+    expect(reverted.layoutChange).toEqual({
+      componentTypeBefore: 'modoitaliano-giorgia-bracket',
+      componentTypeAfter: 'modoitaliano-bracket',
+    });
+    expect(JSON.parse(reverted.sceneChanges[0].metadataAfter)).toEqual({
+      'modoitaliano-bracket': { matches: [1] },
+    });
   });
 
   it('does nothing when the layout is already on the target id', () => {
@@ -89,14 +165,33 @@ describe('bracket component migration', () => {
   });
 
   it('refuses a layout it does not name, a componentType it does not expect, and a scene that already has the target key', () => {
-    expect(migration.planBracketMigration({ direction: 'apply', layout: { ...layout, name: 'Other' }, scenes: [] }).refused).toMatch(/not MI-Mundial/);
-    expect(migration.planBracketMigration({ direction: 'apply', layout: { ...layout, componentType: 'modoitaliano-chyron' }, scenes: [] }).refused).toMatch(/no modoitaliano-bracket element/);
+    expect(
+      migration.planBracketMigration({
+        direction: 'apply',
+        layout: { ...layout, name: 'Other' },
+        scenes: [],
+      }).refused,
+    ).toMatch(/not MI-Mundial/);
+    expect(
+      migration.planBracketMigration({
+        direction: 'apply',
+        layout: { ...layout, componentType: 'modoitaliano-chyron' },
+        scenes: [],
+      }).refused,
+    ).toMatch(/no modoitaliano-bracket element/);
     const clash = migration.planBracketMigration({
       direction: 'apply',
       layout,
-      scenes: [scene(74, { 'modoitaliano-bracket': {}, 'modoitaliano-giorgia-bracket': {} })],
+      scenes: [
+        scene(74, {
+          'modoitaliano-bracket': {},
+          'modoitaliano-giorgia-bracket': {},
+        }),
+      ],
     });
-    expect(clash.refused).toMatch(/already has a modoitaliano-giorgia-bracket key/);
+    expect(clash.refused).toMatch(
+      /already has a modoitaliano-giorgia-bracket key/,
+    );
     expect(clash.layoutChange).toBeUndefined();
   });
 
@@ -110,9 +205,17 @@ describe('bracket component migration', () => {
   });
 
   it('refuses a database host that is not local unless told otherwise', () => {
-    expect(migration.hostAllowed('postgres://u:p@localhost:5432/db', false)).toBe(true);
-    expect(migration.hostAllowed('postgres://u:p@postgres:5432/db', false)).toBe(true);
-    expect(migration.hostAllowed('postgres://u:p@db.example.com:5432/db', false)).toBe(false);
-    expect(migration.hostAllowed('postgres://u:p@db.example.com:5432/db', true)).toBe(true);
+    expect(
+      migration.hostAllowed('postgres://u:p@localhost:5432/db', false),
+    ).toBe(true);
+    expect(
+      migration.hostAllowed('postgres://u:p@postgres:5432/db', false),
+    ).toBe(true);
+    expect(
+      migration.hostAllowed('postgres://u:p@db.example.com:5432/db', false),
+    ).toBe(false);
+    expect(
+      migration.hostAllowed('postgres://u:p@db.example.com:5432/db', true),
+    ).toBe(true);
   });
 });

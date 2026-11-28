@@ -9,13 +9,19 @@ import {
   summarizeChange,
 } from '../operator-change/operator-change-recorder';
 import { PrismaService } from '../prisma.service';
-import { bracketComponentFromLayout, bracketComponentFromState } from './bracket-component';
+import {
+  bracketComponentFromLayout,
+  bracketComponentFromState,
+} from './bracket-component';
 import { ProgramService } from '../program/program.service';
 import { forTeam } from '../tenancy/scoped-prisma';
 
 @Injectable()
 export class ScenesService {
-  private readonly bracketDraws = new Map<number, { timer: NodeJS.Timeout; drawId: number }>();
+  private readonly bracketDraws = new Map<
+    number,
+    { timer: NodeJS.Timeout; drawId: number }
+  >();
   constructor(
     private prisma: PrismaService,
     private programService: ProgramService,
@@ -48,14 +54,22 @@ export class ScenesService {
     });
   }
 
-  async create(data: {
-    name: string;
-    layoutId: number;
-    chyronText?: string;
-    metadata?: any;
-    externalSourceId?: string;
-  }, teamId = 0) {
-    await this.validateExternalSourceReference(data.layoutId, data.externalSourceId, data.metadata, teamId);
+  async create(
+    data: {
+      name: string;
+      layoutId: number;
+      chyronText?: string;
+      metadata?: any;
+      externalSourceId?: string;
+    },
+    teamId = 0,
+  ) {
+    await this.validateExternalSourceReference(
+      data.layoutId,
+      data.externalSourceId,
+      data.metadata,
+      teamId,
+    );
     const scene = await this.db(teamId).scene.create({
       data: {
         name: data.name,
@@ -87,10 +101,18 @@ export class ScenesService {
     if (data.chyronText !== undefined) updateData.chyronText = data.chyronText;
     if (data.metadata !== undefined)
       updateData.metadata = JSON.stringify(data.metadata);
-    if (data.externalSourceId !== undefined) updateData.externalSourceId = data.externalSourceId;
+    if (data.externalSourceId !== undefined)
+      updateData.externalSourceId = data.externalSourceId;
     const existing = await this.db(teamId).scene.findUnique({ where: { id } });
     if (!existing) throw new BadRequestException('Scene not found');
-    await this.validateExternalSourceReference(data.layoutId ?? existing.layoutId, data.externalSourceId === undefined ? existing.externalSourceId ?? undefined : data.externalSourceId ?? undefined, data.metadata, teamId);
+    await this.validateExternalSourceReference(
+      data.layoutId ?? existing.layoutId,
+      data.externalSourceId === undefined
+        ? (existing.externalSourceId ?? undefined)
+        : (data.externalSourceId ?? undefined),
+      data.metadata,
+      teamId,
+    );
 
     this.cancelBracketDraw(id);
     const scene = await this.db(teamId).scene.update({
@@ -138,17 +160,29 @@ export class ScenesService {
     return scene;
   }
 
-  async drawBracket(id: number, data: { componentType?: string; seed?: number }, teamId = 0) {
+  async drawBracket(
+    id: number,
+    data: { componentType?: string; seed?: number },
+    teamId = 0,
+  ) {
     const scene = await this.findOne(id, teamId);
     if (!scene) {
       throw new BadRequestException('Scene not found');
     }
-    const componentType = this.resolveBracketComponentType(data.componentType, scene);
+    const componentType = this.resolveBracketComponentType(
+      data.componentType,
+      scene,
+    );
 
     const metadata = this.parseMetadata(scene.metadata);
-    const bracket = metadata[componentType] && typeof metadata[componentType] === 'object' ? metadata[componentType] as Record<string, unknown> : {};
+    const bracket =
+      metadata[componentType] && typeof metadata[componentType] === 'object'
+        ? (metadata[componentType] as Record<string, unknown>)
+        : {};
     if (bracket.startRound !== 'quarterfinals') {
-      throw new BadRequestException('Bracket draw is only available for quarterfinal brackets');
+      throw new BadRequestException(
+        'Bracket draw is only available for quarterfinal brackets',
+      );
     }
 
     const matches = this.normalizeBracketMatches(bracket.matches);
@@ -161,18 +195,30 @@ export class ScenesService {
       const songId = matches[matchId - 1][field];
       if (songId !== null) usedSongIds.add(songId);
     });
-    const nextSlot = openingSlots.find(({ matchId, field }) => matches[matchId - 1][field] === null);
-    const poolIds = this.normalizeSongIds(bracket.randomSongPoolIds).filter((songId) => !usedSongIds.has(songId));
+    const nextSlot = openingSlots.find(
+      ({ matchId, field }) => matches[matchId - 1][field] === null,
+    );
+    const poolIds = this.normalizeSongIds(bracket.randomSongPoolIds).filter(
+      (songId) => !usedSongIds.has(songId),
+    );
     if (!nextSlot || poolIds.length === 0) {
-      throw new BadRequestException('No available songs or bracket slots remain for this draw');
+      throw new BadRequestException(
+        'No available songs or bracket slots remain for this draw',
+      );
     }
 
     const now = Date.now();
-    const seed = Number.isFinite(Number(data.seed)) ? Math.floor(Number(data.seed)) : now;
+    const seed = Number.isFinite(Number(data.seed))
+      ? Math.floor(Number(data.seed))
+      : now;
     const shuffledSongIds = this.seededShuffle(poolIds, seed);
-    const durationSeconds = this.normalizeDrawDuration(bracket.drawDurationSeconds, bracket.drawSeed);
+    const durationSeconds = this.normalizeDrawDuration(
+      bracket.drawDurationSeconds,
+      bracket.drawSeed,
+    );
     this.cancelBracketDraw(id);
-    const programIds = await this.programService.getProgramIdsByAssignedScene(id);
+    const programIds =
+      await this.programService.getProgramIdsByAssignedScene(id);
     for (const programId of programIds) {
       // The program page still reads the earlier, branded signal: it goes once that page reads the generic one.
       this.programService.broadcastUpdate(programId, {
@@ -194,66 +240,166 @@ export class ScenesService {
     }
 
     const timer = setTimeout(() => {
-      void this.completeBracketDraw(id, componentType, now, shuffledSongIds[0], teamId);
+      void this.completeBracketDraw(
+        id,
+        componentType,
+        now,
+        shuffledSongIds[0],
+        teamId,
+      );
     }, durationSeconds * 1000);
     this.bracketDraws.set(id, { timer, drawId: now });
     return { drawId: now, durationSeconds, sceneId: id };
   }
 
-  async voteBracket(id: number, data: { componentType?: string; matchId?: number; voterId?: string; songId?: number | null }, teamId = 0) {
+  async voteBracket(
+    id: number,
+    data: {
+      componentType?: string;
+      matchId?: number;
+      voterId?: string;
+      songId?: number | null;
+    },
+    teamId = 0,
+  ) {
     const matchId = Number(data.matchId);
     const voterId = typeof data.voterId === 'string' ? data.voterId.trim() : '';
-    if (!Number.isInteger(matchId) || matchId < 1 || matchId > 15 || !voterId) throw new BadRequestException('Invalid vote');
+    if (!Number.isInteger(matchId) || matchId < 1 || matchId > 15 || !voterId)
+      throw new BadRequestException('Invalid vote');
     const scene = await this.findOne(id, teamId);
     if (!scene) throw new BadRequestException('Scene not found');
-    const componentType = this.resolveBracketComponentType(data.componentType, scene);
+    const componentType = this.resolveBracketComponentType(
+      data.componentType,
+      scene,
+    );
     const metadata = this.parseMetadata(scene.metadata);
-    const bracket = metadata[componentType] && typeof metadata[componentType] === 'object' ? metadata[componentType] as Record<string, unknown> : {};
-    const voters = Array.isArray(bracket.voters) ? bracket.voters.filter((voter): voter is { id: string; name: string } => Boolean(voter && typeof voter === 'object' && typeof (voter as any).id === 'string' && typeof (voter as any).name === 'string')) : [];
-    if (!voters.some((voter) => voter.id === voterId)) throw new BadRequestException('Unknown voter');
+    const bracket =
+      metadata[componentType] && typeof metadata[componentType] === 'object'
+        ? (metadata[componentType] as Record<string, unknown>)
+        : {};
+    const voters = Array.isArray(bracket.voters)
+      ? bracket.voters.filter((voter): voter is { id: string; name: string } =>
+          Boolean(
+            voter &&
+            typeof voter === 'object' &&
+            typeof (voter as any).id === 'string' &&
+            typeof (voter as any).name === 'string',
+          ),
+        )
+      : [];
+    if (!voters.some((voter) => voter.id === voterId))
+      throw new BadRequestException('Unknown voter');
     const matches = this.normalizeBracketMatches(bracket.matches);
     const match = matches[matchId - 1];
     const songId = data.songId === null ? null : Number(data.songId);
-    if (songId !== null && songId !== match.songAId && songId !== match.songBId) throw new BadRequestException('Vote must be for a song in this match');
-    const matchVotes = bracket.matchVotes && typeof bracket.matchVotes === 'object' ? { ...(bracket.matchVotes as Record<string, Record<string, number | null>>) } : {};
-    matchVotes[String(matchId)] = { ...(matchVotes[String(matchId)] ?? {}), [voterId]: songId };
+    if (songId !== null && songId !== match.songAId && songId !== match.songBId)
+      throw new BadRequestException('Vote must be for a song in this match');
+    const matchVotes =
+      bracket.matchVotes && typeof bracket.matchVotes === 'object'
+        ? {
+            ...(bracket.matchVotes as Record<
+              string,
+              Record<string, number | null>
+            >),
+          }
+        : {};
+    matchVotes[String(matchId)] = {
+      ...(matchVotes[String(matchId)] ?? {}),
+      [voterId]: songId,
+    };
     const requiredVotes = Math.floor(voters.length / 2) + 1;
     const counts = voters.reduce<Record<number, number>>((result, voter) => {
       const vote = matchVotes[String(matchId)]?.[voter.id];
-      if (typeof vote === 'number' && (vote === match.songAId || vote === match.songBId)) result[vote] = (result[vote] ?? 0) + 1;
+      if (
+        typeof vote === 'number' &&
+        (vote === match.songAId || vote === match.songBId)
+      )
+        result[vote] = (result[vote] ?? 0) + 1;
       return result;
     }, {});
-    const winnerId = [match.songAId, match.songBId].find((candidate) => candidate !== null && (counts[candidate] ?? 0) >= requiredVotes) ?? null;
-    const nextBracket: Record<string, unknown> = { ...bracket, matchVotes, activeVotingMatchId: matchId, votingWinnerId: null, votingResultStartedAt: null, matches };
+    const winnerId =
+      [match.songAId, match.songBId].find(
+        (candidate) =>
+          candidate !== null && (counts[candidate] ?? 0) >= requiredVotes,
+      ) ?? null;
+    const nextBracket: Record<string, unknown> = {
+      ...bracket,
+      matchVotes,
+      activeVotingMatchId: matchId,
+      votingWinnerId: null,
+      votingResultStartedAt: null,
+      matches,
+    };
     if (winnerId !== null) {
       match.winnerId = winnerId;
-      const target = ({ 1: [9, 'songAId'], 2: [9, 'songBId'], 3: [10, 'songAId'], 4: [10, 'songBId'], 5: [11, 'songAId'], 6: [11, 'songBId'], 7: [12, 'songAId'], 8: [12, 'songBId'], 9: [13, 'songAId'], 10: [13, 'songBId'], 11: [14, 'songAId'], 12: [14, 'songBId'], 13: [15, 'songAId'], 14: [15, 'songBId'] } as Record<number, [number, 'songAId' | 'songBId']>)[matchId];
+      const target = (
+        {
+          1: [9, 'songAId'],
+          2: [9, 'songBId'],
+          3: [10, 'songAId'],
+          4: [10, 'songBId'],
+          5: [11, 'songAId'],
+          6: [11, 'songBId'],
+          7: [12, 'songAId'],
+          8: [12, 'songBId'],
+          9: [13, 'songAId'],
+          10: [13, 'songBId'],
+          11: [14, 'songAId'],
+          12: [14, 'songBId'],
+          13: [15, 'songAId'],
+          14: [15, 'songBId'],
+        } as Record<number, [number, 'songAId' | 'songBId']>
+      )[matchId];
       if (target) matches[target[0] - 1][target[1]] = winnerId;
       nextBracket.votingWinnerId = winnerId;
       nextBracket.votingResultStartedAt = Date.now();
     }
-    return this.persistSceneMetadata(id, { ...metadata, [componentType]: nextBracket }, teamId);
+    return this.persistSceneMetadata(
+      id,
+      { ...metadata, [componentType]: nextBracket },
+      teamId,
+    );
   }
 
-  async openBracketVoting(id: number, data: { componentType?: string; matchId?: number }, teamId = 0) {
+  async openBracketVoting(
+    id: number,
+    data: { componentType?: string; matchId?: number },
+    teamId = 0,
+  ) {
     const matchId = Number(data.matchId);
-    if (!Number.isInteger(matchId) || matchId < 1 || matchId > 15) throw new BadRequestException('Invalid match');
+    if (!Number.isInteger(matchId) || matchId < 1 || matchId > 15)
+      throw new BadRequestException('Invalid match');
     const scene = await this.findOne(id, teamId);
     if (!scene) throw new BadRequestException('Scene not found');
-    const componentType = this.resolveBracketComponentType(data.componentType, scene);
+    const componentType = this.resolveBracketComponentType(
+      data.componentType,
+      scene,
+    );
     const metadata = this.parseMetadata(scene.metadata);
-    const bracket = metadata[componentType] && typeof metadata[componentType] === 'object' ? metadata[componentType] as Record<string, unknown> : {};
+    const bracket =
+      metadata[componentType] && typeof metadata[componentType] === 'object'
+        ? (metadata[componentType] as Record<string, unknown>)
+        : {};
     const match = this.normalizeBracketMatches(bracket.matches)[matchId - 1];
-    if (match.songAId === null || match.songBId === null || match.winnerId !== null) throw new BadRequestException('This match is not open for voting');
-    return this.persistSceneMetadata(id, {
-      ...metadata,
-      [componentType]: {
-        ...bracket,
-        activeVotingMatchId: matchId,
-        votingWinnerId: null,
-        votingResultStartedAt: null,
+    if (
+      match.songAId === null ||
+      match.songBId === null ||
+      match.winnerId !== null
+    )
+      throw new BadRequestException('This match is not open for voting');
+    return this.persistSceneMetadata(
+      id,
+      {
+        ...metadata,
+        [componentType]: {
+          ...bracket,
+          activeVotingMatchId: matchId,
+          votingWinnerId: null,
+          votingResultStartedAt: null,
+        },
       },
-    }, teamId);
+      teamId,
+    );
   }
 
   private async completeBracketDraw(
@@ -269,20 +415,36 @@ export class ScenesService {
     const scene = await this.findOne(sceneId, teamId);
     if (!scene) return;
     const metadata = this.parseMetadata(scene.metadata);
-    const bracket = metadata[componentType] && typeof metadata[componentType] === 'object' ? metadata[componentType] as Record<string, unknown> : {};
+    const bracket =
+      metadata[componentType] && typeof metadata[componentType] === 'object'
+        ? (metadata[componentType] as Record<string, unknown>)
+        : {};
     const matches = this.normalizeBracketMatches(bracket.matches);
     const nextSlot = [9, 10, 11, 12]
-      .flatMap((matchId) => [{ matchId, field: 'songAId' as const }, { matchId, field: 'songBId' as const }])
+      .flatMap((matchId) => [
+        { matchId, field: 'songAId' as const },
+        { matchId, field: 'songBId' as const },
+      ])
       .find(({ matchId, field }) => matches[matchId - 1][field] === null);
     if (!nextSlot) return;
     matches[nextSlot.matchId - 1][nextSlot.field] = selectedSongId;
-    await this.persistSceneMetadata(sceneId, {
-      ...metadata,
-      [componentType]: { ...bracket, matches },
-    }, teamId);
-    const programIds = await this.programService.getProgramIdsByAssignedScene(sceneId);
+    await this.persistSceneMetadata(
+      sceneId,
+      {
+        ...metadata,
+        [componentType]: { ...bracket, matches },
+      },
+      teamId,
+    );
+    const programIds =
+      await this.programService.getProgramIdsByAssignedScene(sceneId);
     for (const programId of programIds) {
-      this.programService.broadcastUpdate(programId, { type: 'modoitaliano_bracket_draw_end', sceneId, componentType, drawId });
+      this.programService.broadcastUpdate(programId, {
+        type: 'modoitaliano_bracket_draw_end',
+        sceneId,
+        componentType,
+        drawId,
+      });
       this.programService.broadcastUpdate(programId, {
         type: 'audience_interaction_draw_end',
         sceneId,
@@ -299,18 +461,20 @@ export class ScenesService {
     requestedType: string | undefined,
     scene?: { layout?: { componentType?: string }; metadata?: unknown } | null,
   ): string {
-    if (this.isAudienceInteractionComponent(requestedType)) return requestedType.trim();
+    if (this.isAudienceInteractionComponent(requestedType))
+      return requestedType.trim();
     const stateKeys = Object.keys(this.parseMetadata(scene?.metadata));
-    const fromLayout = bracketComponentFromLayout(scene?.layout?.componentType, stateKeys);
+    const fromLayout = bracketComponentFromLayout(
+      scene?.layout?.componentType,
+      stateKeys,
+    );
     if (fromLayout) return fromLayout;
     const fromState = bracketComponentFromState(stateKeys);
     if (fromState) return fromState;
     throw new BadRequestException('This scene has no bracket');
   }
 
-  private isAudienceInteractionComponent(
-    type?: string | null,
-  ): type is string {
+  private isAudienceInteractionComponent(type?: string | null): type is string {
     if (typeof type !== 'string' || !type.trim()) return false;
     const normalized = type.trim().toLowerCase();
     return (
@@ -326,10 +490,24 @@ export class ScenesService {
     this.bracketDraws.delete(sceneId);
   }
 
-  private async persistSceneMetadata(id: number, metadata: Record<string, unknown>, teamId: number) {
-    const scene = await this.db(teamId).scene.update({ where: { id }, data: { metadata: JSON.stringify(metadata) }, include: { layout: true } });
-    const programIds = await this.programService.getProgramIdsByAssignedScene(id);
-    for (const programId of programIds) this.programService.broadcastUpdate(programId, { type: 'scene_update', programId, scene });
+  private async persistSceneMetadata(
+    id: number,
+    metadata: Record<string, unknown>,
+    teamId: number,
+  ) {
+    const scene = await this.db(teamId).scene.update({
+      where: { id },
+      data: { metadata: JSON.stringify(metadata) },
+      include: { layout: true },
+    });
+    const programIds =
+      await this.programService.getProgramIdsByAssignedScene(id);
+    for (const programId of programIds)
+      this.programService.broadcastUpdate(programId, {
+        type: 'scene_update',
+        programId,
+        scene,
+      });
     return scene;
   }
 
@@ -337,7 +515,9 @@ export class ScenesService {
     if (typeof metadata !== 'string') return {};
     try {
       const parsed = JSON.parse(metadata);
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : {};
     } catch {
       return {};
     }
@@ -345,11 +525,20 @@ export class ScenesService {
 
   private normalizeSongIds(value: unknown): number[] {
     if (!Array.isArray(value)) return [];
-    return [...new Set(value.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+    return [
+      ...new Set(
+        value.map(Number).filter((id) => Number.isInteger(id) && id > 0),
+      ),
+    ];
   }
 
   private normalizeBracketMatches(value: unknown) {
-    const matches = Array.from({ length: 15 }, (_, index) => ({ id: index + 1, songAId: null as number | null, songBId: null as number | null, winnerId: null as number | null }));
+    const matches = Array.from({ length: 15 }, (_, index) => ({
+      id: index + 1,
+      songAId: null as number | null,
+      songBId: null as number | null,
+      winnerId: null as number | null,
+    }));
     if (!Array.isArray(value)) return matches;
     value.forEach((entry) => {
       if (!entry || typeof entry !== 'object') return;
@@ -360,7 +549,9 @@ export class ScenesService {
         id,
         songAId: Number.isInteger(match.songAId) ? Number(match.songAId) : null,
         songBId: Number.isInteger(match.songBId) ? Number(match.songBId) : null,
-        winnerId: Number.isInteger(match.winnerId) ? Number(match.winnerId) : null,
+        winnerId: Number.isInteger(match.winnerId)
+          ? Number(match.winnerId)
+          : null,
       };
     });
     return matches;
@@ -369,16 +560,37 @@ export class ScenesService {
   private normalizeDrawDuration(value: unknown, fallback: unknown): number {
     const duration = Number(value);
     const fallbackDuration = Number(fallback);
-    return Number.isFinite(duration) && duration > 0 ? Math.floor(duration) : Number.isFinite(fallbackDuration) && fallbackDuration > 0 ? Math.floor(fallbackDuration) : 5;
+    return Number.isFinite(duration) && duration > 0
+      ? Math.floor(duration)
+      : Number.isFinite(fallbackDuration) && fallbackDuration > 0
+        ? Math.floor(fallbackDuration)
+        : 5;
   }
 
-  private async validateExternalSourceReference(layoutId: number, sourceId: string | undefined, metadata: unknown, teamId: number) {
-    const layout = await this.db(teamId).layout.findUnique({ where: { id: layoutId }, select: { componentType: true } });
+  private async validateExternalSourceReference(
+    layoutId: number,
+    sourceId: string | undefined,
+    metadata: unknown,
+    teamId: number,
+  ) {
+    const layout = await this.db(teamId).layout.findUnique({
+      where: { id: layoutId },
+      select: { componentType: true },
+    });
     if (!layout) throw new BadRequestException('Layout not found');
     if (layout.componentType !== 'video-stream') return;
-    if (containsSourceUrl(metadata)) throw new BadRequestException('Video stream scenes reference externalSourceId, not a URL');
-    if (!sourceId) throw new BadRequestException('Video stream scenes require externalSourceId');
-    const source = await this.db(teamId).externalSource.findFirst({ where: { id: sourceId, revokedAt: null }, select: { id: true } });
+    if (containsSourceUrl(metadata))
+      throw new BadRequestException(
+        'Video stream scenes reference externalSourceId, not a URL',
+      );
+    if (!sourceId)
+      throw new BadRequestException(
+        'Video stream scenes require externalSourceId',
+      );
+    const source = await this.db(teamId).externalSource.findFirst({
+      where: { id: sourceId, revokedAt: null },
+      select: { id: true },
+    });
     if (!source) throw new BadRequestException('External source not found');
   }
 
@@ -394,7 +606,10 @@ export class ScenesService {
     const shuffled = [...ids];
     for (let index = shuffled.length - 1; index > 0; index -= 1) {
       const swapIndex = Math.floor(random() * (index + 1));
-      [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+      [shuffled[index], shuffled[swapIndex]] = [
+        shuffled[swapIndex],
+        shuffled[index],
+      ];
     }
     return shuffled;
   }
@@ -432,5 +647,7 @@ export class ScenesService {
 function containsSourceUrl(value: unknown): boolean {
   if (!value || typeof value !== 'object') return false;
   if (Array.isArray(value)) return value.some(containsSourceUrl);
-  return Object.entries(value).some(([key, nested]) => key === 'sourceUrl' || containsSourceUrl(nested));
+  return Object.entries(value).some(
+    ([key, nested]) => key === 'sourceUrl' || containsSourceUrl(nested),
+  );
 }
