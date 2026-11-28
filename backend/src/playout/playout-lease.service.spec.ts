@@ -326,11 +326,19 @@ describe('PlayoutLease closing a broken connection', () => {
 
   it('carries on when closing the connection fails, after a failed attempt and at shutdown', async () => {
     const broken: LeaseConnection = {
-      query: jest.fn().mockRejectedValueOnce(new Error('gone')).mockResolvedValue({ rows: [{ held: false }] }),
+      query: jest
+        .fn()
+        .mockRejectedValueOnce(new Error('gone'))
+        .mockResolvedValue({ rows: [{ held: false }] }),
       end: jest.fn().mockRejectedValue(new Error('already closed')),
       on: jest.fn(),
     };
-    const lease = new PlayoutLease(new ManagedMetricsService(), { lock: true, candidate: false, connect: async () => broken, exit: jest.fn() });
+    const lease = new PlayoutLease(new ManagedMetricsService(), {
+      lock: true,
+      candidate: false,
+      connect: async () => broken,
+      exit: jest.fn(),
+    });
     lease.start();
     await jest.advanceTimersByTimeAsync(LEASE_ATTEMPT_MS);
     expect(broken.end).toHaveBeenCalledTimes(1);

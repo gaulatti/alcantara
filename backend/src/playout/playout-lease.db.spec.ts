@@ -33,7 +33,9 @@ async function until(check: () => boolean, ms = 5_000) {
 describeWithDatabase('the playout lease on one database, two instances', () => {
   const leases: PlayoutLease[] = [];
   afterEach(async () => {
-    await Promise.all(leases.splice(0).map((lease) => lease.beforeApplicationShutdown()));
+    await Promise.all(
+      leases.splice(0).map((lease) => lease.beforeApplicationShutdown()),
+    );
   });
 
   function instance(

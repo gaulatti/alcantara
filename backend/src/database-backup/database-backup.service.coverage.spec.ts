@@ -304,7 +304,10 @@ describe('DatabaseBackupService design metadata under unresolved circular import
   it('records Object for dependencies whose modules are not yet defined', () => {
     jest.isolateModules(() => {
       jest.doMock('@nestjs/config', () => ({}));
-      jest.doMock('../playout/playout-lease.service', () => ({ ...jest.requireActual('../playout/playout-lease.service'), PlayoutLease: undefined }));
+      jest.doMock('../playout/playout-lease.service', () => ({
+        ...jest.requireActual('../playout/playout-lease.service'),
+        PlayoutLease: undefined,
+      }));
       jest.doMock('../observability/managed-metrics.service', () => ({}));
       const {
         DatabaseBackupService: Isolated,

@@ -143,7 +143,9 @@ describe('ArtistLabelsService', () => {
     await service.list(7);
     await service.artistLabelFor(7, 'rob');
     expect(prisma.$extends).toHaveBeenCalledTimes(3);
-    expect(prisma.$extends).toHaveBeenCalledWith(expect.objectContaining({ name: 'team-7' }));
+    expect(prisma.$extends).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'team-7' }),
+    );
     await service.list(0);
     expect(prisma.$extends).toHaveBeenCalledTimes(3);
   });

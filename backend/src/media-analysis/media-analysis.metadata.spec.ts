@@ -10,7 +10,10 @@ describe('media analysis decorator metadata', () => {
   it('records Object for constructor types whose tokens are unresolved', () => {
     jest.isolateModules(() => {
       jest.doMock('../prisma.service', () => ({}));
-      jest.doMock('../playout/playout-lease.service', () => ({ ...jest.requireActual('../playout/playout-lease.service'), PlayoutLease: undefined }));
+      jest.doMock('../playout/playout-lease.service', () => ({
+        ...jest.requireActual('../playout/playout-lease.service'),
+        PlayoutLease: undefined,
+      }));
       jest.doMock('../observability/managed-metrics.service', () => ({}));
       jest.doMock('./media-analysis.metrics', () => ({}));
       jest.doMock('./ffmpeg-audio.analyzer', () => ({}));

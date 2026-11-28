@@ -118,7 +118,9 @@ describe('ExternalSourcesService coverage', () => {
     const h = harness();
     h.prisma.externalSource.findMany.mockResolvedValue([]);
     await h.service.list(auth);
-    expect(h.prisma.$extends).toHaveBeenCalledWith(expect.objectContaining({ name: 'team-1' }));
+    expect(h.prisma.$extends).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'team-1' }),
+    );
     h.prisma.$extends.mockClear();
     await h.service.list({ teamId: 0, permissions: [] });
     expect(h.prisma.$extends).not.toHaveBeenCalled();
