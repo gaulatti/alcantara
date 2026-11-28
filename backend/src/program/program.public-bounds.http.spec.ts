@@ -1,6 +1,10 @@
 import { IS_PUBLIC_KEY } from '../auth/public.decorator';
 import { RequestMethod } from '@nestjs/common';
-import { GUARDS_METADATA, METHOD_METADATA, SSE_METADATA } from '@nestjs/common/constants';
+import {
+  GUARDS_METADATA,
+  METHOD_METADATA,
+  SSE_METADATA,
+} from '@nestjs/common/constants';
 import { RendererWriteGuard } from '../renderer-keys/renderer-write.guard';
 import {
   FastifyAdapter,
@@ -28,7 +32,12 @@ function scene(id: number) {
     layoutId: 3,
     chyronText: 'On air',
     metadata: { headline: 'Kept whole', nested: { colour: 'red' } },
-    layout: { id: 3, name: `${HIDDEN}-layout`, componentType: 'lower-third,clock', settings: `${HIDDEN}-settings` },
+    layout: {
+      id: 3,
+      name: `${HIDDEN}-layout`,
+      componentType: 'lower-third,clock',
+      settings: `${HIDDEN}-settings`,
+    },
   };
 }
 
@@ -63,14 +72,24 @@ function row(programId: string, templateManifest: unknown) {
       { sceneId: 11, position: 0, scene: scene(11) },
       { sceneId: 12, position: 1, scene: scene(12) },
     ],
-    mediaGroups: [{ mediaGroupId: 1, mediaGroup: { name: `${HIDDEN}-media-group` } }],
+    mediaGroups: [
+      { mediaGroupId: 1, mediaGroup: { name: `${HIDDEN}-media-group` } },
+    ],
     stingers: [
       {
         id: 4,
         programStateId: 1,
         stingerId: 9,
         position: 0,
-        stinger: { id: 9, name: 'Wipe', videoUrl: 'https://cdn.example.test/wipe.webm', cutPointMs: 900, assetId: `${HIDDEN}-asset`, teamId: 7, enabled: true },
+        stinger: {
+          id: 9,
+          name: 'Wipe',
+          videoUrl: 'https://cdn.example.test/wipe.webm',
+          cutPointMs: 900,
+          assetId: `${HIDDEN}-asset`,
+          teamId: 7,
+          enabled: true,
+        },
       },
     ],
     flightSequences: [{ id: 1, name: `${HIDDEN}-flight` }],
@@ -82,7 +101,22 @@ function row(programId: string, templateManifest: unknown) {
       loop: true,
       startedAt: 1_700_000_000_000,
       operatorNote: `${HIDDEN}-sequence-note`,
-      items: [leaf, { id: 'group', kind: 'sequence', label: 'Group', sequence: { mode: 'manual', items: [{ ...leaf, id: 'leaf-2' }], activeItemId: null, intervalMs: 0, loop: false, startedAt: 0 } }],
+      items: [
+        leaf,
+        {
+          id: 'group',
+          kind: 'sequence',
+          label: 'Group',
+          sequence: {
+            mode: 'manual',
+            items: [{ ...leaf, id: 'leaf-2' }],
+            activeItemId: null,
+            intervalMs: 0,
+            loop: false,
+            startedAt: 0,
+          },
+        },
+      ],
     },
     audioMixer: null,
     operatorNotes: `${HIDDEN}-operator-notes`,
@@ -110,10 +144,20 @@ describe('public program routes and stream, bounded (HTTP)', () => {
   beforeAll(async () => {
     const prisma = {
       programState: {
-        findUnique: jest.fn(async ({ where }: { where: { programId: string } }) => rows.get(where.programId) ?? null),
+        findUnique: jest.fn(
+          async ({ where }: { where: { programId: string } }) =>
+            rows.get(where.programId) ?? null,
+        ),
       },
     };
-    service = new ProgramService(prisma as never, {} as never, {} as never, undefined, undefined, noRecorder());
+    service = new ProgramService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      undefined,
+      undefined,
+      noRecorder(),
+    );
     const moduleRef = await Test.createTestingModule({
       controllers: [ProgramController],
       providers: [
@@ -122,7 +166,8 @@ describe('public program routes and stream, bounded (HTTP)', () => {
           provide: ProgramService,
           useValue: {
             getPublicState: service.getPublicState.bind(service),
-            getPublicProgramAudioBus: service.getPublicProgramAudioBus.bind(service),
+            getPublicProgramAudioBus:
+              service.getPublicProgramAudioBus.bind(service),
             getEventStream: service.getEventStream.bind(service),
           },
         },
@@ -132,7 +177,9 @@ describe('public program routes and stream, bounded (HTTP)', () => {
         { provide: PompeiiService, useValue: {} },
       ],
     }).compile();
-    app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    app = moduleRef.createNestApplication<NestFastifyApplication>(
+      new FastifyAdapter(),
+    );
     await app.listen(0, '127.0.0.1');
     origin = await app.getUrl();
   });
@@ -142,9 +189,15 @@ describe('public program routes and stream, bounded (HTTP)', () => {
   });
 
   /** The first `count` events of a program's public stream, after `then` runs once the stream is open. */
-  async function events(programId: string, count: number, then: () => void = () => undefined) {
+  async function events(
+    programId: string,
+    count: number,
+    then: () => void = () => undefined,
+  ) {
     const controller = new AbortController();
-    const response = await fetch(`${origin}/program/${programId}/events`, { signal: controller.signal });
+    const response = await fetch(`${origin}/program/${programId}/events`, {
+      signal: controller.signal,
+    });
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
     const received: string[] = [];
@@ -156,7 +209,9 @@ describe('public program routes and stream, bounded (HTTP)', () => {
       const frames = buffer.split('\n\n');
       buffer = frames.pop()!;
       for (const frame of frames) {
-        const data = frame.split('\n').find((line) => line.startsWith('data: '));
+        const data = frame
+          .split('\n')
+          .find((line) => line.startsWith('data: '));
         if (data) received.push(data.slice('data: '.length));
       }
       if (!opened && received.length > 0) {
@@ -165,13 +220,25 @@ describe('public program routes and stream, bounded (HTTP)', () => {
       }
     }
     controller.abort();
-    return received.map((text) => ({ text, json: JSON.parse(text) as Record<string, unknown> }));
+    return received.map((text) => ({
+      text,
+      json: JSON.parse(text) as Record<string, unknown>,
+    }));
   }
 
   const expectedState = {
     activeSceneId: 11,
     fadeToBlack: true,
-    stingers: [{ stingerId: 9, stinger: { name: 'Wipe', videoUrl: 'https://cdn.example.test/wipe.webm', cutPointMs: 900 } }],
+    stingers: [
+      {
+        stingerId: 9,
+        stinger: {
+          name: 'Wipe',
+          videoUrl: 'https://cdn.example.test/wipe.webm',
+          cutPointMs: 900,
+        },
+      },
+    ],
     activeScene: {
       id: 11,
       layout: { componentType: 'lower-third,clock' },
@@ -190,13 +257,21 @@ describe('public program routes and stream, bounded (HTTP)', () => {
     const response = await fetch(`${origin}/program/station/state`);
     const text = await response.text();
     expect(response.status).toBe(200);
-    expect(JSON.parse(text)).toEqual({ ...expectedState, version: expect.any(Number) });
+    expect(JSON.parse(text)).toEqual({
+      ...expectedState,
+      version: expect.any(Number),
+    });
     expect(text).not.toContain(HIDDEN);
   });
 
   it('keeps the template projection for a templated program, which sends no hidden field either', async () => {
-    const text = await (await fetch(`${origin}/program/templated/state`)).text();
-    expect(JSON.parse(text)).toMatchObject({ schemaVersion: expect.anything(), activeSceneId: 11 });
+    const text = await (
+      await fetch(`${origin}/program/templated/state`)
+    ).text();
+    expect(JSON.parse(text)).toMatchObject({
+      schemaVersion: expect.anything(),
+      activeSceneId: 11,
+    });
     expect(text).not.toContain('operatorNotes');
     expect(text).not.toContain(`${HIDDEN}-media-group`);
     expect(text).not.toContain(`${HIDDEN}-queued-song`);
@@ -205,9 +280,20 @@ describe('public program routes and stream, bounded (HTTP)', () => {
   it('sends the mixer and the song sequence cut to its playable leaves, with no queue', async () => {
     const response = await fetch(`${origin}/program/station/audio-bus`);
     const text = await response.text();
-    const bus = JSON.parse(text) as { songSequence: { items: Array<Record<string, unknown>> } };
-    expect(Object.keys(bus).sort()).toEqual(['mixerSettings', 'sequenceVersion', 'shuffleKeepsRows', 'songSequence']);
-    expect(bus.songSequence).toMatchObject({ mode: 'autoplay', activeItemId: 'leaf-1', loop: true });
+    const bus = JSON.parse(text) as {
+      songSequence: { items: Array<Record<string, unknown>> };
+    };
+    expect(Object.keys(bus).sort()).toEqual([
+      'mixerSettings',
+      'sequenceVersion',
+      'shuffleKeepsRows',
+      'songSequence',
+    ]);
+    expect(bus.songSequence).toMatchObject({
+      mode: 'autoplay',
+      activeItemId: 'leaf-1',
+      loop: true,
+    });
     expect(bus.songSequence.items[0]).toEqual({
       id: 'leaf-1',
       kind: 'preset',
@@ -220,7 +306,16 @@ describe('public program routes and stream, bounded (HTTP)', () => {
       earoneRank: '3',
       earoneSpins: '120',
     });
-    expect(bus.songSequence.items[1]).toMatchObject({ id: 'group', kind: 'sequence', label: 'Group', sequence: { items: [{ id: 'leaf-2', coverUrl: 'https://cdn.example.test/cover.jpg' }] } });
+    expect(bus.songSequence.items[1]).toMatchObject({
+      id: 'group',
+      kind: 'sequence',
+      label: 'Group',
+      sequence: {
+        items: [
+          { id: 'leaf-2', coverUrl: 'https://cdn.example.test/cover.jpg' },
+        ],
+      },
+    });
     expect(text).not.toContain(HIDDEN);
     expect(text).not.toContain('songId');
     expect(text).not.toContain('highRotation');
@@ -230,22 +325,64 @@ describe('public program routes and stream, bounded (HTTP)', () => {
     // As the emitters send it: the stored row with its staged scene resolved.
     const full = { ...row('station', null), stagedScene: scene(12) };
     const received = await events('station', 6, () => {
-      service.broadcastUpdate('station', { type: 'fade_to_black', programId: 'station', active: true, state: full });
-      service.broadcastUpdate('station', { type: 'scene_staged', programId: 'station', stagedSceneId: 12, scene: scene(12) });
-      service.broadcastUpdate('station', { type: 'scene_change', programId: 'station', state: full });
+      service.broadcastUpdate('station', {
+        type: 'fade_to_black',
+        programId: 'station',
+        active: true,
+        state: full,
+      });
+      service.broadcastUpdate('station', {
+        type: 'scene_staged',
+        programId: 'station',
+        stagedSceneId: 12,
+        scene: scene(12),
+      });
+      service.broadcastUpdate('station', {
+        type: 'scene_change',
+        programId: 'station',
+        state: full,
+      });
       service.broadcastUpdate('station', {
         type: 'audio_bus_update',
         programId: 'station',
-        settings: { songSequence: full.songSequence, songQueue: full.songQueue, mixerSettings: { master: 1 } },
+        settings: {
+          songSequence: full.songSequence,
+          songQueue: full.songQueue,
+          mixerSettings: { master: 1 },
+        },
       });
-      service.broadcastUpdate('station', { type: 'song_queue_update', programId: 'station', songQueue: full.songQueue, songSequence: full.songSequence });
+      service.broadcastUpdate('station', {
+        type: 'song_queue_update',
+        programId: 'station',
+        songQueue: full.songQueue,
+        songSequence: full.songSequence,
+      });
     });
-    const [snapshot, fade, staged, change, bus, queue] = received.map((event) => event.json);
-    expect(snapshot).toMatchObject({ type: 'program_state_snapshot', state: expectedState });
-    expect(fade).toMatchObject({ type: 'fade_to_black', active: true, state: expectedState });
-    expect(staged).toMatchObject({ type: 'scene_staged', stagedSceneId: 12, scene: expectedState.stagedScene });
-    expect(change).toMatchObject({ type: 'scene_change', state: expectedState });
-    expect(bus).toMatchObject({ type: 'audio_bus_update', settings: { mixerSettings: { master: 1 } } });
+    const [snapshot, fade, staged, change, bus, queue] = received.map(
+      (event) => event.json,
+    );
+    expect(snapshot).toMatchObject({
+      type: 'program_state_snapshot',
+      state: expectedState,
+    });
+    expect(fade).toMatchObject({
+      type: 'fade_to_black',
+      active: true,
+      state: expectedState,
+    });
+    expect(staged).toMatchObject({
+      type: 'scene_staged',
+      stagedSceneId: 12,
+      scene: expectedState.stagedScene,
+    });
+    expect(change).toMatchObject({
+      type: 'scene_change',
+      state: expectedState,
+    });
+    expect(bus).toMatchObject({
+      type: 'audio_bus_update',
+      settings: { mixerSettings: { master: 1 } },
+    });
     expect(bus.settings).not.toHaveProperty('songQueue');
     expect(queue).not.toHaveProperty('songQueue');
     expect(queue).toMatchObject({ songSequence: { activeItemId: 'leaf-1' } });
@@ -254,23 +391,49 @@ describe('public program routes and stream, bounded (HTTP)', () => {
 
   it('versions the public contract on the snapshot; a templated program keeps its schema version', async () => {
     const [station] = await events('station', 1);
-    expect(station.json).toMatchObject({ type: 'program_state_snapshot', contractVersion: 1 });
-    const [templated] = await events('templated', 1);
-    expect(templated.json).toMatchObject({ type: 'program_state_snapshot', schemaVersion: expect.anything() });
+    expect(station.json).toMatchObject({
+      type: 'program_state_snapshot',
+      contractVersion: 1,
+    });
+    const [templated] = (await events('templated', 1)) as Array<{
+      json: unknown;
+    }>;
+    expect(templated.json).toMatchObject({
+      type: 'program_state_snapshot',
+      schemaVersion: expect.anything() as unknown,
+    });
     expect(templated.json).not.toHaveProperty('contractVersion');
   });
 
   it('sends no operator identity on the public stream; the control stream keeps it', async () => {
-    const actor = { actorPrincipalId: 'principal-secret-id', actorVia: 'mcp', actorClient: 'console' };
-    const emit = () =>
-      service.broadcastUpdate('station', { type: 'song_off_air', programId: 'station', triggeredAt: 'now', ...actor });
-    const [, publicEvent] = await events('station', 2, emit);
-    expect(publicEvent.json).toMatchObject({ type: 'song_off_air', triggeredAt: 'now' });
-    for (const field of Object.keys(actor)) expect(publicEvent.json).not.toHaveProperty(field);
+    const actor = {
+      actorPrincipalId: 'principal-secret-id',
+      actorVia: 'mcp',
+      actorClient: 'console',
+    };
+    const emit = (): unknown =>
+      service.broadcastUpdate('station', {
+        type: 'song_off_air',
+        programId: 'station',
+        triggeredAt: 'now',
+        ...actor,
+      });
+    const [, publicEvent] = (await events('station', 2, emit)) as Array<{
+      json: unknown;
+      text: string;
+    }>;
+    expect(publicEvent.json).toMatchObject({
+      type: 'song_off_air',
+      triggeredAt: 'now',
+    });
+    for (const field of Object.keys(actor))
+      expect(publicEvent.json).not.toHaveProperty(field);
     expect(publicEvent.text).not.toContain('principal-secret-id');
 
     const controller = new AbortController();
-    const response = await fetch(`${origin}/program/station/control/events`, { signal: controller.signal });
+    const response = await fetch(`${origin}/program/station/control/events`, {
+      signal: controller.signal,
+    });
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -289,22 +452,38 @@ describe('public program routes and stream, bounded (HTTP)', () => {
 });
 
 describe('the public program surface takes no command (gaulatti/alcantara#25)', () => {
-  it('opens only reads to a caller with no sign-in, besides the renderer page\'s own writes behind the renderer guard', () => {
-    const prototype = ProgramController.prototype as unknown as Record<string, unknown>;
+  it("opens only reads to a caller with no sign-in, besides the renderer page's own writes behind the renderer guard", () => {
+    const prototype = ProgramController.prototype as unknown as Record<
+      string,
+      unknown
+    >;
     const handler = (name: string) => prototype[name] as object;
     const publicRoutes = Object.getOwnPropertyNames(prototype)
-      .filter((name) => typeof prototype[name] === 'function' && name !== 'constructor')
-      .filter((name) => Reflect.getMetadata(IS_PUBLIC_KEY, handler(name)) === true);
+      .filter(
+        (name) =>
+          typeof prototype[name] === 'function' && name !== 'constructor',
+      )
+      .filter(
+        (name) => Reflect.getMetadata(IS_PUBLIC_KEY, handler(name)) === true,
+      );
     const reads = (name: string) =>
-      Reflect.getMetadata(METHOD_METADATA, handler(name)) === RequestMethod.GET ||
+      Reflect.getMetadata(METHOD_METADATA, handler(name)) ===
+        RequestMethod.GET ||
       Reflect.getMetadata(SSE_METADATA, handler(name)) === true;
     const writes = publicRoutes.filter((name) => !reads(name));
     expect(publicRoutes.length).toBeGreaterThan(writes.length);
     // The renderer page's meter and countdown reports, and nothing else: each is judged by the renderer guard.
-    expect(writes.sort()).toEqual(['completeSceneCountdownById', 'updateProgramAudioMeterById']);
+    expect(writes.sort()).toEqual([
+      'completeSceneCountdownById',
+      'updateProgramAudioMeterById',
+    ]);
     for (const name of writes) {
-      expect(Reflect.getMetadata('rendererWriteEndpoint', handler(name))).toBeDefined();
-      expect(Reflect.getMetadata(GUARDS_METADATA, handler(name))).toContain(RendererWriteGuard);
+      expect(
+        Reflect.getMetadata('rendererWriteEndpoint', handler(name)),
+      ).toBeDefined();
+      expect(Reflect.getMetadata(GUARDS_METADATA, handler(name))).toContain(
+        RendererWriteGuard,
+      );
     }
   });
 });

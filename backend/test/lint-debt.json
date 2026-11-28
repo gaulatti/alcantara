@@ -572,8 +572,7 @@
   },
   "src/program/program.public-bounds.http.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 5,
-    "@typescript-eslint/require-await": 1,
-    "prettier/prettier": 31
+    "@typescript-eslint/require-await": 1
   },
   "src/program/program.realtime.service.coverage.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 2,
@@ -611,8 +610,7 @@
     "@typescript-eslint/no-unsafe-call": 117,
     "@typescript-eslint/no-unsafe-member-access": 190,
     "@typescript-eslint/no-unsafe-return": 7,
-    "@typescript-eslint/restrict-template-expressions": 1,
-    "prettier/prettier": 6
+    "@typescript-eslint/restrict-template-expressions": 1
   },
   "src/program/program.service.songs-on-air.spec.ts": {
     "@typescript-eslint/require-await": 2
@@ -638,9 +636,6 @@
   },
   "src/program/public-projection.spec.ts": {
     "prettier/prettier": 13
-  },
-  "src/program/public-projection.ts": {
-    "prettier/prettier": 12
   },
   "src/program/radio-clocks.spec.ts": {
     "@typescript-eslint/no-require-imports": 2,

@@ -1,4 +1,3 @@
-
 src/artist-labels/artist-labels.service.spec.ts
 src/artist-labels/artist-labels.service.ts
 src/auth/pompeii-authorization.guard.spec.ts
@@ -37,15 +36,12 @@ src/program/flight.shadow.spec.ts
 src/program/program-id.spec.ts
 src/program/program.control-routes.http.spec.ts
 src/program/program.controller.coverage.spec.ts
-src/program/program.public-bounds.http.spec.ts
 src/program/program.rotation-version.spec.ts
 src/program/program.service.part1.spec.ts
 src/program/program.service.part2.spec.ts
-src/program/program.service.part3.spec.ts
 src/program/program.service.ts
 src/program/program.song-playback-permission.http.spec.ts
 src/program/public-projection.spec.ts
-src/program/public-projection.ts
 src/program/rundown-overrun.spec.ts
 src/radio/dead-air-watchdog.service.spec.ts
 src/radio/dead-air-watchdog.service.ts
