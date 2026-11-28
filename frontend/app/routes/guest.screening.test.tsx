@@ -224,7 +224,7 @@ it('leaving while a waiting-room heartbeat is in flight does not touch timers or
   // The waiting room's heartbeat is held on the way back, and the guest leaves the page meanwhile.
   let release!: () => void;
   heartbeatGate = new Promise<void>((resolve) => (release = resolve));
-  await act(async () => scheduledBeat!());
+  await act(async () => poll!());
   // A dropped connection that lands during teardown: its heartbeat settles after the page is gone.
   act(() => lk.state.rooms[0].emit('disconnected', 3));
   cleanup();
