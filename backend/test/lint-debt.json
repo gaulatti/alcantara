@@ -119,9 +119,6 @@
     "@typescript-eslint/no-unsafe-assignment": 2,
     "@typescript-eslint/no-unsafe-member-access": 1
   },
-  "src/cors.http.spec.ts": {
-    "prettier/prettier": 5
-  },
   "src/database-backup/database-backup.lifecycle.spec.ts": {
     "@typescript-eslint/no-unsafe-return": 1
   },

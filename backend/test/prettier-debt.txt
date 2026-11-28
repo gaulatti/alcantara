@@ -1,7 +1,6 @@
 src/artist-labels/artist-labels.service.spec.ts
 src/artist-labels/artist-labels.service.ts
 src/charts/charts.service.metadata.spec.ts
-src/cors.http.spec.ts
 src/database-backup/database-backup.service.coverage.spec.ts
 src/external-sources/external-sources.service.coverage.spec.ts
 src/external-sources/external-sources.service.ts

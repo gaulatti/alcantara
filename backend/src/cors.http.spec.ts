@@ -115,12 +115,13 @@ describe('CORS policy over HTTP, in production', () => {
     expect(response.headers['access-control-allow-credentials']).toBe('true');
   });
 
-  it.each(['http://localhost', 'https://localhost:5173', 'http://127.0.0.1:3000', 'null'])(
-    'refuses %s',
-    async (origin) => {
-      const response = await preflight(origin);
-      expect(response.headers['access-control-allow-origin']).toBeUndefined();
-    },
-  );
+  it.each([
+    'http://localhost',
+    'https://localhost:5173',
+    'http://127.0.0.1:3000',
+    'null',
+  ])('refuses %s', async (origin) => {
+    const response = await preflight(origin);
+    expect(response.headers['access-control-allow-origin']).toBeUndefined();
+  });
 });
-
