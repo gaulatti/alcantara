@@ -107,6 +107,7 @@ describe('MediaAssetsReconciliationService metadata (coverage)', () => {
       jest.doMock('../prisma.service', () => ({}));
       jest.doMock('../playout/playout-lease.service', () => ({ ...jest.requireActual('../playout/playout-lease.service'), PlayoutLease: undefined }));
       jest.doMock('../observability/managed-metrics.service', () => ({}));
+      jest.doMock('../auth/pompeii.service', () => ({}));
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const mod = require('./media-assets-reconciliation.service');
       expect(
@@ -114,9 +115,10 @@ describe('MediaAssetsReconciliationService metadata (coverage)', () => {
           'design:paramtypes',
           mod.MediaAssetsReconciliationService,
         ),
-      ).toEqual([Object, Object, Object]);
+      ).toEqual([Object, Object, Object, Object]);
     });
     jest.dontMock('../prisma.service');
     jest.dontMock('../observability/managed-metrics.service');
+    jest.dontMock('../auth/pompeii.service');
   });
 });

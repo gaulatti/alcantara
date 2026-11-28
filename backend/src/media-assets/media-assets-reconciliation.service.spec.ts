@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { MediaAssetKind } from '@prisma/client';
 import { MediaAssetsReconciliationService } from './media-assets-reconciliation.service';
 
-function buildService() {
+function buildService(stationTeam?: number) {
   const tx = {
     media: {
       findMany: jest
@@ -101,6 +101,10 @@ function buildService() {
     service: new MediaAssetsReconciliationService(
       prisma as never,
       metrics as never,
+      undefined,
+      stationTeam === undefined
+        ? undefined
+        : ({ teamId: stationTeam } as never),
     ),
     tx,
     prisma,
@@ -109,6 +113,29 @@ function buildService() {
 }
 
 describe('MediaAssetsReconciliationService', () => {
+  it.each([
+    [7, { teamId: 7 }],
+    [0, {}],
+    [undefined, {}],
+  ])(
+    "creates a missing group label with the station's team (team %s)",
+    async (stationTeam, owned) => {
+      const { service, tx } = buildService(stationTeam);
+
+      await service.reconcile();
+
+      const [{ create, update }] = tx.mediaLabel.upsert.mock.calls[0];
+      expect(create).toEqual({
+        id: 'legacy-media-group:9',
+        name: 'Morning slideshow',
+        description: null,
+        ...owned,
+      });
+      // An existing label keeps the team it has.
+      expect(update).not.toHaveProperty('teamId');
+    },
+  );
+
   it('repairs every kind and removes only kind-matched orphan rows', async () => {
     const { service, tx, prisma } = buildService();
 

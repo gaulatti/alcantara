@@ -11,6 +11,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { MediaAssetKind, Prisma } from '@prisma/client';
+import { PompeiiService } from '../auth/pompeii.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { PrismaService } from '../prisma.service';
 import {
@@ -70,6 +71,7 @@ export class MediaAssetsReconciliationService
     private readonly prisma: PrismaService,
     private readonly metrics: ManagedMetricsService,
     @Optional() private readonly lease?: PlayoutLease,
+    @Optional() private readonly pompeii?: PompeiiService,
   ) {}
 
   private running: Promise<void> = Promise.resolve();
@@ -184,7 +186,8 @@ export class MediaAssetsReconciliationService
         },
       });
       for (const group of mediaGroups) {
-        await syncLegacyMediaGroupLabel(tx, group);
+        // This pass reads unscoped: a label it has to create is the station's (#122).
+        await syncLegacyMediaGroupLabel(tx, group, this.pompeii?.teamId);
       }
 
       const removedOrphans = await this.removeOrphans(tx);

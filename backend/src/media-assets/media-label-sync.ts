@@ -24,6 +24,8 @@ export function legacyMediaGroupLabelId(mediaGroupId: number): string {
 export async function syncLegacyMediaGroupLabel(
   tx: MediaLabelSyncClient,
   group: LegacyMediaGroupLabelSource,
+  // The team a label created here belongs to, for a caller whose client is not scoped to one (#122).
+  stationTeam = 0,
 ): Promise<string> {
   const labelId = legacyMediaGroupLabelId(group.id);
   const timestamps = {
@@ -37,6 +39,7 @@ export async function syncLegacyMediaGroupLabel(
       id: labelId,
       name: group.name,
       description: group.description,
+      ...(stationTeam > 0 ? { teamId: stationTeam } : {}),
       ...timestamps,
     },
     update: {
