@@ -441,11 +441,11 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       } catch (error) {
         this.recoveryFailed(error);
         // No half-recovered runtime stays behind: an operator's Go starts afresh.
-        const left = this.runtimes.get(row.programState.programId);
-        if (left?.sequenceId === row.id) {
-          this.clearTimer(left);
-          this.runtimes.delete(row.programState.programId);
-        }
+        for (const [programId, left] of this.runtimes)
+          if (left.sequenceId === row.id) {
+            this.clearTimer(left);
+            this.runtimes.delete(programId);
+          }
         // Start-up goes on whatever this write does.
         try {
           await this.prisma.flightSequence.update({
