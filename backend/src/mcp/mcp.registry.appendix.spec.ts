@@ -156,7 +156,7 @@ describe('MCP registry against appendix A', () => {
   it('reads all of appendix A: capabilities, covered rows and the 15 exclusions', () => {
     const { rows, excluded, covered } = appendix();
     // +2: the renderer key's read and rotation (gaulatti/alcantara#884).
-    expect(rows.size + covered.size).toBe(185);
+    expect(rows.size + covered.size).toBe(186);
     expect(excluded).toBe(15);
     // auth_get_me is whoami (same permission, same tier, the caller's own
     // identity), as is access_my_permissions (the caller's own keys); the

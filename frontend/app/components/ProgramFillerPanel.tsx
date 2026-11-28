@@ -22,6 +22,11 @@ const LEG_TITLES: Record<FillerLegName, string> = {
   radio: 'Radio filler',
 };
 
+const REMOVAL_EFFECT: Record<FillerLegName, string> = {
+  television: 'A broadcast start binds no filler again. Nothing on air changes.',
+  radio: 'The older recovery playlist applies again. Nothing on air changes.',
+};
+
 /** A server message for the operator, or the shared fallback. */
 function failureMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
@@ -204,17 +209,18 @@ export function ProgramFillerPanel({
       .catch((cause) => setError(failureMessage(cause)));
   }, [canManage, only, state]);
 
-  const [removing, setRemoving] = useState(false);
+  // The leg whose removal is being confirmed.
+  const [removing, setRemoving] = useState<FillerLegName | null>(null);
 
-  const removeRadio = async () => {
-    setBusy('radio');
+  const remove = async (leg: FillerLegName) => {
+    setBusy(leg);
     setError(null);
     try {
       const response = await api.delete<ProgramFillerState>(
-        `/broadcast/programs/${encodeURIComponent(programId)}/fillers/radio`,
+        `/broadcast/programs/${encodeURIComponent(programId)}/fillers/${leg}`,
       );
       setState(response.data);
-      setRemoving(false);
+      setRemoving(null);
     } catch (cause) {
       setError(failureMessage(cause));
     } finally {
@@ -280,30 +286,25 @@ export function ProgramFillerPanel({
             .join(' · ')}
         >
           <FillerLegSummary leg={leg} state={state!} names={names} />
-          {canManage &&
-          leg === 'radio' &&
-          (state!.legs.radio!.pending || state!.legs.radio!.active) ? (
-            removing ? (
+          {canManage && (state!.legs[leg]!.pending || state!.legs[leg]!.active) ? (
+            removing === leg ? (
               <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span>
-                  The older recovery playlist applies again. Nothing on air
-                  changes.
-                </span>
-                <Button type="button" variant="ghost" onClick={() => setRemoving(false)}>
+                <span>{REMOVAL_EFFECT[leg]}</span>
+                <Button type="button" variant="ghost" onClick={() => setRemoving(null)}>
                   Keep it
                 </Button>
                 <Button
                   type="button"
                   variant="destructive"
                   disabled={busy !== null}
-                  onClick={() => void removeRadio()}
+                  onClick={() => void remove(leg)}
                 >
                   Remove
                 </Button>
               </div>
             ) : (
-              <Button type="button" variant="ghost" onClick={() => setRemoving(true)}>
-                Remove radio filler
+              <Button type="button" variant="ghost" onClick={() => setRemoving(leg)}>
+                Remove {leg === 'radio' ? 'radio' : 'television'} filler
               </Button>
             )
           ) : null}

@@ -79,3 +79,48 @@ describe('removing the radio filler', () => {
     ).toBe(ALCANTARA_PERMISSIONS.broadcast.manage);
   });
 });
+
+describe('removing the television filler', () => {
+  it('clears the television leg only, keeping the versions, and counts it', async () => {
+    const h = build('both', 1);
+    await h.service.removeTelevision('main');
+    expect(h.prisma.fillerLeg.updateMany).toHaveBeenCalledTimes(1);
+    expect(h.prisma.fillerLeg.updateMany).toHaveBeenCalledWith({
+      where: {
+        programId: 'main',
+        leg: 'television',
+        OR: [
+          { pendingVersionId: { not: null } },
+          { activeVersionId: { not: null } },
+        ],
+      },
+      data: { pendingVersionId: null, activeVersionId: null },
+    });
+    expect(h.removal).toHaveBeenCalledWith('television');
+    await expect(h.metrics.registry.metrics()).resolves.toContain(
+      'alcantara_filler_removals_total{leg="television"} 1',
+    );
+  });
+
+  it('refuses a program with no television leg', async () => {
+    const h = build('radio', 0);
+    await expect(h.service.removeTelevision('fm')).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(h.prisma.fillerLeg.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('needs the permission that configures a filler', async () => {
+    const remove = jest.fn().mockResolvedValue('state');
+    const controller = new FillerController({
+      removeTelevision: remove,
+    } as never);
+    await expect(controller.removeTelevision('tv')).resolves.toBe('state');
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PERMISSION_KEY,
+        FillerController.prototype.removeTelevision,
+      ),
+    ).toBe(ALCANTARA_PERMISSIONS.broadcast.manage);
+  });
+});

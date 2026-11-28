@@ -119,12 +119,12 @@ const controllerOf = (area: string, path: string) =>
 
 describe('appendix A rows of ticket #219', () => {
   it('has a row for every route of its areas that is not excluded', () => {
-    expect(ROWS).toHaveLength(62);
+    expect(ROWS).toHaveLength(63);
     const count = (area: string) =>
       ROWS.filter((row) => row[0] === area).length;
     expect([...AREAS].map((area) => [area, count(area)])).toEqual([
       ['broadcast-destinations', 11],
-      ['filler', 4],
+      ['filler', 5],
       ['recording', 6],
       ['radio', 16],
       ['operator-preferences', 8],
@@ -170,7 +170,7 @@ describe('appendix A rows of ticket #219', () => {
     const tiers = ROWS.map((row) => row[6]);
     for (const [tier, n] of [
       ['R', 20],
-      ['W', 13],
+      ['W', 14],
       ['A', 22],
       ['D', 7],
     ] as const)

@@ -70,6 +70,8 @@ function safeDestinationStates(value: unknown): SafeDestinationState[] {
 }
 
 const SHA256 = /^[0-9a-f]{64}$/;
+/** How long Alana has to prepare a television filler; the radio's longest bound is the same. */
+export const TELEVISION_PREPARE_TIMEOUT_MS = 15 * 60_000;
 const PROFILE_KEYS = [
   'audioBitrate',
   'audioChannels',
@@ -360,6 +362,9 @@ export class AlanaClient {
         method: 'PUT',
         headers: { 'Idempotency-Key': version },
         body: JSON.stringify({ commandId: version, ...body }),
+        // Alana downloads and transcodes the file before it answers, so this call is given far longer than the
+        // others (gaulatti/alcantara#20), and is not sent again.
+        signal: AbortSignal.timeout(TELEVISION_PREPARE_TIMEOUT_MS),
       },
       sanitizeAlanaFiller,
     );
@@ -392,7 +397,7 @@ export class AlanaClient {
     try {
       const response = await fetch(`${this.baseUrl}${path}`, {
         ...init,
-        signal: AbortSignal.timeout(10_000),
+        signal: init.signal ?? AbortSignal.timeout(10_000),
         headers: {
           Authorization: `Bearer ${this.token}`,
           ...(init.body ? { 'Content-Type': 'application/json' } : {}),

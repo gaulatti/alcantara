@@ -81,6 +81,9 @@ services:
       retries: 10
       start_period: 5s
   alana-recording-fixture:
+    # The fixture downloads a television filler source from the local media store, at the address the backend names.
+    extra_hosts:
+      - "localstack.localhost:host-gateway"
     build:
       context: .
       dockerfile: backend/Dockerfile.dev

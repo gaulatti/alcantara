@@ -29,6 +29,7 @@ All routes sit under `/broadcast/programs/:programId/fillers`.
 | --- | --- | --- |
 | `GET /` | `broadcast.view` | The pending and active version of each leg the program has (`tv` gives television, `radio` gives radio, `both` gives both). |
 | `PUT /television` with `{ assetId }` | `broadcast.manage` | Prepares an enabled `IMAGE` or `VIDEO` media asset (including WebM). |
+| `DELETE /television` | `broadcast.manage` | Removes the television filler configuration: the leg has no pending or active version, and a Start binds none. Nothing is sent to Alana. |
 | `DELETE /radio` | `broadcast.manage` | Removes the radio filler configuration: the leg has no pending or active version, and the older recovery playlist applies again. Nothing is sent to Palazzo; a running session keeps its version. |
 | `PUT /radio` with `{ assetIds, mode?, shuffleSeed? }` | `broadcast.manage` | Prepares 1 to 100 distinct enabled `AUDIO` media assets, `ordered` by default or `shuffle` with a bounded seed. |
 
@@ -39,6 +40,8 @@ All routes sit under `/broadcast/programs/:programId/fillers`.
 2. If that returns 404 (an Alana without gaulatti/alana#29), preparation is refused with 503 "television live profile unavailable". Alcantara never guesses a profile.
 3. Otherwise it sends the exact profile in Alana's `PUT /fillers/:version`. Every one of the nine known keys must be present and valid, and the checksum must equal the SHA-256 of the canonical JSON of the profile as received. A profile key Alcantara does not know (gaulatti/ariston#217) does not refuse the profile: it is not read, it is forwarded in the `PUT` exactly as received so the acknowledged `profileChecksum` still binds the same profile, and it is counted in `alcantara_alana_live_profile_unknown_keys_total`. Another `contractVersion`, another `programId` or a checksum mismatch is still a 502 "invalid live profile".
 4. The version is ready only when the acknowledgement matches on all of: version, `ready: true`, `status: "ready"`, source id, source SHA-256, and `profileChecksum` equal to the live-profile checksum.
+
+Alana downloads and transcodes the file before it answers step 3, so that request is given 15 minutes and is not sent again after a timeout.
 
 **Radio preparation** uses Palazzo's `PUT /fillers/:version` with the mode and seed, through the existing private Palazzo URL allowlist. Palazzo downloads, verifies and transcodes every file before it answers, so this request is bounded at 30 s plus 15 s per file, at most 15 minutes, and is not sent again after a timeout. The same bound applies to the older recovery preparation. A radio program configures and reads its filler on **Radio distribution**.
 
@@ -61,6 +64,13 @@ the program's next Stop.
 
 The release is best effort: a failed write is logged, counted and never fails the Stop, which has already taken effect;
 the version stays active until the next Stop.
+
+## A local run
+
+The Compose stack's Alana fixture (`backend/test/fixtures/alana-recording-server.mjs`) answers the television contract:
+a fixed live profile, a preparation that downloads the source and checks its SHA-256, and a lifecycle whose start runs
+the prepared filler. It transcodes and plays nothing: no real Alana or Croccante publishes a live profile yet
+(gaulatti/alana#29, gaulatti/croccante#35).
 
 ## Start binding
 

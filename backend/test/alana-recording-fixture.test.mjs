@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { once } from 'node:events';
+import { createServer } from 'node:http';
 import test from 'node:test';
 import { createAlanaRecordingFixture } from './fixtures/alana-recording-server.mjs';
 
@@ -149,4 +151,34 @@ test('fake Alana deterministically covers start, status, stop, finalize, and err
     body: { error: 'unauthorized' },
   });
   assert.doesNotMatch(JSON.stringify(unauthorized), new RegExp(token));
+});
+
+test('fake Alana prepares a television filler it downloaded and checked, and runs it from the next start', async (t) => {
+  const bytes = Buffer.from('a fictional still image');
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  const media = createServer((_request, response) => response.end(bytes));
+  const server = createAlanaRecordingFixture({ token, destinationProgramId: 'main' });
+  for (const listener of [media, server]) {
+    listener.listen(0, '127.0.0.1');
+    await once(listener, 'listening');
+    t.after(() => listener.close());
+  }
+  const base = `http://127.0.0.1:${server.address().port}/v1/programs/main`;
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const put = (version, source, profile) =>
+    fetch(`${base}/fillers/${version}`, { method: 'PUT', headers, body: JSON.stringify({ commandId: version, source, profile }) }).then(json);
+  const source = { id: 'asset', sha256, downloadUrl: `http://127.0.0.1:${media.address().port}/still.png` };
+
+  const live = await fetch(`${base}/live-profile`, { headers }).then(json);
+  assert.equal(live.status, 200);
+  assert.equal((await put('filler-tv-1', source, { ...live.body.profile, fps: 25 })).status, 409);
+  assert.equal((await put('filler-tv-1', { ...source, sha256: '0'.repeat(64) }, live.body.profile)).status, 422);
+
+  const prepared = await put('filler-tv-1', source, live.body.profile);
+  assert.deepEqual(prepared, {
+    status: 200,
+    body: { version: 'filler-tv-1', status: 'ready', ready: true, sourceId: 'asset', sourceSha256: sha256, profileChecksum: live.body.checksum },
+  });
+  const lifecycle = () => fetch(`${base}/lifecycle`, { headers }).then(json);
+  assert.equal((await lifecycle()).body.pendingFiller.version, 'filler-tv-1');
 });

@@ -94,6 +94,24 @@ export class FillerMcpTools {
           ),
       }),
       actionSpec({
+        name: 'filler_remove_television',
+        title: 'Remove the television filler of a program',
+        description:
+          'Removes the configured television filler of a program, so a broadcast start no longer binds or checks one. Nothing is sent to Alana and nothing on air changes. Prepare it again with filler_prepare_television.',
+        permission: permissions.manage,
+        tier: 'W',
+        shape: { program_id: programIdArg },
+        id: (args) => args.program_id,
+        plan: (args) => ({
+          summary: `Removes the television filler configuration of program ${args.program_id}. The next broadcast start binds no filler version; what Alana already holds is not touched.`,
+          affects: [
+            { kind: 'program', id: args.program_id, name: args.program_id },
+          ],
+          recoverable: true,
+        }),
+        run: (args) => this.fillers.removeTelevision(args.program_id),
+      }),
+      actionSpec({
         name: 'filler_remove_radio',
         title: 'Remove the radio filler of a program',
         description:

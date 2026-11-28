@@ -52,6 +52,49 @@ export function createAlanaRecordingFixture({
   let activeDestinations = null;
   let lastBroadcastCommand = null;
   let nextStartMode = 'normal';
+  // The television filler contract (gaulatti/alcantara#126): a fixed live profile, and one prepared filler that the
+  // next start runs. "Prepare" downloads the source and checks its SHA-256; nothing is transcoded or played.
+  let pendingFiller = null;
+  let activeFiller = null;
+  const liveProfile = {
+    audioBitrate: '128k',
+    audioChannels: 2,
+    audioRate: 48000,
+    fps: 30,
+    gop: 60,
+    height: 1080,
+    loopSeconds: 60,
+    videoBitrate: '6000k',
+    width: 1920,
+  };
+  const checksumOf = (value) =>
+    createHash('sha256').update(canonicalJson(value)).digest('hex');
+  const programBasePath = `/v1/programs/${encodeURIComponent(destinationProgramId)}`;
+
+  async function prepareFiller(request, response, version) {
+    const body = await requestBody(request);
+    if (checksumOf(body.profile) !== checksumOf(liveProfile)) {
+      send(response, 409, { error: 'profile-mismatch' });
+      return;
+    }
+    const download = await fetch(body.source.downloadUrl);
+    const sha256 = createHash('sha256')
+      .update(Buffer.from(await download.arrayBuffer()))
+      .digest('hex');
+    if (!download.ok || sha256 !== body.source.sha256) {
+      send(response, 422, { error: 'source-mismatch' });
+      return;
+    }
+    pendingFiller = {
+      version,
+      status: 'ready',
+      ready: true,
+      sourceId: body.source.id,
+      sourceSha256: sha256,
+      profileChecksum: checksumOf(liveProfile),
+    };
+    send(response, 200, pendingFiller);
+  }
 
   function canonicalJson(value) {
     if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
@@ -87,6 +130,8 @@ export function createAlanaRecordingFixture({
       lastSequence,
       pendingDestinations,
       activeDestinations,
+      ...(pendingFiller ? { pendingFiller } : {}),
+      ...(activeFiller ? { activeFiller } : {}),
       lastCommand: lastBroadcastCommand,
       croccanteAcknowledgement: activeDestinations
         ? {
@@ -262,7 +307,27 @@ export function createAlanaRecordingFixture({
       send(response, 200, broadcastView());
       return;
     }
+    if (request.method === 'GET' && path === `${programBasePath}/live-profile`) {
+      send(response, 200, {
+        contractVersion: 1,
+        programId: destinationProgramId,
+        profile: liveProfile,
+        checksum: checksumOf(liveProfile),
+      });
+      return;
+    }
     try {
+      if (
+        request.method === 'PUT' &&
+        path.startsWith(`${programBasePath}/fillers/`)
+      ) {
+        await prepareFiller(
+          request,
+          response,
+          decodeURIComponent(path.slice(`${programBasePath}/fillers/`.length)),
+        );
+        return;
+      }
       if (
         request.method === 'PUT' &&
         path.startsWith(
@@ -310,6 +375,8 @@ export function createAlanaRecordingFixture({
           lastSequence = sequence;
           pendingDestinations = activeDestinations;
           activeDestinations = null;
+          pendingFiller = activeFiller ?? pendingFiller;
+          activeFiller = null;
           lastBroadcastCommand = {
             action: 'stop',
             result: 'stopped',
@@ -339,6 +406,8 @@ export function createAlanaRecordingFixture({
         lastSequence = sequence;
         activeDestinations = next;
         pendingDestinations = null;
+        activeFiller = pendingFiller ?? activeFiller;
+        pendingFiller = null;
         lastBroadcastCommand = {
           action: 'start',
           result: 'running',

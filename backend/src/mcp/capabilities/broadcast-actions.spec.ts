@@ -100,6 +100,7 @@ function build() {
       prepareTelevision: answers(fillerState),
       prepareRadio: answers(fillerState),
       removeRadio: answers(fillerState),
+      removeTelevision: answers(fillerState),
     },
     recording: {
       status: answers(recordingStatus),
@@ -439,6 +440,23 @@ describe('filler writes', () => {
           request as never,
         ),
       [b.s.fillers.prepareRadio],
+    );
+  });
+
+  it('removes the television filler as the console route does, after a dry run that writes nothing', async () => {
+    const b = build();
+    const plan = await b.spec('filler_remove_television').dryRun!(
+      { program_id: 'main' },
+      ctx,
+    );
+    expect(plan).toMatchObject({ onAir: false, recoverable: true });
+    expect(b.s.fillers.removeTelevision).not.toHaveBeenCalled();
+    await parity(
+      b,
+      'filler_remove_television',
+      { program_id: 'main' },
+      () => b.controllers.filler.removeTelevision('main'),
+      [b.s.fillers.removeTelevision],
     );
   });
 

@@ -204,6 +204,12 @@
     "permission": "broadcast.manage"
   },
   {
+    "method": "DELETE",
+    "path": "/broadcast/programs/:programId/fillers/television",
+    "public": false,
+    "permission": "broadcast.manage"
+  },
+  {
     "method": "PUT",
     "path": "/broadcast/programs/:programId/fillers/television",
     "public": false,

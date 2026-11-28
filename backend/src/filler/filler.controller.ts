@@ -36,6 +36,12 @@ export class FillerController {
     return this.fillers.prepareRadio(programId, body, request.user.sub);
   }
 
+  @Delete('television')
+  @RequirePermission(ALCANTARA_PERMISSIONS.broadcast.manage)
+  removeTelevision(@Param('programId') programId: string) {
+    return this.fillers.removeTelevision(programId);
+  }
+
   @Delete('radio')
   @RequirePermission(ALCANTARA_PERMISSIONS.broadcast.manage)
   removeRadio(@Param('programId') programId: string) {

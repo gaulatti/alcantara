@@ -210,13 +210,25 @@ export class FillerService {
    * Start binds again. Nothing is sent to Palazzo and nothing on air changes; a running session keeps the version it
    * started with. The prepared versions stay on record.
    */
-  async removeRadio(programId: string) {
+  removeRadio(programId: string) {
+    return this.removeLeg(programId, 'radio');
+  }
+
+  /**
+   * Removes the program's television filler configuration (gaulatti/alcantara#20): a Start no longer binds or checks
+   * a filler version. Nothing is sent to Alana and nothing on air changes; the prepared versions stay on record.
+   */
+  removeTelevision(programId: string) {
+    return this.removeLeg(programId, 'television');
+  }
+
+  private async removeLeg(programId: string, leg: FillerLegName) {
     const program = await this.requireProgram(programId);
-    this.requireLeg(program.type, 'radio');
+    this.requireLeg(program.type, leg);
     const removed = await this.prisma.fillerLeg.updateMany({
       where: {
         programId,
-        leg: 'radio',
+        leg,
         OR: [
           { pendingVersionId: { not: null } },
           { activeVersionId: { not: null } },
@@ -224,7 +236,7 @@ export class FillerService {
       },
       data: { pendingVersionId: null, activeVersionId: null },
     });
-    if (removed.count) this.metrics.recordFillerRemoval('radio');
+    if (removed.count) this.metrics.recordFillerRemoval(leg);
     return this.getState(programId);
   }
 

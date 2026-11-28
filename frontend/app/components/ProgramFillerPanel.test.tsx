@@ -247,3 +247,15 @@ it('removes the radio filler after a confirmation, and says why a removal failed
   await waitFor(() => expect(screen.queryByRole('button', { name: 'Remove radio filler', hidden: true })).toBeNull());
   expect(remove).toHaveBeenLastCalledWith('/broadcast/programs/both-1/fillers/radio');
 });
+
+it('removes the television filler after a confirmation that says what changes', async () => {
+  const cleared = structuredClone(state);
+  cleared.legs.television = { pending: null, active: null };
+  const remove = vi.spyOn(api, 'delete').mockResolvedValueOnce({ data: cleared });
+  render(<ProgramFillerPanel programId="both-1" canManage only="television" />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Remove television filler', hidden: true }));
+  expect(screen.getByText('A broadcast start binds no filler again. Nothing on air changes.')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Remove', hidden: true }));
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Remove television filler', hidden: true })).toBeNull());
+  expect(remove).toHaveBeenCalledWith('/broadcast/programs/both-1/fillers/television');
+});
