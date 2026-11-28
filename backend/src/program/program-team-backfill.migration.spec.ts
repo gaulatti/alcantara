@@ -1,6 +1,21 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Client } from 'pg';
+import { Client as UntypedPgClient } from 'pg';
+
+// pg ships without types in this package set. These specs use only the calls below, so this is the typed view of
+// the client they get; it is a cast, not a new behaviour.
+interface PgClient {
+  connect(): Promise<void>;
+  end(): Promise<void>;
+  on(event: 'notice', listener: (notice: { message?: string }) => void): this;
+  query<T = Record<string, unknown>>(
+    text: string,
+    values?: unknown[],
+  ): Promise<{ rows: T[]; rowCount: number | null }>;
+}
+const Client = UntypedPgClient as unknown as new (config: {
+  connectionString: string | undefined;
+}) => PgClient;
 
 // gaulatti/alcantara#478: programs created before #335 have a Program row with teamId NULL. The
 // backfill gives each one the single positive team its attached scenes, media groups, stingers and
@@ -30,7 +45,7 @@ describe('Program team backfill migration (#478)', () => {
   const url = process.env.DATABASE_URL;
   const describeDb = url ? describe : describe.skip;
   describeDb('against a migrated database', () => {
-    let client: Client;
+    let client: PgClient;
     let notices: string[];
     const prefix = `e2e-478-${process.pid}-${Date.now()}`;
     const id = (name: string) => `${prefix}-${name}`;

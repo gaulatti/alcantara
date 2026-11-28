@@ -1,6 +1,20 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Client } from 'pg';
+import { Client as UntypedPgClient } from 'pg';
+
+// pg ships without types in this package set. These specs use only the calls below, so this is the typed view of
+// the client they get; it is a cast, not a new behaviour.
+interface PgClient {
+  connect(): Promise<void>;
+  end(): Promise<void>;
+  query<T = Record<string, string>>(
+    text: string,
+    values?: unknown[],
+  ): Promise<{ rows: T[]; rowCount: number | null }>;
+}
+const Client = UntypedPgClient as unknown as new (config: {
+  connectionString: string | undefined;
+}) => PgClient;
 
 const migrationPath = join(
   process.cwd(),
@@ -50,7 +64,7 @@ describe('Program table migration', () => {
       process.env.DATABASE_URL ??
       'postgresql://alcantara:alcantara-password@127.0.0.1:5432/alcantara_test';
 
-    let client: Client | null = null;
+    let client: PgClient | null = null;
     try {
       client = new Client({ connectionString: databaseUrl });
       await client.connect();
