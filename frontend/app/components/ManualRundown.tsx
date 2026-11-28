@@ -235,11 +235,31 @@ export default function ManualRundown() {
     };
   }, [activeProgramId]);
 
+  // Only the list, keeping any cue edit the server has not yet confirmed.
+  const readList = useCallback(async () => {
+    try {
+      const seqData = await fetchFlightSequences(activeProgramId);
+      if (shownProgramRef.current !== activeProgramId) return;
+      setSequences(
+        seqData
+          .filter((sequence) => !sequence.scheduledAt)
+          .map((sequence) => {
+            const unsaved = unsavedItems.current.get(sequence.id);
+            return unsaved ? { ...sequence, items: unsaved.items } : sequence;
+          }),
+      );
+    } catch (err) {
+      console.error("Failed to reload the rundown list:", err);
+    }
+  }, [activeProgramId]);
+
   const handleSSE = useCallback(
     (data: any) => {
       if (!data || typeof data !== "object") return;
 
       if (data.type === "flight_update" && data.programId === activeProgramId) {
+        // A rundown was created or deleted, here or elsewhere: the list is read again.
+        if (data.sequencesChanged) void readList();
         setRuntime(data.runtime ?? null);
         if (
           typeof data.activeSequenceId === "number" ||
@@ -272,7 +292,7 @@ export default function ManualRundown() {
         );
       }
     },
-    [activeProgramId],
+    [activeProgramId, readList],
   );
 
   // Events sent while the stream was down are not sent again, and the backend may be a new one (alcantara#873): a

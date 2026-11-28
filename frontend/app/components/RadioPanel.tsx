@@ -1,3 +1,5 @@
+import { useFeatures } from "../hooks/useFeatures";
+import { RUNDOWN_FORBIDDEN } from "../utils/rundownForbidden";
 import { TooltipButton } from "./BleeckerButtons";
 import { useCallback, useEffect, useRef, useState, useMemo, type ReactNode } from "react";
 import { Button, Select } from "@gaulatti/bleecker";
@@ -288,6 +290,14 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   onToggleSongMuted,
   onToggleInstantMuted,
 }) => {
+  // An account that may not run the radio is told so once, in place of the transport and of the refusals its reads
+  // collect. Until the permissions are known nothing is assumed.
+  const { loading: featuresLoading, hasPermission } = useFeatures();
+  const viewOnly = featuresLoading === false && !hasPermission("alcantara:radio:operate");
+  const engineHidden = featuresLoading === false && !hasPermission("alcantara:radio:read");
+  // A refused read is expected for such an account; any other failure is still shown.
+  const refusedRead = (message: string | null) =>
+    viewOnly && message !== null && (message === RUNDOWN_FORBIDDEN || /\b403\b/.test(message));
   const rotation = normalizeProgramSongSequence(songSequence) ?? {
     ...createProgramSongSequence("manual"),
     activeItemId: null,
@@ -679,7 +689,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     streamRunning: stream === null ? null : isLive,
     engine: {
       connected: engineReady,
-      unknown: !palazzoAnswered,
+      // An engine this account may not read is unknown, not unavailable.
+      unknown: engineHidden || !palazzoAnswered,
       degraded: palazzo?.degraded === true,
       unavailableLabel: engineLabel,
       detail: palazzo?.detail ?? null,
@@ -846,7 +857,12 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                 />
               )}
             </div>
-            {(playoutError || queueError || logLoadError) && (
+            {viewOnly ? (
+              <p role="status" className="px-4 py-3 text-sm text-text-secondary">
+                You can view this show but not run the radio.
+              </p>
+            ) : null}
+            {(playoutError || queueError || (logLoadError && !refusedRead(logLoadError))) && (
               <p role="alert" className="px-4 py-3 text-sm text-terracotta">
                 {playoutError || queueError || logLoadError}
               </p>
@@ -873,7 +889,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                 </ol>
               </details>
             ) : null}
-            {songCatalogLoadError && (
+            {songCatalogLoadError && !refusedRead(songCatalogLoadError) && (
               <div
                 role="alert"
                 className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm text-terracotta"
@@ -1311,7 +1327,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     {instantError}
                   </p>
                 )}
-                {instantsLoadError && (
+                {instantsLoadError && !refusedRead(instantsLoadError) && (
                   <div
                     role="alert"
                     className="radio-cartwall-alert flex flex-wrap items-center gap-2 text-sm text-terracotta"
@@ -1517,7 +1533,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
             : undefined
         }
       />
-      ) : (
+      ) : viewOnly ? null : (
         <RadioTransport
           next={next}
           onTake={takeNext}

@@ -553,11 +553,17 @@ function LegTag({ children }: { children: string }) {
   return <span className="switcher-leg">{children}</span>;
 }
 
+const VIEW_ONLY_TAKE = "Your account can view this show but not take it.";
+
 export function BroadcastSwitcherDeck(props: Props) {
   const preferences = useConsolePreferences();
   const latestPropsRef = useRef(props);
   latestPropsRef.current = props;
   const { touchMode, shortcutsEnabled } = preferences.profile;
+  const { loading: featuresLoading, hasPermission } = useFeatures();
+  // The server refuses a take without this permission, so the buttons say so instead of failing when pressed.
+  const viewOnly = featuresLoading === false && !hasPermission("alcantara:program:operate");
+  const viewOnlyHelp = viewOnly ? { title: VIEW_ONLY_TAKE } : {};
   const dockWidth = preferences.profile.dockWidth ?? 300;
   const pendingStageRef = useRef<Promise<void>>(Promise.resolve());
   const [ftbArmed, setFtbArmed] = useState(false);
@@ -633,7 +639,7 @@ export function BroadcastSwitcherDeck(props: Props) {
   };
 
   useEffect(() => {
-    if (!shortcutsEnabled) return;
+    if (!shortcutsEnabled || viewOnly) return;
     const handleShortcut = (event: KeyboardEvent) => {
       if (blocksBroadcastShortcut(event.target)) return;
       const plain =
@@ -662,6 +668,7 @@ export function BroadcastSwitcherDeck(props: Props) {
     props.onFadeToBlack,
     props.onStageScene,
     props.onTake,
+    viewOnly,
     ftbArmed,
     props.fadeToBlack,
     shortcutsEnabled,
@@ -885,20 +892,31 @@ export function BroadcastSwitcherDeck(props: Props) {
               <BroadcastAction
                 kind="cut"
                 className="switcher-cut flex-1 sm:flex-none"
-                disabled={!props.stagedScene || props.takeBusy}
+                disabled={viewOnly || !props.stagedScene || props.takeBusy}
                 onClick={() => void cutStagedScene()}
+                {...viewOnlyHelp}
               >
                 CUT
               </BroadcastAction>
               <BroadcastAction
                 kind="take"
                 className="switcher-take flex-1 sm:flex-none"
-                disabled={!props.stagedScene || props.takeBusy}
+                disabled={viewOnly || !props.stagedScene || props.takeBusy}
                 onClick={() => void takeStagedScene()}
+                {...viewOnlyHelp}
               >
                 {props.takeBusy ? "TAKING…" : "TAKE TO PROGRAM"}
               </BroadcastAction>
-              {props.fadeToBlack ? (
+              {viewOnly ? (
+                <TooltipButton
+                  type="button"
+                  disabled
+                  title={VIEW_ONLY_TAKE}
+                  className="rounded-[var(--radius-button)] border border-sand/30 px-3 py-2 text-xs font-semibold opacity-40 dark:border-white/10"
+                >
+                  {props.fadeToBlack ? "RESTORE PROGRAM" : "FADE TO BLACK"}
+                </TooltipButton>
+              ) : props.fadeToBlack ? (
                 <TooltipButton
                   type="button"
                   onClick={requestFadeToBlack}

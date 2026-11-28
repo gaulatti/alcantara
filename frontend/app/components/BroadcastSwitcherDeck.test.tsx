@@ -21,8 +21,10 @@ vi.mock("../contexts/ConsolePreferencesContext", () => ({
     deviceClass: "desktop",
   }),
 }));
+const account = vi.hoisted(() => ({ viewOnly: false }));
 vi.mock("../hooks/useFeatures", () => ({
-  useFeatures: () => ({ context: {} }),
+  useFeatures: () =>
+    account.viewOnly ? { context: {}, loading: false, hasPermission: () => false } : { context: {} },
 }));
 beforeEach(() => {
   vi.stubGlobal(
@@ -53,6 +55,29 @@ const props = {
   onCut: vi.fn(),
   onFadeToBlack: vi.fn(),
 };
+it("disables every take for an account that may only view, and says why", () => {
+  account.viewOnly = true;
+  onTestFinished(() => {
+    account.viewOnly = false;
+  });
+  preferenceProfile.shortcutsEnabled = true;
+  onTestFinished(() => {
+    preferenceProfile.shortcutsEnabled = false;
+  });
+  const takes = { onTake: vi.fn(), onCut: vi.fn(), onFadeToBlack: vi.fn() };
+  render(<BroadcastSwitcherDeck {...props} {...takes} workspace="director" />);
+  for (const name of ["CUT", "TAKE TO PROGRAM", "FADE TO BLACK"]) {
+    const button = screen.getByText(name).closest("button")!;
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+  }
+  fireEvent.keyDown(window, { code: "Space", key: " " });
+  fireEvent.keyDown(window, { key: "c" });
+  fireEvent.keyDown(window, { key: "b", altKey: true });
+  fireEvent.keyDown(window, { key: "b", altKey: true });
+  for (const take of Object.values(takes)) expect(take).not.toHaveBeenCalled();
+});
+
 it("leaves the Audio workspace to its tools without a duplicate monitor", () => {
   render(<BroadcastSwitcherDeck {...props} workspace="audio" />);
   expect(

@@ -1363,6 +1363,12 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         },
       });
 
+      // An open rundown lists it without a reload.
+      await this.broadcastFlightUpdate(
+        normalizedProgramId,
+        state.activeFlightSequenceId ?? null,
+        true,
+      );
       return this.toFlightSequence(sequence);
     } catch (err: any) {
       if (err?.code === 'P2002') {
@@ -1615,6 +1621,13 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
+    await this.broadcastFlightUpdate(
+      normalizedProgramId,
+      state.activeFlightSequenceId === sequenceId
+        ? null
+        : (state.activeFlightSequenceId ?? null),
+      true,
+    );
     return { deletedId: sequenceId };
   }
 
@@ -2607,6 +2620,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
   private async broadcastFlightUpdate(
     programId: string,
     activeSequenceId?: number | null,
+    sequencesChanged = false,
   ): Promise<void> {
     const runtime = this.runtimes.get(programId);
 
@@ -2624,6 +2638,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     const payload: any = {
       type: 'flight_update',
       programId,
+      ...(sequencesChanged ? { sequencesChanged: true } : {}),
       activeSequenceId: resolvedActiveSequenceId,
       runtime: runtime
         ? {

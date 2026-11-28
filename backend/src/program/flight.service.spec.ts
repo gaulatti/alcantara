@@ -125,7 +125,7 @@ describe('FlightService clocked logs', () => {
     const metrics = new RadioMetricsService();
     const service = new FlightService(
       prisma,
-      {} as any,
+      { broadcastUpdate: jest.fn() } as any,
       metrics,
       noRecorder(),
       { teamId: 0 } as never,

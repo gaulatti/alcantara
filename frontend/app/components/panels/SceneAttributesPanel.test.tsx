@@ -22,6 +22,11 @@ vi.mock("@gaulatti/bleecker", async (importOriginal) => {
     ),
   };
 });
+const account = vi.hoisted(() => ({ viewOnly: false }));
+vi.mock("../../hooks/useFeatures", () => ({
+  useFeatures: () =>
+    account.viewOnly ? { loading: false, hasPermission: () => false } : { loading: true, hasPermission: () => false },
+}));
 vi.mock("../editors", () => ({
   ComponentPropsFields: () => <p>Player fields</p>,
   ZIndexField: () => null,
@@ -227,4 +232,19 @@ it("reports autosave progress and errors in the footer and saves on request", ()
   expect(screen.getByText("Autosaving scene attributes…")).toBeInTheDocument();
   expect(screen.queryByRole("alert")).toBeNull();
   expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
+});
+
+it("disables the background audio take for an account that may only view", () => {
+  account.viewOnly = true;
+  render(
+    <SceneAttributesPanel
+      {...(props as any)}
+      editableSceneComponentEntries={[]}
+      selectedBackgroundAudioAsset={{ id: 1 }}
+      sceneInstantPlayback={{ isPlaying: true }}
+    />,
+  );
+  expect(screen.getByText("TAKE BG").closest("button")).toBeDisabled();
+  expect(screen.getByText("STOP BG").closest("button")).toBeDisabled();
+  account.viewOnly = false;
 });

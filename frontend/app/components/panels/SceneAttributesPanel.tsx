@@ -1,4 +1,6 @@
 import { Button, Card, Select, Tabs } from "@gaulatti/bleecker";
+import { Button as HelpButton } from "../BleeckerButtons";
+import { useFeatures } from "../../hooks/useFeatures";
 import { useEffect, useId, useMemo, useState } from "react";
 import type {
   BackgroundAudioAsset,
@@ -76,6 +78,9 @@ export function SceneAttributesPanel({
   onStopSceneInstant,
 }: SceneAttributesPanelProps) {
   const panelId = useId();
+  const { loading: featuresLoading, hasPermission } = useFeatures();
+  const viewOnly = featuresLoading === false && !hasPermission("alcantara:program:operate");
+  const viewOnlyHelp = viewOnly ? { title: "Your account can view this show but not take it." } : {};
   const [activeAttributeTab, setActiveAttributeTab] = useState<string>("");
 
   const sceneTab = useMemo(
@@ -251,7 +256,7 @@ export function SceneAttributesPanel({
                   ) : null}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button
+                  <HelpButton
                     size="sm"
                     onClick={() =>
                       onTakeSceneInstant(
@@ -260,18 +265,20 @@ export function SceneAttributesPanel({
                         selectedBackgroundAudioAssetId,
                       )
                     }
-                    disabled={!selectedScene || !selectedBackgroundAudioAsset}
+                    disabled={viewOnly || !selectedScene || !selectedBackgroundAudioAsset}
+                    {...viewOnlyHelp}
                   >
                     TAKE BG
-                  </Button>
-                  <Button
+                  </HelpButton>
+                  <HelpButton
                     size="sm"
                     variant="secondary"
                     onClick={() => onStopSceneInstant()}
-                    disabled={!sceneInstantPlayback.isPlaying}
+                    disabled={viewOnly || !sceneInstantPlayback.isPlaying}
+                    {...viewOnlyHelp}
                   >
                     STOP BG
-                  </Button>
+                  </HelpButton>
                 </div>
               </div>
               {sceneInstantPlayback.isPlaying ? (
