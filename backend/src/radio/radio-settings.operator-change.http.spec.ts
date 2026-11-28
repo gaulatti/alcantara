@@ -47,7 +47,14 @@ describe('PUT /radio/:programId/settings records its actor', () => {
         RadioService,
         { provide: PompeiiService, useValue: { teamId: 0 } },
         // The program's team, stored on the record (gaulatti/alcantara#122).
-        { provide: ProgramTeamAccess, useValue: { teamOf: jest.fn(async (programId: string) => (programId === 'p' ? 7 : null)) } },
+        {
+          provide: ProgramTeamAccess,
+          useValue: {
+            teamOf: jest.fn(async (programId: string) => (programId === 'p' ? 7 : null)),
+            cachedTeamOf: jest.fn(() => 7),
+            warmTeamOf: jest.fn(),
+          },
+        },
         ActorContextInterceptor,
         { provide: PrismaService, useValue: prisma },
         {

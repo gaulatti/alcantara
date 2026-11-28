@@ -59,6 +59,21 @@ export class ProgramTeamAccess {
     return owner !== undefined && owner !== null && owner > 0 ? owner : null;
   }
 
+  /**
+   * The team remembered for a program, from the cache alone: no database read, so a write never waits on the lookup
+   * (gaulatti/alcantara#122). An entry older than the TTL still counts, since it is only a label on a record; null
+   * when nothing is remembered.
+   */
+  cachedTeamOf(programId: string): number | null {
+    const known = this.cache.get(programId.trim());
+    return known && known.teamId !== null && known.teamId > 0 ? known.teamId : null;
+  }
+
+  /** Reads a program's team into the cache in the background, for a later write. Never awaited by the caller. */
+  warmTeamOf(programId: string): void {
+    void this.teamOf(programId).catch(() => undefined);
+  }
+
   /** Forgets a program's team, after it is created, renamed or deleted, or its team changes. */
   invalidate(programId: string): void {
     this.cache.delete(programId.trim());
