@@ -789,6 +789,8 @@ describe('FlightService public lifecycle and clock boundary', () => {
   it('coalesces slow schedule polls instead of concurrently claiming the same block', async () => {
     const f = setup();
     let release!: (rows: unknown[]) => void;
+    // Start-up looks for manual rundowns to recover first (gaulatti/alcantara#123).
+    f.prisma.flightSequence.findMany.mockResolvedValueOnce([]);
     f.prisma.flightSequence.findMany.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -797,16 +799,18 @@ describe('FlightService public lifecycle and clock boundary', () => {
     );
     await f.service.onModuleInit();
     await jest.advanceTimersByTimeAsync(2000);
-    expect(f.prisma.flightSequence.findMany).toHaveBeenCalledTimes(1);
+    expect(f.prisma.flightSequence.findMany).toHaveBeenCalledTimes(2);
     release([]);
     await flush();
     await jest.advanceTimersByTimeAsync(1000);
-    expect(f.prisma.flightSequence.findMany).toHaveBeenCalledTimes(2);
+    expect(f.prisma.flightSequence.findMany).toHaveBeenCalledTimes(3);
   });
 
   it('claims a due published block once and starts its actual catalog cue', async () => {
     const f = setup();
     clocked(f);
+    // Start-up looks for manual rundowns to recover first (gaulatti/alcantara#123).
+    f.prisma.flightSequence.findMany.mockResolvedValueOnce([]);
     f.prisma.flightSequence.findMany.mockResolvedValueOnce([
       { ...f.sequence(), programState: { programId: 'news' } },
     ]);
@@ -825,6 +829,8 @@ describe('FlightService public lifecycle and clock boundary', () => {
   it('skips a due block whose one-time claim was already taken by another worker', async () => {
     const f = setup();
     clocked(f);
+    // Start-up looks for manual rundowns to recover first (gaulatti/alcantara#123).
+    f.prisma.flightSequence.findMany.mockResolvedValueOnce([]);
     f.prisma.flightSequence.findMany.mockResolvedValueOnce([
       { ...f.sequence(), programState: { programId: 'news' } },
     ]);
@@ -837,6 +843,8 @@ describe('FlightService public lifecycle and clock boundary', () => {
   it('preserves a failed one-time scheduled claim and reports the failed start without playing unavailable media', async () => {
     const f = setup();
     clocked(f);
+    // Start-up looks for manual rundowns to recover first (gaulatti/alcantara#123).
+    f.prisma.flightSequence.findMany.mockResolvedValueOnce([]);
     f.prisma.flightSequence.findMany.mockResolvedValueOnce([
       { ...f.sequence(), programState: { programId: 'news' } },
     ]);
@@ -854,6 +862,8 @@ describe('FlightService public lifecycle and clock boundary', () => {
 
   it('records a polling failure without turning an unavailable database into a successful schedule check', async () => {
     const f = setup();
+    // Start-up looks for manual rundowns to recover first (gaulatti/alcantara#123).
+    f.prisma.flightSequence.findMany.mockResolvedValueOnce([]);
     f.prisma.flightSequence.findMany.mockRejectedValueOnce(
       new Error('database unavailable'),
     );

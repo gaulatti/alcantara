@@ -2621,6 +2621,11 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     return holding;
   }
 
+  /** The catalog song the playout engine has on air for the program, or null when it knows none. */
+  onAirSongId(programId: string): number | null {
+    return this.songExecutionEngine.getOnAirView(programId).songId;
+  }
+
   async getProgramSongPlayback(
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
   ) {

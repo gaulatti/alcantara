@@ -411,6 +411,14 @@ export type RendererWriteEndpoint = (typeof RENDERER_WRITE_ENDPOINTS)[number];
  */
 export type RendererAuthCredential = 'program' | 'shared' | 'fleet' | 'session' | 'none';
 
+const RUNDOWN_RECOVERY_RESULTS = new Set([
+  'resumed',
+  'finished',
+  'diverged',
+  'skipped_unsupported',
+  'failed',
+]);
+
 @Injectable()
 export class ManagedMetricsService {
   readonly registry = new Registry();
@@ -422,6 +430,7 @@ export class ManagedMetricsService {
   private readonly mediaLabelAssignments: Counter<string>;
   private readonly artistLabelWrites: Counter<string>;
   private readonly operatorChangeRecords: Counter<string>;
+  private readonly rundownRecoveries: Counter<'result'>;
   private readonly recipeExpansions: Counter<string>;
   private readonly songSequenceSaves: Counter<'result'>;
   private readonly recipeRebuilds: Counter<string>;
@@ -560,6 +569,14 @@ export class ManagedMetricsService {
     });
     for (const result of SONG_SEQUENCE_SAVE_RESULTS)
       this.songSequenceSaves.inc({ result }, 0);
+    this.rundownRecoveries = new Counter({
+      name: 'alcantara_rundown_recovery_total',
+      help: 'Manually started rundowns found running at backend start, by result: resumed, finished, diverged (nothing re-taken), skipped_unsupported or failed. Exposed from 0.',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    for (const result of RUNDOWN_RECOVERY_RESULTS)
+      this.rundownRecoveries.inc({ result }, 0);
     this.recipeExpansions = new Counter({
       name: 'alcantara_recipe_expansions_total',
       help: 'Rundown recipe uses previewed or built, by result.',
@@ -993,6 +1010,12 @@ export class ManagedMetricsService {
     if (normalizedResult === 'success') {
       this.jobLastSuccess.set({ job: normalizedJob }, Date.now() / 1000);
     }
+  }
+
+  recordRundownRecovery(result: string): void {
+    this.rundownRecoveries.inc({
+      result: bounded(result, RUNDOWN_RECOVERY_RESULTS),
+    });
   }
 
   recordRecipeExpansion(result: string): void {

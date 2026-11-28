@@ -8,6 +8,9 @@ import {
   radioEngineReadiness,
 } from '../radio/engine-availability';
 import { isDeployCandidate } from '../config/deploy-candidate';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
+import { resolve } from './flight-resolver';
+import { passEndsAfterMs } from './flight-recovery';
 import {
   BadRequestException,
   forwardRef,
@@ -291,6 +294,23 @@ export interface PreflightEvent {
   reason: string;
 }
 
+/** How long past a recovered song's expected end the rundown still waits for the engine to say it ended. */
+const RECOVERED_SONG_END_GRACE_MS = 10_000;
+
+/** A row recovery reads: a manual rundown still marked running, with its program's state. */
+interface RunningManualSequence {
+  id: number;
+  items: unknown;
+  loop: boolean;
+  activeItemId: string | null;
+  lastStartedAt: Date | null;
+  programState: {
+    programId: string;
+    activeSceneId: number | null;
+    activeFlightSequenceId: number | null;
+  };
+}
+
 @Injectable()
 export class FlightService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(FlightService.name);
@@ -324,6 +344,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     private readonly recorder: OperatorChangeRecorder,
     private readonly pompeii: PompeiiService,
     @Optional() private readonly lease?: PlayoutLease,
+    @Optional() private readonly observed?: ManagedMetricsService,
   ) {}
 
   private readonly refusedSongScopes = new Set<string>();
@@ -374,9 +395,173 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       data: { isRunning: false },
     });
     if (interrupted.count) this.metrics.recordRadioLogResult('interrupted');
+    await this.recoverManualSequences();
     this.scheduleTimer = setInterval(() => {
       void this.startDuePublishedLogs();
     }, 1000);
+  }
+
+  /**
+   * A manually started rundown's row still says it is running after a restart, with no timer behind it. Its timer is
+   * restored from the pure resolver (gaulatti/alcantara#123). Nothing on air is changed: no cue is executed and no
+   * scene or song is taken. A restart in radio happens on every deploy, so a re-take here could cut a song on air.
+   */
+  private async recoverManualSequences(): Promise<void> {
+    let rows: RunningManualSequence[];
+    try {
+      rows = await this.prisma.flightSequence.findMany({
+        where: { isRunning: true, scheduledAt: null },
+        include: {
+          programState: {
+            select: {
+              programId: true,
+              activeSceneId: true,
+              activeFlightSequenceId: true,
+            },
+          },
+        },
+      });
+    } catch (error) {
+      this.recoveryFailed(error);
+      return;
+    }
+    for (const row of rows) {
+      try {
+        const { programId } = row.programState;
+        await this.serializeCueOperation(programId, async () => {
+          // An operator who started it again in the meantime is left alone.
+          if (this.runtimes.has(programId)) return;
+          const result = await this.recoverManualSequence(row);
+          this.observed?.recordRundownRecovery(result);
+        });
+      } catch (error) {
+        this.recoveryFailed(error);
+        await this.prisma.flightSequence
+          .update({ where: { id: row.id }, data: { isRunning: false } })
+          .catch(() => undefined);
+      }
+    }
+  }
+
+  private recoveryFailed(error: unknown): void {
+    this.observed?.recordRundownRecovery('failed');
+    this.logger.error(
+      `Rundown recovery failed: ${error instanceof Error ? error.constructor.name : typeof error}`,
+    );
+  }
+
+  private async recoverManualSequence(
+    row: RunningManualSequence,
+  ): Promise<'resumed' | 'finished' | 'diverged' | 'skipped_unsupported'> {
+    const { programId, activeSceneId, activeFlightSequenceId } =
+      row.programState;
+    const notRunning = async <T>(result: T): Promise<T> => {
+      await this.prisma.flightSequence.update({
+        where: { id: row.id },
+        data: { isRunning: false },
+      });
+      return result;
+    };
+    const items = normalizeFlightItems(row.items);
+    if (
+      activeFlightSequenceId !== row.id ||
+      !row.lastStartedAt ||
+      items.some((cue) => cue.clockOffsetSeconds !== undefined)
+    )
+      return notRunning('skipped_unsupported' as const);
+
+    const songs = await this.recoverySongs(programId, items);
+    const durations = new Map<number, number>();
+    for (const song of songs.values())
+      if (song.durationMs !== null) durations.set(song.id, song.durationMs);
+    const startedAt = row.lastStartedAt.getTime();
+    const now = Date.now();
+    const elapsed = now - startedAt;
+    if (elapsed >= passEndsAfterMs(items, durations)) {
+      if (!row.loop) return notRunning('finished' as const);
+      // A loop is picked up only within its first pass: later than that, its position is a guess.
+      this.logger.warn(
+        `Rundown for program ${programId}, sequence ${row.id} is not resumed: it started more than one loop ago`,
+      );
+      return notRunning('skipped_unsupported' as const);
+    }
+
+    const desired = resolve({ items, loop: row.loop }, startedAt, now, durations);
+    const onAir = this.programService.onAirSongId(programId);
+    const diverged =
+      row.activeItemId !== desired.activeCueId ||
+      (desired.scene !== null && activeSceneId !== desired.scene.sceneId) ||
+      (typeof desired.song?.songId === 'number' &&
+        onAir !== null &&
+        onAir !== desired.song.songId);
+    const applied = items.findIndex((cue) => cue.id === row.activeItemId);
+    const expected = items.findIndex((cue) => cue.id === desired.activeCueId);
+    const runtime: FlightRuntimeState = {
+      sequenceId: row.id,
+      programId,
+      items,
+      loop: row.loop,
+      // Diverged: it stays where the executor left it, and the operator's next Go continues from there.
+      activeIndex: diverged && applied >= 0 ? applied : expected,
+      isRunning: true,
+      generation: now,
+      timer: null,
+      waitingForSongEnd: false,
+      startedAt,
+      scheduledAtMs: null,
+    };
+    this.runtimes.set(programId, runtime);
+
+    if (diverged) {
+      this.logger.warn(
+        `Rundown recovery diverged for program ${programId}, sequence ${row.id}, cue ${items[runtime.activeIndex].id}`,
+      );
+    } else {
+      // Only a wait or a song wait takes time, so only they can be in progress.
+      const remaining =
+        passEndsAfterMs(items.slice(0, expected + 1), durations) - elapsed;
+      const generation = runtime.generation;
+      if (items[expected].kind === 'waitForSongEnd') {
+        runtime.waitingForSongEnd = true;
+        // The engine's own end of song moves on first; this only covers one that never comes.
+        runtime.timer = setTimeout(() => {
+          const current = this.runtimes.get(programId);
+          if (current?.waitingForSongEnd) {
+            current.waitingForSongEnd = false;
+            current.generation += 1;
+            void this.advance(programId, current.generation);
+          }
+        }, remaining + RECOVERED_SONG_END_GRACE_MS);
+      } else {
+        runtime.timer = setTimeout(() => {
+          void this.advance(programId, generation);
+        }, remaining);
+      }
+    }
+    await this.broadcastFlightUpdate(programId, row.id);
+    return diverged ? 'diverged' : 'resumed';
+  }
+
+  /** The cues' songs, read as the executor reads them: the program's team's. */
+  private async recoverySongs(
+    programId: string,
+    items: FlightCue[],
+  ): Promise<Map<number, { id: number; durationMs: number | null }>> {
+    const ids = items.flatMap((cue) =>
+      cue.kind === 'playSong' && typeof cue.songId === 'number'
+        ? [cue.songId]
+        : [],
+    );
+    const songDb = ids.length
+      ? await this.programSongDb('cue', programId)
+      : null;
+    const songs = songDb
+      ? await songDb.song.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, durationMs: true },
+        })
+      : [];
+    return new Map(songs.map((song) => [song.id, song]));
   }
 
   onModuleDestroy(): void {
@@ -1752,7 +1937,8 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     };
 
     this.runtimes.set(normalizedProgramId, runtime);
-    if (sequence.scheduledAt && !sequence.lastStartedAt) {
+    // A clocked log keeps its one claimed start; a manual rundown records each, which a restart resumes from.
+    if (!sequence.scheduledAt || !sequence.lastStartedAt) {
       await this.prisma.flightSequence.update({
         where: { id: sequence.id },
         data: { lastStartedAt: new Date() },

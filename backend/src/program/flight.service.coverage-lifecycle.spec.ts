@@ -834,7 +834,12 @@ describe('FlightService start', () => {
       scheduledAtMs: null,
       timer: null,
     });
-    expect(prisma.flightSequence.update).toHaveBeenCalledTimes(1);
+    expect(prisma.flightSequence.update).toHaveBeenCalledTimes(2);
+    // gaulatti/alcantara#123: each manual start is recorded, which a restart resumes from.
+    expect(prisma.flightSequence.update).toHaveBeenCalledWith({
+      where: { id: 7 },
+      data: { lastStartedAt: expect.any(Date) },
+    });
     expect(prisma.flightSequence.update).toHaveBeenCalledWith({
       where: { id: 7 },
       data: { isRunning: true, activeItemId: 'w' },

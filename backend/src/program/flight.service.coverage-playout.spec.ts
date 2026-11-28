@@ -1208,6 +1208,9 @@ describe('FlightService module load without injectable classes', () => {
         PompeiiService: undefined,
       }));
       jest.doMock('./program.service', () => ({ ProgramService: undefined }));
+      jest.doMock('../observability/managed-metrics.service', () => ({
+        ManagedMetricsService: undefined,
+      }));
       jest.doMock('../radio/radio-metrics.service', () => ({
         RadioMetricsService: undefined,
       }));
@@ -1229,10 +1232,12 @@ describe('FlightService module load without injectable classes', () => {
         'Object',
         'Object',
         'Object',
+        'Object',
       ]);
     });
     jest.dontMock('../prisma.service');
     jest.dontMock('./program.service');
+    jest.dontMock('../observability/managed-metrics.service');
     jest.dontMock('../radio/radio-metrics.service');
     jest.dontMock('../operator-change/operator-change-recorder');
     jest.dontMock('../auth/pompeii.service');

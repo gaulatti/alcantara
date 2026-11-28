@@ -241,6 +241,19 @@ An explicit operator Stop takes audio off air and sets the base rotation to Manu
 
 On backend restart, scheduled blocks whose in-memory timers were lost are marked interrupted (`isRunning:false`) without resetting `lastStartedAt` or rewriting the rotation. They are not replayed automatically. The continuous engine retains its normal authoritative Palazzo snapshot reconciliation before sending a new selection. The bounded `interrupted` metric counts startup batches containing such blocks.
 
+**A rundown started by hand resumes its timer** (gaulatti/alcantara#123). Radio and TV alike, only on the instance that
+holds the playout lease. Each manual start records `lastStartedAt`. On start-up, for a row still marked running, the
+backend computes where the rundown should be by now (`flight-resolver.ts`) and restores only the timer: a wait keeps its
+original end, and a song wait also moves on as soon as the engine reports the song ended (its own fallback fires 10 s
+after the song should have ended). No cue is executed and no scene or song is re-taken. When what is on Program or on
+air differs from where the rundown should be, or the executor had not reached that cue (an operator had advanced it),
+the rundown stays at its last applied cue with no timer, and the operator's next Go continues from there. A rundown past
+its last cue is marked not running; so is a loop started more than one loop ago, a row with no recorded start, one with
+clock-time cues, and one that is no longer the active rundown.
+
+`alcantara_rundown_recovery_total{result}` counts each by `resumed`, `finished`, `diverged`, `skipped_unsupported` or
+`failed` (the row is marked not running and only the error class is logged). No ids appear in labels.
+
 ## Deleting a program
 
 A program that is on air is not deleted: 409 "This show is on air. Take it off air before deleting it.", by the same
