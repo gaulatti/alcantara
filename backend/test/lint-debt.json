@@ -1213,8 +1213,7 @@
     "@typescript-eslint/no-unsafe-member-access": 19
   },
   "test/local-seed-team.e2e-spec.ts": {
-    "@typescript-eslint/require-await": 1,
-    "prettier/prettier": 233
+    "@typescript-eslint/require-await": 1
   },
   "test/native-entrypoints.e2e-spec.ts": {
     "@typescript-eslint/no-require-imports": 1,
