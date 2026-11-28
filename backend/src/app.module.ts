@@ -18,6 +18,7 @@ import { DeadAirWatchdogModule } from './radio/dead-air-watchdog.module';
 import { AuthModule } from './auth/auth.module';
 import { MetricsController } from './metrics.controller';
 import { WebrtcModule } from './webrtc/webrtc.module';
+import { RendererKeysModule } from './renderer-keys/renderer-keys.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { OperatorPreferencesModule } from './operator-preferences/operator-preferences.module';
 import { BroadcastDestinationsModule } from './broadcast-destinations/broadcast-destinations.module';
@@ -52,6 +53,7 @@ import { AccessModule } from './access/access.module';
     StingersModule,
     RadioModule,
     WebrtcModule,
+    RendererKeysModule,
     DeadAirWatchdogModule,
     OperatorPreferencesModule,
     BroadcastDestinationsModule,

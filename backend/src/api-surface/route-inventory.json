@@ -901,6 +901,18 @@
   },
   {
     "method": "GET",
+    "path": "/program/:programId/renderer-key",
+    "public": false,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/renderer-key/rotate",
+    "public": false,
+    "permission": "alcantara:program:manage"
+  },
+  {
+    "method": "GET",
     "path": "/program/:programId/scene-instant",
     "public": true,
     "permission": "alcantara:program:read"

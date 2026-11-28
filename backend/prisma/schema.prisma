@@ -102,6 +102,7 @@ model ProgramState {
   radioClocks            RadioClock[]
   radioDaypartGrid       RadioDaypartGrid?
   updatedAt              DateTime             @updatedAt
+  rendererKey            ProgramRendererKey?
 }
 
 model BroadcastDestination {
@@ -338,6 +339,18 @@ model FlightSequence {
 
 /// gaulatti/alcantara#124: what plays in an hour: the radio log rules the generator takes (tag blocks, counts,
 /// fixed offsets, artist separation), stored as given and checked again on every use.
+/// A program's renderer key (gaulatti/alcantara#884): the machines that serve one program present it. Only its SHA-256
+/// is kept, never the key, which is shown once when it is issued.
+model ProgramRendererKey {
+  programStateId Int          @id
+  programState   ProgramState @relation(fields: [programStateId], references: [id], onDelete: Cascade)
+  keyHash        String       @unique
+  version        Int          @default(1)
+  createdAt      DateTime     @default(now())
+  rotatedAt      DateTime     @default(now())
+  lastUsedAt     DateTime?
+}
+
 model RadioClock {
   id             Int            @id @default(autoincrement())
   programStateId Int
