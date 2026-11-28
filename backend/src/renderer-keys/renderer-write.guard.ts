@@ -28,7 +28,8 @@ type WriteRequest = AuthorizedRequest & {
 
 /**
  * A program write the on-air renderer page makes (gaulatti/alcantara#884): a signed-in session with program.operate,
- * or this program's renderer key (or the shared key until it is removed). A presented credential that fails is refused.
+ * or this program's renderer key (or the shared key until it is removed). A session that fails is refused unless a
+ * renderer key is also presented, which then decides. A key that fails is refused.
  * A request with no credential is still accepted, counted and logged with its program until that is refused too.
  */
 @Injectable()
@@ -47,6 +48,7 @@ export class RendererWriteGuard implements CanActivate {
     );
     const request = context.switchToHttp().getRequest<WriteRequest>();
     const { programId } = request.params;
+    const key = request.headers['x-renderer-key'];
     if (request.headers.authorization) {
       try {
         await authorizeBearer(
@@ -55,14 +57,14 @@ export class RendererWriteGuard implements CanActivate {
           this.pompeii,
           this.testAuth,
         );
+        this.renderer.recordSession(endpoint, 'accepted');
+        return true;
       } catch (error) {
         this.renderer.recordSession(endpoint, 'refused');
-        throw error;
+        // A page that also presents a renderer key (an expired session, say) is judged by that key instead.
+        if (key === undefined) throw error;
       }
-      this.renderer.recordSession(endpoint, 'accepted');
-      return true;
     }
-    const key = request.headers['x-renderer-key'];
     if (key !== undefined) {
       await this.renderer.authorizeProgram(
         endpoint,

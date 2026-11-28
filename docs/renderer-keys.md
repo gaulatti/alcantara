@@ -77,7 +77,8 @@ Two program writes are made by the on-air page, which has no sign-in
 Each takes, in this order:
 
 - an `Authorization` header: a signed-in session with `program.operate`, checked as on every signed-in route. A token
-  that fails is refused (`401`/`403`) and counted as `credential="session"`, `result="refused"`;
+  that fails is counted as `credential="session"`, `result="refused"`, and refused (`401`/`403`) unless the request
+  also presents `X-Renderer-Key`, which then decides (a page whose session expired keeps working on its key);
 - otherwise `X-Renderer-Key`: this program's key, or the shared key until it is removed, as on the calls endpoints;
 - otherwise nothing: still accepted, counted as `credential="none"`, `result="accepted"`, and logged as
   `Uncredentialed <endpoint> accepted for program <id>`.

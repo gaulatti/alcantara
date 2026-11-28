@@ -132,6 +132,16 @@ describe('renderer credential on the program writes (HTTP)', () => {
     expect(handler).toHaveBeenCalledTimes(2);
   });
 
+  it.each(WRITES)('%s judges a failed session by the renderer key also presented', async (path, _endpoint, handler) => {
+    const viewer = `Bearer ${await tokenFor('viewer')}`;
+    expect((await post(path, 'station-a', { Authorization: 'Bearer expired-or-not-a-token', 'X-Renderer-Key': KEY_A })).status).toBeLessThan(300);
+    expect((await post(path, 'station-a', { Authorization: viewer, 'X-Renderer-Key': SHARED })).status).toBeLessThan(300);
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect((await post(path, 'station-b', { Authorization: 'Bearer expired-or-not-a-token', 'X-Renderer-Key': KEY_A })).status).toBe(403);
+    expect((await post(path, 'station-a', { Authorization: viewer, 'X-Renderer-Key': 'not-a-key' })).status).toBe(401);
+    expect(handler).toHaveBeenCalledTimes(2);
+  });
+
   it('counts each write by endpoint, credential and result, with no key in any label', async () => {
     const text = await metrics.render('');
     const lines = text.split('\n').filter((line) => line.startsWith('alcantara_webrtc_renderer_auth_total{'));
@@ -140,10 +150,10 @@ describe('renderer credential on the program writes (HTTP)', () => {
         expect.arrayContaining([
           expect.stringMatching(new RegExp(`^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="none",result="accepted"\\} 1$`)),
           expect.stringMatching(new RegExp(`^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="session",result="accepted"\\} 1$`)),
-          expect.stringMatching(new RegExp(`^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="session",result="refused"\\} 2$`)),
-          expect.stringMatching(new RegExp(`^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="program",result="accepted"\\} 1$`)),
-          expect.stringMatching(new RegExp(`^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="shared",result="accepted"\\} 1$`)),
-          expect.stringMatching(new RegExp(`^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="none",result="refused"\\} 2$`)),
+          expect.stringMatching(new RegExp(`^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="session",result="refused"\\} 6$`)),
+          expect.stringMatching(new RegExp(`^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="program",result="accepted"\\} 2$`)),
+          expect.stringMatching(new RegExp(`^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="shared",result="accepted"\\} 2$`)),
+          expect.stringMatching(new RegExp(`^alcantara_webrtc_renderer_auth_total\\{endpoint="${endpoint}",credential="none",result="refused"\\} 3$`)),
         ]),
       );
     for (const secret of [SHARED, KEY_A]) expect(text).not.toContain(secret);
