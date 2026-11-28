@@ -6,6 +6,8 @@ import { ProgramMcpTools } from '../mcp/capabilities/program';
 import { PompeiiService } from '../auth/pompeii.service';
 import { SongLeavesMcpTools } from '../mcp/capabilities/song-leaves';
 import { PrismaService } from '../prisma.service';
+import { RadioClocksController } from './radio-clocks.controller';
+import { RadioClocksService } from './radio-clocks.service';
 import { FlightService } from './flight.service';
 import { ProgramController } from './program.controller';
 import { ProgramModule } from './program.module';
@@ -164,6 +166,7 @@ describe('ProgramModule wiring', () => {
     expect(Reflect.getMetadata('controllers', ProgramModule)).toEqual([
       ProgramController,
       RecipesController,
+      RadioClocksController,
     ]);
     expect(Reflect.getMetadata('providers', ProgramModule)).toEqual([
       ProgramService,
@@ -176,6 +179,7 @@ describe('ProgramModule wiring', () => {
       FlightMcpTools,
       RecipesService,
       RecipeMcpTools,
+      RadioClocksService,
       ProgramTeamAccess,
       { provide: APP_INTERCEPTOR, useClass: ProgramTeamInterceptor },
       {

@@ -99,6 +99,8 @@ model ProgramState {
   broadcastCommands      BroadcastDestinationCommand[]
   externalSourceAssignments ExternalSourceProgram[]
   rundownRecipes         RundownRecipe[]
+  radioClocks            RadioClock[]
+  radioDaypartGrid       RadioDaypartGrid?
   updatedAt              DateTime             @updatedAt
 }
 
@@ -324,11 +326,55 @@ model FlightSequence {
   publishedAt    DateTime?
   revision       Int          @default(1)
   lastStartedAt  DateTime?
+  /// gaulatti/alcantara#124: the clock this rundown was generated from and how it takes over; null when a person made it.
+  clockId        Int?
+  daypartStart   String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
   @@unique([programStateId, name])
   @@unique([programStateId, scheduledAt])
+}
+
+/// gaulatti/alcantara#124: what plays in an hour: the radio log rules the generator takes (tag blocks, counts,
+/// fixed offsets, artist separation), stored as given and checked again on every use.
+model RadioClock {
+  id             Int            @id @default(autoincrement())
+  programStateId Int
+  programState   ProgramState   @relation(fields: [programStateId], references: [id], onDelete: Cascade)
+  name           String
+  rules          Json
+  revision       Int            @default(1)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  dayparts       RadioDaypart[]
+
+  @@unique([programStateId, name])
+}
+
+/// The weekly grid of one program, in its time zone. No daypart rows means nothing is generated.
+model RadioDaypartGrid {
+  programStateId Int            @id
+  programState   ProgramState   @relation(fields: [programStateId], references: [id], onDelete: Cascade)
+  timeZone       String
+  revision       Int            @default(1)
+  updatedAt      DateTime       @updatedAt
+  dayparts       RadioDaypart[]
+}
+
+/// Hours [startHour, endHour) of one weekday (0 = Sunday) that a clock fills; `start` is `soft` or `hard`.
+model RadioDaypart {
+  id             Int              @id @default(autoincrement())
+  programStateId Int
+  grid           RadioDaypartGrid @relation(fields: [programStateId], references: [programStateId], onDelete: Cascade)
+  dayOfWeek      Int
+  startHour      Int
+  endHour        Int
+  clockId        Int
+  clock          RadioClock       @relation(fields: [clockId], references: [id], onDelete: Restrict)
+  start          String           @default("soft")
+
+  @@unique([programStateId, dayOfWeek, startHour])
 }
 
 /// gaulatti/alcantara#424 (#222 R3): a named rundown recipe of one program. A use of it is

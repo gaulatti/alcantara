@@ -787,6 +787,30 @@
   },
   {
     "method": "GET",
+    "path": "/program/:programId/radio-clocks",
+    "public": false,
+    "permission": "alcantara:flight:read"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/radio-clocks",
+    "public": false,
+    "permission": "alcantara:flight:manage"
+  },
+  {
+    "method": "DELETE",
+    "path": "/program/:programId/radio-clocks/:clockId",
+    "public": false,
+    "permission": "alcantara:flight:manage"
+  },
+  {
+    "method": "PUT",
+    "path": "/program/:programId/radio-clocks/:clockId",
+    "public": false,
+    "permission": "alcantara:flight:manage"
+  },
+  {
+    "method": "GET",
     "path": "/program/:programId/recipes",
     "public": false,
     "permission": "alcantara:flight:read"
