@@ -38,6 +38,24 @@ describe('manual rundown recovery on backend start', () => {
     jest.restoreAllMocks();
   });
 
+  interface RecoveryRow {
+    id: number;
+    programStateId: number;
+    name: string;
+    items: unknown[];
+    loop: boolean;
+    isRunning: boolean;
+    activeItemId: string | null;
+    scheduledAt: Date | null;
+    lastStartedAt: Date | null;
+    programState: {
+      programId: string;
+      activeSceneId: number | null;
+      activeFlightSequenceId: number | null;
+    };
+    [field: string]: unknown;
+  }
+
   function setup(
     over: Record<string, unknown> = {},
     options: {
@@ -47,7 +65,7 @@ describe('manual rundown recovery on backend start', () => {
       lease?: { whenActive: (start: () => unknown) => Promise<void> };
     } = {},
   ) {
-    const row: any = {
+    const row: RecoveryRow = {
       id: 7,
       programStateId: 1,
       name: 'Evening',
@@ -66,13 +84,16 @@ describe('manual rundown recovery on backend start', () => {
       },
       ...over,
     };
-    const prisma: any = {
+    const prisma = {
       flightSequence: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
-        findMany: jest.fn(async ({ where }: any) =>
-          where.scheduledAt === null && row.isRunning ? [row] : [],
+        findMany: jest.fn(
+          async ({ where }: { where: { scheduledAt?: unknown } }) =>
+            where.scheduledAt === null && row.isRunning ? [row] : [],
         ),
-        update: jest.fn(async ({ data }: any) => Object.assign(row, data)),
+        update: jest.fn(async ({ data }: { data: Partial<RecoveryRow> }) =>
+          Object.assign(row, data),
+        ),
       },
       programState: {
         findUnique: jest.fn(async () => ({
@@ -91,7 +112,7 @@ describe('manual rundown recovery on backend start', () => {
       updateProgramAudioBus: jest.fn(),
       updateScene: jest.fn(),
     };
-    const program: any = {
+    const program: Record<string, jest.Mock> = {
       ...drive,
       broadcastUpdate: jest.fn(),
       onAirSongId: jest.fn(() =>
@@ -100,8 +121,8 @@ describe('manual rundown recovery on backend start', () => {
     };
     const managed = new ManagedMetricsService();
     const service = new FlightService(
-      prisma,
-      program,
+      prisma as never,
+      program as never,
       new RadioMetricsService(),
       noRecorder(),
       { teamId: 0 } as never,

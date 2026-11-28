@@ -33,8 +33,8 @@ describe('FlightService song cues', () => {
       takeCatalogSongOnAir: jest.fn(),
     };
     const service = new FlightService(
-      prisma as any,
-      programService as any,
+      prisma as never,
+      programService as never,
       new RadioMetricsService(),
       noRecorder(),
       { teamId: 0 } as never,
@@ -103,11 +103,15 @@ describe('FlightService clocked logs', () => {
         // with no following-block warning.
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockImplementation(async () => record),
-        updateMany: jest.fn().mockImplementation(async ({ data }) => {
-          record.publishedAt = data.publishedAt;
-          record.revision += 1;
-          return { count: 1 };
-        }),
+        updateMany: jest
+          .fn()
+          .mockImplementation(
+            async ({ data }: { data: { publishedAt: Date | null } }) => {
+              record.publishedAt = data.publishedAt;
+              record.revision += 1;
+              return { count: 1 };
+            },
+          ),
         findUniqueOrThrow: jest.fn().mockImplementation(async () => record),
       },
       song: {
@@ -121,11 +125,11 @@ describe('FlightService clocked logs', () => {
         ]),
       },
       instant: { findMany: jest.fn().mockResolvedValue([]) },
-    } as any;
+    };
     const metrics = new RadioMetricsService();
     const service = new FlightService(
-      prisma,
-      { broadcastUpdate: jest.fn() } as any,
+      prisma as never,
+      { broadcastUpdate: jest.fn() } as never,
       metrics,
       noRecorder(),
       { teamId: 0 } as never,
@@ -181,10 +185,10 @@ describe('FlightService clocked logs', () => {
         ]),
       },
       instant: { findMany: jest.fn().mockResolvedValue([]) },
-    } as any;
+    };
     const service = new FlightService(
-      prisma,
-      {} as any,
+      prisma as never,
+      {} as never,
       new RadioMetricsService(),
       noRecorder(),
       { teamId: 0 } as never,
@@ -630,8 +634,8 @@ describe('continuous rotation around timed blocks', () => {
       broadcastUpdate: jest.fn(),
     };
     const service = new FlightService(
-      prisma as any,
-      program as any,
+      prisma as never,
+      program as never,
       metrics,
       noRecorder(),
       { teamId: 0 } as never,
@@ -744,8 +748,8 @@ it('marks scheduled runtimes interrupted on startup without replaying them or ch
   };
   const metrics = new RadioMetricsService();
   const service = new FlightService(
-    prisma as any,
-    program as any,
+    prisma as never,
+    program as never,
     metrics,
     noRecorder(),
     { teamId: 0 } as never,
