@@ -73,7 +73,7 @@ it("reports the HTTP failure of a countdown when the response is not JSON", asyn
 
 it("reads and saves a program's branding marks", async () => {
   const marks = { callsign: "Fictional", subtitle: "FM", logos: [] };
-  const request = vi.fn(async () => new Response(JSON.stringify(marks)));
+  const request = vi.fn(async (_input?: unknown, _init?: RequestInit) => new Response(JSON.stringify(marks)));
   vi.stubGlobal("fetch", request);
   const { fetchProgramBranding, saveProgramBranding } = await import("./program");
   expect(await fetchProgramBranding("show/test")).toEqual(marks);
