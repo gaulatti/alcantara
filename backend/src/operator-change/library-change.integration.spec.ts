@@ -69,7 +69,12 @@ describeWithDatabase(
         where: { principal: { startsWith: tag } },
       });
       for (const { model, id } of created.reverse()) {
-        await (prisma as any)[model].deleteMany({ where: { id } });
+        await (
+          prisma as unknown as Record<
+            string,
+            { deleteMany(args: unknown): Promise<unknown> }
+          >
+        )[model].deleteMany({ where: { id } });
       }
       await prisma.$disconnect();
     });
