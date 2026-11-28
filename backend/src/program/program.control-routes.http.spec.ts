@@ -14,6 +14,7 @@ import { FlightService } from './flight.service';
 import { ProgramTemplateService } from './program-template.service';
 import { ProgramController } from './program.controller';
 import { ProgramService } from './program.service';
+import { RendererAuthService } from '../renderer-keys/renderer-auth.service';
 
 // The console's state and event stream, behind sign-in (program.read). The public state and stream stay the
 // renderer's, without sign-in.
@@ -44,6 +45,8 @@ describe('program control routes (HTTP)', () => {
       ],
       controllers: [ProgramController, TestAuthController],
       providers: [
+        // The renderer-write guard on the program writes; these tests do not call them.
+        { provide: RendererAuthService, useValue: {} },
         TestAuthService,
         {
           provide: ProgramService,

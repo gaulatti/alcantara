@@ -28,10 +28,11 @@ import {
 } from './artist-label-lookup';
 import { ArtistLabelsModule } from '../artist-labels/artist-labels.module';
 import { ArtistLabelsService } from '../artist-labels/artist-labels.service';
+import { RendererKeysModule } from '../renderer-keys/renderer-keys.module';
 
 @Global()
 @Module({
-  imports: [ArtistLabelsModule, OperatorChangeModule],
+  imports: [ArtistLabelsModule, OperatorChangeModule, RendererKeysModule],
   controllers: [
     ProgramController,
     RecipesController,

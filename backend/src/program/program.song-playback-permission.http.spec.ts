@@ -13,6 +13,7 @@ import { FlightService } from './flight.service';
 import { ProgramTemplateService } from './program-template.service';
 import { ProgramController } from './program.controller';
 import { ProgramService } from './program.service';
+import { RendererAuthService } from '../renderer-keys/renderer-auth.service';
 
 // The song-playback read stays public, as the renderers use it. The write route was retired (gaulatti/alcantara#612):
 // nothing called it, so a POST now has no route.
@@ -38,6 +39,8 @@ describe('song-playback read (HTTP)', () => {
       ],
       controllers: [ProgramController, TestAuthController],
       providers: [
+        // The renderer-write guard on the program writes; these tests do not call them.
+        { provide: RendererAuthService, useValue: {} },
         TestAuthService,
         { provide: ProgramService, useValue: { getProgramSongPlayback } },
         { provide: FlightService, useValue: {} },

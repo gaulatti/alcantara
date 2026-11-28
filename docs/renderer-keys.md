@@ -64,6 +64,28 @@ Each endpoint reads `X-Renderer-Key` and the program it acts on (`backend/src/re
 - The fleet key is the runtime secret's optional `webrtcFleetKey` (`WEBRTC_FLEET_KEY`, at least 32 characters). The shared
   key is `webrtcRendererKey` (`WEBRTC_RENDERER_KEY`).
 
+## Program writes from the renderer page
+
+Two program writes are made by the on-air page, which has no sign-in
+(`backend/src/renderer-keys/renderer-write.guard.ts`):
+
+| Route | Endpoint label |
+| --- | --- |
+| `POST /program/:programId/audio-meter` | `audio_meter` |
+| `POST /program/:programId/countdown/complete` | `countdown_complete` |
+
+Each takes, in this order:
+
+- an `Authorization` header: a signed-in session with `program.operate`, checked as on every signed-in route. A token
+  that fails is refused (`401`/`403`) and counted as `credential="session"`, `result="refused"`;
+- otherwise `X-Renderer-Key`: this program's key, or the shared key until it is removed, as on the calls endpoints;
+- otherwise nothing: still accepted, counted as `credential="none"`, `result="accepted"`, and logged as
+  `Uncredentialed <endpoint> accepted for program <id>`.
+
+The program page sends the renderer key it was opened with (`#key=` in its URL, kept for the session) on the countdown
+write. A request with no credential is refused once production shows none on either write for 24 hours:
+`sum(increase(alcantara_webrtc_renderer_auth_total{endpoint=~"audio_meter|countdown_complete",credential="none",result="accepted"}[24h]))`.
+
 ## Shared-key fallback and its closer
 
 The shared key is accepted on every endpoint until it is removed. Each acceptance is counted and logged with its program
@@ -74,12 +96,12 @@ use shows. The shared key is removed once production shows no shared-key accepta
 
 `alcantara_webrtc_renderer_auth_total{endpoint,credential,result}`:
 
-- `endpoint`: `renderer_token`, `renderer_state`, `renderer_source_token`, `return_routers`, `return_audio_ticket` or
-  `on_air`;
-- `credential`: the one that matched, `program`, `shared`, `fleet` or `none`;
+- `endpoint`: `renderer_token`, `renderer_state`, `renderer_source_token`, `return_routers`, `return_audio_ticket`,
+  `on_air`, `audio_meter` or `countdown_complete`;
+- `credential`: the one that matched, `program`, `shared`, `fleet`, `session` (program writes only) or `none`;
 - `result`: `accepted` or `refused`.
 
-Each endpoint's `program` and `shared` acceptances are exposed from zero. For the closer, read
+Each endpoint's `program` and `shared` acceptances, and each program write's `none` acceptance, are exposed from zero. For the closer, read
 `sum(increase(alcantara_webrtc_renderer_auth_total{credential="shared",result="accepted"}[24h]))`.
 
 ## Holders

@@ -13,6 +13,8 @@ import { RadioController } from './radio.controller';
 import { RadioMetricsService } from './radio-metrics.service';
 import { RadioService } from './radio.service';
 import type { ProgramSongSequence } from './song-sequence.utils';
+import { RendererAuthService } from '../renderer-keys/renderer-auth.service';
+import { PompeiiService } from '../auth/pompeii.service';
 
 // gaulatti/alcantara#609: a take or start on a radio-only program whose playout engine is off is
 // refused with 409 and reason "engine_unavailable". TV and simulcast programs are unaffected.
@@ -302,6 +304,9 @@ describe('operator routes', () => {
       imports: [ConfigModule.forRoot({ ignoreEnvFile: true })],
       controllers: [ProgramController],
       providers: [
+        // The renderer-write guard on the program writes; these tests do not call them.
+        { provide: RendererAuthService, useValue: {} },
+        { provide: PompeiiService, useValue: {} },
         {
           provide: ProgramService,
           useValue: {

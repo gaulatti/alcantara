@@ -121,6 +121,16 @@ describe("scene activation", () => {
     expect(await program.completeSceneCountdown("my prog")).toEqual({ id: 2 });
     expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/program\/my%20prog\/countdown\/complete$/);
     expect(fetchMock.mock.calls[0][1]).toEqual({ method: "POST" });
+    // A fictional key, built here: the page presents the one it was opened with, then keeps it for the session.
+    window.history.replaceState(null, "", "/program/p#key=fictional-page-key");
+    reply(200, { id: 3 });
+    await program.completeSceneCountdown("p");
+    expect(fetchMock.mock.lastCall?.[1]).toEqual({ method: "POST", headers: { "X-Renderer-Key": "fictional-page-key" } });
+    window.history.replaceState(null, "", "/program/p");
+    reply(200, { id: 4 });
+    await program.completeSceneCountdown("p");
+    expect(fetchMock.mock.lastCall?.[1]).toEqual({ method: "POST", headers: { "X-Renderer-Key": "fictional-page-key" } });
+    window.sessionStorage.clear();
     reply(409, { message: "No next scene" });
     await expect(program.completeSceneCountdown("p")).rejects.toThrow("No next scene");
     fetchMock.mockResolvedValue({ ok: false, status: 503, json: async () => null });

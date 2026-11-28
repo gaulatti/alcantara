@@ -398,10 +398,18 @@ export const RENDERER_AUTH_ENDPOINTS = [
   'return_routers',
   'return_audio_ticket',
   'on_air',
+  'audio_meter',
+  'countdown_complete',
 ] as const;
 export type RendererAuthEndpoint = (typeof RENDERER_AUTH_ENDPOINTS)[number];
-/** Which credential a renderer presented: a program's key, the shared key, the fleet key, or none that matched. */
-export type RendererAuthCredential = 'program' | 'shared' | 'fleet' | 'none';
+/** The program writes a renderer page makes, which still take a request with no credential until that is refused. */
+export const RENDERER_WRITE_ENDPOINTS = ['audio_meter', 'countdown_complete'] as const;
+export type RendererWriteEndpoint = (typeof RENDERER_WRITE_ENDPOINTS)[number];
+/**
+ * Which credential a caller presented: a program's key, the shared key, the fleet key, a signed-in session (on the
+ * program writes), or none that matched.
+ */
+export type RendererAuthCredential = 'program' | 'shared' | 'fleet' | 'session' | 'none';
 
 @Injectable()
 export class ManagedMetricsService {
@@ -732,13 +740,15 @@ export class ManagedMetricsService {
     });
     this.rendererAuth = new Counter({
       name: 'alcantara_webrtc_renderer_auth_total',
-      help: 'Renderer credential checks on the calls endpoints (gaulatti/alcantara#884), by bounded endpoint, the credential that matched (program, shared, fleet or none) and the result.',
+      help: 'Renderer credential checks on the calls endpoints and the program writes (gaulatti/alcantara#884), by bounded endpoint, the credential that matched (program, shared, fleet, session or none) and the result.',
       labelNames: ['endpoint', 'credential', 'result'],
       registers: [this.registry],
     });
     for (const endpoint of RENDERER_AUTH_ENDPOINTS)
       for (const credential of ['program', 'shared'] as const)
         this.rendererAuth.labels(endpoint, credential, 'accepted').inc(0);
+    for (const endpoint of RENDERER_WRITE_ENDPOINTS)
+      this.rendererAuth.labels(endpoint, 'none', 'accepted').inc(0);
     this.chainOk = new Gauge({
       name: 'alcantara_webrtc_chain_ok',
       help: 'Whether the last call-chain health check found the component ok (1) or not (0).',

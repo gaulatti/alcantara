@@ -9,6 +9,7 @@ import { timingSafeEqual } from 'node:crypto';
 import {
   ManagedMetricsService,
   type RendererAuthEndpoint,
+  type RendererWriteEndpoint,
 } from '../observability/managed-metrics.service';
 import { RendererKeyService } from './renderer-key.service';
 
@@ -71,6 +72,17 @@ export class RendererAuthService {
     }
     this.metrics.recordRendererAuth('return_routers', 'none', 'refused');
     throw new UnauthorizedException('Renderer credential required.');
+  }
+
+  /** A program write's signed-in session check, counted by its result. */
+  recordSession(endpoint: RendererWriteEndpoint, result: 'accepted' | 'refused'): void {
+    this.metrics.recordRendererAuth(endpoint, 'session', result);
+  }
+
+  /** A program write with no credential, still accepted until that is refused: counted and logged with its program. */
+  acceptUncredentialed(endpoint: RendererWriteEndpoint, programId: string): void {
+    this.metrics.recordRendererAuth(endpoint, 'none', 'accepted');
+    this.logger.warn(`Uncredentialed ${endpoint} accepted for program ${programId}`);
   }
 
   private isShared(presented: string | undefined): boolean {

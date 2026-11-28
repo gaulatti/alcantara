@@ -24,6 +24,7 @@ import {
   ProgramTemplateService,
   type ProgramTemplateRegistration,
 } from './program-template.service';
+import { RendererWrite } from '../renderer-keys/renderer-write.guard';
 
 @Controller('program')
 @RequirePermission(ALCANTARA_PERMISSIONS.program.read)
@@ -173,7 +174,7 @@ export class ProgramController {
   }
 
   @Post(':programId/audio-meter')
-  @Public()
+  @RendererWrite('audio_meter')
   async updateProgramAudioMeterById(
     @Param('programId') programId: string,
     @Body()
@@ -399,7 +400,7 @@ export class ProgramController {
   }
 
   @Post(':programId/countdown/complete')
-  @Public()
+  @RendererWrite('countdown_complete')
   async completeSceneCountdownById(@Param('programId') programId: string) {
     return this.programService.completeSceneCountdown(programId);
   }

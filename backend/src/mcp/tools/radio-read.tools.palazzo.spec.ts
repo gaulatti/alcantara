@@ -42,6 +42,7 @@ import { McpController } from '../mcp.controller';
 import { McpRegistry } from '../mcp-registry.service';
 import { McpChangeFeed } from './mcp-change.feed';
 import { PompeiiService } from '../../auth/pompeii.service';
+import { RendererAuthService } from '../../renderer-keys/renderer-auth.service';
 import { McpRadioReadTools } from './radio-read.tools';
 import { noRecorder } from '../../operator-change/operator-change-recorder.testing';
 
@@ -592,6 +593,8 @@ async function build() {
       { provide: AsRunService, useValue: asRun },
       { provide: SongsService, useValue: songs },
       { provide: PompeiiService, useValue: pompeii },
+      // The renderer-write guard on the program writes; these tests do not call them.
+      { provide: RendererAuthService, useValue: {} },
       {
         provide: McpAuthService,
         useValue: {

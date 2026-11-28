@@ -31,7 +31,7 @@ function isPersonalAccessToken(authorization: string): boolean {
   return credential.startsWith(PERSONAL_ACCESS_TOKEN_PREFIX);
 }
 
-type AuthorizedRequest = {
+export type AuthorizedRequest = {
   headers: { authorization?: string };
   user?: Record<string, unknown>;
 };
@@ -61,53 +61,70 @@ export class PompeiiAuthorizationGuard {
       });
     }
 
-    const request = context.switchToHttp().getRequest<AuthorizedRequest>();
-    const bearerToken = request.headers.authorization;
-    if (!bearerToken) throw new UnauthorizedException('Bearer token required');
-    if (isPersonalAccessToken(bearerToken)) {
-      this.pompeii.recordUnsupportedCredential();
-      throw new UnauthorizedException({
-        error: 'UNAUTHENTICATED',
-        reason: 'DENY_UNSUPPORTED_CREDENTIAL',
-      });
-    }
-
-    const decision = this.testAuth?.isEnabled()
-      ? this.testAuth.authorize(bearerToken, permission, this.pompeii.teamId)
-      : await this.pompeii.authorize(bearerToken, permission);
-    if (!decision.authenticated) {
-      throw new UnauthorizedException({
-        error: 'UNAUTHENTICATED',
-        reason: decision.reason,
-      });
-    }
-    if (!decision.allowed) {
-      throw new ForbiddenException({
-        error: 'FORBIDDEN',
-        permission,
-        reason: decision.reason,
-      });
-    }
-    if (!decision.subject.trim()) {
-      throw new UnauthorizedException({
-        error: 'UNAUTHENTICATED',
-        reason: 'DENY_MISSING_SUBJECT',
-      });
-    }
-
-    request.user = {
-      ...(request.user ?? {}),
-      sub: decision.subject,
-      // Recorded on new writes and used to read migrated rows. Absent until
-      // Pompeii resolves one, which keeps legacy rows reachable meanwhile.
-      principalId: decision.principalId,
-      authorization: {
-        permission,
-        permissions: decision.effectivePermissions,
-        roles: decision.roles,
-        teamId: this.pompeii.teamId,
-      },
-    };
+    await authorizeBearer(
+      context.switchToHttp().getRequest<AuthorizedRequest>(),
+      permission,
+      this.pompeii,
+      this.testAuth,
+    );
     return true;
   }
+}
+
+/**
+ * The signed-in check every guarded route runs: a session token (never a personal access token) that Pompeii, or the
+ * local test issuer when it is enabled, authorizes for the permission. On success the caller is set on the request.
+ */
+export async function authorizeBearer(
+  request: AuthorizedRequest,
+  permission: AlcantaraPermission,
+  pompeii: PompeiiService,
+  testAuth?: TestAuthService,
+): Promise<void> {
+  const bearerToken = request.headers.authorization;
+  if (!bearerToken) throw new UnauthorizedException('Bearer token required');
+  if (isPersonalAccessToken(bearerToken)) {
+    pompeii.recordUnsupportedCredential();
+    throw new UnauthorizedException({
+      error: 'UNAUTHENTICATED',
+      reason: 'DENY_UNSUPPORTED_CREDENTIAL',
+    });
+  }
+
+  const decision = testAuth?.isEnabled()
+    ? testAuth.authorize(bearerToken, permission, pompeii.teamId)
+    : await pompeii.authorize(bearerToken, permission);
+  if (!decision.authenticated) {
+    throw new UnauthorizedException({
+      error: 'UNAUTHENTICATED',
+      reason: decision.reason,
+    });
+  }
+  if (!decision.allowed) {
+    throw new ForbiddenException({
+      error: 'FORBIDDEN',
+      permission,
+      reason: decision.reason,
+    });
+  }
+  if (!decision.subject.trim()) {
+    throw new UnauthorizedException({
+      error: 'UNAUTHENTICATED',
+      reason: 'DENY_MISSING_SUBJECT',
+    });
+  }
+
+  request.user = {
+    ...(request.user ?? {}),
+    sub: decision.subject,
+    // Recorded on new writes and used to read migrated rows. Absent until
+    // Pompeii resolves one, which keeps legacy rows reachable meanwhile.
+    principalId: decision.principalId,
+    authorization: {
+      permission,
+      permissions: decision.effectivePermissions,
+      roles: decision.roles,
+      teamId: pompeii.teamId,
+    },
+  };
 }

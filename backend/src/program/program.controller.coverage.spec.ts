@@ -512,6 +512,7 @@ describe('ProgramController decorator metadata', () => {
         '../auth/permissions',
         '../auth/public.decorator',
         '../auth/require-permission.decorator',
+        '../renderer-keys/renderer-write.guard',
       ]) {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         require(dependency);

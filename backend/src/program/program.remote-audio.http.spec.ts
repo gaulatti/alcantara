@@ -12,6 +12,7 @@ import { ProgramController } from './program.controller';
 import { ProgramService } from './program.service';
 import { FlightService } from './flight.service';
 import { ProgramTemplateService } from './program-template.service';
+import { RendererAuthService } from '../renderer-keys/renderer-auth.service';
 
 /**
  * The program page's remote-audio read, called exactly as the frontend calls
@@ -66,6 +67,8 @@ describe('remote audio read through the outbound-request policy', () => {
     const module = await Test.createTestingModule({
       controllers: [ProgramController],
       providers: [
+        // The renderer-write guard on the program writes; these tests do not call them.
+        { provide: RendererAuthService, useValue: {} },
         Reflector,
         { provide: ProgramService, useValue: service },
         { provide: FlightService, useValue: {} },
