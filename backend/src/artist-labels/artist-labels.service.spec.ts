@@ -35,6 +35,11 @@ function harness(
     return Promise.resolve(row);
   });
   const prisma = {
+    // The team-scoped client (gaulatti/alcantara#122) as a pass-through: its scoping is proven in scoped-prisma.spec,
+    // and the service still applies its explicit team filters, which this store honours.
+    $extends: jest.fn(function (this: unknown) {
+      return this;
+    }),
     artistLabel: {
       findMany: jest.fn(({ where }: { where: object }) =>
         Promise.resolve(
@@ -130,6 +135,17 @@ describe('ArtistLabelsService', () => {
     await expect(service.list(0)).resolves.toHaveLength(1);
     await service.set(7, 'rob', null);
     await expect(service.artistLabelFor(9, 'rob')).resolves.toBe('label-b');
+  });
+
+  it("reads and writes a team's links through its team-scoped client, and team 0's unscoped", async () => {
+    const { service, prisma } = harness();
+    await service.set(7, 'Rob', 'label-a');
+    await service.list(7);
+    await service.artistLabelFor(7, 'rob');
+    expect(prisma.$extends).toHaveBeenCalledTimes(3);
+    expect(prisma.$extends).toHaveBeenCalledWith(expect.objectContaining({ name: 'team-7' }));
+    await service.list(0);
+    expect(prisma.$extends).toHaveBeenCalledTimes(3);
   });
 
   it('refuses a label of another team or one that does not exist, and counts the refusal', async () => {
