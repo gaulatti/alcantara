@@ -610,10 +610,14 @@ export class RadioService {
     previous: Record<string, unknown> | null,
     result: Record<string, unknown>,
   ): Promise<void> {
+    // The team comes from the cache alone, so the record never waits on a lookup; a cold cache records no team, and the
+    // lookup is warmed for the next write (gaulatti/alcantara#122).
+    const teamId = this.teams?.cachedTeamOf(programId) ?? null;
+    this.teams?.warmTeamOf(programId);
     try {
       await this.prisma.operatorChangeRecord.create({
         data: {
-          teamId: (await this.teams?.teamOf(programId)) ?? null,
+          teamId,
           programId,
           principal: actor.principalId,
           via: actor.via,
