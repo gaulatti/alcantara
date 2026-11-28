@@ -107,6 +107,12 @@ it("moves off a deleted block that has no edits, and keeps the list when the rer
   vi.mocked(fetchFlightSequences).mockResolvedValue([second]);
   await changed();
   expect(screen.getByText(/0 events/)).toBeVisible();
+  vi.mocked(fetchFlightSequences).mockResolvedValue([]);
+  await changed();
+  expect(screen.getByText("No timed block selected")).toBeVisible();
+  vi.mocked(fetchFlightSequences).mockResolvedValue([second]);
+  await changed();
+  expect(screen.getByText(/0 events/)).toBeVisible();
   vi.mocked(fetchFlightSequences).mockRejectedValue(new Error("offline"));
   await changed();
   expect(screen.getByText(/0 events/)).toBeVisible();
