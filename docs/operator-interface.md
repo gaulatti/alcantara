@@ -573,3 +573,12 @@ Leaving the Fillers or Build block tab while a preview is pending cancels applyi
 ### Continuous radio management
 
 The Radio desk shows the saved continuous filler rotation whenever a timed block is not currently on air, including when future blocks are published. The ordinary transport controls remain connected to that rotation. The Rundown planner keeps a 24/7 continuous-fillers summary above optional timed blocks, with direct access to the live rotation. New blocks can start at any minute and are not forced to end after an hour; offsets, filler previews, duration estimates, and runtime timers follow explicit event boundaries. `/console-fixture?state=radio-continuous` covers a populated rotation with no scheduled blocks. `/console-fixture?state=radio-song-failed` shows the Radio desk alert for a song Palazzo could not load (#175). The existing rundown fixture retains its authored +3600 stop to demonstrate compatibility, rather than imposing that boundary on new blocks.
+
+## Tonight's operator-visible changes
+
+Checked against `main` at `b3ac6a02`.
+
+- **View only.** An account without the radio operate permission sees the radio desk's controls disabled. Hovering one shows **View only: your account cannot run the radio.** (`RadioPanel.tsx`.) Reads still work; nothing is sent.
+- **Radio filler on the desk.** A radio show's desk shows its program filler under the transport: **On air** for the version playing, and **Prepared** or **Prepared next** for the version the next Start with fallback will use. If the filler can't be read, the line says **Program filler status unavailable.** (`RadioFillerStatus.tsx`.)
+- **After a backend restart.** A rundown started by hand resumes its wait at the same cue, with its timer for the time left. If the engine has not confirmed the song that should be playing, the rundown does not resume on its own: it waits for the operator's **Go**. Nothing already on air is restarted or retaken. See [Radio station workflow](radio-station-workflow.md) for the detail and the metrics.
+- **Renderer key in the pilot.** The pilot issues its show's renderer key by itself and keeps it in the login Keychain, per program. If the Program page's key is refused (rotated elsewhere, or another show's), the top bar shows **Key refused** with a paste field. Saving the new key hands it to the open Program window. The pilot never rotates a key by itself. The pilot's own guide, with its steps, is in its `PILOT.md` under **Renderer key**.
