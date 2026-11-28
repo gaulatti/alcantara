@@ -17,3 +17,5 @@ minimumReleaseAgeExclude:
   - '@modoitaliano/giorgia@0.1.120'
   - '@fifthbell/brokaw@0.1.82'
   - '@gaulatti/bleecker@0.1.57'
+  - '@gaulatti/bleecker@0.1.58'
+  - '@modoitaliano/giorgia@0.1.122'
