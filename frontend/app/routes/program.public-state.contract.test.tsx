@@ -100,6 +100,7 @@ vi.mock("../components/BrokawFifthBellProgramRenderer", async () => ({
 }));
 
 import ProgramRoute from "./program";
+import { ensureProgramAudioBusTrack } from "../utils/programAudioBus";
 
 type Props = Record<string, unknown>;
 
@@ -311,3 +312,87 @@ describe("the on-air page renders the same from the projected public state as fr
   });
 });
 
+
+describe("a manual song sequence leaf with only the projected fields", () => {
+  const leafFull = {
+    id: "song-leaf-1",
+    kind: "preset",
+    songId: 41,
+    highRotation: true,
+    title: "Fictional song",
+    artist: "Fictional artist",
+    coverUrl: "https://fictional.example/cover.jpg",
+    audioUrl: "https://fictional.example/song.mp3",
+    durationMs: 180000,
+    earoneSongId: "9001",
+    earoneRank: "3",
+    earoneSpins: "120",
+  };
+  // The leaf as Dot's projection keeps it: id, kind, audioUrl, title, artist, durationMs, coverUrl and the chart fields.
+  const { songId: _songId, highRotation: _highRotation, ...leafProjected } = leafFull;
+  void _songId;
+  void _highRotation;
+
+  const sequenceOf = (leaf: Record<string, unknown>) => ({
+    mode: "manual",
+    items: [leaf],
+    activeItemId: leaf.id,
+    intervalMs: 0,
+    loop: false,
+    startedAt: null,
+    shuffleOrder: null,
+    endedAt: null,
+    cuedItemId: null,
+  });
+
+  // Plays the page with that sequence and returns the track the now-playing graphics are given.
+  async function trackFor(leaf: Record<string, unknown>) {
+    vi.mocked(ensureProgramAudioBusTrack).mockClear();
+    controlServer({
+      "GET /program/main/state": () => Response.json(stateFor()),
+      "GET /program/main/audio-bus": () =>
+        Response.json({ songSequence: sequenceOf(leaf), songQueue: [] }),
+      "GET /program/broadcast-settings": () => Response.json({}),
+      "GET /program/main/scene-instant": () => Response.json({ isPlaying: false }),
+      "GET /program/main/stingers": () => Response.json([]),
+    });
+    const view = render(
+      <MemoryRouter initialEntries={["/program/main"]}>
+        <Routes>
+          <Route path="/program/:id" element={<ProgramRoute />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    await act(async () => {
+      sse.onMessage?.({ type: "program_state_snapshot", programId: "main", state: stateFor(), version: 3 });
+    });
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    const calls = vi.mocked(ensureProgramAudioBusTrack).mock.calls;
+    view.unmount();
+    expect(calls.length, "the page starts the leaf").toBeGreaterThan(0);
+    return calls[calls.length - 1][1];
+  }
+
+  it("reaches the now-playing track with the same cover and chart rank as the full leaf", async () => {
+    const fromFull = await trackFor(leafFull);
+    const fromProjected = await trackFor(leafProjected);
+    expect(fromProjected).toEqual(fromFull);
+    expect(fromProjected).toMatchObject({
+      coverUrl: "https://fictional.example/cover.jpg",
+      earoneSongId: "9001",
+      earoneRank: "3",
+      earoneSpins: "120",
+    });
+  });
+});
+
+function stateFor() {
+  return {
+    activeSceneId: null,
+    activeScene: null,
+    fadeToBlack: false,
+    stingers: [],
+    version: 3,
+  };
+}
