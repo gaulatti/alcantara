@@ -3182,6 +3182,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     }
     const ids = settings.bumperInstantIds;
     const index = this.bumperIndex(state, settings);
+    // Unscoped on purpose (#122): on-air playout path; scoping needs a non-throwing cached team.
     const instant = await this.prisma.instant.findUnique({
       where: { id: ids[index] },
     });
@@ -5032,6 +5033,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       | undefined;
     if (voiceTrack && activeSong?.playbackRequestId === playbackRequestId) {
       try {
+        // Unscoped on purpose (#122): on-air playout path; scoping needs a non-throwing cached team.
         const clip = await this.prisma.instant.findUnique({
           where: { id: voiceTrack.instantId },
           select: { audioUrl: true, volume: true, enabled: true },
@@ -5414,6 +5416,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       const idx = this.bumperIndex(state, settings);
       state.nextBumperIdx = (idx + 1) % ids.length;
       this.storeBumperPosition(programId, state, settings);
+      // Unscoped on purpose (#122): on-air playout path; scoping needs a non-throwing cached team.
       const inst = await this.prisma.instant.findUnique({
         where: { id: ids[idx] },
       });
