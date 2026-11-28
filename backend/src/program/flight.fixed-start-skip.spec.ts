@@ -89,7 +89,12 @@ describe('cues a fixed start passes over (W3)', () => {
     h.internals.armNextHardCue(h.runtime);
     jest.advanceTimersByTime(FIXED_S * 1000);
     await settle();
-    expect(h.executeCueAtIndex).toHaveBeenCalledWith('radio-1', 3, 2, 'fixed_start');
+    expect(h.executeCueAtIndex).toHaveBeenCalledWith(
+      'radio-1',
+      3,
+      2,
+      'fixed_start',
+    );
     expect(h.prisma.asRunRecord.create).toHaveBeenCalledTimes(1);
     expect(h.prisma.asRunRecord.create).toHaveBeenCalledWith(
       notAired(4, 'second'),
@@ -115,7 +120,12 @@ describe('cues a fixed start passes over (W3)', () => {
     jest.advanceTimersByTime(FIXED_S * 1000);
     await settle();
     // The song on air is still cut by the fixed start.
-    expect(h.executeCueAtIndex).toHaveBeenCalledWith('radio-1', 1, 2, 'fixed_start');
+    expect(h.executeCueAtIndex).toHaveBeenCalledWith(
+      'radio-1',
+      1,
+      2,
+      'fixed_start',
+    );
     expect(h.prisma.asRunRecord.create).not.toHaveBeenCalled();
     expect(h.program.broadcastUpdate).not.toHaveBeenCalled();
   });
@@ -123,7 +133,13 @@ describe('cues a fixed start passes over (W3)', () => {
   it('logs the songs a timed clip running into a fixed start passes over', async () => {
     const h = harness(
       [
-        { id: 'clip', kind: 'instant', instantId: 9, durationMs: 120_000, clockOffsetSeconds: 0 },
+        {
+          id: 'clip',
+          kind: 'instant',
+          instantId: 9,
+          durationMs: 120_000,
+          clockOffsetSeconds: 0,
+        },
         { id: 'second', kind: 'playSong', songId: 4 },
         { id: 'top', kind: 'playSong', songId: 5, clockOffsetSeconds: FIXED_S },
       ],
@@ -132,7 +148,12 @@ describe('cues a fixed start passes over (W3)', () => {
     h.internals.armTimedClip(h.runtime);
     jest.advanceTimersByTime(FIXED_S * 1000);
     await settle();
-    expect(h.executeCueAtIndex).toHaveBeenCalledWith('radio-1', 2, 1, 'fixed_start');
+    expect(h.executeCueAtIndex).toHaveBeenCalledWith(
+      'radio-1',
+      2,
+      1,
+      'fixed_start',
+    );
     expect(h.prisma.asRunRecord.create).toHaveBeenCalledWith(
       notAired(4, 'second'),
     );
@@ -149,7 +170,12 @@ describe('cues a fixed start passes over (W3)', () => {
     h.internals.armNextHardCue(h.runtime);
     jest.advanceTimersByTime(FIXED_S * 1000);
     await settle();
-    expect(h.executeCueAtIndex).toHaveBeenCalledWith('radio-1', 3, 2, 'fixed_start');
+    expect(h.executeCueAtIndex).toHaveBeenCalledWith(
+      'radio-1',
+      3,
+      2,
+      'fixed_start',
+    );
     expect(h.logError).toHaveBeenCalledWith(
       'Could not log a cue passed over by a fixed start as not aired for radio-1',
       expect.any(Error),
@@ -194,18 +220,26 @@ describe("a fixed start's cut is the song's end reason", () => {
       waitingForSongEnd: true,
       scheduledAtMs: Date.now() - 1_000,
     });
-    return { program, run: () => internals.executeCueAtIndex('radio-1', 1, 1, cutOrNot) };
+    return {
+      program,
+      run: () => internals.executeCueAtIndex('radio-1', 1, 1, cutOrNot),
+    };
   }
 
   it('stops the song for the timed block with fixed_start when a fixed start cuts it', async () => {
     const h = playout('fixed_start');
     await h.run();
-    expect(h.program.stopProgramSongForTimedBlock).toHaveBeenCalledWith('radio-1', 'fixed_start');
+    expect(h.program.stopProgramSongForTimedBlock).toHaveBeenCalledWith(
+      'radio-1',
+      'fixed_start',
+    );
   });
 
   it('stops it as before for an ordinary next cue', async () => {
     const h = playout();
     await h.run();
-    expect(h.program.stopProgramSongForTimedBlock).toHaveBeenCalledWith('radio-1');
+    expect(h.program.stopProgramSongForTimedBlock).toHaveBeenCalledWith(
+      'radio-1',
+    );
   });
 });

@@ -29,15 +29,13 @@ function harness() {
   const prisma = {
     asRunRecord: { findMany: jest.fn().mockResolvedValue([]) },
     programState: {
-      findUnique: jest
-        .fn()
-        .mockResolvedValue({
-          id: 1,
-          programId: 'radio-1',
-          type: 'radio',
-          // A set-up station: the preflight reads its radio as ready.
-          radioSettings: { enabled: true, palazzoUrl: 'http://palazzo:3100' },
-        }),
+      findUnique: jest.fn().mockResolvedValue({
+        id: 1,
+        programId: 'radio-1',
+        type: 'radio',
+        // A set-up station: the preflight reads its radio as ready.
+        radioSettings: { enabled: true, palazzoUrl: 'http://palazzo:3100' },
+      }),
       update: jest.fn().mockResolvedValue({}),
     },
     flightSequence: {
@@ -844,7 +842,9 @@ describe('FlightService clocked preflight timing warnings (D5, D6)', () => {
 
   it('warns that the station goes silent at a known block end with nothing after it on a Manual rotation (D5)', async () => {
     const { internals, prisma } = harness();
-    prisma.song.findMany.mockResolvedValue([{ ...playable, durationMs: 180_000 }]);
+    prisma.song.findMany.mockResolvedValue([
+      { ...playable, durationMs: 180_000 },
+    ]);
     const result = await internals.preflightClockItems(
       'radio-1',
       [song(1, { clockOffsetSeconds: 0 })],
@@ -858,13 +858,38 @@ describe('FlightService clocked preflight timing warnings (D5, D6)', () => {
 
   it('gives no D5 warning when a block follows, when the rotation is not Manual, or when the end is unknown', async () => {
     const { internals, prisma } = harness();
-    prisma.song.findMany.mockResolvedValue([{ ...playable, durationMs: 180_000 }]);
+    prisma.song.findMany.mockResolvedValue([
+      { ...playable, durationMs: 180_000 },
+    ]);
     const block = [song(1, { clockOffsetSeconds: 0 })];
-    expect((await internals.preflightClockItems('radio-1', block, timing('manual', true))).warnings).toEqual([]);
-    expect((await internals.preflightClockItems('radio-1', block, timing('autoplay'))).warnings).toEqual([]);
-    expect((await internals.preflightClockItems('radio-1', block, timing(null))).warnings).toEqual([]);
+    expect(
+      (
+        await internals.preflightClockItems(
+          'radio-1',
+          block,
+          timing('manual', true),
+        )
+      ).warnings,
+    ).toEqual([]);
+    expect(
+      (
+        await internals.preflightClockItems(
+          'radio-1',
+          block,
+          timing('autoplay'),
+        )
+      ).warnings,
+    ).toEqual([]);
+    expect(
+      (await internals.preflightClockItems('radio-1', block, timing(null)))
+        .warnings,
+    ).toEqual([]);
     prisma.song.findMany.mockResolvedValue([{ ...playable, durationMs: null }]);
-    const unknown = await internals.preflightClockItems('radio-1', block, timing('manual'));
+    const unknown = await internals.preflightClockItems(
+      'radio-1',
+      block,
+      timing('manual'),
+    );
     expect(unknown.warnings).toEqual(['Item 1: song duration unknown']);
   });
 
@@ -873,7 +898,10 @@ describe('FlightService clocked preflight timing warnings (D5, D6)', () => {
     prisma.song.findMany.mockResolvedValue([{ ...playable, durationMs: null }]);
     const result = await internals.preflightClockItems(
       'radio-1',
-      [song(1, { clockOffsetSeconds: 0 }), song(1, { clockOffsetSeconds: 300 })],
+      [
+        song(1, { clockOffsetSeconds: 0 }),
+        song(1, { clockOffsetSeconds: 300 }),
+      ],
       timing(null),
     );
     expect(result.warnings).toEqual([
@@ -886,10 +914,15 @@ describe('FlightService clocked preflight timing warnings (D5, D6)', () => {
 
   it('gives no D6 warning when the songs before a fixed start all have known lengths', async () => {
     const { internals, prisma } = harness();
-    prisma.song.findMany.mockResolvedValue([{ ...playable, durationMs: 60_000 }]);
+    prisma.song.findMany.mockResolvedValue([
+      { ...playable, durationMs: 60_000 },
+    ]);
     const result = await internals.preflightClockItems(
       'radio-1',
-      [song(1, { clockOffsetSeconds: 0 }), song(1, { clockOffsetSeconds: 300 })],
+      [
+        song(1, { clockOffsetSeconds: 0 }),
+        song(1, { clockOffsetSeconds: 300 }),
+      ],
       timing(null),
     );
     expect(result.warnings).toEqual([]);

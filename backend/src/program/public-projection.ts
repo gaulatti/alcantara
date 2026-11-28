@@ -17,7 +17,8 @@ function isRecord(value: unknown): value is Value {
 
 function pick(source: Value, fields: readonly string[]): Value {
   const picked: Value = {};
-  for (const field of fields) if (source[field] !== undefined) picked[field] = source[field];
+  for (const field of fields)
+    if (source[field] !== undefined) picked[field] = source[field];
   return picked;
 }
 
@@ -26,7 +27,11 @@ export function projectPublicScene(value: unknown): Value | null {
   if (!isRecord(value)) return null;
   return {
     id: value.id,
-    layout: { componentType: isRecord(value.layout) ? value.layout.componentType : undefined },
+    layout: {
+      componentType: isRecord(value.layout)
+        ? value.layout.componentType
+        : undefined,
+    },
     chyronText: value.chyronText ?? null,
     metadata: value.metadata ?? null,
   };
@@ -37,7 +42,9 @@ function projectPublicStinger(value: unknown): Value | null {
   if (!isRecord(value)) return null;
   return {
     stingerId: value.stingerId,
-    stinger: isRecord(value.stinger) ? pick(value.stinger, ['name', 'videoUrl', 'cutPointMs']) : null,
+    stinger: isRecord(value.stinger)
+      ? pick(value.stinger, ['name', 'videoUrl', 'cutPointMs'])
+      : null,
   };
 }
 
@@ -49,7 +56,9 @@ export function projectPublicProgramState(value: unknown): Value | null {
     version: value.version,
     fadeToBlack: value.fadeToBlack === true,
     stingers: Array.isArray(value.stingers)
-      ? value.stingers.map(projectPublicStinger).filter((entry) => entry !== null)
+      ? value.stingers
+          .map(projectPublicStinger)
+          .filter((entry) => entry !== null)
       : [],
     activeScene: projectPublicScene(value.activeScene),
     stagedScene: projectPublicScene(value.stagedScene),
@@ -71,7 +80,9 @@ function projectSequenceItem(value: unknown, depth: number): Value | null {
   if (!isRecord(value)) return null;
   if (value.kind === 'sequence') {
     const sequence = projectPublicSongSequence(value.sequence, depth + 1);
-    return sequence ? { id: value.id, kind: 'sequence', label: value.label, sequence } : null;
+    return sequence
+      ? { id: value.id, kind: 'sequence', label: value.label, sequence }
+      : null;
   }
   return pick(value, PLAYABLE_SONG_LEAF_FIELDS);
 }
@@ -80,12 +91,17 @@ function projectSequenceItem(value: unknown, depth: number): Value | null {
  * A song sequence with its structure (mode, order, cursor, timing, nesting) and each leaf cut to what the page plays
  * and shows: its audio, title, artist, length, cover and chart rank.
  */
-export function projectPublicSongSequence(value: unknown, depth = 0): Value | null {
+export function projectPublicSongSequence(
+  value: unknown,
+  depth = 0,
+): Value | null {
   if (!isRecord(value) || depth > MAX_SEQUENCE_DEPTH) return null;
   return {
     ...pick(value, SEQUENCE_FIELDS),
     items: Array.isArray(value.items)
-      ? value.items.map((item) => projectSequenceItem(item, depth)).filter((item) => item !== null)
+      ? value.items
+          .map((item) => projectSequenceItem(item, depth))
+          .filter((item) => item !== null)
       : [],
   };
 }
@@ -96,7 +112,12 @@ export function projectPublicAudioBus(value: unknown): Value | null {
   return {
     ...pick(value, ['sequenceVersion', 'shuffleKeepsRows', 'mixerSettings']),
     ...(value.songSequence !== undefined
-      ? { songSequence: value.songSequence === null ? null : projectPublicSongSequence(value.songSequence) }
+      ? {
+          songSequence:
+            value.songSequence === null
+              ? null
+              : projectPublicSongSequence(value.songSequence),
+        }
       : {}),
   };
 }
@@ -105,14 +126,22 @@ export function projectPublicAudioBus(value: unknown): Value | null {
 export function projectPublicProgramSignal(value: unknown): unknown {
   if (!isRecord(value)) return value;
   const event: Value = { ...value };
-  if (event.state !== undefined) event.state = projectPublicProgramState(event.state);
-  if (event.type === 'scene_staged' && event.scene !== undefined) event.scene = projectPublicScene(event.scene);
-  if (event.settings !== undefined && (event.type === 'audio_bus_update' || event.type === 'audio_bus_snapshot'))
+  if (event.state !== undefined)
+    event.state = projectPublicProgramState(event.state);
+  if (event.type === 'scene_staged' && event.scene !== undefined)
+    event.scene = projectPublicScene(event.scene);
+  if (
+    event.settings !== undefined &&
+    (event.type === 'audio_bus_update' || event.type === 'audio_bus_snapshot')
+  )
     event.settings = projectPublicAudioBus(event.settings);
   if (event.type === 'song_queue_update') {
     delete event.songQueue;
     if (event.songSequence !== undefined)
-      event.songSequence = event.songSequence === null ? null : projectPublicSongSequence(event.songSequence);
+      event.songSequence =
+        event.songSequence === null
+          ? null
+          : projectPublicSongSequence(event.songSequence);
   }
   return event;
 }

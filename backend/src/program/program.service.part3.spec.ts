@@ -410,15 +410,28 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
       const { service, prisma } = build();
       prisma.stinger.findUnique.mockResolvedValue(null);
       prisma.scene = { findUnique: jest.fn().mockResolvedValue(null) };
-      prisma.mediaGroup = { ...prisma.mediaGroup, findUnique: jest.fn().mockResolvedValue(null) };
-      await expect(service.addStingerToProgram(1)).rejects.toThrow('Stinger not found');
+      prisma.mediaGroup = {
+        ...prisma.mediaGroup,
+        findUnique: jest.fn().mockResolvedValue(null),
+      };
+      await expect(service.addStingerToProgram(1)).rejects.toThrow(
+        'Stinger not found',
+      );
       expect(prisma.$extends).not.toHaveBeenCalled();
       prisma.program.findUnique.mockResolvedValue({ teamId: 7 });
-      await expect(service.addStingerToProgram(1)).rejects.toThrow('Stinger not found');
-      await expect(service.addSceneToProgram(1)).rejects.toThrow('Scene not found');
-      await expect(service.addMediaGroupToProgram(1)).rejects.toThrow('Media group not found');
+      await expect(service.addStingerToProgram(1)).rejects.toThrow(
+        'Stinger not found',
+      );
+      await expect(service.addSceneToProgram(1)).rejects.toThrow(
+        'Scene not found',
+      );
+      await expect(service.addMediaGroupToProgram(1)).rejects.toThrow(
+        'Media group not found',
+      );
       expect(prisma.$extends).toHaveBeenCalledTimes(3);
-      expect(prisma.$extends).toHaveBeenCalledWith(expect.objectContaining({ name: 'team-7' }));
+      expect(prisma.$extends).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'team-7' }),
+      );
     });
 
     it('rejects an unknown stinger', async () => {

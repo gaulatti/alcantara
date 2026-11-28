@@ -63,7 +63,9 @@ export function resolve(
     const song = playback.song;
     if (!song) return null;
     const duration = durationOf(song.songId);
-    return duration !== undefined && at - song.startMs >= duration ? null : song;
+    return duration !== undefined && at - song.startMs >= duration
+      ? null
+      : song;
   };
   const finish = (at: number): FlightDesiredState => {
     const playing = songAt(at);
@@ -135,7 +137,10 @@ function apply(
   switch (cue.kind) {
     case 'scene':
       if (typeof cue.sceneId === 'number') {
-        state.scene = { sceneId: cue.sceneId, transitionId: cue.transitionId ?? null };
+        state.scene = {
+          sceneId: cue.sceneId,
+          transitionId: cue.transitionId ?? null,
+        };
         state.sceneMetadataPatch = {};
       }
       break;
@@ -145,7 +150,10 @@ function apply(
         isRecord(cue.metadataPatch) &&
         (cue.sceneId === undefined || cue.sceneId === state.scene.sceneId)
       ) {
-        state.sceneMetadataPatch = { ...state.sceneMetadataPatch, ...cue.metadataPatch };
+        state.sceneMetadataPatch = {
+          ...state.sceneMetadataPatch,
+          ...cue.metadataPatch,
+        };
       }
       break;
     case 'mixer': {
@@ -157,11 +165,17 @@ function apply(
           ? pick(change, ['volume'])
           : pick(change, ['volume', 'muted', 'solo']);
       if (Object.keys(level).length === 0) break;
-      state.mixer = { ...state.mixer, [channel]: { ...state.mixer[channel], ...level } };
+      state.mixer = {
+        ...state.mixer,
+        [channel]: { ...state.mixer[channel], ...level },
+      };
       break;
     }
     case 'playSong':
-      setSong({ songId: typeof cue.songId === 'number' ? cue.songId : null, startMs: at });
+      setSong({
+        songId: typeof cue.songId === 'number' ? cue.songId : null,
+        startMs: at,
+      });
       break;
     case 'stopSong':
       setSong(null);
@@ -178,7 +192,9 @@ function consumes(
   durationOf: (songId: number | null) => number | undefined,
 ): number {
   if (cue.kind === 'wait') {
-    return typeof cue.durationMs === 'number' && cue.durationMs > 0 ? cue.durationMs : 0;
+    return typeof cue.durationMs === 'number' && cue.durationMs > 0
+      ? cue.durationMs
+      : 0;
   }
   if (cue.kind === 'waitForSongEnd' && playing) {
     const duration = durationOf(playing.songId);
@@ -194,7 +210,8 @@ function pick(
 ): FlightMixerChannelState {
   const level: FlightMixerChannelState = {};
   for (const field of fields) {
-    if (change[field] !== undefined) Object.assign(level, { [field]: change[field] });
+    if (change[field] !== undefined)
+      Object.assign(level, { [field]: change[field] });
   }
   return level;
 }
