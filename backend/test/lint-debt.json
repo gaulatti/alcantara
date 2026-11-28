@@ -398,8 +398,7 @@
     "@typescript-eslint/no-unsafe-call": 9,
     "@typescript-eslint/no-unsafe-member-access": 8,
     "@typescript-eslint/no-unsafe-return": 2,
-    "@typescript-eslint/require-await": 2,
-    "prettier/prettier": 86
+    "@typescript-eslint/require-await": 2
   },
   "src/operator-change/library-change.integration.spec.ts": {
     "@typescript-eslint/no-unsafe-call": 1,
@@ -421,8 +420,7 @@
     "@typescript-eslint/no-unsafe-member-access": 8,
     "@typescript-eslint/no-unsafe-return": 1,
     "@typescript-eslint/only-throw-error": 1,
-    "@typescript-eslint/require-await": 5,
-    "prettier/prettier": 8
+    "@typescript-eslint/require-await": 5
   },
   "src/operator-change/operator-change-recorder.testing.ts": {
     "@typescript-eslint/require-await": 1
