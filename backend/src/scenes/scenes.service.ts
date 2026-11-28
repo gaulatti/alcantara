@@ -9,7 +9,7 @@ import {
   summarizeChange,
 } from '../operator-change/operator-change-recorder';
 import { PrismaService } from '../prisma.service';
-import { bracketComponentFromLayout, GIORGIA_BRACKET_COMPONENT } from './bracket-component';
+import { bracketComponentFromLayout } from './bracket-component';
 import { ProgramService } from '../program/program.service';
 import { forTeam } from '../tenancy/scoped-prisma';
 
@@ -322,16 +322,17 @@ export class ScenesService {
     }
   }
 
-  // The requested component type when it declares audience interaction, else the scene's own when it does, else the
-  // legacy bracket key. An unrecognized request falls back as it always did, so existing callers keep working.
+  // The requested component type when it declares audience interaction, else the bracket element of the scene's layout
+  // (settled by the scene's own state), else the legacy bracket key. An unrecognized request falls back as it always did,
+  // so existing callers keep working.
   private resolveBracketComponentType(
     requestedType: string | undefined,
-    scene?: { layout?: { componentType?: string } } | null,
+    scene?: { layout?: { componentType?: string }; metadata?: unknown } | null,
   ): string {
     if (this.isAudienceInteractionComponent(requestedType)) return requestedType.trim();
-    const fromLayout = bracketComponentFromLayout(scene?.layout?.componentType);
+    const fromLayout = bracketComponentFromLayout(scene?.layout?.componentType, Object.keys(this.parseMetadata(scene?.metadata)));
     if (fromLayout) return fromLayout;
-    return GIORGIA_BRACKET_COMPONENT;
+    return 'modoitaliano-bracket';
   }
 
   private isAudienceInteractionComponent(

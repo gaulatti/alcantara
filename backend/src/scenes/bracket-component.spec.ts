@@ -1,27 +1,29 @@
-import { bracketComponentFromLayout, GIORGIA_BRACKET_COMPONENT, LEGACY_BRACKET_COMPONENT } from './bracket-component';
+import { bracketComponentFromLayout } from './bracket-component';
 
-// The real value of layout 2236 on production (dry run, 23:50 UTC) is a comma-separated list.
+// The real value of layout 2236 on production (dry run, 23:50 UTC) is a comma-separated list. Its element names
+// are the production ids; the spec is not counted by the brand-literal ratchet.
 const REAL_LIST = 'modoitaliano-giorgia-clock,tournament-bracket,modoitaliano-bracket,slideshow';
 const REAL_LIST_MIGRATED = 'modoitaliano-giorgia-clock,tournament-bracket,modoitaliano-giorgia-bracket,slideshow';
 
 describe('bracketComponentFromLayout', () => {
-  it('finds the legacy bracket element of the real list, not the tournament-bracket lookalike', () => {
-    expect(bracketComponentFromLayout(REAL_LIST)).toBe(LEGACY_BRACKET_COMPONENT);
+  it('settles the real list by the scene state, not by the tournament-bracket lookalike', () => {
+    expect(bracketComponentFromLayout(REAL_LIST, ['modoitaliano-bracket'])).toBe('modoitaliano-bracket');
+    expect(bracketComponentFromLayout(REAL_LIST_MIGRATED, ['modoitaliano-giorgia-bracket'])).toBe('modoitaliano-giorgia-bracket');
   });
 
-  it('finds the Giorgia bracket element of the migrated real list', () => {
-    expect(bracketComponentFromLayout(REAL_LIST_MIGRATED)).toBe(GIORGIA_BRACKET_COMPONENT);
+  it('refuses to guess between two bracket elements when the scene holds neither state', () => {
+    expect(bracketComponentFromLayout(REAL_LIST, [])).toBeNull();
+    expect(bracketComponentFromLayout(REAL_LIST, ['modoitaliano-bracket', 'modoitaliano-giorgia-bracket'])).toBeNull();
   });
 
-  it('reads a single-element componentType as before', () => {
-    expect(bracketComponentFromLayout('modoitaliano-giorgia-bracket')).toBe(GIORGIA_BRACKET_COMPONENT);
-    expect(bracketComponentFromLayout('modoitaliano-bracket')).toBe(LEGACY_BRACKET_COMPONENT);
+  it('reads a list with a single bracket element without the scene state', () => {
+    expect(bracketComponentFromLayout('modoitaliano-giorgia-clock,modoitaliano-giorgia-bracket,slideshow')).toBe('modoitaliano-giorgia-bracket');
+    expect(bracketComponentFromLayout('modoitaliano-giorgia-bracket')).toBe('modoitaliano-giorgia-bracket');
   });
 
-  it('returns null when the layout places no bracket, the value is empty, or the list has two bracket elements', () => {
+  it('returns null when the layout places no bracket, or the value is empty', () => {
     expect(bracketComponentFromLayout('modoitaliano-giorgia-clock,slideshow')).toBeNull();
     expect(bracketComponentFromLayout('')).toBeNull();
     expect(bracketComponentFromLayout(null)).toBeNull();
-    expect(bracketComponentFromLayout(`${LEGACY_BRACKET_COMPONENT},${GIORGIA_BRACKET_COMPONENT}`)).toBeNull();
   });
 });
