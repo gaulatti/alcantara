@@ -19,8 +19,9 @@ describe('return router metadata', () => {
     let controller: typeof import('./return-router.controller');
     jest.isolateModules(() => {
       service = jest.requireActual('./return-router.service');
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      controller = require('./return-router.controller');
+      controller =
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        require('./return-router.controller') as typeof import('./return-router.controller');
     });
     expect(
       Reflect.getMetadata('design:paramtypes', service!.ReturnRouterService),

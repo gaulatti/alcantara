@@ -146,7 +146,7 @@ describe('a rejoin after a lapse answers standby', () => {
       .mockResolvedValue(undefined as never);
     // The claim finds no reconnect, then a lapsed return that clears the cue.
     prisma.guestInvitation.updateMany = jest
-      .fn()
+      .fn<Promise<{ count: number }>, []>()
       .mockResolvedValueOnce({ count: 0 })
       .mockResolvedValueOnce({ count: 1 })
       .mockResolvedValue({ count: 0 });
@@ -173,7 +173,7 @@ describe('a rejoin after a lapse answers standby', () => {
       .spyOn(service as never, 'ensureScreeningRoom' as never)
       .mockResolvedValue(undefined as never);
     prisma.guestInvitation.updateMany = jest
-      .fn()
+      .fn<Promise<{ count: number }>, []>()
       .mockResolvedValueOnce({ count: 1 });
     const join = await service.redeemInvitation(
       'fictional-invitation-token',

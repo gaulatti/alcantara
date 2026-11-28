@@ -8,6 +8,9 @@ import { WebrtcService } from './webrtc.service';
 const id = '11111111-1111-4111-8111-111111111111';
 const token = `${id}.fictional-invitation-secret`;
 
+/** What an invitation update writes, as these specs read it. */
+type Update = { data: Record<string, unknown> };
+
 function setup() {
   const invitation = {
     id,
@@ -34,7 +37,9 @@ function setup() {
       findUnique: jest.fn().mockResolvedValue(invitation),
       findFirst: jest.fn().mockResolvedValue(invitation),
       findMany: jest.fn().mockResolvedValue([invitation]),
-      update: jest.fn().mockResolvedValue(invitation),
+      update: jest
+        .fn<Promise<unknown>, [Update]>()
+        .mockResolvedValue(invitation),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     guestEvent: { create: jest.fn() },
