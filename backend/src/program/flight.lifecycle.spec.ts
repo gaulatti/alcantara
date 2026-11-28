@@ -8,8 +8,68 @@ import { FlightService } from './flight.service';
 import { RadioMetricsService } from '../radio/radio-metrics.service';
 import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 
+interface ShadowState {
+  id: number;
+  programId: string;
+  type: string;
+  radioSettings: { enabled: boolean; palazzoUrl: string };
+  activeFlightSequenceId: number | null;
+  [field: string]: unknown;
+}
+interface ShadowSequence {
+  id: number;
+  programStateId: number;
+  name: string;
+  items: Array<{
+    id: string;
+    kind: string;
+    durationMs?: number;
+    [field: string]: unknown;
+  }>;
+  loop: boolean;
+  isRunning: boolean;
+  activeItemId: string | null;
+  scheduledAt: Date | null;
+  publishedAt: Date | null;
+  lastStartedAt: Date | null;
+  revision: number;
+  createdAt: Date;
+  updatedAt: Date;
+  [field: string]: unknown;
+}
+interface ShadowScene {
+  id: number;
+  metadata: string;
+  [field: string]: unknown;
+}
+interface ShadowSong {
+  id: number;
+  enabled: boolean;
+  audioUrl: string;
+  artist?: string;
+  title?: string;
+  coverUrl?: string | null;
+  durationMs?: number | null;
+  asset?: unknown;
+  [field: string]: unknown;
+}
+interface ShadowWhere {
+  id?: number;
+  programId?: string;
+  scheduledAt?: { not: null } | null;
+  isRunning?: boolean;
+  revision?: number;
+  lastStartedAt?: Date | null;
+  [field: string]: unknown;
+}
+interface ShadowArgs {
+  where: ShadowWhere;
+  select?: { activeSceneId?: boolean };
+  [field: string]: unknown;
+}
+
 function fixture() {
-  const state: any = {
+  const state: ShadowState = {
     id: 1,
     programId: 'news',
     type: 'radio',
@@ -17,7 +77,7 @@ function fixture() {
     radioSettings: { enabled: true, palazzoUrl: 'http://palazzo:3100' },
     activeFlightSequenceId: 7,
   };
-  let sequence: any = {
+  let sequence: ShadowSequence = {
     id: 7,
     programStateId: 1,
     name: 'Rundown',
@@ -32,11 +92,11 @@ function fixture() {
     createdAt: new Date(),
     updatedAt: new Date(),
   };
-  let scene: any = {
+  let scene: ShadowScene = {
     id: 3,
     metadata: '{"title":{"text":"Old","color":"red"},"remove":true}',
   };
-  const song = {
+  const song: ShadowSong = {
     id: 5,
     enabled: true,
     audioUrl: 'https://media.example/song.mp3',
@@ -46,62 +106,79 @@ function fixture() {
     durationMs: 1000,
     asset: { labels: [{ labelId: 'music', position: 0 }] },
   };
-  const prisma: any = {
+  const prisma = {
     asRunRecord: { findMany: jest.fn().mockResolvedValue([]) },
     programState: {
-      findUnique: jest.fn(async ({ where }: any) =>
+      findUnique: jest.fn(async ({ where }: ShadowArgs) =>
         where.programId === 'news' ? state : null,
       ),
-      update: jest.fn(async ({ data }: any) => Object.assign(state, data)),
+      update: jest.fn(async ({ data }: { data: Record<string, unknown> }) =>
+        Object.assign(state, data),
+      ),
     },
     flightSequence: {
-      findMany: jest.fn(async ({ where }: any = {}) =>
+      findMany: jest.fn<
+        Promise<Array<Partial<ShadowSequence>>>,
+        [Partial<ShadowArgs>?]
+      >(async ({ where }: Partial<ShadowArgs> = {}) =>
         where?.scheduledAt ? [] : [sequence],
       ),
-      findFirst: jest.fn(async ({ where }: any) =>
+      findFirst: jest.fn(async ({ where }: ShadowArgs) =>
         where.id === sequence.id ? sequence : null,
       ),
-      findUnique: jest.fn(async ({ where }: any) =>
+      findUnique: jest.fn(async ({ where }: ShadowArgs) =>
         where.id === sequence.id ? sequence : null,
       ),
       findUniqueOrThrow: jest.fn(async () => sequence),
-      create: jest.fn(async ({ data }: any) => {
+      create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         sequence = { ...sequence, ...data };
         return sequence;
       }),
-      update: jest.fn(async ({ data }: any) => {
+      update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         sequence = { ...sequence, ...data };
         return sequence;
       }),
-      updateMany: jest.fn(async ({ where, data }: any) => {
-        if (
-          where?.isRunning !== undefined &&
-          where.isRunning !== sequence.isRunning
-        )
-          return { count: 0 };
-        if (where?.scheduledAt?.not === null && !sequence.scheduledAt)
-          return { count: 0 };
-        if (
-          where?.revision !== undefined &&
-          where.revision !== sequence.revision
-        )
-          return { count: 0 };
-        if (where?.lastStartedAt === null && sequence.lastStartedAt)
-          return { count: 0 };
-        sequence = {
-          ...sequence,
-          ...data,
-          ...(data.revision
-            ? { revision: sequence.revision + data.revision.increment }
-            : {}),
-        };
-        return { count: 1 };
-      }),
+      updateMany: jest.fn(
+        async ({
+          where,
+          data,
+        }: {
+          where: ShadowWhere;
+          data: Record<string, any>;
+        }) => {
+          if (
+            where?.isRunning !== undefined &&
+            where.isRunning !== sequence.isRunning
+          )
+            return { count: 0 };
+          if (where?.scheduledAt?.not === null && !sequence.scheduledAt)
+            return { count: 0 };
+          if (
+            where?.revision !== undefined &&
+            where.revision !== sequence.revision
+          )
+            return { count: 0 };
+          if (where?.lastStartedAt === null && sequence.lastStartedAt)
+            return { count: 0 };
+          sequence = {
+            ...sequence,
+            ...data,
+            ...(data.revision
+              ? { revision: sequence.revision + data.revision.increment }
+              : {}),
+          };
+          return { count: 1 };
+        },
+      ),
       delete: jest.fn(),
     },
     song: {
-      findUnique: jest.fn(async () => song),
-      findMany: jest.fn(async () => [song]),
+      findUnique: jest.fn<Promise<ShadowSong | null>, [ShadowArgs?]>(
+        async () => song,
+      ),
+      findMany: jest.fn<Promise<Array<Partial<ShadowSong>>>, [unknown?]>(
+        async () => [song],
+      ),
     },
     instant: {
       findMany: jest.fn().mockResolvedValue([
@@ -113,8 +190,10 @@ function fixture() {
       ]),
     },
     scene: {
-      findUnique: jest.fn(async () => scene),
-      update: jest.fn(async ({ data }: any) => {
+      findUnique: jest.fn<Promise<ShadowScene | null>, [ShadowArgs?]>(
+        async () => scene,
+      ),
+      update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         scene = { ...scene, ...data };
         return scene;
       }),
@@ -124,7 +203,7 @@ function fixture() {
       findUnique: jest.fn().mockResolvedValue({ id: 'music', name: 'Music' }),
     },
   };
-  const programs: any = {
+  const programs: Record<string, jest.Mock> = {
     broadcastUpdate: jest.fn(),
     takeProgramSongOffAir: jest.fn(),
     stopProgramSongForTimedBlock: jest.fn(),
@@ -148,9 +227,15 @@ function fixture() {
     }),
   };
   const metrics = new RadioMetricsService();
-  const service = new FlightService(prisma, programs, metrics, noRecorder(), {
-    teamId: 0,
-  } as never);
+  const service = new FlightService(
+    prisma as never,
+    programs as never,
+    metrics,
+    noRecorder(),
+    {
+      teamId: 0,
+    } as never,
+  );
   return {
     service,
     prisma,
@@ -788,7 +873,7 @@ describe('FlightService public lifecycle and clock boundary', () => {
 
   it('coalesces slow schedule polls instead of concurrently claiming the same block', async () => {
     const f = setup();
-    let release!: (rows: unknown[]) => void;
+    let release!: (value: unknown) => void;
     // Start-up looks for manual rundowns to recover first (gaulatti/alcantara#123).
     f.prisma.flightSequence.findMany.mockResolvedValueOnce([]);
     f.prisma.flightSequence.findMany.mockImplementationOnce(
@@ -1438,7 +1523,7 @@ describe('FlightService public lifecycle and clock boundary', () => {
         { id: 'first', kind: 'waitForSongEnd' },
         { id: 'future', kind: 'instant', instantId: 12 },
       ];
-      const update = f.prisma.flightSequence.update.getMockImplementation();
+      const update = f.prisma.flightSequence.update.getMockImplementation()!;
       let writes = 0;
       let releaseWrite!: () => void;
       const gate = new Promise<void>((resolve) => {
@@ -1496,7 +1581,10 @@ describe('FlightService public lifecycle and clock boundary', () => {
     async (scheduled) => {
       const f = setup();
       const song = await f.prisma.song.findUnique({ where: { id: 5 } });
-      f.prisma.song.findUnique.mockResolvedValue({ ...song, durationMs: null });
+      f.prisma.song.findUnique.mockResolvedValue({
+        ...(song as ShadowSong),
+        durationMs: null,
+      });
       const cue = {
         id: 'voiced-song',
         kind: 'playSong',
@@ -1536,7 +1624,7 @@ describe('FlightService public lifecycle and clock boundary', () => {
     async ({ metadata }) => {
       const f = setup();
       f.state.type = 'both';
-      f.scene().metadata = metadata;
+      f.scene().metadata = metadata as string;
       f.sequence().items = [
         {
           id: 'patch',
