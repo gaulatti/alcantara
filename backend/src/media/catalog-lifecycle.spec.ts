@@ -6,14 +6,19 @@ import { StingersService } from '../stingers/stingers.service';
 import { LayoutsService } from '../layouts/layouts.service';
 import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 
+interface CatalogRow {
+  id: number;
+  [field: string]: unknown;
+}
+
 function fixture() {
-  let media: any = {
+  let media: CatalogRow = {
     id: 5,
     name: 'Image',
     imageUrl: 'https://media.example/image.png',
     assetId: 'image:5',
   };
-  let song: any = {
+  let song: CatalogRow = {
     id: 6,
     artist: 'Artist',
     title: 'Title',
@@ -25,7 +30,7 @@ function fixture() {
     coverAssetId: null,
     intro: null,
   };
-  let stinger: any = {
+  let stinger: CatalogRow = {
     id: 7,
     name: 'Wipe',
     videoUrl: 'https://media.example/wipe.webm',
@@ -33,16 +38,21 @@ function fixture() {
     enabled: true,
     assetId: 'transition:7',
   };
-  const prisma: any = {
+  const prisma = {
     media: {
-      findMany: jest.fn(async () => [media]),
+      findMany: jest.fn<
+        Promise<CatalogRow[]>,
+        [{ where?: unknown; [field: string]: unknown }]
+      >(async () => [media]),
       count: jest.fn().mockResolvedValue(3),
-      findUnique: jest.fn(async () => media),
-      create: jest.fn(async ({ data }: any) => {
+      findUnique: jest.fn<Promise<CatalogRow | null>, [unknown?]>(
+        async () => media,
+      ),
+      create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         media = { id: 5, ...data };
         return media;
       }),
-      update: jest.fn(async ({ data }: any) => {
+      update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         media = { ...media, ...data };
         return media;
       }),
@@ -50,18 +60,23 @@ function fixture() {
       delete: jest.fn(),
     },
     song: {
-      findMany: jest.fn(async () => [song]),
+      findMany: jest.fn<
+        Promise<CatalogRow[]>,
+        [{ where?: unknown; [field: string]: unknown }]
+      >(async () => [song]),
       count: jest.fn().mockResolvedValue(3),
       aggregate: jest.fn().mockResolvedValue({
         _sum: { durationMs: 60000 },
         _count: { durationMs: 2 },
       }),
-      findUnique: jest.fn(async () => song),
-      create: jest.fn(async ({ data }: any) => {
+      findUnique: jest.fn<Promise<CatalogRow | null>, [unknown?]>(
+        async () => song,
+      ),
+      create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         song = { id: 6, intro: null, ...data };
         return song;
       }),
-      update: jest.fn(async ({ data }: any) => {
+      update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         song = { ...song, ...data };
         return song;
       }),
@@ -70,18 +85,21 @@ function fixture() {
     },
     stinger: {
       findMany: jest.fn(async () => [stinger]),
-      findUnique: jest.fn(async () => stinger),
-      create: jest.fn(async ({ data }: any) => {
+      findUnique: jest.fn<Promise<CatalogRow | null>, [unknown?]>(
+        async () => stinger,
+      ),
+      create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         stinger = { id: 7, ...data };
         return stinger;
       }),
-      update: jest.fn(async ({ data }: any) => {
+      update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         stinger = { ...stinger, ...data };
         return stinger;
       }),
       findUniqueOrThrow: jest.fn(async () => stinger),
       delete: jest.fn(),
     },
+    $transaction: jest.fn(),
     mediaAsset: { upsert: jest.fn(), deleteMany: jest.fn() },
     mediaGroupItem: {
       findMany: jest.fn().mockResolvedValue([]),
@@ -100,12 +118,18 @@ function fixture() {
     layout: {
       findMany: jest.fn().mockResolvedValue([]),
       findUnique: jest.fn().mockResolvedValue({ id: 2 }),
-      create: jest.fn(async ({ data }: any) => ({ id: 2, ...data })),
-      update: jest.fn(async ({ data }: any) => ({ id: 2, ...data })),
+      create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+        id: 2,
+        ...data,
+      })),
+      update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+        id: 2,
+        ...data,
+      })),
       delete: jest.fn().mockResolvedValue({ id: 2 }),
     },
   };
-  prisma.$transaction = jest.fn(async (callback: (tx: any) => unknown) =>
+  prisma.$transaction.mockImplementation((callback: (tx: unknown) => unknown) =>
     callback(prisma),
   );
   return {
@@ -113,10 +137,10 @@ function fixture() {
     media: () => media,
     song: () => song,
     stinger: () => stinger,
-    images: new MediaService(prisma, noRecorder()),
-    songs: new SongsService(prisma, noRecorder()),
-    stingers: new StingersService(prisma, noRecorder()),
-    layouts: new LayoutsService(prisma, noRecorder()),
+    images: new MediaService(prisma as never, noRecorder()),
+    songs: new SongsService(prisma as never, noRecorder()),
+    stingers: new StingersService(prisma as never, noRecorder()),
+    layouts: new LayoutsService(prisma as never, noRecorder()),
   };
 }
 

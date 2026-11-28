@@ -189,7 +189,9 @@ describe('MediaService (coverage)', () => {
       });
       expect(tx.mediaGroup.findUniqueOrThrow).toHaveBeenCalledTimes(2);
       // each group: two items, two passes (offset then final positions)
-      const updates = tx.mediaGroupItem.update.mock.calls.map((c) => c[0]);
+      const updates = (tx.mediaGroupItem.update.mock.calls as unknown[][]).map(
+        (c) => c[0],
+      );
       expect(updates.slice(0, 4)).toEqual([
         { where: { id: 11 }, data: { position: 100000 } },
         { where: { id: 12 }, data: { position: 100001 } },
