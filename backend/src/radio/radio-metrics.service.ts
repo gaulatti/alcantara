@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { RUNDOWN_SHADOW_FIELDS, RUNDOWN_SHADOW_RESULTS } from '../program/flight-shadow';
+import {
+  RUNDOWN_SHADOW_FIELDS,
+  RUNDOWN_SHADOW_RESULTS,
+} from '../program/flight-shadow';
 
 export type PalazzoEventIgnoreReason =
   | 'duplicate'

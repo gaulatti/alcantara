@@ -322,7 +322,9 @@ describe('PalazzoMachineClient next-song announcement: unknown state', () => {
         .filter(
           (line) =>
             line.includes('held') &&
-            !/^(# (HELP|TYPE) )?alcantara_radio_dead_air_steps_total/.test(line),
+            !/^(# (HELP|TYPE) )?alcantara_radio_dead_air_steps_total/.test(
+              line,
+            ),
         ),
     ).toEqual([]);
   });

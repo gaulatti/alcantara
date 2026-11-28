@@ -302,7 +302,11 @@ describe('parsePalazzoEvent coverage', () => {
     for (const type of ['instant.started', 'instant.ended']) {
       const e = event((x) => {
         x.type = type;
-        x.data = { playbackId: 'spot-1', programId: 'main', liquidsoapSequence: 3 };
+        x.data = {
+          playbackId: 'spot-1',
+          programId: 'main',
+          liquidsoapSequence: 3,
+        };
       });
       expect(parsePalazzoEvent(e)).toEqual(e);
       expect(

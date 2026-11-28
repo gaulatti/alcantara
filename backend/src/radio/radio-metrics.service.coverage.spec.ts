@@ -295,12 +295,15 @@ describe('RadioMetricsService coverage', () => {
     metrics.recordDeadAirStep('resend', 'maybe' as never);
     metrics.recordDeadAirUnrecoveredPrograms(-2);
     const text = metrics.render();
-    expect(text).toContain('alcantara_radio_dead_air_steps_total{step="resend",result="recovered"} 1');
+    expect(text).toContain(
+      'alcantara_radio_dead_air_steps_total{step="resend",result="recovered"} 1',
+    );
     expect(text).not.toContain('step="restart"');
     expect(text).not.toContain('result="maybe"');
     expect(text).toContain('alcantara_radio_dead_air_unrecovered_programs 0');
     metrics.recordDeadAirUnrecoveredPrograms(1.7);
-    expect(metrics.render()).toContain('alcantara_radio_dead_air_unrecovered_programs 1');
+    expect(metrics.render()).toContain(
+      'alcantara_radio_dead_air_unrecovered_programs 1',
+    );
   });
 });
-

@@ -606,9 +606,6 @@
     "@typescript-eslint/require-await": 1,
     "prettier/prettier": 68
   },
-  "src/radio/dead-air-watchdog.service.ts": {
-    "prettier/prettier": 4
-  },
   "src/radio/now-playing-publisher.service.coverage.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 21,
     "@typescript-eslint/no-unsafe-call": 19,
@@ -616,8 +613,7 @@
     "@typescript-eslint/unbound-method": 8
   },
   "src/radio/palazzo-contract.coverage.spec.ts": {
-    "@typescript-eslint/no-unsafe-member-access": 15,
-    "prettier/prettier": 1
+    "@typescript-eslint/no-unsafe-member-access": 15
   },
   "src/radio/palazzo-contract.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": 1
@@ -628,15 +624,11 @@
     "@typescript-eslint/no-unsafe-return": 3,
     "@typescript-eslint/require-await": 4
   },
-  "src/radio/palazzo-machine.client.next.spec.ts": {
-    "prettier/prettier": 1
-  },
   "src/radio/palazzo-machine.client.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 5,
     "@typescript-eslint/no-unsafe-member-access": 6,
     "@typescript-eslint/no-unsafe-return": 1,
-    "@typescript-eslint/require-await": 2,
-    "prettier/prettier": 11
+    "@typescript-eslint/require-await": 2
   },
   "src/radio/palazzo-machine.client.timeout.spec.ts": {
     "@typescript-eslint/prefer-promise-reject-errors": 2,
@@ -658,9 +650,6 @@
   "src/radio/palazzo-program.client.idle.spec.ts": {
     "@typescript-eslint/prefer-promise-reject-errors": 2
   },
-  "src/radio/palazzo-program.client.live.spec.ts": {
-    "prettier/prettier": 1
-  },
   "src/radio/palazzo-program.client.replay-gap.spec.ts": {
     "@typescript-eslint/no-unsafe-member-access": 2
   },
@@ -670,9 +659,6 @@
     "@typescript-eslint/no-unsafe-return": 1,
     "@typescript-eslint/no-unused-vars": 1,
     "@typescript-eslint/require-await": 1
-  },
-  "src/radio/palazzo-program.client.ts": {
-    "prettier/prettier": 3
   },
   "src/radio/palazzo-program.delivery-boundaries.spec.ts": {
     "@typescript-eslint/no-unsafe-call": 2,
@@ -686,8 +672,7 @@
     "@typescript-eslint/unbound-method": 3
   },
   "src/radio/palazzo-telemetry.service.metadata.spec.ts": {
-    "@typescript-eslint/no-unsafe-return": 1,
-    "prettier/prettier": 1
+    "@typescript-eslint/no-unsafe-return": 1
   },
   "src/radio/palazzo-telemetry.service.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 1
@@ -713,12 +698,6 @@
   },
   "src/radio/radio-library.tenancy.spec.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": 1
-  },
-  "src/radio/radio-metrics.service.coverage.spec.ts": {
-    "prettier/prettier": 3
-  },
-  "src/radio/radio-metrics.service.ts": {
-    "prettier/prettier": 1
   },
   "src/radio/radio-monitor.controller.coverage.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 2,
@@ -746,28 +725,19 @@
     "@typescript-eslint/no-unsafe-member-access": 2
   },
   "src/radio/radio-scope-preflight.service.metadata.spec.ts": {
-    "@typescript-eslint/no-unsafe-return": 1,
-    "prettier/prettier": 1
-  },
-  "src/radio/radio-scope-preflight.service.ts": {
-    "prettier/prettier": 1
-  },
-  "src/radio/radio-segue-default-migration.spec.ts": {
-    "prettier/prettier": 1
+    "@typescript-eslint/no-unsafe-return": 1
   },
   "src/radio/radio-settings-new-row-defaults.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 2,
     "@typescript-eslint/no-unsafe-call": 5,
     "@typescript-eslint/no-unsafe-member-access": 6,
-    "@typescript-eslint/no-unsafe-return": 1,
-    "prettier/prettier": 1
+    "@typescript-eslint/no-unsafe-return": 1
   },
   "src/radio/radio-settings.operator-change.http.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 1,
     "@typescript-eslint/no-unsafe-call": 1,
     "@typescript-eslint/no-unsafe-member-access": 3,
-    "@typescript-eslint/require-await": 6,
-    "prettier/prettier": 1
+    "@typescript-eslint/require-await": 6
   },
   "src/radio/radio-settings.operator-change.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 18,
@@ -791,9 +761,6 @@
     "@typescript-eslint/no-unsafe-return": 5,
     "@typescript-eslint/require-await": 5,
     "@typescript-eslint/unbound-method": 8
-  },
-  "src/radio/radio.service.metadata.spec.ts": {
-    "prettier/prettier": 1
   },
   "src/radio/radio.service.program-filler.spec.ts": {
     "@typescript-eslint/no-unsafe-call": 7,
@@ -825,8 +792,7 @@
     "@typescript-eslint/restrict-template-expressions": 1
   },
   "src/radio/song-execution.engine.dead-air.spec.ts": {
-    "@typescript-eslint/no-unused-vars": 1,
-    "prettier/prettier": 5
+    "@typescript-eslint/no-unused-vars": 1
   },
   "src/radio/song-execution.engine.flow.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 4,
@@ -853,8 +819,7 @@
   "src/radio/song-execution.engine.remove-leaves.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 7,
     "@typescript-eslint/no-unsafe-call": 10,
-    "@typescript-eslint/no-unsafe-member-access": 32,
-    "prettier/prettier": 12
+    "@typescript-eslint/no-unsafe-member-access": 32
   },
   "src/radio/song-execution.engine.similarity.coverage.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 4,
@@ -875,14 +840,10 @@
     "@typescript-eslint/no-unsafe-assignment": 1,
     "@typescript-eslint/no-unsafe-member-access": 5,
     "@typescript-eslint/no-unsafe-return": 3,
-    "@typescript-eslint/require-await": 5,
-    "prettier/prettier": 2
+    "@typescript-eslint/require-await": 5
   },
   "src/radio/song-execution.engine.ts": {
     "@typescript-eslint/no-unused-vars": 1
-  },
-  "src/radio/song-sequence.utils.coverage.spec.ts": {
-    "prettier/prettier": 11
   },
   "src/radio/song-sequence.utils.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 2,
@@ -890,11 +851,7 @@
     "@typescript-eslint/no-unsafe-member-access": 5
   },
   "src/radio/song-similarity.service.metadata.spec.ts": {
-    "@typescript-eslint/no-unsafe-return": 1,
-    "prettier/prettier": 1
-  },
-  "src/radio/song-similarity.service.ts": {
-    "prettier/prettier": 1
+    "@typescript-eslint/no-unsafe-return": 1
   },
   "src/renderer-keys/place-renderer-keys.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 2,

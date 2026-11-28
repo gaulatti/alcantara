@@ -806,7 +806,6 @@ describe('activateProgramSongLeaf', () => {
   });
 });
 
-
 describe('counting leaves by audio and comparing sequences apart from the cursor (#277)', () => {
   it('counts 0, 1, or 2 for two or more, and 0 for no sequence or a blank url', () => {
     const sequence = seq([
@@ -815,21 +814,45 @@ describe('counting leaves by audio and comparing sequences apart from the cursor
       nested('n', seq([leaf('c', { audioUrl: 'https://media.test/dup.mp3' })])),
       leaf('d', { audioUrl: 'https://media.test/dup.mp3' }),
     ]);
-    expect(countProgramSongLeavesByAudioUrl(sequence, 'https://media.test/a.mp3')).toBe(1);
-    expect(countProgramSongLeavesByAudioUrl(sequence, 'https://media.test/dup.mp3')).toBe(2);
-    expect(countProgramSongLeavesByAudioUrl(sequence, 'https://media.test/none.mp3')).toBe(0);
-    expect(countProgramSongLeavesByAudioUrl(null, 'https://media.test/a.mp3')).toBe(0);
+    expect(
+      countProgramSongLeavesByAudioUrl(sequence, 'https://media.test/a.mp3'),
+    ).toBe(1);
+    expect(
+      countProgramSongLeavesByAudioUrl(sequence, 'https://media.test/dup.mp3'),
+    ).toBe(2);
+    expect(
+      countProgramSongLeavesByAudioUrl(sequence, 'https://media.test/none.mp3'),
+    ).toBe(0);
+    expect(
+      countProgramSongLeavesByAudioUrl(null, 'https://media.test/a.mp3'),
+    ).toBe(0);
     expect(countProgramSongLeavesByAudioUrl(sequence, '   ')).toBe(0);
   });
 
   it('is the same structure when only the cursor differs, at any level, and different when anything else does', () => {
-    const inner = seq([leaf('x'), leaf('y')], { activeItemId: 'x', startedAt: 1 });
-    const left = seq([leaf('a'), nested('n', inner)], { activeItemId: 'a', startedAt: 10 });
+    const inner = seq([leaf('x'), leaf('y')], {
+      activeItemId: 'x',
+      startedAt: 1,
+    });
+    const left = seq([leaf('a'), nested('n', inner)], {
+      activeItemId: 'a',
+      startedAt: 10,
+    });
     const movedInner = { ...inner, activeItemId: 'y', startedAt: 2 };
-    const right = seq([leaf('a'), nested('n', movedInner)], { activeItemId: 'n', startedAt: 99 });
-    expect(programSongSequenceStructure(left)).toBe(programSongSequenceStructure(right));
-    const edited = seq([leaf('a', { title: 'edited' }), nested('n', inner)], { activeItemId: 'a', startedAt: 10 });
-    expect(programSongSequenceStructure(left)).not.toBe(programSongSequenceStructure(edited));
+    const right = seq([leaf('a'), nested('n', movedInner)], {
+      activeItemId: 'n',
+      startedAt: 99,
+    });
+    expect(programSongSequenceStructure(left)).toBe(
+      programSongSequenceStructure(right),
+    );
+    const edited = seq([leaf('a', { title: 'edited' }), nested('n', inner)], {
+      activeItemId: 'a',
+      startedAt: 10,
+    });
+    expect(programSongSequenceStructure(left)).not.toBe(
+      programSongSequenceStructure(edited),
+    );
     expect(programSongSequenceStructure(null)).toBe('null');
   });
 });

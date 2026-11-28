@@ -50,7 +50,9 @@ describe('PUT /radio/:programId/settings records its actor', () => {
         {
           provide: ProgramTeamAccess,
           useValue: {
-            teamOf: jest.fn(async (programId: string) => (programId === 'p' ? 7 : null)),
+            teamOf: jest.fn(async (programId: string) =>
+              programId === 'p' ? 7 : null,
+            ),
             cachedTeamOf: jest.fn(() => 7),
             warmTeamOf: jest.fn(),
           },

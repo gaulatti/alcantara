@@ -231,14 +231,20 @@ describe('SongExecutionEngine.removeSongLeaves (#327)', () => {
   it.each([
     ['a Play Next song', { queueEntryId: 'q9', itemId: 'e' }],
     ['a catalog pick', { queueEntryId: null, itemId: 'catalog:9' }],
-  ])('moves a pending cursor forward under %s, never back to an aired song', async (_name, song) => {
-    const h = harness();
-    h.engine.handleSequenceUpdated('radio-1', { ...stored(), activeItemId: 'b' });
-    (h.engine as any).states.get('radio-1').activeSong = song;
-    const result = await remove(h, ['b'], { keepRotation: true });
-    expect(result.cursorMovedTo).toBe('c');
-    expect(result.songSequence.cuedItemId).toBe('c');
-  });
+  ])(
+    'moves a pending cursor forward under %s, never back to an aired song',
+    async (_name, song) => {
+      const h = harness();
+      h.engine.handleSequenceUpdated('radio-1', {
+        ...stored(),
+        activeItemId: 'b',
+      });
+      (h.engine as any).states.get('radio-1').activeSong = song;
+      const result = await remove(h, ['b'], { keepRotation: true });
+      expect(result.cursorMovedTo).toBe('c');
+      expect(result.songSequence.cuedItemId).toBe('c');
+    },
+  );
 
   it('plays the cued song when the removed song on air ends, not the one after it', () => {
     const h = harness();
@@ -249,7 +255,10 @@ describe('SongExecutionEngine.removeSongLeaves (#327)', () => {
       activeItemId: 'b',
       cuedItemId: 'b',
     };
-    const { next, hasSuccessor } = (h.engine as any).sequenceAfterEnd(left, { itemId: 'a', queueEntryId: null });
+    const { next, hasSuccessor } = (h.engine as any).sequenceAfterEnd(left, {
+      itemId: 'a',
+      queueEntryId: null,
+    });
     expect(hasSuccessor).toBe(true);
     expect(activeProgramSongLeafId(next)).toBe('b');
   });
@@ -382,7 +391,11 @@ describe('SongExecutionEngine.removeSongLeaves (#327)', () => {
         updatedAt: new Date(1),
       },
     });
-    h.engine.handleSequenceUpdated('radio-1', { ...stored(), mode: 'manual', activeItemId: null });
+    h.engine.handleSequenceUpdated('radio-1', {
+      ...stored(),
+      mode: 'manual',
+      activeItemId: null,
+    });
     h.prisma.programState.updateMany.mockImplementationOnce(() => {
       (h.engine as any).states.get('radio-1').sequence.activeItemId = 'a';
       return Promise.resolve({ count: 1 });
@@ -399,7 +412,12 @@ describe('SongExecutionEngine.removeSongLeaves (#327)', () => {
       row: {
         programId: 'radio-1',
         type: 'radio',
-        songSequence: { ...stored(), loop: false, activeItemId: 'e', cuedItemId: 'e' },
+        songSequence: {
+          ...stored(),
+          loop: false,
+          activeItemId: 'e',
+          cuedItemId: 'e',
+        },
         songQueue: [],
         updatedAt: new Date(1),
       },
@@ -421,7 +439,17 @@ describe('SongExecutionEngine.removeSongLeaves (#327)', () => {
           cuedItemId: 'a',
           items: [
             leaf('a', 1),
-            { id: 'empty', kind: 'sequence', label: 'Empty', sequence: { mode: 'autoplay', loop: true, activeItemId: null, items: [] } },
+            {
+              id: 'empty',
+              kind: 'sequence',
+              label: 'Empty',
+              sequence: {
+                mode: 'autoplay',
+                loop: true,
+                activeItemId: null,
+                items: [],
+              },
+            },
             leaf('e', 5),
           ],
         },
