@@ -16,6 +16,7 @@ import {
   YOUTUBE_INGEST_URL,
   payloadFromIngestUrl,
 } from './ingest-payload';
+import { forTeam } from '../tenancy/scoped-prisma';
 
 type Body = Record<string, unknown>;
 
@@ -100,7 +101,7 @@ export class BroadcastDestinationKeysService {
     if (!DESTINATION_ID_PATTERN.test(destinationId)) {
       throw new BadRequestException('Destination ID is invalid');
     }
-    const existing = await this.prisma.broadcastDestination.findUnique({
+    const existing = await this.teamDb(callerTeam).broadcastDestination.findUnique({
       where: { id: destinationId },
     });
     if (!existing || (callerTeam !== 0 && existing.teamId !== callerTeam)) {
@@ -176,8 +177,17 @@ export class BroadcastDestinationKeysService {
     }
   }
 
+  /**
+   * The client for a caller's team (gaulatti/alcantara#122): confined to that team's destinations, or unscoped for
+   * team 0 (local). The explicit team checks stay. The catalog position, the free-id search and the batch
+   * transactions keep the base client: positions and ids are catalog-wide, and a batch takes one client's queries.
+   */
+  private teamDb(callerTeam: number): PrismaService {
+    return callerTeam > 0 ? (forTeam(this.prisma, callerTeam) as unknown as PrismaService) : this.prisma;
+  }
+
   private async requireUniqueName(name: string, callerTeam: number) {
-    const clash = await this.prisma.broadcastDestination.findFirst({
+    const clash = await this.teamDb(callerTeam).broadcastDestination.findFirst({
       where: {
         displayName: { equals: name, mode: 'insensitive' },
         ...(callerTeam === 0 ? {} : { teamId: callerTeam }),

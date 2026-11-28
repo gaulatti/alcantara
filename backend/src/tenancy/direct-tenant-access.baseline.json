@@ -3,7 +3,7 @@
     "mediaLabel": 1
   },
   "src/broadcast-destinations/broadcast-destination-keys.service.ts": {
-    "broadcastDestination": 6,
+    "broadcastDestination": 4,
     "broadcastDestinationKeyChange": 2
   },
   "src/broadcast-destinations/broadcast-destinations.service.ts": {
