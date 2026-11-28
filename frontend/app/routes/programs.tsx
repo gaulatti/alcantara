@@ -1,6 +1,6 @@
 import { TooltipButton } from "../components/BleeckerButtons";
 import { AlertContainer, Button, Card, Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Empty, IconButton, Input, LoadingSpinner, Modal, SectionHeader, StatePill, showAlert } from '@gaulatti/bleecker';
-import { ExternalLink, Link2, MoreHorizontal, Pencil, Plus, Trash2, Radio, Tv } from 'lucide-react';
+import { ExternalLink, KeyRound, Link2, MoreHorizontal, Pencil, Plus, Radio, Trash2, Tv } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { Route } from './+types/programs';
@@ -8,6 +8,7 @@ import { apiUrl, getApiBaseUrl } from '../utils/apiBaseUrl';
 import { useGlobalProgramId } from '../utils/globalProgram';
 import { hasProgramCapability, resolveProgramOutputUrl, type ProgramTemplateManifest } from '../utils/programTemplate';
 import { AppPage } from '../components/AppPage';
+import { RendererKeyPanel } from '../components/RendererKeyPanel';
 import { RenameFillerNotice } from '../components/RenameFillerNotice';
 
 interface SceneSummary {
@@ -476,6 +477,8 @@ export default function ProgramsAdmin() {
 
   // Delete is confirmed by name in a dialog before it is sent (gaulatti/alcantara#349).
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  /** The show whose renderer key panel is open. */
+  const [keyShow, setKeyShow] = useState<string | null>(null);
   const deleteProgram = async (programId: string) => {
 
     try {
@@ -604,6 +607,9 @@ export default function ProgramsAdmin() {
                             </IconButton>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align='end'>
+                            <DropdownMenuItem onSelect={() => setKeyShow(program.programId)}>
+                              <KeyRound size={14} className='mr-2' /> Renderer key
+                            </DropdownMenuItem>
                             <DropdownMenuItem onSelect={() => setPendingDelete(program.programId)}>
                               <Trash2 size={14} className='mr-2' /> Delete show
                             </DropdownMenuItem>
@@ -617,6 +623,10 @@ export default function ProgramsAdmin() {
             </div>
           )}
         </Card>
+
+        <Modal isOpen={keyShow !== null} onClose={() => setKeyShow(null)} title={`Renderer key: ${keyShow}`}>
+          {keyShow !== null && <RendererKeyPanel key={keyShow} programId={keyShow} />}
+        </Modal>
 
         <Modal isOpen={pendingDelete !== null} onClose={() => setPendingDelete(null)} title='Confirm delete'>
           <div className='space-y-4'>

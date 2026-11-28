@@ -837,3 +837,26 @@ it("deletes a show after confirmation and moves the selection off it", async () 
     await toast("Failed to delete show.");
   }
 });
+
+// gaulatti/alcantara#884: each show's renderer key opens from its actions, and is gone once closed.
+it("opens a show's renderer key from its actions and drops it on close", async () => {
+  routes["GET /program/radio one/renderer-key"] = () =>
+    json({ programId: "radio one", exists: false, version: null, createdAt: null, rotatedAt: null, lastUsedAt: null });
+  routes["POST /program/radio one/renderer-key/rotate"] = () =>
+    json({ programId: "radio one", exists: true, version: 1, createdAt: null, rotatedAt: null, lastUsedAt: null, key: "fictional-key" }, 201);
+  open();
+  await loaded();
+  const openKey = () => {
+    fireEvent.click(within(card("radio one")).getByRole("button", { name: "Actions for radio one" }));
+    fireEvent.click(within(card("radio one")).getByText("Renderer key"));
+    return screen.findByRole("dialog", { name: "Renderer key: radio one" });
+  };
+  const dialog = await openKey();
+  fireEvent.click(await within(dialog).findByRole("button", { name: "Issue key" }));
+  expect(await within(dialog).findByText("fictional-key")).toBeInTheDocument();
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await openKey();
+  await screen.findByRole("button", { name: "Issue key" });
+  expect(screen.queryByText("fictional-key")).toBeNull();
+});

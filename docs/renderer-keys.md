@@ -28,6 +28,12 @@ does not exist.
 Each rotation is recorded as an operator change (who, when, through which route) under the program, with `rendererKey`
 named but never valued and `version` valued before and after.
 
+## Console
+
+On **Shows**, a show's actions have **Renderer key**: the version and dates, and **Issue key** or **Rotate key**. A
+rotation asks first, because the old key stops working at once. The new key is shown once with a copy button and is
+dropped from the page when the panel closes.
+
 ## Checks on the calls endpoints
 
 Each endpoint reads `X-Renderer-Key` and the program it acts on (`backend/src/renderer-keys/renderer-auth.service.ts`):
