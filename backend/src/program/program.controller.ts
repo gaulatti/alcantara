@@ -101,8 +101,6 @@ export class ProgramController {
   @Get('broadcast-settings')
   @Public()
   async getBroadcastSettings() {
-    // The service currently exposes a legacy loosely typed settings payload.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return this.programService.getBroadcastSettings();
   }
 
@@ -130,8 +128,6 @@ export class ProgramController {
     },
     @Req() request: TeamRequest,
   ) {
-    // The service currently exposes a legacy loosely typed settings payload.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return this.programService.updateBroadcastSettings(
       data,
       callerTeam(request),

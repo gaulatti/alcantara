@@ -27,7 +27,11 @@ export class PalazzoMetricsPassthrough {
     @Optional() @Inject(PALAZZO_FETCH) fetchImpl?: typeof fetch,
   ) {
     this.fetchImpl =
-      fetchImpl ?? ((input, init) => globalThis.fetch(input, init));
+      fetchImpl ??
+      ((
+        input: Parameters<typeof fetch>[0],
+        init?: Parameters<typeof fetch>[1],
+      ) => globalThis.fetch(input, init));
   }
 
   /** The Palazzo body, or null when it must be answered as 502 empty. */
