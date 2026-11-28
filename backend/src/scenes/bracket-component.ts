@@ -28,3 +28,12 @@ export function bracketComponentFromLayout(
   const withState = candidates.filter((element) => stateKeys.includes(element));
   return withState.length === 1 ? withState[0] : null;
 }
+
+/**
+ * The bracket key of a scene's own state, when exactly one metadata key names a bracket. Used when the layout does not
+ * settle the bracket element, so a scene that carries its bracket's state is drawn on that state.
+ */
+export function bracketComponentFromState(stateKeys: readonly string[]): string | null {
+  const keys = stateKeys.filter(namesBracket);
+  return keys.length === 1 ? keys[0] : null;
+}

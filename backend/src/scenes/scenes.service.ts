@@ -9,7 +9,7 @@ import {
   summarizeChange,
 } from '../operator-change/operator-change-recorder';
 import { PrismaService } from '../prisma.service';
-import { bracketComponentFromLayout } from './bracket-component';
+import { bracketComponentFromLayout, bracketComponentFromState } from './bracket-component';
 import { ProgramService } from '../program/program.service';
 import { forTeam } from '../tenancy/scoped-prisma';
 
@@ -330,8 +330,11 @@ export class ScenesService {
     scene?: { layout?: { componentType?: string }; metadata?: unknown } | null,
   ): string {
     if (this.isAudienceInteractionComponent(requestedType)) return requestedType.trim();
-    const fromLayout = bracketComponentFromLayout(scene?.layout?.componentType, Object.keys(this.parseMetadata(scene?.metadata)));
+    const stateKeys = Object.keys(this.parseMetadata(scene?.metadata));
+    const fromLayout = bracketComponentFromLayout(scene?.layout?.componentType, stateKeys);
     if (fromLayout) return fromLayout;
+    const fromState = bracketComponentFromState(stateKeys);
+    if (fromState) return fromState;
     return 'modoitaliano-bracket';
   }
 
