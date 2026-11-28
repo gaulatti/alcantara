@@ -299,6 +299,13 @@ describe("destination routes confined to the caller's team, against Postgres", (
     expect(view.downstream.pendingDestinations?.destinationIds).toEqual([
       mineA,
     ]);
+    // The count is the caller's too, not every team's (the #122 gap after slice 5).
+    expect(view.downstream.activeDestinations?.count).toBe(1);
+    expect(view.downstream.pendingDestinations?.count).toBe(1);
+    // Team 0 sees the executor's whole selection, as before.
+    const whole = await withSelections.getProgramState(programId);
+    expect(whole.downstream.activeDestinations).toEqual(selection);
+    expect(whole.downstream.pendingDestinations?.count).toBe(2);
   });
 
   it("retires and restores the caller's destination, and finds no other team's", async () => {

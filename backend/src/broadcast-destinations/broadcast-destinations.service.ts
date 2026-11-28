@@ -246,17 +246,19 @@ export class BroadcastDestinationsService {
     const destinations = await this.listDestinations(callerTeam);
     // The downstream state names every destination the executor holds, so a caller sees only its own team's entries.
     const visible = new Set(destinations.map((destination) => destination.id));
-    const confineIds = <M extends { destinationIds: string[] } | null>(
+    // A selection keeps only the caller's destination ids, and its count is theirs too (gaulatti/alcantara#122): the
+    // version and hash still name the executor's whole selection.
+    const confineIds = <
+      M extends { destinationIds: string[]; count: number } | null,
+    >(
       metadata: M,
-    ): M =>
-      metadata === null
-        ? metadata
-        : ({
-            ...metadata,
-            destinationIds: metadata.destinationIds.filter((id) =>
-              visible.has(id),
-            ),
-          } as M);
+    ): M => {
+      if (metadata === null) return metadata;
+      const destinationIds = metadata.destinationIds.filter((id) =>
+        visible.has(id),
+      );
+      return { ...metadata, destinationIds, count: destinationIds.length };
+    };
     const confine = (state: SafeAlanaState): SafeAlanaState =>
       callerTeam === 0
         ? state

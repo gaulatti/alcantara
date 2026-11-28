@@ -163,6 +163,10 @@ MCP (which acts as the station's team):
 
 - The program view (`GET /broadcast/programs/:programId`) offers only the caller's team's
   destinations, exactly what a start would accept.
+  Its downstream state names only those destinations too. The active and pending selections
+  list only the caller's destination ids, and their `count` is the number of those ids, not
+  the executor's whole selection. The selection's `version` and `selectionHash` still identify
+  the executor's selection.
 - Retire and restore find only the caller's team's destination; another team's is `404`.
 - Reorder (`PUT /broadcast/destinations/order`) orders only the caller's team's catalog: the
   request lists exactly that team's destinations, or it is refused with `400`. Other teams' order
