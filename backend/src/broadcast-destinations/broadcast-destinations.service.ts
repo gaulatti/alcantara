@@ -132,9 +132,10 @@ export class BroadcastDestinationsService {
    * A hand-typed secret reference (no `service`) is never touched. Repeating a retire or a restore
    * changes nothing and calls Secrets Manager no more.
    */
-  async setRetired(destinationId: string, retired: boolean) {
+  async setRetired(destinationId: string, retired: boolean, callerTeam = 0) {
     validateDestinationId(destinationId);
-    const existing = await this.prisma.broadcastDestination.findUnique({
+    const db = this.teamDb(callerTeam);
+    const existing = await db.broadcastDestination.findUnique({
       where: { id: destinationId },
     });
     if (!existing) throw new NotFoundException('Destination not found');
@@ -155,7 +156,7 @@ export class BroadcastDestinationsService {
       }
     }
 
-    const updated = await this.update(destinationId, {
+    const updated = await this.update(db, destinationId, {
       retiredAt: retired ? (existing.retiredAt ?? new Date()) : null,
     });
 
@@ -174,11 +175,12 @@ export class BroadcastDestinationsService {
   }
 
   private async update(
+    db: PrismaService,
     destinationId: string,
     data: Prisma.BroadcastDestinationUpdateInput,
   ) {
     try {
-      return await this.prisma.broadcastDestination.update({
+      return await db.broadcastDestination.update({
         where: { id: destinationId },
         data,
       });
@@ -193,7 +195,11 @@ export class BroadcastDestinationsService {
     }
   }
 
-  async reorderDestinations(rawIds: unknown) {
+  /**
+   * Reorders the caller's team's destinations (gaulatti/alcantara#122): the request lists exactly that team's
+   * catalog, and each row is written through the team's client. Team 0 reorders the whole catalog, as before.
+   */
+  async reorderDestinations(rawIds: unknown, callerTeam = 0) {
     if (!Array.isArray(rawIds) || rawIds.length > 100) {
       throw new BadRequestException('A bounded destination order is required');
     }
@@ -207,7 +213,9 @@ export class BroadcastDestinationsService {
     if (new Set(ids).size !== ids.length) {
       throw new BadRequestException('Destination order contains duplicates');
     }
-    const known = await this.prisma.broadcastDestination.findMany({
+    const db = this.teamDb(callerTeam);
+    const known = await db.broadcastDestination.findMany({
+      where: callerTeam === 0 ? undefined : { teamId: callerTeam },
       select: { id: true },
     });
     if (
@@ -218,20 +226,21 @@ export class BroadcastDestinationsService {
         'Destination order must include the complete catalog',
       );
     }
-    await this.prisma.$transaction(
+    await db.$transaction(
       ids.map((id, position) =>
-        this.prisma.broadcastDestination.update({
+        db.broadcastDestination.update({
           where: { id },
           data: { position },
         }),
       ),
     );
-    return this.listCatalog();
+    return this.listCatalog(callerTeam);
   }
 
-  async getProgramState(programId: string) {
+  async getProgramState(programId: string, callerTeam = 0) {
     await this.requireTelevisionProgram(programId);
-    const destinations = await this.listDestinations();
+    // Only what start would accept for this caller (gaulatti/alcantara#122).
+    const destinations = await this.listDestinations(callerTeam);
     try {
       const downstream = await this.alana.status(programId);
       await this.reconcileRuntime(programId, downstream);
@@ -252,7 +261,12 @@ export class BroadcastDestinationsService {
     }
   }
 
-  async reload(programId: string, input: CommandInput, actorSubject: string) {
+  async reload(
+    programId: string,
+    input: CommandInput,
+    actorSubject: string,
+    callerTeam = 0,
+  ) {
     const parsed = parseCommandInput(input, true);
     await this.requireTelevisionProgram(programId);
     let status: SafeAlanaState;
@@ -278,6 +292,7 @@ export class BroadcastDestinationsService {
       requestHash,
       actorSubject,
       status.lastSequence,
+      callerTeam,
     );
     if (command.status === 'succeeded')
       return this.commandResult(command, true);
@@ -301,7 +316,12 @@ export class BroadcastDestinationsService {
     }
   }
 
-  async start(programId: string, input: CommandInput, actorSubject: string) {
+  async start(
+    programId: string,
+    input: CommandInput,
+    actorSubject: string,
+    callerTeam = 0,
+  ) {
     const parsed = parseCommandInput(input, true);
     await this.requireTelevisionProgram(programId);
     const requestHash = commandRequestHash('start', parsed);
@@ -318,6 +338,7 @@ export class BroadcastDestinationsService {
       requestHash,
       actorSubject,
       status.lastSequence,
+      callerTeam,
     );
     if (command.status === 'succeeded')
       return this.commandResult(command, true);
@@ -451,6 +472,7 @@ export class BroadcastDestinationsService {
     requestHash: string,
     actorSubject: string,
     downstreamSequence: number,
+    callerTeam = 0,
   ): Promise<StoredCommand> {
     const prior = await this.prisma.broadcastDestinationCommand.findUnique({
       where: { id: input.commandId },
@@ -477,6 +499,7 @@ export class BroadcastDestinationsService {
             input.destinationIds,
             input.selectionVersion,
             actorSubject,
+            callerTeam,
           );
 
     return this.prisma.$transaction(
@@ -517,6 +540,7 @@ export class BroadcastDestinationsService {
     destinationIds: string[],
     selectionVersion: string | null,
     actorSubject: string,
+    callerTeam: number,
   ) {
     if (selectionVersion) {
       const existing =
@@ -535,11 +559,14 @@ export class BroadcastDestinationsService {
           'Selection version does not match the confirmed destinations',
         );
       }
-      await this.assertCurrentlySelectable(existingIds);
+      await this.assertCurrentlySelectable(existingIds, callerTeam);
       return existing;
     }
 
-    const destinations = await this.assertCurrentlySelectable(destinationIds);
+    const destinations = await this.assertCurrentlySelectable(
+      destinationIds,
+      callerTeam,
+    );
     const version = `destinations-${Date.now()}-${randomUUID()}`;
     const payload: DestinationSelectionPayload = {
       version,
@@ -572,7 +599,11 @@ export class BroadcastDestinationsService {
     });
   }
 
-  private async assertCurrentlySelectable(destinationIds: string[]) {
+  /** The caller's team's selectable destinations, in order; another team's id is refused like a missing one. */
+  private async assertCurrentlySelectable(
+    destinationIds: string[],
+    callerTeam: number,
+  ) {
     if (
       destinationIds.length < 1 ||
       destinationIds.length > MAX_DESTINATIONS ||
@@ -583,8 +614,14 @@ export class BroadcastDestinationsService {
       );
     }
     destinationIds.forEach(validateDestinationId);
-    const destinations = await this.prisma.broadcastDestination.findMany({
-      where: { id: { in: destinationIds }, retiredAt: null },
+    const destinations = await this.teamDb(
+      callerTeam,
+    ).broadcastDestination.findMany({
+      where: {
+        id: { in: destinationIds },
+        retiredAt: null,
+        ...(callerTeam === 0 ? {} : { teamId: callerTeam }),
+      },
       orderBy: [{ position: 'asc' }, { id: 'asc' }],
     });
     if (destinations.length !== destinationIds.length) {

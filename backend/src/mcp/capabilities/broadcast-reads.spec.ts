@@ -193,7 +193,9 @@ describe('read capabilities return what the controller returns', () => {
 
   it('destination_get_program_state', () =>
     same('destination_get_program_state', { program_id: 'main' }, () =>
-      controllers.destinations.getProgramState('main'),
+      controllers.destinations.getProgramState('main', {
+        user: { sub: 'u', authorization: { teamId: 0 } },
+      }),
     ));
 
   it('filler_get_state', () =>
