@@ -13,6 +13,19 @@ document untouched; authorization remains required for Control and all Program
 mutations. This keeps unattended broadcast renderers independent of an operator
 login session without weakening protected API boundaries.
 
+## The console's control routes
+
+The signed-in console has its own state and stream, behind sign-in with `program.read` and scoped to the caller's
+team like every program route:
+
+- `GET /program/{programId}/control/state`: the program's whole state.
+- `GET /program/{programId}/control/events` (SSE): the whole snapshot, then every signal, never projected to a
+  template's contract, with a `heartbeat` every 15 s. A browser `EventSource` cannot send the `Authorization` header,
+  so the console reads it with a fetch-based stream reader that sends its bearer token.
+
+The public `/program/{programId}/state` and `/program/{programId}/events` stay the renderer's. The console moves to the
+control routes, reading the public ones only while a control route answers 404.
+
 Control treats SSE as the authoritative channel and keeps it connected whenever
 the console is open. The console does not attempt WebSocket during the initial
 SSE handshake. The authenticated control WebSocket connects only after SSE

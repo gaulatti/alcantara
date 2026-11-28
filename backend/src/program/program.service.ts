@@ -4358,8 +4358,13 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     await this.radioService.stopSong(programId);
   }
 
+  /**
+   * A program's event stream. `public` is the renderer's: projected to its template's contract when it registered
+   * one. `control` is the signed-in console's: the whole state and every signal, never projected, with a heartbeat.
+   */
   getEventStream(
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+    audience: 'public' | 'control' = 'public',
   ): Observable<{ data: string }> {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const subject = this.getEventSubject(normalizedProgramId);
@@ -4418,7 +4423,10 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       void this.getState(normalizedProgramId)
         .then(async (state) => {
           if (closed) return;
-          const manifest = readProgramTemplateManifest(state.templateManifest);
+          const manifest =
+            audience === 'control'
+              ? null
+              : readProgramTemplateManifest(state.templateManifest);
           const templateState = manifest
             ? this.withTemplatePlayingTrack(
                 await this.withTemplateBroadcastSettings(
@@ -4457,7 +4465,10 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
             sendEvent(event);
           }
           pendingEvents.length = 0;
-          if (templateManifest?.control.signals.includes('heartbeat')) {
+          if (
+            audience === 'control' ||
+            templateManifest?.control.signals.includes('heartbeat')
+          ) {
             heartbeatTimer = setInterval(() => {
               sendEvent({
                 type: 'heartbeat',

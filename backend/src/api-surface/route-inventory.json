@@ -660,6 +660,18 @@
     "permission": "alcantara:program:manage"
   },
   {
+    "method": "GET",
+    "path": "/program/:programId/control/events",
+    "public": false,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "GET",
+    "path": "/program/:programId/control/state",
+    "public": false,
+    "permission": "alcantara:program:read"
+  },
+  {
     "method": "POST",
     "path": "/program/:programId/countdown/complete",
     "public": true,

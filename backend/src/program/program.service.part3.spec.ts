@@ -1807,6 +1807,39 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
       sub.unsubscribe();
     });
 
+    it('gives the control audience the whole state and every signal, never projected, with a heartbeat', async () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+      const { service } = build();
+      jest.spyOn(service, 'getState').mockResolvedValue(
+        stateOf({
+          templateManifest: templateManifestNoHeartbeat,
+          activeSceneId: 2,
+          songQueue: [{ id: 'q1' }],
+        }),
+      );
+      const out: any[] = [];
+      const sub = service
+        .getEventStream('main', 'control')
+        .subscribe((m) => out.push(JSON.parse(m.data)));
+      await flush();
+      expect(out[0].type).toBe('program_state_snapshot');
+      expect(out[0]).not.toHaveProperty('schemaVersion');
+      expect(out[0].state).toMatchObject({
+        activeSceneId: 2,
+        songQueue: [{ id: 'q1' }],
+      });
+      service.broadcastUpdate('main', { type: 'song_queue_update', x: 1 });
+      expect(out[1]).toMatchObject({ type: 'song_queue_update', x: 1 });
+      await jest.advanceTimersByTimeAsync(15_000);
+      expect(out[2]).toMatchObject({
+        type: 'heartbeat',
+        programId: 'main',
+        sentAt: '2026-01-01T00:00:15.000Z',
+      });
+      sub.unsubscribe();
+    });
+
     it('does not start a heartbeat when the manifest lacks the signal', async () => {
       jest.useFakeTimers();
       const { service } = build();

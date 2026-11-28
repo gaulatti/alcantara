@@ -143,6 +143,16 @@ export class ProgramController {
     return this.programService.getPublicState(programId);
   }
 
+  /**
+   * The program's whole state, for the signed-in console: what the public route returns today, behind sign-in. The
+   * console reads this one; the public route is the renderer's.
+   */
+  @Get(':programId/control/state')
+  @RequirePermission(ALCANTARA_PERMISSIONS.program.read)
+  async getControlStateById(@Param('programId') programId: string) {
+    return this.programService.getState(programId);
+  }
+
   @Get(':programId/audio-bus')
   @Public()
   async getProgramAudioBusById(@Param('programId') programId: string) {
@@ -638,6 +648,16 @@ export class ProgramController {
     @Param('programId') programId: string,
   ): Observable<{ data: string }> {
     return this.programService.getEventStream(programId);
+  }
+
+  /** The program's whole event stream, for the signed-in console. It sends a heartbeat, so a dead stream is noticed. */
+  @Sse(':programId/control/events')
+  @RequirePermission(ALCANTARA_PERMISSIONS.program.read)
+  @Header('X-Accel-Buffering', 'no')
+  controlEventsById(
+    @Param('programId') programId: string,
+  ): Observable<{ data: string }> {
+    return this.programService.getEventStream(programId, 'control');
   }
 
   @Sse('events')
