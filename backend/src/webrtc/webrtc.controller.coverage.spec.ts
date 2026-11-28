@@ -122,7 +122,11 @@ describe('WebrtcController delegation', () => {
     expect(controller.rendererToken('key', { programId: 'main' })).toBe(
       'createRendererToken-result',
     );
-    expect(webrtc.createRendererToken).toHaveBeenCalledWith('key', 'main', undefined);
+    expect(webrtc.createRendererToken).toHaveBeenCalledWith(
+      'key',
+      'main',
+      undefined,
+    );
     expect(controller.rendererState(undefined, { programId: 'main' })).toBe(
       'getRendererState-result',
     );

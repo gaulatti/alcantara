@@ -75,7 +75,11 @@ describe('one answer to "is this guest on air"', () => {
         prisma as never,
         new ManagedMetricsService(),
       );
-      jest.spyOn(service, 'authorizeFor').mockImplementation(async (_endpoint, _key, programId) => String(programId));
+      jest
+        .spyOn(service, 'authorizeFor')
+        .mockImplementation(async (_endpoint, _key, programId) =>
+          String(programId),
+        );
       const worker = (await service.onAirGuests(undefined, 'main')).guests;
       const desk = (await service.listParticipants('main')).participants[0];
       const answers = {

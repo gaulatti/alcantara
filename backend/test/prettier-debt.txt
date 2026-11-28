@@ -54,14 +54,3 @@ src/tenancy/program-team-access.team-of.spec.ts
 src/tenancy/program-team-access.ts
 src/tenancy/program-team.spec.ts
 src/tenancy/program-team.ts
-src/webrtc/chain-health.spec.ts
-src/webrtc/guest-cue-field.spec.ts
-src/webrtc/guest-cue-parity.spec.ts
-src/webrtc/host-mic-off.spec.ts
-src/webrtc/host-mic-token.spec.ts
-src/webrtc/on-air-stream.http.spec.ts
-src/webrtc/webrtc.admission.spec.ts
-src/webrtc/webrtc.controller.coverage.spec.ts
-src/webrtc/webrtc.metadata.coverage.spec.ts
-src/webrtc/webrtc.service.coverage.spec.ts
-src/webrtc/webrtc.service.ts

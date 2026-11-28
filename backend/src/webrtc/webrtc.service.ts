@@ -1208,7 +1208,11 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
       throw error;
     }
     if (this.rendererAuth) {
-      await this.rendererAuth.authorizeProgram(endpoint, rendererKey, programId);
+      await this.rendererAuth.authorizeProgram(
+        endpoint,
+        rendererKey,
+        programId,
+      );
     } else {
       this.requireRendererKey(rendererKey);
     }

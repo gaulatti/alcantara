@@ -43,17 +43,15 @@ describe('the on-air stream, over a real socket', () => {
           provide: PrismaService,
           useValue: {
             guestInvitation: {
-              findMany: jest
-                .fn()
-                .mockResolvedValue([
-                  {
-                    id: ANNA,
-                    cue: 'live',
-                    admittedAt: new Date(),
-                    activeSessionId: 's',
-                    cueSessionId: 's',
-                  },
-                ]),
+              findMany: jest.fn().mockResolvedValue([
+                {
+                  id: ANNA,
+                  cue: 'live',
+                  admittedAt: new Date(),
+                  activeSessionId: 's',
+                  cueSessionId: 's',
+                },
+              ]),
             },
           },
         },
