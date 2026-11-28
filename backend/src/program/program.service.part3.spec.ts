@@ -47,6 +47,11 @@ function makeState(overrides: Record<string, unknown> = {}) {
 
 function build(opts: { metrics?: boolean; state?: any } = {}) {
   const prisma: any = {
+    // The program's team (gaulatti/alcantara#122): none by default, so the library is read unscoped as before.
+    program: { findUnique: jest.fn().mockResolvedValue(null) },
+    $extends: jest.fn(function (this: unknown) {
+      return this;
+    }),
     programState: {
       findUnique: jest.fn().mockResolvedValue(opts.state ?? makeState()),
       findMany: jest.fn(),
@@ -399,6 +404,21 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
       await expect(service.addStingerToProgram(1)).rejects.toThrow(
         'Radio programs do not support stingers',
       );
+    });
+
+    it("reads the scene, media group or stinger to attach through the program team's scoped client, unscoped for a program with none", async () => {
+      const { service, prisma } = build();
+      prisma.stinger.findUnique.mockResolvedValue(null);
+      prisma.scene = { findUnique: jest.fn().mockResolvedValue(null) };
+      prisma.mediaGroup = { ...prisma.mediaGroup, findUnique: jest.fn().mockResolvedValue(null) };
+      await expect(service.addStingerToProgram(1)).rejects.toThrow('Stinger not found');
+      expect(prisma.$extends).not.toHaveBeenCalled();
+      prisma.program.findUnique.mockResolvedValue({ teamId: 7 });
+      await expect(service.addStingerToProgram(1)).rejects.toThrow('Stinger not found');
+      await expect(service.addSceneToProgram(1)).rejects.toThrow('Scene not found');
+      await expect(service.addMediaGroupToProgram(1)).rejects.toThrow('Media group not found');
+      expect(prisma.$extends).toHaveBeenCalledTimes(3);
+      expect(prisma.$extends).toHaveBeenCalledWith(expect.objectContaining({ name: 'team-7' }));
     });
 
     it('rejects an unknown stinger', async () => {
