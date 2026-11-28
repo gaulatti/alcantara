@@ -661,6 +661,12 @@
   },
   {
     "method": "GET",
+    "path": "/program/:programId/control/audio-bus",
+    "public": false,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "GET",
     "path": "/program/:programId/control/events",
     "public": false,
     "permission": "alcantara:program:read"

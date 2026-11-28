@@ -159,6 +159,13 @@ export class ProgramController {
     return this.programService.getProgramAudioBus(programId);
   }
 
+  /** The program's whole audio bus (rotation, queue, mixer) for the signed-in console. */
+  @Get(':programId/control/audio-bus')
+  @RequirePermission(ALCANTARA_PERMISSIONS.program.read)
+  async getControlAudioBusById(@Param('programId') programId: string) {
+    return this.programService.getProgramAudioBus(programId);
+  }
+
   @Get(':programId/audio-meter')
   @Public()
   async getProgramAudioMeterById(@Param('programId') programId: string) {

@@ -21,6 +21,7 @@ describe('program control routes (HTTP)', () => {
   let app: NestFastifyApplication;
   let origin: string;
   const getState = jest.fn(async () => ({ programId: 'station', version: 3 }));
+  const getProgramAudioBus = jest.fn(async () => ({ songSequence: { items: [] }, songQueue: [], mixerSettings: {} }));
   const getPublicState = jest.fn(async () => ({ programId: 'station' }));
   const getEventStream = jest.fn(() =>
     of({ data: JSON.stringify({ type: 'program_state_snapshot' }) }),
@@ -46,7 +47,7 @@ describe('program control routes (HTTP)', () => {
         TestAuthService,
         {
           provide: ProgramService,
-          useValue: { getState, getPublicState, getEventStream },
+          useValue: { getState, getPublicState, getEventStream, getProgramAudioBus },
         },
         { provide: FlightService, useValue: {} },
         { provide: ProgramTemplateService, useValue: {} },
@@ -86,7 +87,9 @@ describe('program control routes (HTTP)', () => {
   it('refuses the control state and stream without sign-in, reading nothing', async () => {
     expect((await fetch(`${origin}/program/station/control/state`)).status).toBe(401);
     expect((await fetch(`${origin}/program/station/control/events`)).status).toBe(401);
+    expect((await fetch(`${origin}/program/station/control/audio-bus`)).status).toBe(401);
     expect(getState).not.toHaveBeenCalled();
+    expect(getProgramAudioBus).not.toHaveBeenCalled();
     expect(getEventStream).not.toHaveBeenCalled();
   });
 
@@ -110,6 +113,11 @@ describe('program control routes (HTTP)', () => {
     expect(events.headers.get('content-type')).toContain('text/event-stream');
     expect(await events.text()).toContain('program_state_snapshot');
     expect(getEventStream).toHaveBeenCalledWith('station', 'control');
+
+    const bus = await fetch(`${origin}/program/station/control/audio-bus`, { headers });
+    expect(bus.status).toBe(200);
+    expect(await bus.json()).toEqual({ songSequence: { items: [] }, songQueue: [], mixerSettings: {} });
+    expect(getProgramAudioBus).toHaveBeenCalledWith('station');
   });
 
   it('keeps the public state and stream public, on the public audience', async () => {

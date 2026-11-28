@@ -19,11 +19,14 @@ The signed-in console has its own state and stream, behind sign-in with `program
 team like every program route:
 
 - `GET /program/{programId}/control/state`: the program's whole state.
+- `GET /program/{programId}/control/audio-bus`: the program's whole audio bus (rotation, queue and mixer), what the
+  public `/program/{programId}/audio-bus` returns today.
 - `GET /program/{programId}/control/events` (SSE): the whole snapshot, then every signal, never projected to a
   template's contract, with a `heartbeat` every 15 s. A browser `EventSource` cannot send the `Authorization` header,
   so the console reads it with a fetch-based stream reader that sends its bearer token.
 
-The public `/program/{programId}/state` and `/program/{programId}/events` stay the renderer's. The console moves to the
+The public `/program/{programId}/state`, `/program/{programId}/events` and `/program/{programId}/audio-bus` stay the
+renderer's. The console moves to the
 control routes, reading the public ones only while a control route answers 404.
 
 Control treats SSE as the authoritative channel and keeps it connected whenever
