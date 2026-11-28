@@ -403,13 +403,21 @@ export const RENDERER_AUTH_ENDPOINTS = [
 ] as const;
 export type RendererAuthEndpoint = (typeof RENDERER_AUTH_ENDPOINTS)[number];
 /** The program writes a renderer page makes, which still take a request with no credential until that is refused. */
-export const RENDERER_WRITE_ENDPOINTS = ['audio_meter', 'countdown_complete'] as const;
+export const RENDERER_WRITE_ENDPOINTS = [
+  'audio_meter',
+  'countdown_complete',
+] as const;
 export type RendererWriteEndpoint = (typeof RENDERER_WRITE_ENDPOINTS)[number];
 /**
  * Which credential a caller presented: a program's key, the shared key, the fleet key, a signed-in session (on the
  * program writes), or none that matched.
  */
-export type RendererAuthCredential = 'program' | 'shared' | 'fleet' | 'session' | 'none';
+export type RendererAuthCredential =
+  | 'program'
+  | 'shared'
+  | 'fleet'
+  | 'session'
+  | 'none';
 
 const RUNDOWN_RECOVERY_RESULTS = new Set([
   'resumed',

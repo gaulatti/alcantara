@@ -96,7 +96,7 @@ export interface ProgramAudioMeterLevels {
   updatedAt: string;
 }
 
-interface BroadcastMixerChannel {
+export interface BroadcastMixerChannel {
   id: string;
   name: string;
   volume: number;
@@ -214,6 +214,9 @@ export interface ProgramAudioBusSaved {
 
 /** How long after a playout restart cut a song a newly connected desk is still told. */
 const PLAYOUT_CUT_NOTICE_MS = 10 * 60_000;
+
+/** What a version envelope returns: the payload as sent, with its version when it has a topic. */
+type BroadcastEnvelope = { version?: unknown; [field: string]: unknown };
 
 @Injectable()
 export class ProgramService implements OnModuleInit, OnModuleDestroy {
@@ -433,7 +436,8 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       create: {
         programId: ProgramService.DEFAULT_PROGRAM_ID,
         activeSceneId: null,
-        audioMixer: this.createDefaultProgramAudioMixerSettings() as any,
+        audioMixer:
+          this.createDefaultProgramAudioMixerSettings() as unknown as Prisma.InputJsonValue,
       },
     });
   }
@@ -804,7 +808,8 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       create: {
         id: ProgramService.BROADCAST_SETTINGS_ID,
         timeOverrideEnabled: false,
-        mixerChannels: this.createDefaultBroadcastMixerChannels() as any,
+        mixerChannels:
+          this.createDefaultBroadcastMixerChannels() as unknown as Prisma.InputJsonValue,
         mainMasterVolume: 1,
         songMasterVolume: 1,
         instantMasterVolume: 1,
@@ -829,7 +834,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
   /** The broadcast settings exactly as broadcast_settings_update carries them in `settings`. */
   private async currentBroadcastSettings(): Promise<Record<string, unknown>> {
     const settings = await this.ensureBroadcastSettings();
-    return this.withResolvedBroadcastMixerChannels(settings as any);
+    return this.withResolvedBroadcastMixerChannels(settings);
   }
 
   /**
@@ -917,68 +922,68 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     if (teamId > 0 && currentRaw.teamId !== teamId) {
       throw new NotFoundException('Broadcast settings not found');
     }
-    const current = this.withResolvedBroadcastMixerChannels(currentRaw as any);
+    const current = this.withResolvedBroadcastMixerChannels(currentRaw);
     const hasEnabledUpdate = typeof data.enabled === 'boolean';
     const hasStartTimeUpdate = Object.prototype.hasOwnProperty.call(
       data,
       'startTime',
-    );
+    ) as boolean;
     const hasMixerChannelsUpdate = Object.prototype.hasOwnProperty.call(
       data,
       'mixerChannels',
-    );
+    ) as boolean;
     const hasSongVolumeUpdate = Object.prototype.hasOwnProperty.call(
       data,
       'songMasterVolume',
-    );
+    ) as boolean;
     const hasMainVolumeUpdate = Object.prototype.hasOwnProperty.call(
       data,
       'mainMasterVolume',
-    );
+    ) as boolean;
     const hasInstantVolumeUpdate = Object.prototype.hasOwnProperty.call(
       data,
       'instantMasterVolume',
-    );
+    ) as boolean;
     const hasStreamVolumeUpdate = Object.prototype.hasOwnProperty.call(
       data,
       'streamMasterVolume',
-    );
+    ) as boolean;
     const hasSceneInstantVolumeUpdate = Object.prototype.hasOwnProperty.call(
       data,
       'sceneInstantMasterVolume',
-    );
+    ) as boolean;
     const hasSongMutedUpdate = Object.prototype.hasOwnProperty.call(
       data,
       'songMuted',
-    );
+    ) as boolean;
     const hasInstantMutedUpdate = Object.prototype.hasOwnProperty.call(
       data,
       'instantMuted',
-    );
+    ) as boolean;
     const hasStreamMutedUpdate = Object.prototype.hasOwnProperty.call(
       data,
       'streamMuted',
-    );
+    ) as boolean;
     const hasSceneInstantMutedUpdate = Object.prototype.hasOwnProperty.call(
       data,
       'sceneInstantMuted',
-    );
+    ) as boolean;
     const hasSongSoloUpdate = Object.prototype.hasOwnProperty.call(
       data,
       'songSolo',
-    );
+    ) as boolean;
     const hasInstantSoloUpdate = Object.prototype.hasOwnProperty.call(
       data,
       'instantSolo',
-    );
+    ) as boolean;
     const hasStreamSoloUpdate = Object.prototype.hasOwnProperty.call(
       data,
       'streamSolo',
-    );
+    ) as boolean;
     const hasSceneInstantSoloUpdate = Object.prototype.hasOwnProperty.call(
       data,
       'sceneInstantSolo',
-    );
+    ) as boolean;
 
     if (
       !hasEnabledUpdate &&
@@ -1167,7 +1172,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         timeOverrideEnabled: enabled,
         timeOverrideStartTime: startTime,
         timeOverrideStartedAt: startedAt,
-        mixerChannels: mixerChannels as any,
+        mixerChannels: mixerChannels as unknown as Prisma.InputJsonValue,
         mainMasterVolume,
         songMasterVolume,
         instantMasterVolume,
@@ -1184,7 +1189,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         timeOverrideEnabled: enabled,
         timeOverrideStartTime: startTime,
         timeOverrideStartedAt: startedAt,
-        mixerChannels: mixerChannels as any,
+        mixerChannels: mixerChannels as unknown as Prisma.InputJsonValue,
         mainMasterVolume,
         songMasterVolume,
         instantMasterVolume,
@@ -1198,9 +1203,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    const resolvedSettings = this.withResolvedBroadcastMixerChannels(
-      settings as any,
-    );
+    const resolvedSettings = this.withResolvedBroadcastMixerChannels(settings);
 
     const broadcastPayload = this.broadcastGlobalUpdate({
       type: 'broadcast_settings_update',
@@ -1300,14 +1303,16 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     options?: {
       bumpVersion?: boolean;
     },
-  ): any {
+  ): BroadcastEnvelope | undefined {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-      return payload;
+      return payload as BroadcastEnvelope | undefined;
     }
 
-    const topic = this.resolveProgramTopicForEventType(payload.type);
+    const topic = this.resolveProgramTopicForEventType(
+      (payload as { type: string }).type,
+    );
     if (!topic) {
-      return payload;
+      return payload as BroadcastEnvelope;
     }
 
     const shouldBumpVersion = options?.bumpVersion ?? true;
@@ -1316,7 +1321,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       : this.getProgramTopicVersion(programId, topic);
 
     return {
-      ...payload,
+      ...(payload as Record<string, unknown>),
       version,
     };
   }
@@ -1326,7 +1331,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     options?: {
       bumpVersion?: boolean;
     },
-  ): any {
+  ): BroadcastEnvelope | undefined {
     const shouldBumpVersion = options?.bumpVersion ?? true;
     const version = shouldBumpVersion
       ? this.globalBroadcastVersion + 1
@@ -1344,7 +1349,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     }
 
     return {
-      ...payload,
+      ...(payload as Record<string, unknown>),
       version,
     };
   }
@@ -1513,8 +1518,10 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
 
   private withStagedSceneState<T extends { scenes?: unknown }>(
     state: T,
-  ): T & { stagedSceneId: number | null; stagedScene: any | null } {
-    const sceneEntries = Array.isArray(state.scenes) ? state.scenes : [];
+  ): T & { stagedSceneId: number | null; stagedScene: unknown } {
+    const sceneEntries: unknown[] = Array.isArray(state.scenes)
+      ? state.scenes
+      : [];
     const currentStagedSceneId =
       'stagedSceneId' in state
         ? (state as { stagedSceneId?: unknown }).stagedSceneId
@@ -1534,14 +1541,14 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
 
     if (stagedSceneId !== null && !stagedSceneEntry) {
       return {
-        ...(state as any),
+        ...(state as object as T),
         stagedSceneId: null,
         stagedScene: null,
       };
     }
 
     return {
-      ...(state as any),
+      ...(state as object as T),
       stagedSceneId,
       stagedScene:
         stagedSceneEntry &&
@@ -1595,7 +1602,8 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
           type: programType,
           ...this.programTemplateUpdateData(template ?? null),
           activeSceneId: null,
-          audioMixer: this.createDefaultProgramAudioMixerSettings() as any,
+          audioMixer:
+            this.createDefaultProgramAudioMixerSettings() as unknown as Prisma.InputJsonValue,
         },
       }),
     ]);
@@ -2250,11 +2258,12 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         // between and put it back on air in the now-playing display.
         ...(hasSongSequenceUpdate
           ? {
-              songSequence: nextSongSequence as any,
+              songSequence:
+                nextSongSequence as unknown as Prisma.InputJsonValue,
               songQueue: nextSongQueue as unknown as Prisma.InputJsonValue,
             }
           : {}),
-        audioMixer: nextMixerSettings as any,
+        audioMixer: nextMixerSettings as unknown as Prisma.InputJsonValue,
       },
       select: { songSequence: true, songQueue: true, audioMixer: true },
     });
@@ -2677,7 +2686,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       const parsed =
         typeof sceneMetadata === 'string'
           ? sceneMetadata.trim()
-            ? JSON.parse(sceneMetadata)
+            ? (JSON.parse(sceneMetadata) as unknown)
             : null
           : sceneMetadata;
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -3688,7 +3697,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       await this.prisma.programState.update({
         where: { programId: normalizedProgramId },
         data: {
-          songSequence: updatedSequence as any,
+          songSequence: updatedSequence as unknown as Prisma.InputJsonValue,
         },
       });
       this.broadcastUpdate(normalizedProgramId, {

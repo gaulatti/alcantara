@@ -4,10 +4,10 @@ import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 
 export interface MediaAssetCapabilityShape {
   mediaType: MediaAssetType | null;
-  audioClip?: unknown | null;
-  backgroundAudio?: unknown | null;
-  song?: unknown | null;
-  transition?: unknown | null;
+  audioClip?: unknown;
+  backgroundAudio?: unknown;
+  song?: unknown;
+  transition?: unknown;
 }
 
 const MANAGE_PERMISSIONS = [

@@ -55,6 +55,13 @@ export interface ChartFeedEntry {
 /** The provider whose ids SongChartIdentity.externalId holds for these entries. */
 const RANKED_PROVIDER = 'earone';
 
+interface EaronePayload {
+  result?: {
+    modifiedOn?: unknown;
+    postTypeData?: { songs?: unknown };
+  };
+}
+
 interface EaroneApiSong {
   curPos?: number;
   spins?: number;
@@ -288,7 +295,7 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
 
   private async fetchAndMerge(): Promise<CachedChartsResponse> {
     const [earonePayload, escplusPayload] = await Promise.all([
-      this.fetchJson(EARONE_URL),
+      this.fetchJson(EARONE_URL) as Promise<EaronePayload | null>,
       this.fetchJson(ESCPLUS_URL),
     ]);
 
@@ -396,7 +403,7 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
         this.recordFetchMetric(dependency, 'http-error', started);
         throw new Error(`${url} responded with ${response.status}`);
       }
-      const payload = await response.json();
+      const payload = (await response.json()) as unknown;
       this.recordFetchMetric(dependency, 'success', started);
       return payload;
     } catch (error) {

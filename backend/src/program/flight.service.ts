@@ -32,7 +32,10 @@ import {
 import { PrismaService } from '../prisma.service';
 import { PompeiiService } from '../auth/pompeii.service';
 import { forTeam } from '../tenancy/scoped-prisma';
-import type { Prisma } from '@prisma/client';
+import type {
+  FlightSequence as FlightSequenceRow,
+  Prisma,
+} from '@prisma/client';
 import { ProgramService } from './program.service';
 import {
   RadioMetricsService,
@@ -1572,7 +1575,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         data: {
           programStateId: state.id,
           name,
-          items: items as any,
+          items: items as unknown as Prisma.InputJsonValue,
           loop: data.loop === true,
           scheduledAt,
         },
@@ -1586,7 +1589,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       );
       return this.toFlightSequence(sequence);
     } catch (err: any) {
-      if (err?.code === 'P2002') {
+      if ((err as { code?: unknown } | null | undefined)?.code === 'P2002') {
         throw new BadRequestException(
           scheduledAt
             ? 'a radio log already exists for this scheduled start or name'
@@ -2754,7 +2757,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     let parsed: Record<string, unknown> = {};
     try {
       if (scene.metadata) {
-        const raw = JSON.parse(scene.metadata);
+        const raw = JSON.parse(scene.metadata) as unknown;
         if (isRecord(raw)) {
           parsed = raw;
         }
@@ -3012,7 +3015,9 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     return normalized;
   }
 
-  private toFlightSequence(seq: any): Omit<FlightSequence, 'programStateId'> {
+  private toFlightSequence(
+    seq: FlightSequenceRow,
+  ): Omit<FlightSequence, 'programStateId'> {
     return {
       id: seq.id,
       name: seq.name,
@@ -3029,9 +3034,9 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       ...(seq.clockId != null
         ? {
             daypart: {
-              clockId: seq.clockId as number,
-              start: seq.daypartStart as string | null,
-              outcome: seq.daypartOutcome as string | null,
+              clockId: seq.clockId,
+              start: seq.daypartStart,
+              outcome: seq.daypartOutcome,
             },
           }
         : {}),

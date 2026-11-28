@@ -131,7 +131,7 @@ export function loadBaseline(
     throw new Error(`Missing baseline file at ${baselinePath}`);
   }
   const raw = fs.readFileSync(baselinePath, 'utf8');
-  const parsed = JSON.parse(raw);
+  const parsed = JSON.parse(raw) as { count?: unknown };
   if (typeof parsed.count !== 'number') {
     throw new Error(
       `Invalid baseline format at ${baselinePath}: missing count`,

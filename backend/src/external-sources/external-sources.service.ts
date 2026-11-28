@@ -48,7 +48,9 @@ export class ExternalSourcesService {
    * keep the base client: a batch transaction takes one client's queries, and the inventory counts every team.
    */
   private db(teamId: number): PrismaService {
-    return teamId > 0 ? (forTeam(this.prisma, teamId) as unknown as PrismaService) : this.prisma;
+    return teamId > 0
+      ? (forTeam(this.prisma, teamId) as unknown as PrismaService)
+      : this.prisma;
   }
 
   async list(auth: SourceAuthorization) {

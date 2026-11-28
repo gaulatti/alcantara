@@ -18,7 +18,7 @@ export function decodeProgramRealtimeData(rawData: RawData | string): string {
   if (Array.isArray(rawData)) {
     return Buffer.concat(rawData).toString('utf8');
   }
-  return Buffer.from(rawData).toString('utf8');
+  return Buffer.from(rawData as ArrayBuffer).toString('utf8');
 }
 
 type ProgramRealtimeRole = 'program' | 'control' | 'unknown';
@@ -453,9 +453,9 @@ export class ProgramRealtimeService implements OnModuleDestroy {
       return;
     }
 
-    let payload: any;
+    let payload: Record<string, unknown>;
     try {
-      payload = JSON.parse(messageText);
+      payload = JSON.parse(messageText) as Record<string, unknown>;
     } catch {
       return;
     }
@@ -542,7 +542,10 @@ export class ProgramRealtimeService implements OnModuleDestroy {
     this.broadcastProgramScopedEvent(normalizedProgramId, payload);
   }
 
-  private enrichProgramScopedPayload(payload: any, programId: string): any {
+  private enrichProgramScopedPayload(
+    payload: unknown,
+    programId: string,
+  ): unknown {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
       return {
         type: 'program_event',
@@ -556,7 +559,7 @@ export class ProgramRealtimeService implements OnModuleDestroy {
     }
 
     return {
-      ...payload,
+      ...(payload as Record<string, unknown>),
       programId,
     };
   }

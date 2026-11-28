@@ -35,7 +35,9 @@ export class ArtistLabelsService {
    * team 0, whose links carry no team. The explicit `teamId` filters below stay as they were.
    */
   private db(callerTeam: number): PrismaService {
-    return callerTeam > 0 ? (forTeam(this.prisma, callerTeam) as unknown as PrismaService) : this.prisma;
+    return callerTeam > 0
+      ? (forTeam(this.prisma, callerTeam) as unknown as PrismaService)
+      : this.prisma;
   }
 
   async list(callerTeam: number): Promise<ArtistLabelRow[]> {

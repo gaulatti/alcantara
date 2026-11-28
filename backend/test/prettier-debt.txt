@@ -1,14 +1,11 @@
 src/artist-labels/artist-labels.service.spec.ts
-src/artist-labels/artist-labels.service.ts
 src/charts/charts.service.metadata.spec.ts
 src/database-backup/database-backup.service.coverage.spec.ts
 src/external-sources/external-sources.service.coverage.spec.ts
-src/external-sources/external-sources.service.ts
 src/mcp/tools/radio-read.tools.palazzo.spec.ts
 src/media-analysis/media-analysis.metadata.spec.ts
 src/media-assets/media-asset-team-gauge.service.spec.ts
 src/media-assets/media-assets-reconciliation.service.coverage.spec.ts
-src/observability/managed-metrics.service.ts
 src/playout/playout-lease.db.spec.ts
 src/playout/playout-lease.service.spec.ts
 src/radio/dead-air-watchdog.service.spec.ts

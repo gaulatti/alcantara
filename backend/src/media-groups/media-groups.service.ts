@@ -202,7 +202,10 @@ export class MediaGroupsService {
       updateData.description = this.toOptionalTrimmedString(data.description);
     }
 
-    const hasMediaIds = Object.prototype.hasOwnProperty.call(data, 'mediaIds');
+    const hasMediaIds = Object.prototype.hasOwnProperty.call(
+      data,
+      'mediaIds',
+    ) as boolean;
     const mediaIds = this.normalizeMediaIds(data.mediaIds, hasMediaIds);
 
     if (hasMediaIds) {

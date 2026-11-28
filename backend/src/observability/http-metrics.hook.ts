@@ -40,7 +40,7 @@ export class HttpMetricsHook implements OnModuleInit {
   onModuleInit(): void {
     // A context with no HTTP adapter (a worker, or a test module) serves no requests to count.
     if (!this.adapter.httpAdapter) return;
-    const instance = this.adapter.httpAdapter.getInstance() as
+    const instance = this.adapter.httpAdapter.getInstance<
       | {
           addHook?: (
             name: string,
@@ -51,7 +51,8 @@ export class HttpMetricsHook implements OnModuleInit {
             ) => void,
           ) => void;
         }
-      | undefined;
+      | undefined
+    >();
     // Production runs on Fastify. Another adapter (an Express test app) gets no response hook rather
     // than failing start-up: counting requests must never stop the app from starting.
     if (typeof instance?.addHook !== 'function') {
