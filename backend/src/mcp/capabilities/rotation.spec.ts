@@ -425,19 +425,34 @@ describe('radio_set_rotation_mode summary', () => {
     sequence: Record<string, unknown>,
     playing: boolean,
     args: Record<string, unknown>,
-  ) => (await setup(sequence, playing).dry('radio_set_rotation_mode', args)).summary;
+  ) =>
+    (await setup(sequence, playing).dry('radio_set_rotation_mode', args))
+      .summary;
 
   it('says what changes, how the rotation stands, and whether it starts now', async () => {
-    expect(await summary({ mode: 'manual', loop: true }, false, { mode: 'autoplay', loop: false })).toContain(
+    expect(
+      await summary({ mode: 'manual', loop: true }, false, {
+        mode: 'autoplay',
+        loop: false,
+      }),
+    ).toContain(
       'to mode autoplay and loop off (now manual, loop on). Nothing is on air, so the rotation starts now.',
     );
-    const loopOnly = await summary({ mode: 'autoplay', loop: false }, true, { loop: true });
+    const loopOnly = await summary({ mode: 'autoplay', loop: false }, true, {
+      loop: true,
+    });
     expect(loopOnly).toContain('to loop on (now autoplay, loop off).');
     expect(loopOnly).not.toContain('starts now');
-    const playing = await summary({ mode: 'autoplay', loop: true }, true, { mode: 'shuffle' });
+    const playing = await summary({ mode: 'autoplay', loop: true }, true, {
+      mode: 'shuffle',
+    });
     expect(playing).toContain('to mode shuffle (now autoplay, loop on).');
     expect(playing).not.toContain('starts now');
-    expect(await summary({ mode: 'autoplay', loop: true }, false, { mode: 'manual' })).not.toContain('starts now');
+    expect(
+      await summary({ mode: 'autoplay', loop: true }, false, {
+        mode: 'manual',
+      }),
+    ).not.toContain('starts now');
     expect(await summary({}, false, {})).toContain('to nothing new');
   });
 });

@@ -50,14 +50,21 @@ describe('recoveryRefusal: the desk rule for its recovery buttons', () => {
       'Playout down: nothing can air, the recovery playlist included: Start with fallback is unavailable until playout is back',
     );
     expect(
-      recoveryRefusal('start', live({ ...stopped, preparedVersion: null } as never)),
+      recoveryRefusal(
+        'start',
+        live({ ...stopped, preparedVersion: null } as never),
+      ),
     ).toBe(
       'No recovery playlist is prepared: prepare one with radio_prepare_recovery first',
     );
     expect(
       recoveryRefusal(
         'start',
-        live({ ...stopped, connection: 'unavailable', automation: null } as never),
+        live({
+          ...stopped,
+          connection: 'unavailable',
+          automation: null,
+        } as never),
       ),
     ).toBe('Palazzo recovery status is unavailable');
     expect(recoveryRefusal('start', live(running))).toBe(
@@ -127,9 +134,10 @@ describe('radio_start_recovery and radio_stop_recovery refuse as the desk does',
       start.spec('radio_start_recovery').run({ program_id: 'main' }, ctx),
     ).rejects.toMatchObject({ code: 'on_air' });
     const stop = tools(stopped);
-    const plan = await stop
-      .spec('radio_stop_recovery')
-      .dryRun!({ program_id: 'main' }, ctx);
+    const plan = await stop.spec('radio_stop_recovery').dryRun!(
+      { program_id: 'main' },
+      ctx,
+    );
     expect(plan.summary).toMatch(
       /^REFUSED \(on_air\): No recovery session is running/,
     );

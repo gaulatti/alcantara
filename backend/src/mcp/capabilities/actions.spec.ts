@@ -475,7 +475,11 @@ const ROWS: Row[] = [
     cases: [
       { args: { scene_id: 3 } },
       {
-        args: { scene_id: 3, component_type: 'modoitaliano-giorgia-bracket', seed: 7 },
+        args: {
+          scene_id: 3,
+          component_type: 'modoitaliano-giorgia-bracket',
+          seed: 7,
+        },
       },
     ],
     rest: (c, a) =>

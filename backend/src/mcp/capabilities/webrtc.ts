@@ -229,7 +229,7 @@ export class WebrtcMcpTools {
         name: 'webrtc_host_mic_off',
         title: 'Take the host microphone off air',
         description:
-          'Takes the operator\'s own microphone off air in a program: every published host microphone track (the Mic on air track) is muted on the server, so it stops reaching air whatever the page does. When no host microphone is published it reports no-host-mic and mutes nothing. Reports muted only after LiveKit confirms each mute.',
+          "Takes the operator's own microphone off air in a program: every published host microphone track (the Mic on air track) is muted on the server, so it stops reaching air whatever the page does. When no host microphone is published it reports no-host-mic and mutes nothing. Reports muted only after LiveKit confirms each mute.",
         permission: permissions.operate,
         tier: 'A',
         shape: { program_id: programIdArg },

@@ -16,14 +16,6 @@ src/cors.http.spec.ts
 src/database-backup/database-backup.service.coverage.spec.ts
 src/external-sources/external-sources.service.coverage.spec.ts
 src/external-sources/external-sources.service.ts
-src/mcp/capabilities/actions.spec.ts
-src/mcp/capabilities/radio.recovery-parity.spec.ts
-src/mcp/capabilities/renderer-keys.spec.ts
-src/mcp/capabilities/renderer-keys.ts
-src/mcp/capabilities/rotation.metadata.spec.ts
-src/mcp/capabilities/rotation.spec.ts
-src/mcp/capabilities/webrtc.host-mic.spec.ts
-src/mcp/capabilities/webrtc.ts
 src/mcp/tools/radio-read.tools.palazzo.spec.ts
 src/media-analysis/media-analysis.metadata.spec.ts
 src/media-assets/media-asset-team-gauge.service.spec.ts

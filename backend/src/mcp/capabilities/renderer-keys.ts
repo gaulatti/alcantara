@@ -9,7 +9,10 @@ import { McpToolProvider, type McpToolSpec } from '../contract';
 import { actionSpec, programIdArg, readSpec } from './support';
 
 /** What a rotation's operator change record may say: the key is named, never valued; its version is valued. */
-const ROTATION_FIELDS = { named: ['rendererKey'], valued: ['version'] } as const;
+const ROTATION_FIELDS = {
+  named: ['rendererKey'],
+  valued: ['version'],
+} as const;
 
 /**
  * A program's renderer key over MCP (gaulatti/alcantara#884): its metadata, and its rotation. The rotation never
@@ -30,7 +33,7 @@ export class RendererKeysMcpTools {
         name: 'webrtc_renderer_key',
         title: "Read a program's renderer key",
         description:
-          "Whether the program has a renderer key (the credential its return runner, contribution worker and program pages present), its version, and when it was issued, rotated and last used. Never the key or its hash.",
+          'Whether the program has a renderer key (the credential its return runner, contribution worker and program pages present), its version, and when it was issued, rotated and last used. Never the key or its hash.',
         permission: ALCANTARA_PERMISSIONS.program.read,
         shape: { program_id: programIdArg },
         run: (args) => this.keys.metadata(args.program_id),
