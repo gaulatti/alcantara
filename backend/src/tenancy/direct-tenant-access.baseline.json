@@ -3,9 +3,6 @@
     "artistLabel": 7,
     "mediaLabel": 1
   },
-  "src/as-run/as-run.service.ts": {
-    "program": 1
-  },
   "src/broadcast-destinations/broadcast-destination-keys.service.ts": {
     "broadcastDestination": 6,
     "broadcastDestinationKeyChange": 2

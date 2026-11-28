@@ -30,6 +30,7 @@ import {
   type AsRunReviewFlag,
   type AsRunTrackEvent,
 } from './as-run.types';
+import { readProgramTeam } from '../tenancy/program-team';
 
 const INFERRED_FILTERS: readonly string[] = ['include', 'only', 'exclude'];
 
@@ -89,12 +90,9 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
     programId: string,
   ): Promise<PrismaService | null> {
     if (this.pompeii.teamId === 0) return this.prisma;
-    const program = await this.prisma.program.findUnique({
-      where: { programId },
-      select: { teamId: true },
-    });
-    if (program?.teamId && program.teamId > 0) {
-      return forTeam(this.prisma, program.teamId) as unknown as PrismaService;
+    const teamId = await readProgramTeam(this.prisma, programId);
+    if (teamId && teamId > 0) {
+      return forTeam(this.prisma, teamId) as unknown as PrismaService;
     }
     this.radioMetrics?.recordAsRunScopeRefusal(path);
     const key = `${path}|${programId}`;
