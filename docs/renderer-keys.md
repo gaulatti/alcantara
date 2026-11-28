@@ -90,9 +90,30 @@ write. A request with no credential is refused once production shows none on eit
 
 ## Shared-key fallback and its closer
 
-The shared key is accepted on every endpoint until it is removed. Each acceptance is counted and logged with its program
-and endpoint (`Shared renderer key accepted for program <id> on <endpoint>`), never with a key's value, so its last
-use shows. The shared key is removed once production shows no shared-key acceptance for 24 hours.
+The shared key is accepted on every endpoint until it is removed, and a program write with no credential is still
+accepted. Each such acceptance is counted and logged with its program and endpoint, never with a key's value, so its
+last use shows.
+
+The closer refuses both. It lands only when `scripts/renderer-auth-closer-gate.mjs` exits 0:
+
+```sh
+node scripts/renderer-auth-closer-gate.mjs
+```
+
+It prints one line per claim (`<1|0> <name> <time> <evidence>`) and exits 0 only when every one holds:
+
+| Line | 1 when |
+| --- | --- |
+| `fallback_unused_24h` | `sum(increase(alcantara_webrtc_renderer_auth_total{credential=~"shared\|none",result="accepted"}[24h]))` is exactly 0. |
+| `window_whole` | The metric already had series 24 hours ago, so the window is not shorter than it says. |
+| `scrape_whole_24h` | Every target carrying the metric had `up` at 1 for the whole 24 hours, with at least 23.5 hours' worth of scrapes at the last hour's rate, so no scrape gap hides a use. |
+| `fleet_key_in_secret` | The runtime secret holds `webrtcFleetKey`, which the return runner needs once the shared key is gone. |
+
+An empty, partial (with warnings), errored or unreadable answer is 0. The queries go to Milano's Prometheus through
+`PROMQL_CMD`, a command with `{query}` replaced by the URL-encoded query. The default runs `wget` inside
+`milano-prometheus-1` over SSH to Helix. The secret's state comes from `SECRET_STATUS_CMD`, which defaults to
+`backend/scripts/renderer-secret-status.mjs` in the backend image with the caller's AWS credentials. That script prints
+whether the fleet and shared keys are present and which programs have a key, never a value.
 
 ## Metric
 
