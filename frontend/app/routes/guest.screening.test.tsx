@@ -219,6 +219,23 @@ it('offers to rejoin when the screening connection is lost while still waiting',
   expect(lk.state.rooms).toHaveLength(1);
 });
 
+it('leaving while a waiting-room heartbeat is in flight does not touch timers or raise the dropped error', async () => {
+  await join();
+  // The waiting room's heartbeat is held on the way back, and the guest leaves the page meanwhile.
+  let release!: () => void;
+  heartbeatGate = new Promise<void>((resolve) => (release = resolve));
+  await act(async () => scheduledBeat!());
+  // A dropped connection that lands during teardown: its heartbeat settles after the page is gone.
+  act(() => lk.state.rooms[0].emit('disconnected', 3));
+  cleanup();
+  const clearInterval = vi.spyOn(window, 'clearInterval');
+  await act(async () => release());
+  heartbeatGate = null;
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  expect(clearInterval).not.toHaveBeenCalled();
+  expect(screen.queryByText(/Your connection to the studio dropped/)).toBeNull();
+});
+
 it('lets a waiting guest leave', async () => {
   await join();
   fireEvent.click(screen.getByRole('button', { name: /Leave/ }));
