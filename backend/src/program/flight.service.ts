@@ -49,6 +49,8 @@ import type {
 
 /** How late a published log may start: the scheduler skips one later than this. */
 export const START_GRACE_MS = 5000;
+/** The longest a daypart block with a soft start waits for the song on air to end before cutting it. */
+export const DAYPART_SOFT_WAIT_MS = 6 * 60_000;
 
 /**
  * gaulatti/alcantara#719: how long past its due time a timed-block cue that failed
@@ -1147,11 +1149,9 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
           );
           if (!preflight.ready)
             throw new BadRequestException(preflight.issues.join('; '));
-          await this.activateFlightSequence(
-            sequence.programState.programId,
-            sequence.id,
-          );
-          await this.start(sequence.programState.programId);
+          // A block made from a daypart clock has its own rules; one a person published starts as it always has.
+          if (sequence.clockId != null) await this.startDaypartBlock(sequence);
+          else await this.activateAndStart(sequence);
         } catch (error) {
           this.metrics.recordRadioLogResult('start-failed');
           // A claimed block never repeats automatically after an ambiguous failure.
@@ -1167,6 +1167,104 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     } finally {
       this.scheduleTickRunning = false;
     }
+  }
+
+  private async activateAndStart(sequence: {
+    id: number;
+    programState: { programId: string };
+  }): Promise<void> {
+    await this.activateFlightSequence(
+      sequence.programState.programId,
+      sequence.id,
+    );
+    await this.start(sequence.programState.programId);
+  }
+
+  /**
+   * gaulatti/alcantara#124: only a station playing by itself is taken over, so a block made from a clock is skipped
+   * in Manual (which off air leaves it in) or while the engine is frozen. A soft start lets the song on air finish.
+   */
+  private async startDaypartBlock(
+    sequence: FlightSequence & { programState: { programId: string } },
+  ): Promise<void> {
+    const programId = sequence.programState.programId;
+    const rotation = this.programService.getRotationOnAir(programId);
+    if (
+      rotation.frozen ||
+      (rotation.mode !== 'autoplay' && rotation.mode !== 'shuffle')
+    ) {
+      await this.prisma.flightSequence.update({
+        where: { id: sequence.id },
+        data: { daypartOutcome: 'skipped' },
+      });
+      this.metrics.recordDaypartBlock('skipped');
+      this.programService.broadcastUpdate(programId, {
+        type: 'radio_daypart_skipped',
+        sequenceId: sequence.id,
+      });
+      return;
+    }
+    if (sequence.daypartStart === 'soft' && rotation.songOnAir)
+      await this.startAfterSongOnAir(sequence);
+    else await this.activateAndStart(sequence);
+    this.metrics.recordDaypartBlock('started');
+  }
+
+  /**
+   * Gives a block the rundown without cutting the song on air: it owns what plays next, so the song's end starts its
+   * first cue, and a song still on air after DAYPART_SOFT_WAIT_MS is cut as a hard start would cut it.
+   */
+  private async startAfterSongOnAir(
+    sequence: FlightSequence & { programState: { programId: string } },
+  ): Promise<void> {
+    const programId = sequence.programState.programId;
+    const scheduledAtMs = sequence.scheduledAt!.getTime();
+    await this.serializeCueOperation(programId, async () => {
+      const previous = this.runtimes.get(programId);
+      const runtime: FlightRuntimeState = {
+        sequenceId: sequence.id,
+        programId,
+        items: normalizeFlightItems(sequence.items),
+        loop: false,
+        // Before the first cue: the end of the song on air advances to it.
+        activeIndex: -1,
+        isRunning: true,
+        generation: Date.now(),
+        timer: null,
+        waitingForSongEnd: true,
+        startedAt: Date.now(),
+        scheduledAtMs,
+      };
+      // In place before anything is awaited: the song on air may end at any moment.
+      this.runtimes.set(programId, runtime);
+      if (previous) {
+        this.clearTimer(previous);
+        previous.isRunning = false;
+        await this.persistRuntimeState(previous);
+      }
+      await this.prisma.programState.update({
+        where: { programId },
+        data: { activeFlightSequenceId: sequence.id },
+      });
+      await this.persistRuntimeState(runtime);
+      await this.broadcastFlightUpdate(programId);
+      runtime.timer = setTimeout(
+        () => {
+          // Still the same block, still waiting.
+          if (
+            this.runtimes.get(programId) !== runtime ||
+            runtime.activeIndex >= 0
+          )
+            return;
+          runtime.waitingForSongEnd = false;
+          runtime.generation += 1;
+          void this.executeCueAtIndex(programId, 0, runtime.generation);
+        },
+        Math.max(0, scheduledAtMs + DAYPART_SOFT_WAIT_MS - Date.now()),
+      );
+    });
+    this.programService.reviewAnnouncedSong(programId);
+    this.metrics.recordRadioLogResult('started');
   }
 
   async getActiveFlightSequence(programId: string) {
@@ -2144,6 +2242,8 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
   }
 
   private armNextHardCue(runtime: FlightRuntimeState): void {
+    // A block still waiting to start keeps its own wait.
+    if (runtime.activeIndex < 0) return;
     this.clearTimer(runtime);
     const nextHard = runtime.items.find(
       (cue, index) =>

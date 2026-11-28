@@ -879,6 +879,21 @@ describe('next-song announcement and handoff', () => {
       expect(h.palazzo.withdrawals).toBe(1);
     });
 
+    // gaulatti/alcantara#124: a block waiting for the song on air decides what follows it.
+    it('when the announcement is reviewed for a rundown block', async () => {
+      let clocked = false;
+      const h = harness({ clockedLog: () => clocked });
+      await onAir(h);
+      h.engine.reviewAnnouncement('nowhere');
+      await settle();
+      expect(h.palazzo.withdrawals).toBe(0);
+
+      clocked = true;
+      h.engine.reviewAnnouncement(PROGRAM);
+      await settle();
+      expect(h.palazzo.withdrawals).toBe(1);
+    });
+
     it('when there is no successor', async () => {
       const h = harness({ loop: false, items: SONGS.slice(0, 1) });
       await onAir(h);

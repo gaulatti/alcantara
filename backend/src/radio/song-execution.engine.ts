@@ -2757,6 +2757,14 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
    * program. Announcing never affects playback: any failure leaves today's
    * handoff by command.
    */
+  /**
+   * Looks again at the announced song, when something other than the rotation now decides what plays after the one
+   * on air (gaulatti/alcantara#124): the announcement is withdrawn.
+   */
+  reviewAnnouncement(programId: string): void {
+    this.refreshAnnouncement(programId);
+  }
+
   private refreshAnnouncement(programId: string): void {
     const state = this.states.get(programId);
     if (!state || !this.isRadioCapable(programId)) return;

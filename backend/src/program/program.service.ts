@@ -2400,6 +2400,29 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /** gaulatti/alcantara#124: what the rundown asks before a daypart block takes the air. */
+  getRotationOnAir(programId: string): {
+    mode: string | null;
+    frozen: boolean;
+    songOnAir: boolean;
+  } {
+    const view = this.songExecutionEngine.getOnAirView(
+      this.normalizeProgramId(programId),
+    );
+    return {
+      mode: view.mode,
+      frozen: view.frozen,
+      songOnAir: view.playbackRequestId !== null,
+    };
+  }
+
+  /** Withdraws the announced next song once a rundown block is to follow the one on air. */
+  reviewAnnouncedSong(programId: string): void {
+    this.songExecutionEngine.reviewAnnouncement(
+      this.normalizeProgramId(programId),
+    );
+  }
+
   prepareContinuousRotationResume(programId: string): Promise<void> {
     return this.songExecutionEngine.prepareContinuousRotationResume(
       this.normalizeProgramId(programId),

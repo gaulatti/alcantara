@@ -107,6 +107,29 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
   const noVersionBroadcast = (service: ProgramService) =>
     jest.spyOn(service, 'broadcastUpdate').mockReturnValue(undefined as never);
 
+  // gaulatti/alcantara#124: what the rundown asks before a daypart block takes the air.
+  describe('rotation on air', () => {
+    it('answers the mode, freeze and song on air, and asks for the announcement to be reviewed', () => {
+      const { service, engine } = build();
+      const view = { playbackRequestId: 'r1', mode: 'shuffle', frozen: false };
+      engine.getOnAirView.mockReturnValue(view as never);
+      expect(service.getRotationOnAir(' fm ')).toEqual({
+        mode: 'shuffle',
+        frozen: false,
+        songOnAir: true,
+      });
+      engine.getOnAirView.mockReturnValue({
+        ...view,
+        playbackRequestId: null,
+      } as never);
+      expect(service.getRotationOnAir('fm').songOnAir).toBe(false);
+      const review = jest.fn();
+      Object.assign(engine, { reviewAnnouncement: review });
+      service.reviewAnnouncedSong(' fm ');
+      expect(review).toHaveBeenCalledWith('fm');
+    });
+  });
+
   describe('createProgram', () => {
     it('creates a tv program with template data and returns hydrated state', async () => {
       const { service, prisma, put } = build();
