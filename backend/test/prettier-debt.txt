@@ -90,4 +90,3 @@ src/webrtc/webrtc.controller.coverage.spec.ts
 src/webrtc/webrtc.metadata.coverage.spec.ts
 src/webrtc/webrtc.service.coverage.spec.ts
 src/webrtc/webrtc.service.ts
-test/local-seed-team.e2e-spec.ts
