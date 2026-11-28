@@ -1,9 +1,11 @@
-// The gate for removing the older-console host-mic rule (gaulatti/alcantara#880): 24 hours with no onair:host from an
-// ordinary operator connection, since the one-host-mic rollout. Read-only: it only reads log files already pulled.
+// The gate for removing the older-console host-mic rule (gaulatti/alcantara#880): 24 consecutive hours of logs with no
+// onair:host from an ordinary operator connection. The window opens at the later of the one-host-mic rollout and the
+// LiveKit container's creation, since a recreated container starts with an empty log. Read-only: it only reads log files
+// already pulled.
 //
 // Usage: node scripts/host-mic-gate.mjs --livekit livekit.log --livekit-created <ISO> [--worker worker.log]
 //   livekit.log: `docker logs alcantara-livekit` lines containing "mediaTrack published" (Helix)
-//   --livekit-created: `docker inspect -f {{.Created}} alcantara-livekit`; its logs must reach back to the window
+//   --livekit-created: `docker inspect -f {{.Created}} alcantara-livekit`; its logs start no earlier than this
 //   worker.log: `docker logs --timestamps alcantara-contribution` lines containing "track subscribed" (cumulus)
 //
 // LiveKit does not log track names, so any audio an ordinary operator connection published counts against the gate,
@@ -48,19 +50,21 @@ export function workerEvents(text) {
   return { events, read };
 }
 
-/** The gate: the logs reach back over the whole window, and 24 hours have passed since the rollout and any sighting. */
+/** The gate: 24 hours have passed since the window opened, and since any sighting in it. */
 export function gate({ livekit, worker, livekitCreated, now }) {
   const rollout = Date.parse(ROLLOUT);
   const created = Date.parse(livekitCreated);
+  // Without a readable creation time nothing says where the LiveKit log begins, so the gate is not met.
+  const covered = Number.isFinite(created);
+  const start = covered ? Math.max(rollout, created) : rollout;
   const seen = [...livekit.events, ...worker.events].filter((event) => event.at >= rollout).sort((a, b) => a.at - b.at);
-  const earliest = Math.max(rollout, ...seen.map((event) => event.at)) + WINDOW_MS;
-  const covered = Number.isFinite(created) && created <= rollout;
+  const earliest = Math.max(start, ...seen.map((event) => event.at)) + WINDOW_MS;
   const iso = (ms) => new Date(ms).toISOString();
   return {
     ok: covered && now >= earliest,
     rows: [
-      ["livekit_logs_cover_window", covered, `container_created=${livekitCreated} rollout=${ROLLOUT} publish_lines=${livekit.read}`],
-      ["no_legacy_host_mic_since_rollout", seen.length === 0, `sightings=${seen.length} worker_track_lines=${worker.read}` + seen.map((e) => ` [${iso(e.at)} ${e.source} ${e.identity}]`).join("")],
+      ["window_start_known", covered, `window_start=${iso(start)} container_created=${livekitCreated} rollout=${ROLLOUT} publish_lines=${livekit.read}`],
+      ["no_legacy_host_mic_in_window", seen.every((event) => event.at < start), `sightings=${seen.length} worker_track_lines=${worker.read}` + seen.map((e) => ` [${iso(e.at)} ${e.source} ${e.identity}]`).join("")],
       ["24h_clear", now >= earliest, `earliest_merge=${iso(earliest)} now=${iso(now)}`],
     ],
   };

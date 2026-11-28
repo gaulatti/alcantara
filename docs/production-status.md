@@ -73,9 +73,10 @@ host it cannot reach without a prompt gives 0 lines, never a hang.
 
 ## The older-console host-mic gate (#880)
 
-`node scripts/host-mic-gate.mjs` reads log files already pulled and says whether 24 hours have passed with no host
-microphone from an ordinary `operator-*` connection since 2026-11-27T12:29Z. Save the worker's lines before any
-worker redeploy: a new container starts with an empty log.
+`node scripts/host-mic-gate.mjs` reads log files already pulled and says whether 24 consecutive hours have passed with
+no host microphone from an ordinary `operator-*` connection. The window opens at the later of the rollout
+(2026-11-27T12:29Z) and the LiveKit container's creation: a recreated container starts with an empty log, so recreating
+it starts the 24 hours again. Save the worker's lines before any worker redeploy, for the same reason.
 
 ```sh
 ssh helix.gaulatti.com "sh -c 'docker logs alcantara-livekit 2>&1 | grep \"mediaTrack published\"'" > livekit.log
