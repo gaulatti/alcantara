@@ -82,7 +82,7 @@ describe('MediaController (coverage)', () => {
 
   it('requires read on the controller and manage on mutations', () => {
     const perm = (target: object) =>
-      Reflect.getMetadata(REQUIRED_PERMISSION_KEY, target);
+      Reflect.getMetadata(REQUIRED_PERMISSION_KEY, target) as unknown;
     expect(perm(MediaController)).toBe(ALCANTARA_PERMISSIONS.media.read);
     for (const name of ['create', 'update', 'remove'] as const) {
       expect(perm(MediaController.prototype[name])).toBe(
@@ -94,8 +94,9 @@ describe('MediaController (coverage)', () => {
   it('records Object as the paramtype when MediaService is unresolved', () => {
     jest.isolateModules(() => {
       jest.doMock('./media.service', () => ({}));
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const mod = require('./media.controller');
+      const mod =
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        require('./media.controller') as typeof import('./media.controller');
       expect(
         Reflect.getMetadata('design:paramtypes', mod.MediaController),
       ).toEqual([Object]);
@@ -109,8 +110,9 @@ describe('MediaService metadata (coverage)', () => {
     jest.isolateModules(() => {
       jest.doMock('../prisma.service', () => ({}));
       jest.doMock('../operator-change/operator-change-recorder', () => ({}));
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const mod = require('./media.service');
+      const mod =
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        require('./media.service') as typeof import('./media.service');
       expect(
         Reflect.getMetadata('design:paramtypes', mod.MediaService),
       ).toEqual([Object, Object]);
