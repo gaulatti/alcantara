@@ -18,6 +18,10 @@ const KEY = 'fictional-stream-key';
 function build(row: unknown = { teamId: 7, retiredAt: null }) {
   const prisma = {
     broadcastDestination: { findUnique: jest.fn().mockResolvedValue(row) },
+    // The team-scoped client (gaulatti/alcantara#122); its scoping is proven in scoped-prisma.spec.
+    $extends: jest.fn(function (this: unknown) {
+      return this;
+    }),
   };
   const ingest = {
     issue: jest.fn().mockResolvedValue({
@@ -41,6 +45,15 @@ function build(row: unknown = { teamId: 7, retiredAt: null }) {
 }
 
 describe('DestinationTestService', () => {
+  it("reads the destination through the caller's team, and unscoped only for team 0", async () => {
+    const team = build();
+    await team.service.test('d1', 'user-1', 7);
+    expect(team.prisma.$extends).toHaveBeenCalledWith(expect.objectContaining({ name: 'team-7' }));
+    const local = build();
+    await local.service.test('d1', 'user-1', 0);
+    expect(local.prisma.$extends).not.toHaveBeenCalled();
+  });
+
   it('probes the checked address with the pinned key, audited as the caller, and counts it', async () => {
     const f = build();
     await expect(f.service.test('d1', 'user-1', 7, 1000)).resolves.toEqual({
