@@ -143,6 +143,16 @@ jobs:
       - name: Typecheck backend source and specs
         if: *verify-code
         run: pnpm --dir backend exec tsc --noEmit -p tsconfig.json
+      - name: Format debt ratchet (test/prettier-debt.txt)
+        # Fails when a file newly fails Prettier and is not in backend/test/prettier-debt.txt, or when a listed file
+        # now passes and must leave that list.
+        if: *verify-code
+        run: pnpm --dir backend run format:debt
+      - name: Lint debt ratchet (backend/test/lint-debt.json)
+        # Fails when an ESLint error count grows past backend/test/lint-debt.json, or when a count drops below it
+        # (lower the baseline in the same change). A moved file must rename its key there.
+        if: *verify-code
+        run: pnpm --dir backend run lint:debt
       - name: Install ffmpeg as the production image does
         if: *verify-code
         # gaulatti/alcantara#82: the runner's apt ffmpeg (8.0.1) is not production's, and the cue fixtures
