@@ -700,7 +700,8 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     const labelIds = [...new Set(rules.slots.map((slot) => slot.labelId))];
     const songDb = await this.programSongDb('generate', programId);
     const [labels, songs, previous] = await Promise.all([
-      this.prisma.mediaLabel.findMany({
+      // The program team's labels, through the client its songs use; unscoped when that client is (team 0) or absent.
+      (songDb ?? this.prisma).mediaLabel.findMany({
         where: { id: { in: labelIds } },
         select: { id: true, name: true },
       }),
@@ -784,7 +785,9 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       );
       const songDb = await this.programSongDb('generate', programId);
       const [label, songs, previous] = await Promise.all([
-        this.prisma.mediaLabel.findUnique({ where: { id: rules.labelId } }),
+        (songDb ?? this.prisma).mediaLabel.findUnique({
+          where: { id: rules.labelId },
+        }),
         songDb
           ? songDb.song.findMany({
               where: {
@@ -1107,6 +1110,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         : [];
     const [songs, instants, engine] = await Promise.all([
       readSongs(),
+      // Unscoped on purpose (#122): on-air cue path; scoping needs a non-throwing cached team.
       this.prisma.instant.findMany({
         where: { id: { in: instantIds } },
         select: { id: true, enabled: true, audioUrl: true, name: true },
@@ -2730,6 +2734,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     sceneId: number,
     metadataPatch: Record<string, unknown>,
   ): Promise<void> {
+    // Unscoped on purpose (#122): on-air cue path; scoping needs a non-throwing cached team.
     const scene = await this.prisma.scene.findUnique({
       where: { id: sceneId },
     });
