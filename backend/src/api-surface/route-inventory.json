@@ -192,6 +192,12 @@
     "permission": "broadcast.view"
   },
   {
+    "method": "DELETE",
+    "path": "/broadcast/programs/:programId/fillers/radio",
+    "public": false,
+    "permission": "broadcast.manage"
+  },
+  {
     "method": "PUT",
     "path": "/broadcast/programs/:programId/fillers/radio",
     "public": false,

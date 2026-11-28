@@ -74,7 +74,10 @@ function setup() {
     ),
   };
   let mixer: Record<string, unknown> | Error = { songMuted: false, songVolume: 1, mainVolume: 1 };
+  // gaulatti/alcantara#20: never called; a configured radio filler must not matter to the watchdog's steps.
+  const prepareRecoveryPlaylist = jest.fn();
   const radio = {
+    prepareRecoveryPlaylist,
     getMixer: jest.fn(() => (mixer instanceof Error ? Promise.reject(mixer) : Promise.resolve(mixer))),
   };
   let presence: { guestsLive: number; hostMics: number } | Error = { guestsLive: 0, hostMics: 0 };
@@ -119,6 +122,7 @@ function setup() {
       .split('\n')
       .filter((line) => /^alcantara_radio_dead_air_/.test(line) && !/ 0$/.test(line));
   return {
+    prepareRecoveryPlaylist,
     watchdog,
     engine,
     confidence,
@@ -253,6 +257,8 @@ describe('DeadAirWatchdogService', () => {
     expect(log).toHaveBeenCalledWith(`Dead air on ${PROGRAM} ended: the radio is heard again`);
     expect(h.steps()).not.toContain('alcantara_radio_dead_air_unrecovered_programs 1');
     expect(h.steps().filter((line) => line.includes('recovered'))).toEqual([]);
+    // Every step ran, up to giving up, and none prepared or replaced a recovery playlist.
+    expect(h.prepareRecoveryPlaylist).not.toHaveBeenCalled();
   });
 
   it.each([

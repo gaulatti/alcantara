@@ -204,6 +204,24 @@ export function ProgramFillerPanel({
       .catch((cause) => setError(failureMessage(cause)));
   }, [canManage, only, state]);
 
+  const [removing, setRemoving] = useState(false);
+
+  const removeRadio = async () => {
+    setBusy('radio');
+    setError(null);
+    try {
+      const response = await api.delete<ProgramFillerState>(
+        `/broadcast/programs/${encodeURIComponent(programId)}/fillers/radio`,
+      );
+      setState(response.data);
+      setRemoving(false);
+    } catch (cause) {
+      setError(failureMessage(cause));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const prepare = async (leg: FillerLegName) => {
     setBusy(leg);
     setError(null);
@@ -262,6 +280,33 @@ export function ProgramFillerPanel({
             .join(' · ')}
         >
           <FillerLegSummary leg={leg} state={state!} names={names} />
+          {canManage &&
+          leg === 'radio' &&
+          (state!.legs.radio!.pending || state!.legs.radio!.active) ? (
+            removing ? (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span>
+                  The older recovery playlist applies again. Nothing on air
+                  changes.
+                </span>
+                <Button type="button" variant="ghost" onClick={() => setRemoving(false)}>
+                  Keep it
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={busy !== null}
+                  onClick={() => void removeRadio()}
+                >
+                  Remove
+                </Button>
+              </div>
+            ) : (
+              <Button type="button" variant="ghost" onClick={() => setRemoving(true)}>
+                Remove radio filler
+              </Button>
+            )
+          ) : null}
           {canManage && leg === 'television' ? (
             <div className="flex flex-wrap items-end gap-2">
               <label className="min-w-64 text-sm">

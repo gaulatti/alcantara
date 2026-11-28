@@ -27,6 +27,7 @@ external-sources	DELETE	/external-sources/:id	webrtc.operate	revoke	external_sou
 filler	GET	/broadcast/programs/:programId/fillers	broadcast.view	getState	filler_get_state	R
 filler	PUT	/broadcast/programs/:programId/fillers/television	broadcast.manage	prepareTelevision	filler_prepare_television	W
 filler	PUT	/broadcast/programs/:programId/fillers/radio	broadcast.manage	prepareRadio	filler_prepare_radio	W
+filler	DELETE	/broadcast/programs/:programId/fillers/radio	broadcast.manage	removeRadio	filler_remove_radio	W
 instants	GET	/instants	instant.read	listInstants	instant_list_instants	R
 instants	POST	/instants	instant.manage	createInstant	instant_create_instant	W
 instants	PUT	/instants/:instantId	instant.manage	updateInstant	instant_update_instant	W

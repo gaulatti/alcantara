@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Put, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Put, Req } from '@nestjs/common';
 import { RequirePermission } from '../auth/require-permission.decorator';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { FillerService } from './filler.service';
@@ -34,5 +34,11 @@ export class FillerController {
     @Req() request: AuthorizedRequest,
   ) {
     return this.fillers.prepareRadio(programId, body, request.user.sub);
+  }
+
+  @Delete('radio')
+  @RequirePermission(ALCANTARA_PERMISSIONS.broadcast.manage)
+  removeRadio(@Param('programId') programId: string) {
+    return this.fillers.removeRadio(programId);
   }
 }

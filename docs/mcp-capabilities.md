@@ -410,19 +410,19 @@ capability.
 ## Broadcast, filler, recording, radio, preferences, external sources and guests (#219)
 
 Files: `backend/src/mcp/capabilities/{destinations,filler,recording,radio,preferences,external-sources,webrtc}.ts`,
-each registered in the module of the services it calls. The 59 rows of
+each registered in the module of the services it calls. The 60 rows of
 appendix A that are not excluded and not another ticket's:
 
 | Area | R | W | A | D | Total |
 |---|---|---|---|---|---|
 | broadcast destinations (`destination_*`) | 3 | 5 | 3 | 0 | 11 |
-| filler (`filler_*`) | 1 | 2 | 0 | 0 | 3 |
+| filler (`filler_*`) | 1 | 3 | 0 | 0 | 4 |
 | recording and tape (`recording_*`) | 2 | 0 | 4 | 0 | 6 |
 | radio (`radio_*`: settings, Palazzo, recovery, now-playing, manual song and instant) | 7 | 3 | 6 | 0 | 16 |
 | operator preferences (`preference_*`) | 2 | 3 | 0 | 3 | 8 |
 | external sources (`external_source_*`) | 2 | 0 | 4 | 1 | 7 |
 | guests (`webrtc_*`) | 2 | 0 | 3 | 3 | 8 |
-| **Total** | **19** | **13** | **20** | **7** | **59** |
+| **Total** | **19** | **14** | **20** | **7** | **60** |
 
 `backend/src/mcp/capabilities/appendix-a-broadcast.spec.ts` reads these rows
 from `appendix-a.tsv` and asserts, for each, the capability's name, permission
@@ -812,6 +812,7 @@ Clock names, proposed cues and the reason an hour cannot be filled are user text
 | `external_source_update` | `alcantara:webrtc:operate` | A | Changes the name, programs, normalization profile or transport address of an external source; only the fields given change. |
 | `filler_get_state` | `broadcast.view` | R | Reads the pending (next session) and active (in session) filler version of each leg of a program: checksum, status, sources and order. |
 | `filler_prepare_radio` | `broadcast.manage` | W | Prepares one to 100 distinct enabled audio media assets as the radio filler of a program, in order or shuffled with a seed. |
+| `filler_remove_radio` | `broadcast.manage` | W | Removes a program's radio filler configuration; the older recovery playlist is what the next recovery start binds. Nothing on air changes. |
 | `filler_prepare_television` | `broadcast.manage` | W | Prepares an enabled image or video media asset as the television filler of a program: the executor must acknowledge the exact asset before the version becomes the pending (next session) filler. |
 | `import_media_from_url` | `alcantara:upload:create` | W | Fetches a file from an https address on the public internet and stores it as an instant, background, song, artwork or stinger upload, exactly as the console stores a file it is sent: instant, background and song take audio content types (at most 200 MiB), artwork an image (avif, gif, jpeg, png or webp, at most 10 MiB) and stinger a video/webm (at most 50 MiB). |
 | `instant_list_instants` | `alcantara:instant:read` | R | Lists every instant (a short audio clip played over the program) in the console order, with whether it can still be assigned as a song intro and, for program_id (default main), which song it introduces there. |

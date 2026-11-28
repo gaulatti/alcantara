@@ -121,6 +121,7 @@ describe('RadioService coverage', () => {
       await expect(service.getRecoveryStatus('p')).resolves.toEqual({
         selectedSongIds: [1],
         preparedVersion: 'filler-v1',
+        programFillerVersion: null,
         automation: { lastSequence: 4 },
         connection: 'connected',
       });
@@ -136,6 +137,7 @@ describe('RadioService coverage', () => {
       await expect(service.getRecoveryStatus('p')).resolves.toEqual({
         selectedSongIds: [1],
         preparedVersion: 'filler-v1',
+        programFillerVersion: null,
         automation: null,
         connection: 'unavailable',
       });

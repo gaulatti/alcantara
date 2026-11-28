@@ -209,3 +209,40 @@ describe('recovery playlist with a program radio filler', () => {
     expect(h.prisma.fillerLeg.updateMany).not.toHaveBeenCalled();
   });
 });
+
+// gaulatti/alcantara#20: what the desk and MCP read must name the version a Start binds, or a Start with a program
+// filler and no older playlist is refused.
+describe('recovery status with a program radio filler', () => {
+  it('names it as prepared, with or without an older playlist', async () => {
+    const h = build({ pendingVersionId: 'filler-radio-1' });
+    await expect(h.service.getRecoveryStatus('radio-1')).resolves.toMatchObject(
+      {
+        preparedVersion: 'filler-radio-1',
+        programFillerVersion: 'filler-radio-1',
+        connection: 'connected',
+      },
+    );
+    h.palazzo.getAutomation.mockRejectedValue(new Error('down'));
+    await expect(h.service.getRecoveryStatus('radio-1')).resolves.toMatchObject(
+      {
+        preparedVersion: 'filler-radio-1',
+        programFillerVersion: 'filler-radio-1',
+        connection: 'unavailable',
+      },
+    );
+  });
+
+  it('names the older playlist again once there is none', async () => {
+    const h = build(null);
+    await expect(h.service.getRecoveryStatus('radio-1')).resolves.toMatchObject(
+      { preparedVersion: 'filler-legacy', programFillerVersion: null },
+    );
+  });
+
+  it('starts recovery with the program filler from the record alone, as after a restart', async () => {
+    const h = build({ activeVersionId: 'filler-radio-0' });
+    await h.service.setRecoveryAutomation('radio-1', 'start');
+    expect(h.palazzo.commandAutomation.mock.calls[0][5]).toBe('filler-radio-0');
+    expect(h.palazzo.prepareFiller).not.toHaveBeenCalled();
+  });
+});

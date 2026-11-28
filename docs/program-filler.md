@@ -29,6 +29,7 @@ All routes sit under `/broadcast/programs/:programId/fillers`.
 | --- | --- | --- |
 | `GET /` | `broadcast.view` | The pending and active version of each leg the program has (`tv` gives television, `radio` gives radio, `both` gives both). |
 | `PUT /television` with `{ assetId }` | `broadcast.manage` | Prepares an enabled `IMAGE` or `VIDEO` media asset (including WebM). |
+| `DELETE /radio` | `broadcast.manage` | Removes the radio filler configuration: the leg has no pending or active version, and the older recovery playlist applies again. Nothing is sent to Palazzo; a running session keeps its version. |
 | `PUT /radio` with `{ assetIds, mode?, shuffleSeed? }` | `broadcast.manage` | Prepares 1 to 100 distinct enabled `AUDIO` media assets, `ordered` by default or `shuffle` with a bounded seed. |
 
 **Source checks.** Sources must be on the managed `MEDIA_S3_BUCKET`, over https, with no credentials or port, between 1 byte and 512 MiB. Alcantara reads each one once to compute its SHA-256.
@@ -71,13 +72,14 @@ the version stays active until the next Stop.
 
 **Radio.** Recovery Start (`POST /radio/:id/recovery/start`) binds to the program radio version when one is configured, and marks it active on success. Otherwise it uses the legacy prepared recovery version exactly as before.
 
-**Legacy recovery writer.** The `radio.manage` route `POST /radio/:id/recovery/prepare` is a second writer of the radio filler. Once a program radio filler exists, that route answers 409 ("the radio filler is managed by the program filler configuration"), so only `broadcast.manage` can change the policy. For every program without one it is unchanged.
+**Legacy recovery writer.** The `radio.manage` route `POST /radio/:id/recovery/prepare` is a second writer of the radio filler. Once a program radio filler exists, that route answers 409 ("the radio filler is managed by the program filler configuration"), so only `broadcast.manage` can change the policy. For every program without one it is unchanged. Its callers treat that as already prepared: the console's recovery playlist panel says the program filler is in use, and `radio_prepare_recovery` answers the recovery status with `alreadyPrepared`. The dead-air watchdog and a restart never prepare anything. The recovery status reports as `preparedVersion` the version a Start binds, and `programFillerVersion` when that is the program filler, so Start is offered with a filler and no older playlist.
 
 ## Metrics
 
 | Metric | Labels |
 | --- | --- |
 | `alcantara_filler_preparations_total{leg,result}` | `leg` is `television` or `radio`; `result` is `ready`, `failed`, `unavailable`, `profile-unavailable` or `no-team` |
+| `alcantara_filler_removals_total{leg}` | a configured filler was removed |
 | `alcantara_filler_releases_total{leg,result}` | `leg` is `television` or `radio`; `result` is `released` or `failed` |
 | `alcantara_filler_start_bindings_total{result}` | `bound`, `mismatch`, `not-configured` or `legacy-executor` |
 | `alcantara_alana_live_profile_unknown_keys_total` | no labels; one per live-profile key Alcantara does not know (never the key name) |

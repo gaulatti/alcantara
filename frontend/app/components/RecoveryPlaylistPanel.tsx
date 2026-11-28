@@ -6,6 +6,8 @@ import type { SongCatalogItem } from '../models/broadcast';
 interface RecoveryStatus {
   selectedSongIds: number[];
   preparedVersion: string | null;
+  /** The configured program radio filler (gaulatti/alcantara#20), when it is what a Start binds. */
+  programFillerVersion?: string | null;
   automation: {
     actualState: string;
     filler: { activeVersion: string | null; ready: boolean };
@@ -53,6 +55,11 @@ export function RecoveryPlaylistPanel({ programId }: { programId: string }) {
           body: JSON.stringify({ songIds: selected }),
         },
       );
+      // A program radio filler was configured meanwhile: it is prepared, so show that instead of a failure.
+      if (response.status === 409) {
+        await load();
+        return;
+      }
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(
@@ -105,6 +112,13 @@ export function RecoveryPlaylistPanel({ programId }: { programId: string }) {
           A recovery playlist is active in the current Palazzo session.
         </p>
       ) : null}
+      {status?.programFillerVersion ? (
+        <p role="status" className="mt-4 text-sm text-text-secondary">
+          The program radio filler is in use: a Start plays it. Change or remove
+          it in the radio filler below.
+        </p>
+      ) : (
+        <>
       <div className="mt-4 max-h-60 space-y-2 overflow-y-auto rounded-lg border border-border-subtle p-3">
         {songs.filter((song) => song.enabled).length ? (
           songs
@@ -165,6 +179,8 @@ export function RecoveryPlaylistPanel({ programId }: { programId: string }) {
           Refresh status
         </Button>
       </div>
+        </>
+      )}
     </section>
   );
 }

@@ -367,13 +367,13 @@ export class RadioMcpTools {
         name: 'radio_prepare_recovery',
         title: 'Prepare the recovery playlist of a program',
         description:
-          'Prepares one to 100 distinct catalog songs as the recovery (fallback) playlist: Palazzo downloads and verifies them, and the version is saved only after it reports ready. Refused with conflict once a program radio filler is configured. It does not start a session.',
+          'Prepares one to 100 distinct catalog songs as the recovery (fallback) playlist: Palazzo downloads and verifies them, and the version is saved only after it reports ready. With a program radio filler configured nothing is prepared: it answers the recovery status with `alreadyPrepared` true. It does not start a session.',
         permission: permissions.manage,
         tier: 'W',
         shape: { program_id: programIdArg, song_ids: songIdsArg },
         id: (args) => args.program_id,
         plan: (args) => ({
-          summary: `Prepares ${args.song_ids.length} song(s) as the recovery playlist of program ${args.program_id}: each is read to take its SHA-256 and Palazzo downloads them. The new version replaces the prepared one only when Palazzo reports ready; a session already running keeps its version.`,
+          summary: `Prepares ${args.song_ids.length} song(s) as the recovery playlist of program ${args.program_id}: each is read to take its SHA-256 and Palazzo downloads them. The new version replaces the prepared one only when Palazzo reports ready; a session already running keeps its version. With a program radio filler configured, nothing is prepared.`,
           affects: [
             { kind: 'program', id: args.program_id, name: args.program_id },
             ...args.song_ids.map((id) => ({
@@ -384,8 +384,16 @@ export class RadioMcpTools {
           ],
           recoverable: true,
         }),
-        run: (args) =>
-          this.radio.prepareRecoveryPlaylist(args.program_id, args.song_ids),
+        // A configured program radio filler is already prepared: nothing to do, and not a failure.
+        run: async (args) => {
+          const recovery = await this.radio.getRecoveryStatus(args.program_id);
+          return recovery.programFillerVersion
+            ? { ...recovery, alreadyPrepared: true }
+            : this.radio.prepareRecoveryPlaylist(
+                args.program_id,
+                args.song_ids,
+              );
+        },
       }),
       actionSpec({
         name: 'radio_replace_now_playing_consumers',

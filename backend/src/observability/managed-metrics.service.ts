@@ -463,6 +463,7 @@ export class ManagedMetricsService {
   private readonly fillerPreparations: Counter<string>;
   private readonly fillerStartBindings: Counter<string>;
   private readonly fillerReleases: Counter<'leg' | 'result'>;
+  private readonly fillerRemovals: Counter<'leg'>;
   private readonly alanaLiveProfileUnknownKeys: Counter<string>;
   private readonly programTemplateUnknowns: Counter<string>;
   private readonly recordingCommands: Counter<string>;
@@ -849,6 +850,13 @@ export class ManagedMetricsService {
     for (const leg of FILLER_LEGS)
       for (const result of FILLER_RELEASE_RESULTS)
         this.fillerReleases.inc({ leg, result }, 0);
+    this.fillerRemovals = new Counter({
+      name: 'alcantara_filler_removals_total',
+      help: 'Configured fillers removed, by leg.',
+      labelNames: ['leg'],
+      registers: [this.registry],
+    });
+    for (const leg of FILLER_LEGS) this.fillerRemovals.inc({ leg }, 0);
     this.fillerStartBindings = new Counter({
       name: 'alcantara_filler_start_bindings_total',
       help: 'Television Start filler bindings by bounded result.',
@@ -1257,6 +1265,10 @@ export class ManagedMetricsService {
     result: FillerPreparationResult,
   ): void {
     this.fillerPreparations.inc({ leg, result });
+  }
+
+  recordFillerRemoval(leg: (typeof FILLER_LEGS)[number]): void {
+    this.fillerRemovals.inc({ leg });
   }
 
   recordFillerRelease(

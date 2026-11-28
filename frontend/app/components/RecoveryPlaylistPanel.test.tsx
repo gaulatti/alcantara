@@ -193,3 +193,28 @@ it("uses fallback messages for failures without a reason, and refreshes on reque
   fireEvent.click(screen.getByRole("button", { name: "Prepare playlist" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Recovery preparation failed.");
 });
+
+// gaulatti/alcantara#20: with a program radio filler configured this older path is not a failure: it is done.
+it("says the program radio filler is in use instead of offering the older playlist", async () => {
+  radioApi({ status: json(recovery({ preparedVersion: "filler-radio-1", programFillerVersion: "filler-radio-1" })) });
+  render(<RecoveryPlaylistPanel programId="radio-1" />);
+  expect(await screen.findByText(/program radio filler is in use/)).toBeInTheDocument();
+  expect(screen.getByText("Prepared")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Prepare playlist" })).toBeNull();
+});
+
+it("treats a refused preparation, filler configured meanwhile, as already prepared", async () => {
+  let configured = false;
+  radioApi({
+    status: () => json(recovery(configured ? { programFillerVersion: "filler-radio-1" } : {})),
+    prepare: () => {
+      configured = true;
+      return json({ message: "the radio filler is managed by the program filler configuration" }, 409);
+    },
+  });
+  render(<RecoveryPlaylistPanel programId="radio-1" />);
+  fireEvent.click(await screen.findByLabelText("Artist 2 — Song 2"));
+  fireEvent.click(screen.getByRole("button", { name: "Prepare playlist" }));
+  expect(await screen.findByText(/program radio filler is in use/)).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).toBeNull();
+});

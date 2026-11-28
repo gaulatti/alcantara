@@ -99,6 +99,7 @@ function build() {
       getState: answers(fillerState),
       prepareTelevision: answers(fillerState),
       prepareRadio: answers(fillerState),
+      removeRadio: answers(fillerState),
     },
     recording: {
       status: answers(recordingStatus),
@@ -439,6 +440,38 @@ describe('filler writes', () => {
         ),
       [b.s.fillers.prepareRadio],
     );
+  });
+
+  // gaulatti/alcantara#20: a configured radio filler can be removed, and the older recovery path then applies.
+  it('removes the radio filler as the console route does, after a dry run that writes nothing', async () => {
+    const b = build();
+    const plan = await b.spec('filler_remove_radio').dryRun!(
+      { program_id: 'main' },
+      ctx,
+    );
+    expect(plan).toMatchObject({ onAir: false, recoverable: true });
+    expect(b.s.fillers.removeRadio).not.toHaveBeenCalled();
+    await parity(
+      b,
+      'filler_remove_radio',
+      { program_id: 'main' },
+      () => b.controllers.filler.removeRadio('main'),
+      [b.s.fillers.removeRadio],
+    );
+  });
+
+  it('treats a configured program filler as already prepared, not as a failure', async () => {
+    const b = build();
+    b.s.radio.getRecoveryStatus.mockResolvedValue({
+      ...recovery,
+      programFillerVersion: 'filler-radio-1',
+    });
+    const answer = await b.run('radio_prepare_recovery', {
+      program_id: 'main',
+      song_ids: [3],
+    });
+    expect(JSON.stringify(answer)).toContain('"alreadyPrepared":true');
+    expect(b.s.radio.prepareRecoveryPlaylist).not.toHaveBeenCalled();
   });
 
   it('says the on-air version is untouched', async () => {

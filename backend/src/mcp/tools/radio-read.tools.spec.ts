@@ -254,6 +254,7 @@ async function harness() {
       ),
     },
     radioSettings: { findMany: jest.fn().mockResolvedValue([]) },
+    fillerLeg: { findUnique: jest.fn().mockResolvedValue(null) },
     mediaAsset: { findMany: jest.fn().mockResolvedValue([]) },
     mediaAssetAnalysis: {
       findMany: jest.fn((args: any) =>

@@ -93,6 +93,24 @@ export class FillerMcpTools {
             ctx.principal.subject,
           ),
       }),
+      actionSpec({
+        name: 'filler_remove_radio',
+        title: 'Remove the radio filler of a program',
+        description:
+          'Removes the configured radio filler of a program, so the older recovery playlist is what the next recovery start binds. It does not change what is on air; a running session keeps the version it started with. Prepare it again with filler_prepare_radio.',
+        permission: permissions.manage,
+        tier: 'W',
+        shape: { program_id: programIdArg },
+        id: (args) => args.program_id,
+        plan: (args) => ({
+          summary: `Removes the radio filler configuration of program ${args.program_id}. The next recovery start binds the older recovery playlist, if one was prepared; a session already running keeps its version.`,
+          affects: [
+            { kind: 'program', id: args.program_id, name: args.program_id },
+          ],
+          recoverable: true,
+        }),
+        run: (args) => this.fillers.removeRadio(args.program_id),
+      }),
     ];
   }
 }

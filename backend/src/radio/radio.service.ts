@@ -183,8 +183,15 @@ export class RadioService {
     return null;
   }
 
+  /**
+   * `preparedVersion` is the version a Start binds: the configured program radio filler (gaulatti/alcantara#126),
+   * else the older recovery playlist. `programFillerVersion` names the former, and is null without one.
+   */
   async getRecoveryStatus(programId: string) {
     const settings = await this.requireRadioSettings(programId);
+    const programFillerVersion =
+      await this.programRadioFillerVersion(programId);
+    const preparedVersion = programFillerVersion ?? settings.fillerVersion;
     let automation: Awaited<ReturnType<PalazzoMachineClient['getAutomation']>>;
     try {
       automation = await this.palazzo.getAutomation(
@@ -194,14 +201,16 @@ export class RadioService {
     } catch {
       return {
         selectedSongIds: settings.fillerSongIds,
-        preparedVersion: settings.fillerVersion,
+        preparedVersion,
+        programFillerVersion,
         automation: null,
         connection: 'unavailable' as const,
       };
     }
     return {
       selectedSongIds: settings.fillerSongIds,
-      preparedVersion: settings.fillerVersion,
+      preparedVersion,
+      programFillerVersion,
       automation,
       connection: 'connected' as const,
     };

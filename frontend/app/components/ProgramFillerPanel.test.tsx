@@ -226,3 +226,24 @@ it('offers every page of songs, and only the leg asked for', async () => {
   expect(screen.getByLabelText('Page 1 song')).toBeInTheDocument();
   expect(screen.queryByLabelText('Television filler')).not.toBeInTheDocument();
 });
+
+// gaulatti/alcantara#20: configuring is not one way.
+it('removes the radio filler after a confirmation, and says why a removal failed', async () => {
+  const cleared = structuredClone(state);
+  cleared.legs.radio = { pending: null, active: null };
+  const remove = vi
+    .spyOn(api, 'delete')
+    .mockRejectedValueOnce(httpError(502, { message: 'Palazzo could not be reached', error: 'Bad Gateway' }))
+    .mockResolvedValueOnce({ data: cleared });
+  state.legs.radio!.pending = structuredClone(state.legs.television!.pending);
+  render(<ProgramFillerPanel programId="both-1" canManage only="radio" />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Remove radio filler', hidden: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Keep it', hidden: true }));
+  expect(remove).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Remove radio filler', hidden: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Remove', hidden: true }));
+  expect(await screen.findByRole('alert', { hidden: true })).toHaveTextContent('Palazzo could not be reached');
+  fireEvent.click(screen.getByRole('button', { name: 'Remove', hidden: true }));
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Remove radio filler', hidden: true })).toBeNull());
+  expect(remove).toHaveBeenLastCalledWith('/broadcast/programs/both-1/fillers/radio');
+});

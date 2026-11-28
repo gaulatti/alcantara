@@ -207,6 +207,29 @@ export class FillerService {
     return this.getState(programId);
   }
 
+  /**
+   * Removes the program's radio filler configuration (gaulatti/alcantara#20): the older recovery playlist is what a
+   * Start binds again. Nothing is sent to Palazzo and nothing on air changes; a running session keeps the version it
+   * started with. The prepared versions stay on record.
+   */
+  async removeRadio(programId: string) {
+    const program = await this.requireProgram(programId);
+    this.requireLeg(program.type, 'radio');
+    const removed = await this.prisma.fillerLeg.updateMany({
+      where: {
+        programId,
+        leg: 'radio',
+        OR: [
+          { pendingVersionId: { not: null } },
+          { activeVersionId: { not: null } },
+        ],
+      },
+      data: { pendingVersionId: null, activeVersionId: null },
+    });
+    if (removed.count) this.metrics.recordFillerRemoval('radio');
+    return this.getState(programId);
+  }
+
   async prepareRadio(
     programId: string,
     input: { assetIds?: unknown; mode?: unknown; shuffleSeed?: unknown },
