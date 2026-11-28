@@ -806,7 +806,7 @@ it("asks for a second confirmation before talking to a guest cued live", async (
       commands: [{ id: "c9", type: "cue", status: "acknowledged", payload: { cue: "live" }, createdAt: "2026-11-22T12:00:00Z" }],
     }),
   ];
-  serve({ "GET /program/main show/state": () => Response.json({ type: "tv" }) });
+  serve({ "GET /program/main show/control/state": () => Response.json({ type: "tv" }) });
   render(<CallsRoute />);
   await screen.findByText("Ada", { selector: "h3" });
   expect(within(card()).getByText("Live · cued")).toBeVisible();
@@ -834,7 +834,7 @@ it.each([
     }),
   ];
   serve({
-    "GET /program/main show/state": () => (type ? Response.json({ type }) : new Response(null, { status: 500 })),
+    "GET /program/main show/control/state": () => (type ? Response.json({ type }) : new Response(null, { status: 500 })),
   });
   render(<CallsRoute />);
   await screen.findByText("Ada", { selector: "h3" });
