@@ -84,7 +84,7 @@ export class BroadcastDestinationsMcpTools {
           'Lists the full destination catalog with the Secrets Manager reference (not the key) each destination streams with, and its retirement and update times.',
         permission: permissions.manage,
         shape: {},
-        run: () => this.destinations.listCatalog(),
+        run: () => this.destinations.listCatalog(this.pompeii.teamId),
       }),
       readSpec({
         name: 'destination_get_program_state',
@@ -93,7 +93,11 @@ export class BroadcastDestinationsMcpTools {
           'Reads the television broadcast state of a program: its selectable destinations and what the executor reports (requested and actual state, transition, readiness, active and pending destinations). `available` is false when the executor cannot be reached.',
         permission: permissions.view,
         shape: { program_id: programIdArg },
-        run: (args) => this.destinations.getProgramState(args.program_id),
+        run: (args) =>
+          this.destinations.getProgramState(
+            args.program_id,
+            this.pompeii.teamId,
+          ),
       }),
     ];
   }
@@ -128,7 +132,10 @@ export class BroadcastDestinationsMcpTools {
           recoverable: true,
         }),
         run: (args) =>
-          this.destinations.reorderDestinations(args.destination_ids),
+          this.destinations.reorderDestinations(
+            args.destination_ids,
+            this.pompeii.teamId,
+          ),
       }),
       actionSpec({
         name: 'destination_rename_destination',
@@ -195,6 +202,7 @@ export class BroadcastDestinationsMcpTools {
             this.destinations.setRetired(
               args.destination_id,
               retired as boolean,
+              this.pompeii.teamId,
             ),
         }),
       ),
@@ -273,6 +281,7 @@ export class BroadcastDestinationsMcpTools {
         load: (args) =>
           this.destinations.getProgramState(
             args.program_id,
+            this.pompeii.teamId,
           ) as Promise<ProgramBroadcast>,
         id: (args) => args.program_id,
         label: (_args, state) => stateStamp(state),
@@ -295,16 +304,25 @@ export class BroadcastDestinationsMcpTools {
             destination_ids?: string[];
             selection_version?: string;
           };
-          return this.destinations[verb](
-            args.program_id,
-            {
-              commandId: body.command_id,
-              destinationIds: body.destination_ids,
-              selectionVersion: body.selection_version,
-              confirmed: true,
-            },
-            ctx.principal.subject,
-          );
+          const input = {
+            commandId: body.command_id,
+            destinationIds: body.destination_ids,
+            selectionVersion: body.selection_version,
+            confirmed: true,
+          };
+          // A stop selects no destination, so it takes no team.
+          return verb === 'stop'
+            ? this.destinations.stop(
+                args.program_id,
+                input,
+                ctx.principal.subject,
+              )
+            : this.destinations[verb](
+                args.program_id,
+                input,
+                ctx.principal.subject,
+                this.pompeii.teamId,
+              );
         },
       });
     };

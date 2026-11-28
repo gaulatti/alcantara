@@ -158,6 +158,21 @@ destination with no team is not listed until its `teamId` is stamped. A destinat
 caller with a team (HTTP or MCP) is stamped with that team; with no team
 configured it is not stamped.
 
+The other destination routes are confined to the caller's team the same way (#122), over HTTP and
+MCP (which acts as the station's team):
+
+- The program view (`GET /broadcast/programs/:programId`) offers only the caller's team's
+  destinations, exactly what a start would accept.
+- Retire and restore find only the caller's team's destination; another team's is `404`.
+- Reorder (`PUT /broadcast/destinations/order`) orders only the caller's team's catalog: the
+  request lists exactly that team's destinations, or it is refused with `400`. Other teams' order
+  is not touched.
+- A reload or start accepts only the caller's team's current destinations; another team's id is
+  refused like a missing or retired one (`400`), including in a replayed selection version.
+
+With no team configured, every route acts on every destination, as before. Stop selects no
+destination and takes no team.
+
 ## Immutability and idempotency
 
 Catalog entries are mutable planning records. Every reload or Start instead
