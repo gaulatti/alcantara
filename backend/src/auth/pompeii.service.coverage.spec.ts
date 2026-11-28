@@ -1,3 +1,6 @@
+import { isolateEnv } from '../../test/env-isolation';
+const restoreEnv = isolateEnv();
+afterAll(restoreEnv);
 import { Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { credentials, waitForClientReady } from '@grpc/grpc-js';

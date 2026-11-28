@@ -1,3 +1,6 @@
+import { isolateEnv } from '../../test/env-isolation';
+const restoreEnv = isolateEnv();
+afterAll(restoreEnv);
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   BadGatewayException,

@@ -1,3 +1,7 @@
+import { testDatabaseUrl } from '../../test/test-database';
+import { isolateEnv } from '../../test/env-isolation';
+const restoreEnv = isolateEnv();
+afterAll(restoreEnv);
 import { randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { MediaAssetType } from '@prisma/client';
@@ -7,8 +11,6 @@ import { FillerService } from './filler.service';
 
 // CI's coverage step runs without DATABASE_URL and starts this database; a local run sets DATABASE_URL to its own
 // disposable one. Without a database the suite fails rather than passing unrun.
-const CI_DATABASE_URL =
-  'postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci?schema=public';
 
 // gaulatti/alcantara#122: a program's filler may use its team's media assets only.
 describe("filler preparation and the program's team, against Postgres", () => {
@@ -22,8 +24,14 @@ describe("filler preparation and the program's team, against Postgres", () => {
   let metrics: ManagedMetricsService;
   let service: FillerService;
 
+  const savedDatabaseUrl = process.env.DATABASE_URL;
+  afterAll(() => {
+    if (savedDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = savedDatabaseUrl;
+  });
+
   beforeAll(async () => {
-    process.env.DATABASE_URL ||= CI_DATABASE_URL;
+    process.env.DATABASE_URL = testDatabaseUrl();
     prisma = new PrismaService();
     await prisma.$connect();
     for (const [owner, teamId] of [

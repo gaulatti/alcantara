@@ -31,6 +31,22 @@ describe('Brand-literal ratchet invariant', () => {
     }
   });
 
+  it('counts a source it cannot read as empty, and keeps scanning the rest', () => {
+    const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'brand-unreadable-'));
+    const treeDir = path.join(baseDir, 'tree');
+    fs.mkdirSync(treeDir, { recursive: true });
+    fs.writeFileSync(path.join(treeDir, 'readable.ts'), 'export const x = 1;\n');
+    // A link to nothing: listed as a file, and unreadable.
+    fs.symlinkSync(path.join(baseDir, 'missing-target.ts'), path.join(treeDir, 'dangling.ts'));
+
+    try {
+      const scan = scanTree(treeDir, 'test-tree', ['fifthbell'], []);
+      expect(scan.matchesByWord['fifthbell']).toEqual([]);
+    } finally {
+      fs.rmSync(baseDir, { recursive: true, force: true });
+    }
+  });
+
   it('fails when a file path contains a brand word beyond baseline', () => {
     const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'brand-path-'));
     const treeDir = path.join(baseDir, 'tree');

@@ -1,3 +1,4 @@
+import { testDatabaseUrl } from '../../test/test-database';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
@@ -31,18 +32,13 @@ const OTHERS = [
   'BroadcastIngestAccess',
   'BroadcastDestinationKeyChange',
 ];
-const url =
-  process.env.DATABASE_URL ||
-  'postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci?schema=public';
+const url = testDatabaseUrl();
 
 describe('library team backfill migration', () => {
   const schema = `backfill_${process.pid}`;
   let client: Client;
 
   beforeAll(async () => {
-    const parsed = new URL(url);
-    if (!['localhost', '127.0.0.1'].includes(parsed.hostname))
-      throw new Error('backfill spec needs a local database');
     client = new Client({ connectionString: url.split('?')[0] });
     await client.connect();
   });
