@@ -27,9 +27,9 @@ During a bracket draw the server broadcasts, to every program the scene is assig
 
 - `audience_interaction_draw_start`, with `sceneId`, `componentType`, `drawId`, `durationSeconds` and the shuffled `songIds`.
 - `audience_interaction_draw_end`, when the draw timer completes, alongside `scene_update`.
-
-The branded `modoitaliano_bracket_draw_start` and `modoitaliano_bracket_draw_end` are no longer sent. No consumer read
-them: the program page listens to the generic events, and a program template can subscribe only to the generic signals.
+- The earlier `modoitaliano_bracket_draw_start` and `modoitaliano_bracket_draw_end`, with the same fields. The program
+  page (`frontend/app/routes/program.tsx`) still reads these, so they are sent until it reads the generic ones, and are
+  then removed.
 
 ## Song chart identity
 

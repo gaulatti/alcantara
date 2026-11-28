@@ -30,7 +30,9 @@ The Modo Italiano renderers (chyron, clock, bracket, podcast player and the Gior
 
 ## Retired backend bracket naming
 
-The scene bracket's routes, service methods, draw timer and broadcast signals were the last `modoitaliano` names in
-`backend/src` (`scenes/scenes.controller.ts` and `scenes/scenes.service.ts`). They are generic now
-([Generic audience interaction and chart identity](generic-brand-fields.md)), so `backend/modoitaliano` is 0.
+The scene bracket's routes, service methods and draw timer were the last `modoitaliano` names in `backend/src`
+(`scenes/scenes.controller.ts` and `scenes/scenes.service.ts`). They are generic now
+([Generic audience interaction and chart identity](generic-brand-fields.md)), so `backend/modoitaliano` is 1: only the
+earlier draw signal the program page still reads remains in `scenes/scenes.service.ts`. It goes to 0 when that signal is
+removed.
 

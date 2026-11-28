@@ -462,16 +462,19 @@ describe('ScenesService.drawBracket', () => {
     expect(result).toEqual({ drawId: now, durationSeconds: 2, sceneId: 1 });
     const start = program.broadcastUpdate.mock.calls[0][1];
     expect(start).toMatchObject({
-      type: 'audience_interaction_draw_start',
+      type: 'modoitaliano_bracket_draw_start',
       sceneId: 1,
       componentType: TYPE,
       drawId: now,
       durationSeconds: 2,
     });
     expect([...start.songIds].sort()).toEqual([10, 11, 12]);
-    // Each of the two programs gets the generic start signal, and no brand's.
-    expect(program.broadcastUpdate).toHaveBeenCalledTimes(2);
-    expect(program.broadcastUpdate.mock.calls[1][1]).toEqual(start);
+    // Each of the two programs gets the earlier and the generic start signal: the program page reads the earlier one.
+    expect(program.broadcastUpdate).toHaveBeenCalledTimes(4);
+    expect(program.broadcastUpdate.mock.calls[1][1]).toEqual({
+      ...start,
+      type: 'audience_interaction_draw_start',
+    });
 
     // the same seed yields the same order
     program.broadcastUpdate.mockClear();
@@ -492,7 +495,7 @@ describe('ScenesService.drawBracket', () => {
     const types = program.broadcastUpdate.mock.calls.map((c) => c[1].type);
     expect(types).toContain('scene_update');
     expect(types).toContain('audience_interaction_draw_end');
-    expect(types.some((type) => type.startsWith('modoitaliano'))).toBe(false);
+    expect(types).toContain('modoitaliano_bracket_draw_end');
   });
 
   it('falls back to the clock when the seed is not numeric and to default durations', async () => {
@@ -893,6 +896,14 @@ describe('ScenesService generic audience interaction bracket draws and voting', 
     });
 
     expect(program.broadcastUpdate).toHaveBeenCalledWith('main', {
+      type: 'modoitaliano_bracket_draw_start',
+      sceneId: 1,
+      componentType: GENERIC_TYPE,
+      drawId: result.drawId,
+      durationSeconds: 1,
+      songIds: expect.any(Array),
+    });
+    expect(program.broadcastUpdate).toHaveBeenCalledWith('main', {
       type: 'audience_interaction_draw_start',
       sceneId: 1,
       componentType: GENERIC_TYPE,
@@ -903,6 +914,12 @@ describe('ScenesService generic audience interaction bracket draws and voting', 
 
     await jest.advanceTimersByTimeAsync(1000);
 
+    expect(program.broadcastUpdate).toHaveBeenCalledWith('main', {
+      type: 'modoitaliano_bracket_draw_end',
+      sceneId: 1,
+      componentType: GENERIC_TYPE,
+      drawId: result.drawId,
+    });
     expect(program.broadcastUpdate).toHaveBeenCalledWith('main', {
       type: 'audience_interaction_draw_end',
       sceneId: 1,

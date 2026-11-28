@@ -244,7 +244,7 @@ describe('ScenesService persisted scene and program events', () => {
     });
     const start = f.programs.broadcastUpdate.mock.calls[0][1];
     expect(new Set(start.songIds)).toEqual(new Set([3, 4, 5]));
-    expect(start.type).toBe('audience_interaction_draw_start');
+    expect(start.type).toBe('modoitaliano_bracket_draw_start');
     await jest.advanceTimersByTimeAsync(1000);
     const saved = JSON.parse(f.current().metadata)['modoitaliano-giorgia-bracket'];
     expect(saved.matches[8]).toEqual({
@@ -257,7 +257,7 @@ describe('ScenesService persisted scene and program events', () => {
     expect(f.programs.broadcastUpdate).toHaveBeenCalledWith(
       'program-b',
       expect.objectContaining({
-        type: 'audience_interaction_draw_end',
+        type: 'modoitaliano_bracket_draw_end',
         drawId: started.drawId,
         sceneId: 7,
       }),
@@ -273,7 +273,7 @@ describe('ScenesService persisted scene and program events', () => {
     expect(f.prisma.scene.update).toHaveBeenCalledTimes(1);
     expect(
       f.programs.broadcastUpdate.mock.calls.map((call) => call[1].type),
-    ).not.toContain('audience_interaction_draw_end');
+    ).not.toContain('modoitaliano_bracket_draw_end');
   });
 
   it('replaces a previous draw timer and uses the configured fallback duration', async () => {

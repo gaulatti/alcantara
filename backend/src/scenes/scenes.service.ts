@@ -174,6 +174,15 @@ export class ScenesService {
     this.cancelBracketDraw(id);
     const programIds = await this.programService.getProgramIdsByAssignedScene(id);
     for (const programId of programIds) {
+      // The program page still reads the earlier, branded signal: it goes once that page reads the generic one.
+      this.programService.broadcastUpdate(programId, {
+        type: 'modoitaliano_bracket_draw_start',
+        sceneId: id,
+        componentType,
+        drawId: now,
+        durationSeconds,
+        songIds: shuffledSongIds,
+      });
       this.programService.broadcastUpdate(programId, {
         type: 'audience_interaction_draw_start',
         sceneId: id,
@@ -273,6 +282,7 @@ export class ScenesService {
     }, teamId);
     const programIds = await this.programService.getProgramIdsByAssignedScene(sceneId);
     for (const programId of programIds) {
+      this.programService.broadcastUpdate(programId, { type: 'modoitaliano_bracket_draw_end', sceneId, componentType, drawId });
       this.programService.broadcastUpdate(programId, {
         type: 'audience_interaction_draw_end',
         sceneId,
