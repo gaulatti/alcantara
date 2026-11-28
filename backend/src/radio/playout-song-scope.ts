@@ -7,6 +7,7 @@ import {
   type RadioSongScopePath,
   type RadioSongScopeReason,
 } from './radio-metrics.service';
+import { readProgramTeam } from '../tenancy/program-team';
 
 /**
  * The song reads playout makes while a program is on air (gaulatti/alcantara#122): analysis for a command, recognising
@@ -36,11 +37,7 @@ export class PlayoutSongScope {
   ): Promise<T> {
     if (this.pompeii.teamId === 0) return query(this.prisma);
     try {
-      const program = await this.prisma.program.findUnique({
-        where: { programId },
-        select: { teamId: true },
-      });
-      const teamId = program?.teamId;
+      const teamId = await readProgramTeam(this.prisma, programId);
       if (!teamId || teamId <= 0) {
         this.refuse(path, programId, 'no-team');
         return query(this.prisma);

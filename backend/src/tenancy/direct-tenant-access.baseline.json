@@ -47,9 +47,6 @@
     "program": 1,
     "scene": 1
   },
-  "src/radio/playout-song-scope.ts": {
-    "program": 1
-  },
   "src/radio/radio-scope-preflight.service.ts": {
     "program": 1,
     "song": 1
