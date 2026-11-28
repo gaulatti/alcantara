@@ -16,7 +16,7 @@ import type {
  */
 
 /** The clocks read the playing song through this; the identity is stable on purpose. */
-const audioBus = { getSnapshot: getProgramAudioBusSnapshot, subscribe: subscribeProgramAudioBus };
+export const audioBus = { getSnapshot: getProgramAudioBusSnapshot, subscribe: subscribeProgramAudioBus };
 
 const Chyron = lazy(async () => ({ default: (await import('@modoitaliano/giorgia/scenes')).ModoItalianoGiorgiaChyron }));
 const Clock = lazy(async () => ({ default: (await import('@modoitaliano/giorgia/scenes')).ModoItalianoGiorgiaClock }));

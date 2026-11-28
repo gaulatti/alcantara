@@ -9,6 +9,7 @@ import { expect, it } from 'vitest';
 const ALLOWED = new Set([
   'ModoItalianoProgramRow.tsx',
   'ModoItalianoProgramRow.test.tsx',
+  'ModoItalianoProgramRow.library.test.tsx',
   'ModoItalianoGiorgiaArtistBumper.tsx',
   'ModoItalianoGiorgiaArtistBumper.test.tsx',
   'ModoItalianoGiorgiaArtistBumperPlayer.tsx',

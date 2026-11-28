@@ -32,6 +32,7 @@ import {
   Scoreboard
 } from '../components';
 import RelojClone from '../components/RelojClone';
+import { CornerBug, FadeToBlack, FullScreen, LowerThird, SceneNotice } from '../components/sceneParts';
 import { normalizeSceneComponentTypes, normalizeSceneMetadata, resolveProgramRow } from '../utils/programRow';
 import { ModoItalianoProgramRow } from '../components/ModoItalianoProgramRow';
 import RelojLoopClock from '../components/RelojLoopClock';
@@ -1547,7 +1548,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
     }
   ) => {
     if (!scene) {
-      return <div className='w-full h-full flex items-center justify-center text-white text-4xl'>No Active Scene</div>;
+      return <SceneNotice message='No Active Scene' placement='frame' />;
     }
 
     // A retired chyron or clock id renders through its Giorgia replacement, with the props stored under either key.
@@ -1932,20 +1933,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                 return <CronicaReiteramos key={componentType} text={props.text} show={props.show} />;
               default:
                 console.warn('Unknown component type:', componentType);
-                return (
-                  <div
-                    key={componentType}
-                    style={{
-                      position: 'absolute',
-                      top: '50%',
-                      left: '50%',
-                      transform: 'translate(-50%, -50%)',
-                      color: 'white'
-                    }}
-                  >
-                    Unknown component: {componentType}
-                  </div>
-                );
+                return <SceneNotice key={componentType} message={`Unknown component: ${componentType}`} placement='centre' />;
             }
           };
 
@@ -1992,14 +1980,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       <div className='relative overflow-hidden bg-black' style={{ width: '1920px', height: '1080px' }} data-confidence-monitor={confidenceMode}>
         <div className='absolute inset-0'>{renderScene(confidenceScene, { forceStreamMuted: true })}</div>
         {confidenceMode === 'program' ? (
-          <div
-            className='pointer-events-none absolute inset-0 z-[2000] bg-black'
-            data-confidence-fade-to-black={state?.fadeToBlack ? 'active' : 'inactive'}
-            style={{
-              opacity: state?.fadeToBlack ? 1 : 0,
-              transition: shouldAnimateFadeToBlack ? 'opacity 1000ms linear' : 'none'
-            }}
-          />
+          <FadeToBlack marker='data-confidence-fade-to-black' active={Boolean(state?.fadeToBlack)} animate={shouldAnimateFadeToBlack} />
         ) : null}
       </div>
     );
@@ -2020,40 +2001,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
         </div>
       ))}
       {activeTransition && <SceneTransitionOverlay key={activeTransition.sequence} transition={activeTransition.preset} />}
-      <div
-        className='pointer-events-none absolute inset-0 z-[2000] bg-black'
-        data-fade-to-black={state?.fadeToBlack ? 'active' : 'inactive'}
-        style={{
-          opacity: state?.fadeToBlack ? 1 : 0,
-          transition: shouldAnimateFadeToBlack ? 'opacity 1000ms linear' : 'none'
-        }}
-      />
-    </div>
-  );
-}
-
-function LowerThird({ text }: { text?: string }) {
-  return (
-    <div className='absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-r from-blue-600 to-blue-800 flex items-center px-16'>
-      <div className='text-white'>
-        <div className='text-5xl font-bold'>{text || 'Lower Third'}</div>
-      </div>
-    </div>
-  );
-}
-
-function FullScreen({ text }: { text?: string }) {
-  return (
-    <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-900 to-blue-900'>
-      <div className='text-white text-8xl font-bold text-center px-16'>{text || 'Full Screen'}</div>
-    </div>
-  );
-}
-
-function CornerBug({ text }: { text?: string }) {
-  return (
-    <div className='absolute top-8 right-8 bg-red-600 text-white px-8 py-4 rounded-lg shadow-2xl'>
-      <div className='text-3xl font-bold'>{text || 'LIVE'}</div>
+      <FadeToBlack marker='data-fade-to-black' active={Boolean(state?.fadeToBlack)} animate={shouldAnimateFadeToBlack} />
     </div>
   );
 }
