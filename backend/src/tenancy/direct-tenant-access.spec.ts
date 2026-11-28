@@ -12,26 +12,40 @@ import { TENANCY_CLASSIFICATION } from './tenancy-classification';
 // uses that exist today are listed in direct-tenant-access.baseline.json; a new one fails, and a fixed one must be
 // taken off the list. Moving a service onto the scoped client (`forTeam`) is #122's later slices.
 const BACKEND = join(__dirname, '../..');
-const BASELINE = JSON.parse(readFileSync(join(__dirname, 'direct-tenant-access.baseline.json'), 'utf8')) as Record<
-  string,
-  Record<string, number>
->;
+const BASELINE = JSON.parse(
+  readFileSync(join(__dirname, 'direct-tenant-access.baseline.json'), 'utf8'),
+) as Record<string, Record<string, number>>;
 
 describe('direct tenant-model access outside the tenancy module', () => {
   it('adds no use the baseline does not list', () => {
-    const { added } = directAccessProblems(scanDirectTenantUses(BACKEND), BASELINE);
+    const { added } = directAccessProblems(
+      scanDirectTenantUses(BACKEND),
+      BASELINE,
+    );
     expect(added).toEqual([]);
   });
 
   it('lists no use that is gone, so the baseline only goes down', () => {
-    const { stale } = directAccessProblems(scanDirectTenantUses(BACKEND), BASELINE);
+    const { stale } = directAccessProblems(
+      scanDirectTenantUses(BACKEND),
+      BASELINE,
+    );
     expect(stale).toEqual([]);
   });
 
   it('covers every tenant model of the classification, under its client delegate name', () => {
-    const tenants = Object.entries(TENANCY_CLASSIFICATION).filter(([, tenancy]) => tenancy.kind === 'tenant');
+    const tenants = Object.entries(TENANCY_CLASSIFICATION).filter(
+      ([, tenancy]) => tenancy.kind === 'tenant',
+    );
     expect(TENANT_DELEGATES).toHaveLength(tenants.length);
-    expect(TENANT_DELEGATES).toEqual(expect.arrayContaining(['song', 'mediaAsset', 'broadcastDestinationKeyChange', 'program']));
+    expect(TENANT_DELEGATES).toEqual(
+      expect.arrayContaining([
+        'song',
+        'mediaAsset',
+        'broadcastDestinationKeyChange',
+        'program',
+      ]),
+    );
   });
 });
 
@@ -73,9 +87,17 @@ describe('directAccessProblems', () => {
         { 'src/a.ts': { song: 1, scene: 1 }, 'src/gone.ts': { stinger: 2 } },
       ),
     ).toEqual({
-      added: ['src/a.ts: prisma.song 2 (baseline 1)', 'src/new.ts: prisma.media 1 (baseline 0)'],
+      added: [
+        'src/a.ts: prisma.song 2 (baseline 1)',
+        'src/new.ts: prisma.media 1 (baseline 0)',
+      ],
       stale: ['src/gone.ts: prisma.stinger 0 (baseline 2)'],
     });
-    expect(directAccessProblems({ 'src/a.ts': { song: 1 } }, { 'src/a.ts': { song: 1 } })).toEqual({ added: [], stale: [] });
+    expect(
+      directAccessProblems(
+        { 'src/a.ts': { song: 1 } },
+        { 'src/a.ts': { song: 1 } },
+      ),
+    ).toEqual({ added: [], stale: [] });
   });
 });

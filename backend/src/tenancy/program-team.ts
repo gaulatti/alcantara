@@ -6,7 +6,10 @@ import type { PrismaService } from '../prisma.service';
  * handling (refuse, count, or fall back); ProgramTeamAccess.teamOf is the cached, never-failing form for a check.
  * It lives in the tenancy module, the one place allowed to read a tenant model with the unscoped client.
  */
-export async function readProgramTeam(prisma: PrismaService, programId: string): Promise<number | null> {
+export async function readProgramTeam(
+  prisma: PrismaService,
+  programId: string,
+): Promise<number | null> {
   const program = await prisma.program.findUnique({
     where: { programId },
     select: { teamId: true },
