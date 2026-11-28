@@ -46,6 +46,38 @@ keeps its template's versioned projection instead. For a program with no templat
 
 The console reads the control routes.
 
+### The public contract, version 1 (gaulatti/alcantara#25)
+
+The public state, stream and audio bus above are the renderer's contract, `contractVersion` 1
+(`PUBLIC_PROGRAM_CONTRACT_VERSION` in `backend/src/program/public-projection.ts`). A templated program keeps its own
+`schemaVersion` instead, and its stream carries no `contractVersion`.
+
+- **Version.** The stream's `program_state_snapshot` carries `contractVersion: 1`. A change that removes or renames a
+  field a renderer reads raises it; adding a field does not.
+- **What it never carries.** No public event carries who acted on a change: `actorPrincipalId`, `actorVia` and
+  `actorClient` are dropped from every event, and the control stream keeps them. No public route or event carries a
+  renderer key, a credential, a secret, the scene list, the song queue or any other control field.
+- **No commands.** Every public program route is a read (`GET` or the stream). The only exceptions are the renderer
+  page's own reports, `POST /program/{programId}/audio-meter` and `POST /program/{programId}/countdown/complete`. Each
+  is checked by the renderer write guard, which takes an operator's sign-in or the program's renderer key, not by the
+  sign-in guard. `program.public-bounds.http.spec.ts` holds the public surface to that list.
+- **Heartbeat.** The public stream of a program with no template sends
+  `{ "type": "heartbeat", "programId", "sentAt" }` every 15 s, so a renderer can tell a quiet stream from a dead one.
+  It carries no `version`, so a renderer's version watermark never moves on it, and a renderer that does not read it
+  ignores it. A templated program sends one only when its manifest declares the `heartbeat` signal. The control stream
+  sends one every 15 s.
+- **Reconnect and reconciliation.** Every connection is a new subscriber: it is subscribed to live events first, then
+  sent a complete `program_state_snapshot`, then the events that arrived meanwhile. Nothing is replayed between
+  connections. Events carry no SSE `id`, and `Last-Event-ID` is not read, so a renderer that reconnects recovers from
+  the snapshot that opens the new stream. A renderer keeps showing its last good state while the stream is down,
+  reconnects (a browser `EventSource` does so on its own), and applies the new snapshot. After a backend restart it
+  also forgets the versions it saw, as described below.
+- **Origins.** The browser-facing routes answer the API's CORS policy (`backend/src/cors.ts`). It lists the Fifth
+  Bell origins `https://fifthbell.com` and `https://cdn.fifthbell.com`, the console's own origins (whose program output
+  page reads these same routes on air), the desktop app, `ALLOWED_ORIGINS` and the approved template origins. Outside
+  production it also allows a page served from this machine; the opaque `null` origin is never allowed. The policy is
+  not narrowed to the Fifth Bell origins alone, because Alcántara's own on-air output page reads these routes too.
+
 Control treats SSE as the authoritative channel and keeps it connected whenever
 the console is open. The console does not attempt WebSocket during the initial
 SSE handshake. The authenticated control WebSocket connects only after SSE
