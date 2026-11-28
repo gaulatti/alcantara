@@ -232,6 +232,8 @@ describe('ExternalSourcesService coverage', () => {
 
     it.each([
       ['unset', {}, 16, 15],
+      ['empty', { EXTERNAL_SOURCE_TEAM_QUOTA: '' }, 16, 15],
+      ['null', { EXTERNAL_SOURCE_TEAM_QUOTA: null }, 16, 15],
       ['non numeric', { EXTERNAL_SOURCE_TEAM_QUOTA: 'abc' }, 16, 15],
       ['below 1', { EXTERNAL_SOURCE_TEAM_QUOTA: '0' }, 16, 15],
       ['above 100', { EXTERNAL_SOURCE_TEAM_QUOTA: '101' }, 16, 15],

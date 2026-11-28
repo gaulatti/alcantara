@@ -1,3 +1,6 @@
+import { isolateEnv } from '../../test/env-isolation';
+const restoreEnv = isolateEnv();
+afterAll(restoreEnv);
 import { ConfigService } from '@nestjs/config';
 import { RoomServiceClient } from 'livekit-server-sdk';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';

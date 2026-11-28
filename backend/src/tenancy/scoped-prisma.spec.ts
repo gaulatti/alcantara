@@ -1,3 +1,4 @@
+import { testDatabaseUrl } from '../../test/test-database';
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { createPostgresAdapter } from '../prisma-adapter';
@@ -11,23 +12,6 @@ import { TENANCY_CLASSIFICATION } from './tenancy-classification';
 // CI's documented local database (.github/workflows/ci.yml), started and migrated before
 // test:coverage, which runs without DATABASE_URL. A local run sets DATABASE_URL to its own
 // disposable database.
-const CI_DATABASE_URL =
-  'postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci?schema=public';
-
-function testDatabaseUrl(): string {
-  const value = process.env.DATABASE_URL || CI_DATABASE_URL;
-  const url = new URL(value);
-  if (
-    !['localhost', '127.0.0.1'].includes(url.hostname) ||
-    url.pathname !== '/alcantara_ci'
-  ) {
-    throw new Error(
-      'scoped-prisma.spec.ts runs only against a local alcantara_ci test PostgreSQL.',
-    );
-  }
-  return value;
-}
-
 const RUN = randomUUID();
 const TEAM_A = 2_000_000_001;
 const TEAM_B = 2_000_000_002;

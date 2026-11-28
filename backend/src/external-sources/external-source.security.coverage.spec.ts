@@ -1,3 +1,6 @@
+import { isolateEnv } from '../../test/env-isolation';
+const restoreEnv = isolateEnv();
+afterAll(restoreEnv);
 /* eslint-disable @typescript-eslint/no-require-imports */
 import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';

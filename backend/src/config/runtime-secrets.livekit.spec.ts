@@ -1,3 +1,6 @@
+import { isolateEnv } from '../../test/env-isolation';
+const restoreEnv = isolateEnv();
+afterAll(restoreEnv);
 import { ConfigService } from '@nestjs/config';
 import { loadRuntimeSecrets } from './runtime-secrets';
 import { parseRuntimeSecretPayload } from './runtime-secret-contract';
