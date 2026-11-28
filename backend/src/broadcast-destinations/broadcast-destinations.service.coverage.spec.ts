@@ -113,6 +113,11 @@ function harness(programType = 'both') {
     },
   };
   const prisma = {
+    // The team-scoped client (gaulatti/alcantara#122) as a pass-through: its scoping is proven in scoped-prisma.spec,
+    // and the explicit team filters these cases check are still applied by the service.
+    $extends: jest.fn(function (this: unknown) {
+      return this;
+    }),
     programState: {
       findUnique: jest
         .fn()
@@ -257,6 +262,17 @@ describe('BroadcastDestinationsService coverage', () => {
       expect(h.prisma.broadcastDestination.findMany).toHaveBeenLastCalledWith(
         expect.objectContaining({ where: { teamId: 7 } }),
       );
+    });
+
+    it("reads the list, the catalog and a rename through the caller's team-scoped client, and unscoped for team 0", async () => {
+      const h = harness();
+      await h.service.listDestinations(7);
+      await h.service.listCatalog(7);
+      expect(h.prisma.$extends).toHaveBeenCalledTimes(2);
+      expect(h.prisma.$extends).toHaveBeenCalledWith(expect.objectContaining({ name: 'team-7' }));
+      await h.service.listDestinations(0);
+      await h.service.listCatalog();
+      expect(h.prisma.$extends).toHaveBeenCalledTimes(2);
     });
 
     describe('rename', () => {
