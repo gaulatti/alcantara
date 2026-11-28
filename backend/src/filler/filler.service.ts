@@ -22,6 +22,7 @@ import {
 } from '../broadcast-destinations/broadcast-destinations.types';
 import { PalazzoMachineClient } from '../radio/palazzo-machine.client';
 import { readManagedMediaDigest } from './managed-media-digest';
+import { readProgramTeam } from '../tenancy/program-team';
 
 export type FillerLegName = 'television' | 'radio';
 export type FillerStatus = 'preparing' | 'ready' | 'failed';
@@ -66,12 +67,9 @@ export class FillerService {
     leg: FillerLegName,
   ): Promise<PrismaService> {
     if (this.pompeii.teamId === 0) return this.prisma;
-    const program = await this.prisma.program.findUnique({
-      where: { programId },
-      select: { teamId: true },
-    });
-    if (program?.teamId && program.teamId > 0) {
-      return forTeam(this.prisma, program.teamId) as unknown as PrismaService;
+    const teamId = await readProgramTeam(this.prisma, programId);
+    if (teamId && teamId > 0) {
+      return forTeam(this.prisma, teamId) as unknown as PrismaService;
     }
     this.metrics.recordFillerPreparation(leg, 'no-team');
     throw new BadRequestException(

@@ -20,9 +20,6 @@
   "src/external-sources/external-sources.service.ts": {
     "externalSource": 9
   },
-  "src/filler/filler.service.ts": {
-    "program": 1
-  },
   "src/media-assets/media-asset-team-gauge.service.ts": {
     "mediaAsset": 1
   },
