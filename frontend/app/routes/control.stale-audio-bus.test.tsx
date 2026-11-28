@@ -24,8 +24,8 @@ const desk = vi.hoisted(() => ({
   onMessage: null as null | ((data: unknown) => void),
 }));
 
-vi.mock("../hooks/useSSE", () => ({
-  useSSE: (options: { onMessage?: (data: unknown) => void }) => {
+vi.mock("../hooks/useProgramEvents", () => ({
+  useProgramEvents: (options: { onMessage?: (data: unknown) => void }) => {
     desk.onMessage = options.onMessage ?? null;
     return { isConnected: true };
   },
@@ -103,13 +103,13 @@ beforeEach(() => {
     "GET /scenes": Response.json([]),
     "GET /instants": Response.json([]),
     "GET /songs?limit=0": Response.json({ data: [] }),
-    "GET /program/main/state": Response.json(programState("main")),
+    "GET /program/main/control/state": Response.json(programState("main")),
     "GET /program/main/media-groups": Response.json([]),
-    "GET /program/main/audio-bus": () =>
+    "GET /program/main/control/audio-bus": () =>
       Response.json(audioBus("main", 3, 0.6)),
-    "GET /program/other/state": Response.json(programState("other")),
+    "GET /program/other/control/state": Response.json(programState("other")),
     "GET /program/other/media-groups": Response.json([]),
-    "GET /program/other/audio-bus": () =>
+    "GET /program/other/control/audio-bus": () =>
       Response.json(audioBus("other", 3, 0.3)),
   });
 });
@@ -294,7 +294,7 @@ it("shows no playlist failure and reads nothing again for the program left when 
   fireEvent.click(screen.getByRole("button", { name: "Loop playlist: on" }));
   await waitFor(() => expect(puts("main")).toHaveLength(1));
   await switchToOther(rendered);
-  const mainReads = server.requests("GET /program/main/audio-bus").length;
+  const mainReads = server.requests("GET /program/main/control/audio-bus").length;
   await act(async () => {
     save.answer(new Response("down", { status: 503 }));
   });
@@ -308,7 +308,7 @@ it("shows no playlist failure and reads nothing again for the program left when 
       .map((alert) => alert.textContent ?? "")
       .filter((text) => /Rotation was not changed|503|\bdown\b/.test(text)),
   ).toEqual([]);
-  expect(server.requests("GET /program/main/audio-bus")).toHaveLength(
+  expect(server.requests("GET /program/main/control/audio-bus")).toHaveLength(
     mainReads,
   );
   expect(screen.getAllByText("Fictional other song").length).toBeGreaterThan(0);

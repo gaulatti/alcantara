@@ -6,6 +6,7 @@ import { authFetch } from '../services/api';
 import { useFeatures } from '../hooks/useFeatures';
 import { useGlobalProgramId } from '../utils/globalProgram';
 import { apiUrl } from '../utils/apiBaseUrl';
+import { fetchProgramControl } from '../services/programControl';
 import type { Route } from './+types/calls';
 import { AppPage } from '../components/AppPage';
 import { CallHealthBanner } from '../components/CallHealthBanner';
@@ -117,7 +118,7 @@ function CallsDesk({ programId }: { programId: string }) {
   useEffect(() => {
     let cancelled = false;
     setProgramType(null);
-    fetch(apiUrl(`/program/${encodeURIComponent(programId)}/state`))
+    fetchProgramControl(programId, 'state')
       .then((response) => (response.ok ? response.json() : null))
       .then((state: { type?: unknown } | null) => {
         const type = state?.type;

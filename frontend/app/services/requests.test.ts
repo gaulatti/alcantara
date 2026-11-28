@@ -36,8 +36,8 @@ const flightCases: Case[] = [
   { name: "generateTaggedLog", call: () => flight.generateTaggedLog("my prog", 4, 9, { slots: [], artistSeparation: 2 }), path: `/program/${P}/flight/4/generate`, method: "POST", body: { revision: 9, rules: { slots: [], artistSeparation: 2 } }, failMessage: rundown },
 ];
 const programCases: Case[] = [
-  { name: "fetchProgramState", call: () => program.fetchProgramState("my prog"), path: `/program/${P}/state`, failMessage: http },
-  { name: "fetchProgramAudioBusSettings", call: () => program.fetchProgramAudioBusSettings("my prog"), path: `/program/${P}/audio-bus`, failMessage: http },
+  { name: "fetchProgramState", call: () => program.fetchProgramState("my prog"), path: `/program/${P}/control/state`, failMessage: http },
+  { name: "fetchProgramAudioBusSettings", call: () => program.fetchProgramAudioBusSettings("my prog"), path: `/program/${P}/control/audio-bus`, failMessage: http },
   { name: "persistMixerSettings", call: () => program.persistMixerSettings("my prog", { mainMasterVolume: 1, mixerChannels: [] }), path: `/program/${P}/audio-bus`, method: "PUT", body: { mixerSettings: { mainMasterVolume: 1, mixerChannels: [] } }, failMessage: http },
   { name: "saveProgramAudioBusSongSequence", call: () => program.saveProgramAudioBusSongSequence("my prog", [1, 2]), path: `/program/${P}/audio-bus`, method: "PUT", body: { songSequence: [1, 2] }, failMessage: http },
   { name: "fetchProgramAudioMeter", call: () => program.fetchProgramAudioMeter("my prog"), path: `/program/${P}/audio-meter`, failMessage: http },

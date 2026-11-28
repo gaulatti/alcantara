@@ -17,10 +17,10 @@ const sse = vi.hoisted(() => ({
 }));
 const program = vi.hoisted(() => ({ id: "main" }));
 
-vi.mock("../hooks/useSSE", async () => {
+vi.mock("../hooks/useProgramEvents", async () => {
   const { useEffect } = await import("react");
   return {
-    useSSE: (options: {
+    useProgramEvents: (options: {
       onConnectionStateChange?: (state: string) => void;
     }) => {
       sse.report = (state: string) => options.onConnectionStateChange?.(state);
@@ -90,7 +90,7 @@ beforeEach(() => {
   stubConsoleBrowser();
   server = controlServer({
     "GET /scenes": Response.json([headlines, desk]),
-    "GET /program/main/state": () => Response.json(programState()),
+    "GET /program/main/control/state": () => Response.json(programState()),
     "POST /auth/realtime-ticket": () => Response.json({ ticket: "ticket-1" }),
   });
 });
@@ -390,14 +390,14 @@ it("starts its versions again and reloads the show when the link reconnects, so 
     }),
   );
   await waitFor(() => expect(statusOf("Fictional desk")).toBe("Program"));
-  const reads = server.requests("GET /program/main/state").length;
+  const reads = server.requests("GET /program/main/control/state").length;
   act(() => socket.emit("close"));
   await act(() => vi.advanceTimersByTimeAsync(1500));
   await waitFor(() => expect(FakeSocket.instances).toHaveLength(2));
   act(() => FakeSocket.instances[1].open());
   // The reconnect reloads the show from the process it reached.
   await waitFor(() =>
-    expect(server.requests("GET /program/main/state").length).toBeGreaterThan(reads),
+    expect(server.requests("GET /program/main/control/state").length).toBeGreaterThan(reads),
   );
   await waitFor(() => expect(statusOf("Fictional headlines")).toBe("Program"));
   // The restarted backend's first update, at version 1, is applied.
@@ -416,16 +416,16 @@ it("reloads the show when the event stream reconnects, and not on its first conn
   sse.state = "connected";
   render(<Control />);
   await screen.findAllByText("Fictional headlines");
-  const reads = server.requests("GET /program/main/state").length;
-  const busReads = server.requests("GET /program/main/audio-bus").length;
+  const reads = server.requests("GET /program/main/control/state").length;
+  const busReads = server.requests("GET /program/main/control/audio-bus").length;
   act(() => sse.report!("connected"));
-  expect(server.requests("GET /program/main/state")).toHaveLength(reads);
+  expect(server.requests("GET /program/main/control/state")).toHaveLength(reads);
   act(() => sse.report!("connecting"));
   act(() => sse.report!("connected"));
   await waitFor(() =>
-    expect(server.requests("GET /program/main/state").length).toBeGreaterThan(reads),
+    expect(server.requests("GET /program/main/control/state").length).toBeGreaterThan(reads),
   );
-  expect(server.requests("GET /program/main/audio-bus").length).toBeGreaterThan(busReads);
+  expect(server.requests("GET /program/main/control/audio-bus").length).toBeGreaterThan(busReads);
 });
 
 it("closes the link when the console leaves, and ignores what it still delivers", async () => {
@@ -483,7 +483,7 @@ it("closes a link that opens after the console left", async () => {
 });
 
 describe("while neither the event stream nor the link is up", () => {
-  const stateReads = () => server.requests("GET /program/main/state").length;
+  const stateReads = () => server.requests("GET /program/main/control/state").length;
 
   it("reads the show after a moment and then polls it, but not while the page is hidden", async () => {
     vi.useFakeTimers({
@@ -498,7 +498,7 @@ describe("while neither the event stream nor the link is up", () => {
     await act(() => vi.advanceTimersByTimeAsync(900));
     await waitFor(() => expect(stateReads()).toBe(opening + 1));
     expect(
-      server.requests("GET /program/main/audio-bus").length,
+      server.requests("GET /program/main/control/audio-bus").length,
     ).toBeGreaterThan(1);
 
     await act(() => vi.advanceTimersByTimeAsync(5000));
@@ -537,7 +537,7 @@ describe("while neither the event stream nor the link is up", () => {
 
 it("applies updates that arrive while the show's state is still loading", async () => {
   server.answer(
-    "GET /program/main/state",
+    "GET /program/main/control/state",
     new Response("down", { status: 500 }),
   );
   render(<Control />);
@@ -555,7 +555,7 @@ it("applies updates that arrive while the show's state is still loading", async 
 
 it("updates a staged scene the show does not list, and reads updates without a show id as another show's", async () => {
   const guest = scene(9, "Fictional guest");
-  server.answer("GET /program/main/state", () =>
+  server.answer("GET /program/main/control/state", () =>
     Response.json(
       programState(undefined, { stagedSceneId: 9, stagedScene: guest }),
     ),
@@ -608,22 +608,22 @@ it("stages a source over an open link without reading the show again", async () 
     Response.json({ version: 1, stagedSceneId: 2, stagedScene: desk }),
   );
   await openLink();
-  const reads = server.requests("GET /program/main/state").length;
+  const reads = server.requests("GET /program/main/control/state").length;
   fireEvent.click(source("Fictional desk"));
   await waitFor(() => expect(source("Fictional desk")).toHaveAttribute("aria-pressed", "true"));
   expect(server.requests("POST /program/main/stage")).toHaveLength(1);
-  expect(server.requests("GET /program/main/state")).toHaveLength(reads);
+  expect(server.requests("GET /program/main/control/state")).toHaveLength(reads);
 });
 
 it("says a TAKE could not add its scene when the studio gives no reason, without reading the show again", async () => {
-  server.answer("GET /program/main/state", () => Response.json(programState([headlines])));
+  server.answer("GET /program/main/control/state", () => Response.json(programState([headlines])));
   // Staging answers with a scene the show does not list, so TAKE has to add it first.
   server.answer("POST /program/main/stage", () =>
     Response.json({ version: 1, stagedSceneId: 2, stagedScene: desk }),
   );
   server.answer("POST /program/main/scenes", () => Response.json({}, { status: 409 }));
   await openLink();
-  const reads = server.requests("GET /program/main/state").length;
+  const reads = server.requests("GET /program/main/control/state").length;
   fireEvent.click(source("Fictional headlines"));
   await waitFor(() => expect(server.requests("POST /program/main/stage")).toHaveLength(1));
   await act(async () => {
@@ -632,7 +632,7 @@ it("says a TAKE could not add its scene when the studio gives no reason, without
   // The TAKE button only follows scenes the show lists; the Space shortcut takes whatever is staged.
   fireEvent.keyDown(window, { code: "Space", key: " " });
   expect(await screen.findByText("The scene could not be added to this show.")).toBeInTheDocument();
-  expect(server.requests("GET /program/main/state")).toHaveLength(reads);
+  expect(server.requests("GET /program/main/control/state")).toHaveLength(reads);
 });
 
 it("does not reconnect when the link closes after the console has left", async () => {
@@ -650,7 +650,7 @@ it("says nothing about a TAKE that fails after the operator has switched show", 
   );
   let fail!: (reason: Error) => void;
   server.answer("POST /program/main/activate", () => new Promise<Response>((_resolve, reject) => (fail = reject)));
-  server.answer("GET /program/second/state", () => Response.json(programState([headlines, desk])));
+  server.answer("GET /program/second/control/state", () => Response.json(programState([headlines, desk])));
   const { view } = await openLink();
   fireEvent.click(source("Fictional desk"));
   await waitFor(() => expect(source("Fictional desk")).toHaveAttribute("aria-pressed", "true"));

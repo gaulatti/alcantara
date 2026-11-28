@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { activateScene, completeSceneCountdown } from "./program";
 vi.mock("../utils/apiBaseUrl", () => ({
+  getApiBaseUrl: () => "http://api.test",
   apiUrl: (path: string) => `http://api.test${path}`,
 }));
 afterEach(() => vi.unstubAllGlobals());
