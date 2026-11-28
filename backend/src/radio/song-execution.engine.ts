@@ -2074,12 +2074,17 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     // active song itself or a track this backend never issued. An idle read in between (the foreign track ended, an
     // operator's take not started yet) or a late read of one of its own earlier songs must not end the active song
     // and command over it.
-    if (
-      (trigger === 'unissued_playback' || trigger === 'stale_active') &&
-      !this.playsActiveOrUnissued(snapshot, this.states.get(programId))
-    ) {
-      this.metrics.recordEngineResync(trigger, 'undecided');
-      return;
+    if (trigger === 'unissued_playback' || trigger === 'stale_active') {
+      const state = this.states.get(programId);
+      if (state && this.playsAnnouncedNext(snapshot, state)) {
+        this.metrics.recordEngineResync(trigger, 'playing');
+        this.promoteAnnouncedOnAir(programId, state, snapshot);
+        return;
+      }
+      if (!this.playsActiveOrUnissued(snapshot, state)) {
+        this.metrics.recordEngineResync(trigger, 'undecided');
+        return;
+      }
     }
     this.metrics.recordEngineResync(
       trigger,
@@ -5653,6 +5658,59 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       `Palazzo reports playback ${requestId} on ${programId}, which this backend did not issue, while ${song.playbackRequestId} has no report; reading Palazzo's state`,
     );
     void this.resync(programId, 'unissued_playback');
+  }
+
+  /**
+   * Palazzo plays the next song this engine announced to follow the active one: the active song's end and the next's
+   * start were both lost. An operator's take replaces the active song, so a take never matches.
+   */
+  private playsAnnouncedNext(
+    snapshot: PalazzoPlaybackState,
+    state: SongEngineState,
+  ): boolean {
+    const announcement = state.announcement;
+    return (
+      snapshot.status === 'playing' &&
+      !!announcement &&
+      announcement.status === 'accepted' &&
+      snapshot.track?.playbackRequestId === announcement.playbackId &&
+      !!state.activeSong &&
+      state.activeSong.playbackRequestId === announcement.forRequestId
+    );
+  }
+
+  /**
+   * The announced next is on air with its start and the active song's end both lost: its start is recorded from
+   * Palazzo's state as a seen start would be, and the active song ends as at an idle read, so the handoff promotes the
+   * announced song (already started, so nothing is commanded) and the rotation goes on from it.
+   */
+  private promoteAnnouncedOnAir(
+    programId: string,
+    state: SongEngineState,
+    snapshot: PalazzoPlaybackState,
+  ): void {
+    const ended = state.activeSong!;
+    // Records the announced song's start, inferred at Palazzo's reported start time.
+    this.reconcilePlayingSnapshot(programId, state, snapshot);
+    this.logger.warn(
+      `Palazzo plays the announced next on ${programId} with its start and ${ended.playbackRequestId}'s end lost; promoting it`,
+    );
+    if (
+      this.handleAuthoritativeTrackEnded(
+        programId,
+        state,
+        ended.playbackRequestId,
+      ) &&
+      !ended.asRunClosed
+    ) {
+      this.emitTrackEvent(
+        programId,
+        'track.ended',
+        ended.playbackRequestId,
+        { title: ended.title, artist: ended.artist, url: ended.audioUrl },
+        true,
+      );
+    }
   }
 
   /** Palazzo plays the active song, or a track this engine never issued. */
