@@ -70,3 +70,20 @@ it("reports the HTTP failure of a countdown when the response is not JSON", asyn
   );
   await expect(completeSceneCountdown("main")).rejects.toThrow("HTTP 503");
 });
+
+it("reads and saves a program's branding marks", async () => {
+  const marks = { callsign: "Fictional", subtitle: "FM", logos: [] };
+  const request = vi.fn(async () => new Response(JSON.stringify(marks)));
+  vi.stubGlobal("fetch", request);
+  const { fetchProgramBranding, saveProgramBranding } = await import("./program");
+  expect(await fetchProgramBranding("show/test")).toEqual(marks);
+  expect(await saveProgramBranding("show/test", marks as never)).toEqual(marks);
+  expect(request.mock.calls[1][1]).toMatchObject({ method: "PUT" });
+});
+
+it("refuses a branding read or save the API rejects", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 500 })));
+  const { fetchProgramBranding, saveProgramBranding } = await import("./program");
+  await expect(fetchProgramBranding("show/test")).rejects.toThrow("HTTP 500");
+  await expect(saveProgramBranding("show/test", {} as never)).rejects.toThrow("HTTP 500");
+});

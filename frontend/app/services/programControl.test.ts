@@ -253,3 +253,75 @@ describe('services that read a program', () => {
     expect(calls(fetchMock)[0].url).toMatch(/\/program\/p9\/control\/audio-bus$/);
   });
 });
+
+describe('openProgramEvents error and abort paths', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('logs a message that is not JSON and keeps streaming, including a data line with no colon', async () => {
+    const fetchMock = vi.mocked(fetch);
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    fetchMock.mockResolvedValueOnce(streamOf('data: not-json\n\ndata\n\ndata: {"ok":1}\n\n'));
+    fetchMock.mockImplementation(() => new Promise(() => {}));
+    const messages: unknown[] = [];
+    const stop = openProgramEvents({
+      programId: 'p1',
+      onMessage: (data) => messages.push(data),
+      onOpen: () => {}
+    });
+    await vi.waitFor(() => expect(messages).toEqual([{ ok: 1 }]));
+    stop();
+    expect(logged).toHaveBeenCalledWith('Failed to parse program event:', expect.any(SyntaxError));
+  });
+
+  it('stops quietly when the stream is aborted while it is being read', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockImplementation(
+      async (_input, init) =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              (init?.signal as AbortSignal).addEventListener('abort', () =>
+                controller.error(new DOMException('aborted', 'AbortError'))
+              );
+            }
+          }),
+          { status: 200 }
+        )
+    );
+    const errors: string[] = [];
+    const opens: boolean[] = [];
+    const stop = openProgramEvents({
+      programId: 'p1',
+      onMessage: () => {},
+      onOpen: ({ reconnect }) => opens.push(reconnect),
+      onError: (error) => errors.push(error.message)
+    });
+    await vi.waitFor(() => expect(opens).toEqual([false]));
+    stop();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(errors).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a failure that is not an Error as its text, and keeps trying until stopped', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockRejectedValue('network said no');
+    const errors: string[] = [];
+    const stop = openProgramEvents({
+      programId: 'p1',
+      onMessage: () => {},
+      onOpen: () => {},
+      onError: (error) => errors.push(error.message),
+      initialBackoffMs: 1,
+      maxBackoffMs: 2
+    });
+    await vi.waitFor(() => expect(errors[0]).toBe('network said no'));
+    stop();
+  });
+});
