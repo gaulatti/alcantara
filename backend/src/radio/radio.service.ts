@@ -49,6 +49,7 @@ import {
   SIMILARITY_POOLS,
 } from './song-similarity.utils';
 import { ProgramTeamAccess } from '../tenancy/program-team-access';
+import { readProgramTeam } from '../tenancy/program-team';
 
 export interface RadioSettingsPayload {
   palazzoUrl?: string;
@@ -172,12 +173,9 @@ export class RadioService {
     programId: string,
   ): Promise<PrismaService | null> {
     if (this.pompeii.teamId === 0) return this.prisma;
-    const program = await this.prisma.program.findUnique({
-      where: { programId },
-      select: { teamId: true },
-    });
-    if (program?.teamId && program.teamId > 0) {
-      return forTeam(this.prisma, program.teamId) as unknown as PrismaService;
+    const teamId = await readProgramTeam(this.prisma, programId);
+    if (teamId && teamId > 0) {
+      return forTeam(this.prisma, teamId) as unknown as PrismaService;
     }
     this.metrics.recordLogSongScopeRefusal('recovery');
     this.logger.warn(

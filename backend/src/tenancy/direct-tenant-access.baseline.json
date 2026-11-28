@@ -51,7 +51,6 @@
     "song": 1
   },
   "src/radio/radio.service.ts": {
-    "program": 1,
     "operatorChangeRecord": 1
   },
   "src/radio/song-execution.engine.ts": {
