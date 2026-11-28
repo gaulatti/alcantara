@@ -24,6 +24,33 @@ Save keeps the log a draft. **Check** validates cue shape and referenced enabled
 
 The existing `/program/:programId/flight` list, create, update, activate, and start APIs carry the additive `scheduledAt`, `publishedAt`, `lastStartedAt`, and `revision` fields. `GET .../flight/:sequenceId/preflight` returns `{ready,issues,warnings,engine}`: issues block a start, warnings never do (a playable song of unknown duration, so the block's later times are estimates; or the show's radio not set up or off). Additive `issueEvents` and `warningEvents` hold one entry per issue and per warning, in the same order: `{item, name, reason}` for the event it is about (`item` is 1-based; `name` is the cue's label, else its song title or clip name), or `null` for one about the whole block. The desk shows a line as `name: reason`, and falls back to the string when the entry is null or absent (an older backend). The strings are unchanged. `engine` is `ready`, `not-configured` (no radio settings or no Palazzo URL), `disabled` (radio off in its settings) or `not-radio`; it is display only, and what starts and airs is unchanged. A `scheduledAt` that is not a whole minute in UTC ISO form is refused with "scheduledAt must be a whole minute, ISO time"; `POST .../publish` accepts `{revision}`. Program `flight.read` and `flight.manage` permissions remain in force.
 
+## Dayparts and clocks
+
+A **clock** is a stored set of radio log rules (tagged music blocks and an artist separation). The **grid** is one
+program's week in one IANA time zone: each daypart is a day, the hours `[startHour, endHour)`, a clock and a start of
+`soft` or `hard`. Both are edited on the console's **Dayparts** page, through `/program/:programId/radio-clocks` and
+`/program/:programId/radio-dayparts`, or over MCP. With an empty grid nothing is generated and nothing changes.
+
+**Filling.** The instance that runs the rundown looks once a minute at the hours that begin in the next two. For each
+grid hour with no log it creates one from the hour's clock with the log generator and publishes it, through the same
+checks an operator's log passes. A log a person made at that hour wins. A block the planner made is taken back when
+the grid stops asking for it, unless it has started, been edited or been loaded into the rundown. A clock that cannot
+fill an hour leaves a draft marked `failed`, retried each minute; the hour is left to the rotation. Changing a
+clock's rules does not remake hours already made.
+
+**Starting.** A block made from a clock starts only while the rotation is Autoplay or Shuffle and the engine is not
+frozen; otherwise it is marked `skipped` and never starts. With a `soft` start the song on air finishes and its end
+starts the block; the announced next song is withdrawn, and a song still on air six minutes after the hour is cut. A
+`hard` start cuts at the hour, as a log published by a person does. Fixed offsets inside a clock are always hard. A
+block shorter than its hour hands back to the rotation; a longer one is replaced by the next block under the same
+start rule, and what had not aired does not air.
+
+Skipped and failed hours show as a dot beside the block on the Dayparts page.
+`alcantara_radio_daypart_blocks_total{result}` counts `generated`, `failed` (an hour starting to fail, or a grid
+read that failed), `removed`, `started` and `skipped`.
+
+Separation rules between songs across blocks beyond the generator's artist separation are not part of this.
+
 ## Song similarity selection
 
 By default the continuous rotation follows its saved order. A station can opt in to choosing the next playlist song by audio similarity (`off`, `shadow` or `on`; default `off`, which changes nothing). It applies only where the engine picks the next playlist song: queued songs, manual songs, timed blocks and the high-rotation quota keep their precedence, and favorites are never ranked. When no song qualifies the engine falls back to the saved order. See [song-similarity.md](song-similarity.md) for the model, artist cycle, fallback rules and how to run the analysis.
