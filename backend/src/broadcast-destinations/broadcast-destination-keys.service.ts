@@ -101,7 +101,9 @@ export class BroadcastDestinationKeysService {
     if (!DESTINATION_ID_PATTERN.test(destinationId)) {
       throw new BadRequestException('Destination ID is invalid');
     }
-    const existing = await this.teamDb(callerTeam).broadcastDestination.findUnique({
+    const existing = await this.teamDb(
+      callerTeam,
+    ).broadcastDestination.findUnique({
       where: { id: destinationId },
     });
     if (!existing || (callerTeam !== 0 && existing.teamId !== callerTeam)) {
@@ -183,7 +185,9 @@ export class BroadcastDestinationKeysService {
    * transactions keep the base client: positions and ids are catalog-wide, and a batch takes one client's queries.
    */
   private teamDb(callerTeam: number): PrismaService {
-    return callerTeam > 0 ? (forTeam(this.prisma, callerTeam) as unknown as PrismaService) : this.prisma;
+    return callerTeam > 0
+      ? (forTeam(this.prisma, callerTeam) as unknown as PrismaService)
+      : this.prisma;
   }
 
   private async requireUniqueName(name: string, callerTeam: number) {

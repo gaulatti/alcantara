@@ -201,7 +201,9 @@ describe('BroadcastDestinationKeysService.add', () => {
   it("checks the name through the caller's team-scoped client, and team 0's unscoped", async () => {
     const team = harness();
     await team.service.add(youtube, 7, 'u');
-    expect(team.prisma.$extends).toHaveBeenCalledWith(expect.objectContaining({ name: 'team-7' }));
+    expect(team.prisma.$extends).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'team-7' }),
+    );
     const local = harness();
     await local.service.add(youtube, 0, 'u');
     expect(local.prisma.$extends).not.toHaveBeenCalled();
