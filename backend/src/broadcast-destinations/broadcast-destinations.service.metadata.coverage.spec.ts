@@ -14,6 +14,9 @@ describe('BroadcastDestinationsService decorator metadata', () => {
       jest.doMock('./destination-secrets.service', () => ({
         DestinationSecretsService: undefined,
       }));
+      jest.doMock('../tenancy/program-team-access', () => ({
+        ProgramTeamAccess: undefined,
+      }));
       jest.doMock('./alana.client', () => ({
         AlanaClient: undefined,
         AlanaRequestError: class AlanaRequestError extends Error {},
@@ -24,7 +27,7 @@ describe('BroadcastDestinationsService decorator metadata', () => {
         };
       expect(
         Reflect.getMetadata('design:paramtypes', BroadcastDestinationsService),
-      ).toEqual([Object, Object, Object, Object, Object]);
+      ).toEqual([Object, Object, Object, Object, Object, Object]);
     });
   });
 });
