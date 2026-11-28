@@ -406,10 +406,8 @@
     "@typescript-eslint/no-require-imports": 1
   },
   "src/program/flight.lifecycle.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 17,
-    "@typescript-eslint/no-unsafe-call": 44,
-    "@typescript-eslint/no-unsafe-member-access": 203,
-    "@typescript-eslint/no-unsafe-return": 14,
+    "@typescript-eslint/no-unsafe-assignment": 6,
+    "@typescript-eslint/no-unsafe-member-access": 3,
     "@typescript-eslint/require-await": 13,
     "@typescript-eslint/unbound-method": 2
   },
