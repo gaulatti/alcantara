@@ -189,7 +189,10 @@ describe('PompeiiAuthorizationGuard', () => {
 });
 
 describe('canonical principal', () => {
-  const requestFor = () => ({ headers: { authorization: 'Bearer token' }, user: { sub: 'user' } });
+  const requestFor = () => ({
+    headers: { authorization: 'Bearer token' },
+    user: { sub: 'user' },
+  });
   const contextWith = (request: object): ExecutionContext =>
     ({
       getHandler: () => function handler() {},
@@ -221,15 +224,25 @@ describe('canonical principal', () => {
 
   it('carries the canonical principal onto the request when Pompeii resolves one', async () => {
     const request = requestFor();
-    await expect(guardFor('principal-a').canActivate(contextWith(request))).resolves.toBe(true);
+    await expect(
+      guardFor('principal-a').canActivate(contextWith(request)),
+    ).resolves.toBe(true);
 
-    expect(request.user).toMatchObject({ principalId: 'principal-a', sub: 'cognito-subject' });
+    expect(request.user).toMatchObject({
+      principalId: 'principal-a',
+      sub: 'cognito-subject',
+    });
   });
 
   it('leaves the canonical principal absent rather than inventing one', async () => {
     const request = requestFor();
-    await expect(guardFor(null).canActivate(contextWith(request))).resolves.toBe(true);
+    await expect(
+      guardFor(null).canActivate(contextWith(request)),
+    ).resolves.toBe(true);
 
-    expect(request.user).toMatchObject({ principalId: null, sub: 'cognito-subject' });
+    expect(request.user).toMatchObject({
+      principalId: null,
+      sub: 'cognito-subject',
+    });
   });
 });

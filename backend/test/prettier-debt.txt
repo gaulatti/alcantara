@@ -1,7 +1,5 @@
 src/artist-labels/artist-labels.service.spec.ts
 src/artist-labels/artist-labels.service.ts
-src/auth/pompeii-authorization.guard.spec.ts
-src/auth/viewer-writes.http.spec.ts
 src/broadcast-destinations/broadcast-destination-keys.service.spec.ts
 src/broadcast-destinations/broadcast-destination-keys.service.ts
 src/broadcast-destinations/broadcast-destinations.service.coverage.spec.ts
