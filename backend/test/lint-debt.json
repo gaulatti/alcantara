@@ -9,9 +9,6 @@
   "src/artist-labels/artist-labels.service.spec.ts": {
     "prettier/prettier": 1
   },
-  "src/artist-labels/artist-labels.service.ts": {
-    "prettier/prettier": 1
-  },
   "src/as-run/as-run-flight-cue-migration.db.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 6,
     "@typescript-eslint/no-unsafe-call": 18,
@@ -96,11 +93,6 @@
     "@typescript-eslint/no-unsafe-return": 1,
     "prettier/prettier": 1
   },
-  "src/charts/charts.service.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 4,
-    "@typescript-eslint/no-unsafe-member-access": 4,
-    "@typescript-eslint/no-unsafe-return": 1
-  },
   "src/config/configuration.boundaries.spec.ts": {
     "@typescript-eslint/no-unsafe-member-access": 2,
     "@typescript-eslint/no-unsafe-return": 1
@@ -148,9 +140,6 @@
     "@typescript-eslint/no-unsafe-return": 2,
     "@typescript-eslint/require-await": 2
   },
-  "src/external-sources/external-sources.service.ts": {
-    "prettier/prettier": 1
-  },
   "src/filler/filler-binding.spec.ts": {
     "@typescript-eslint/no-unsafe-call": 1
   },
@@ -182,15 +171,6 @@
     "@typescript-eslint/no-unsafe-return": 1,
     "@typescript-eslint/unbound-method": 3
   },
-  "src/invariants/brand-literals.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 1,
-    "@typescript-eslint/no-unsafe-member-access": 2,
-    "@typescript-eslint/no-unsafe-return": 1
-  },
-  "src/layouts/layouts.service.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 1,
-    "@typescript-eslint/no-unsafe-member-access": 3
-  },
   "src/main.bootstrap.spec.ts": {
     "@typescript-eslint/no-require-imports": 1,
     "@typescript-eslint/no-unsafe-member-access": 5,
@@ -220,9 +200,6 @@
   "src/mcp/capabilities/rotation.spec.ts": {
     "@typescript-eslint/require-await": 4
   },
-  "src/mcp/capabilities/rotation.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 1
-  },
   "src/mcp/capabilities/song-leaves.spec.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": 1
   },
@@ -240,9 +217,6 @@
   "src/media-analysis/media-analysis.metadata.spec.ts": {
     "@typescript-eslint/no-unsafe-return": 1,
     "prettier/prettier": 1
-  },
-  "src/media-assets/media-asset-authorization.ts": {
-    "@typescript-eslint/no-redundant-type-constituents": 4
   },
   "src/media-assets/media-asset-sync.coverage.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 1,
@@ -310,9 +284,6 @@
     "@typescript-eslint/no-unsafe-member-access": 1,
     "@typescript-eslint/require-await": 1
   },
-  "src/media-groups/media-groups.service.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 1
-  },
   "src/media-groups/media-groups.tenancy.spec.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": 1
   },
@@ -335,12 +306,6 @@
     "@typescript-eslint/no-unsafe-assignment": 1,
     "@typescript-eslint/no-unsafe-member-access": 2,
     "@typescript-eslint/require-await": 1
-  },
-  "src/observability/http-metrics.hook.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": 1
-  },
-  "src/observability/managed-metrics.service.ts": {
-    "prettier/prettier": 2
   },
   "src/observability/metrics-token.guard.coverage.spec.ts": {
     "@typescript-eslint/no-require-imports": 1,
@@ -423,8 +388,6 @@
     "@typescript-eslint/require-await": 3
   },
   "src/program/flight.service.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 13,
-    "@typescript-eslint/no-unsafe-member-access": 17,
     "@typescript-eslint/no-unused-vars": 1
   },
   "src/program/flight.shadow.spec.ts": {
@@ -475,12 +438,6 @@
     "@typescript-eslint/no-unsafe-member-access": 6,
     "@typescript-eslint/no-unsafe-return": 1
   },
-  "src/program/program.realtime.service.ts": {
-    "@typescript-eslint/no-redundant-type-constituents": 2,
-    "@typescript-eslint/no-unsafe-assignment": 6,
-    "@typescript-eslint/no-unsafe-call": 12,
-    "@typescript-eslint/no-unsafe-member-access": 27
-  },
   "src/program/program.rename-on-air.spec.ts": {
     "@typescript-eslint/no-unsafe-member-access": 1
   },
@@ -502,12 +459,6 @@
     "@typescript-eslint/no-unsafe-assignment": 4,
     "@typescript-eslint/no-unsafe-member-access": 8,
     "@typescript-eslint/no-unsafe-return": 1
-  },
-  "src/program/program.service.ts": {
-    "@typescript-eslint/no-redundant-type-constituents": 1,
-    "@typescript-eslint/no-unsafe-assignment": 76,
-    "@typescript-eslint/no-unsafe-member-access": 41,
-    "@typescript-eslint/no-unsafe-return": 7
   },
   "src/program/program.song-playback-permission.http.spec.ts": {
     "@typescript-eslint/require-await": 1
@@ -838,11 +789,6 @@
     "@typescript-eslint/no-unsafe-assignment": 5,
     "@typescript-eslint/no-unsafe-member-access": 19,
     "@typescript-eslint/require-await": 6
-  },
-  "src/scenes/scenes.service.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": 2,
-    "@typescript-eslint/no-unsafe-assignment": 2,
-    "@typescript-eslint/no-unsafe-member-access": 7
   },
   "src/scenes/scenes.tenancy.spec.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": 1

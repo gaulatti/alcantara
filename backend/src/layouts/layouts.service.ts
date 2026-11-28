@@ -4,6 +4,7 @@ import {
   OperatorChangeRecorder,
   summarizeChange,
 } from '../operator-change/operator-change-recorder';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { forTeam } from '../tenancy/scoped-prisma';
 
@@ -57,7 +58,7 @@ export class LayoutsService {
   ) {
     const db = this.db(teamId);
     const actor = this.recorder.actor();
-    const updateData: any = {};
+    const updateData: Prisma.LayoutUncheckedUpdateInput = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.componentType !== undefined)
       updateData.componentType = data.componentType;

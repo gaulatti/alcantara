@@ -1,33 +1,9 @@
-import { createServer, IncomingMessage, Server } from 'node:http';
+import { createServer, Server } from 'node:http';
 import { AddressInfo, createConnection } from 'node:net';
 import { Logger } from '@nestjs/common';
-import { WebSocket as UntypedWebSocket } from 'ws';
+import { WebSocket } from 'ws';
 import { ProgramRealtimeService } from './program.realtime.service';
 import { RealtimeTicketService } from '../auth/realtime-ticket.service';
-
-// `ws` ships no types in this package set. These specs use only the socket surface below, so this is the typed view of
-// the client they get; it is a cast, not a new behaviour.
-interface TestSocket {
-  readonly readyState: number;
-  send(data: string | Buffer, options?: { binary?: boolean }): void;
-  close(): void;
-  terminate(): void;
-  on(event: 'message', listener: (data: Buffer) => void): this;
-  on(event: 'error', listener: (error: Error) => void): this;
-  once(event: 'open', listener: () => void): this;
-  once(event: 'error', listener: (error: Error) => void): this;
-  once(
-    event: 'unexpected-response',
-    listener: (request: unknown, response: IncomingMessage) => void,
-  ): this;
-}
-interface TestSocketClass {
-  new (address: string): TestSocket;
-  readonly OPEN: number;
-  readonly CLOSED: number;
-}
-const WebSocket = UntypedWebSocket as unknown as TestSocketClass;
-type WebSocket = TestSocket;
 
 async function until(predicate: () => boolean): Promise<void> {
   const deadline = Date.now() + 3000;

@@ -289,7 +289,7 @@ export class RotationMcpTools {
     const raw = bus.songSequence as unknown as Record<string, unknown>;
     const stored = {
       ...raw,
-      items: Array.isArray(raw.items) ? raw.items : [],
+      items: Array.isArray(raw.items) ? (raw.items as unknown[]) : [],
     } as Loaded['stored'];
     return {
       live,

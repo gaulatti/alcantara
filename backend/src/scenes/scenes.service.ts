@@ -8,6 +8,7 @@ import {
   SCENE_CHANGE_FIELDS,
   summarizeChange,
 } from '../operator-change/operator-change-recorder';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import {
   bracketComponentFromLayout,
@@ -89,13 +90,13 @@ export class ScenesService {
       name?: string;
       layoutId?: number;
       chyronText?: string;
-      metadata?: any;
+      metadata?: unknown;
       externalSourceId?: string | null;
     },
     teamId = 0,
   ) {
     const actor = this.recorder.actor();
-    const updateData: any = {};
+    const updateData: Prisma.SceneUncheckedUpdateInput = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.layoutId !== undefined) updateData.layoutId = data.layoutId;
     if (data.chyronText !== undefined) updateData.chyronText = data.chyronText;
@@ -282,8 +283,8 @@ export class ScenesService {
           Boolean(
             voter &&
             typeof voter === 'object' &&
-            typeof (voter as any).id === 'string' &&
-            typeof (voter as any).name === 'string',
+            typeof (voter as { id?: unknown }).id === 'string' &&
+            typeof (voter as { name?: unknown }).name === 'string',
           ),
         )
       : [];
@@ -514,7 +515,7 @@ export class ScenesService {
   private parseMetadata(metadata: unknown): Record<string, unknown> {
     if (typeof metadata !== 'string') return {};
     try {
-      const parsed = JSON.parse(metadata);
+      const parsed = JSON.parse(metadata) as unknown;
       return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
         ? (parsed as Record<string, unknown>)
         : {};
