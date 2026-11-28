@@ -41,7 +41,7 @@ test('the ESLint error debt is exact: no new errors, no count above its baseline
       if (count > allowed) grown.push(`${file} ${rule}: ${count} > baseline ${allowed}`);
     }
   }
-  assert.deepEqual(grown, [], 'new ESLint errors: fix them, do not raise test/lint-debt.json');
+  assert.deepEqual(grown, [], 'new ESLint errors: fix them, do not raise test/lint-debt.json. A file move also fails here: rename its key in test/lint-debt.json in the same change');
 
   const stale = [];
   for (const [file, rules] of Object.entries(baseline)) {
@@ -51,5 +51,5 @@ test('the ESLint error debt is exact: no new errors, no count above its baseline
       if (count < allowed) stale.push(`${file} ${rule}: ${count} < baseline ${allowed}`);
     }
   }
-  assert.deepEqual(stale, [], 'baseline counts above the tree: lower test/lint-debt.json in this change');
+  assert.deepEqual(stale, [], 'baseline counts above the tree: lower test/lint-debt.json in this change. A file move also fails here: a mover must rename the key in test/lint-debt.json');
 });
