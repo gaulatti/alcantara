@@ -101,3 +101,17 @@ it("pre-listens the song on air, and lets it go when the press ends", () => {
   expect(control).toBeInTheDocument();
   unmount();
 });
+
+it("pre-listens a cartwall sound that is still sounding, and lets it go when the press ends", () => {
+  const { unmount } = mount({
+    instantPlayback: {
+      1: { startedAtMs: Date.now() - 2_000, endsAtMs: Date.now() + 60_000 } as never,
+    },
+  });
+  const control = pressPreListen(screen, "Cartwall");
+  fireEvent.pointerDown(control);
+  fireEvent.pointerUp(control);
+  fireEvent.click(control);
+  expect(control).toBeInTheDocument();
+  unmount();
+});
