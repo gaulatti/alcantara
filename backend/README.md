@@ -195,8 +195,8 @@ runs the committed Prisma migrations. The backend listens only on loopback and
 nginx terminates TLS for `api.alcantara.gaulatti.com` with buffering disabled
 for SSE and WebSocket traffic. Cumulus nginx accepts request bodies up to 210 MB
 so multipart overhead does not prevent the backend from enforcing its 200 MB
-per-file upload limit. LiveKit remains disabled on Cumulus until its separate
-public media-port and secret contract is provisioned.
+per-file upload limit. LiveKit does not run on Cumulus: it runs on Helix, and the
+backend reaches it at the public name in the runtime secret ([docs/calls.md](../docs/calls.md)).
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
 

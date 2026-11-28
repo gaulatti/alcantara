@@ -58,6 +58,9 @@ alcantara/
 
 ### Six-guest WebRTC contribution
 
+[docs/calls.md](docs/calls.md) maps the calls stack: what runs where, configuration, networking, deployment and
+troubleshooting. There is no chat, no guest screen share and no recording of calls.
+
 The Calls console at `/calls` provides six reusable guest slots. An operator
 with `alcantara:webrtc:operate` can create a persisted private invitation,
 choose its one-to-seven-day lifetime (24 hours by default), copy it, replace or
@@ -133,7 +136,8 @@ itself. A lapsed lease is never a reason to remove anyone, so a backend restart 
 
 #### Return routing
 
-Alana remains the owner of captured Program/Preview output publication. Start
+Alana is not on air, so no Alana feed runs in production today. By its contract
+Alana owns captured Program/Preview output publication: start
 its Program renderer with `?renderer=1` so guest microphones are excluded from
 the captured base bus, and publish the output to the matching
 `alcantara-<programId>` LiveKit room as `program-feed-<programId>` (and optional
@@ -158,7 +162,7 @@ browser relay and keeps isolated guest tracks out of the guest UI.
 
 Nobody has to open the router by hand: a guest gets a return with nothing else
 open. The return runner on Helix (`infra/helix/compose.return-runner.yml`) polls
-`GET /webrtc/return-routers` with the renderer key every few seconds and keeps
+`GET /webrtc/return-routers` with the fleet key (else the shared renderer key) every few seconds and keeps
 one headless `/return-router/<programId>?runner=1` page open for each program it
 lists. A program is listed while an admitted guest with an open session is in its
 room, and for 60 seconds after the last one leaves. The runner puts the key in
@@ -187,7 +191,8 @@ Palazzo's output, so the bed never carries a guest's own voice back to them.
 A guest the operator cues live, and the host's own microphone, reach the station's air through Palazzo's single
 live input. The contribution worker on the station's host (`infra/cumulus/compose.contribution.yml`, started by
 `infra/cumulus/contribution-up.sh`) is the only producer for that input. It joins the program's call room as the
-hidden listener `contribution-<programId>` (`POST /webrtc/renderer-token` with `role: "contribution"`), follows
+hidden listener `contribution-<programId>` (`POST /webrtc/renderer-token` with `role: "contribution"`, authorised
+by the program's renderer key, else the shared key), follows
 which guests are on air, mixes their audio and the host's microphone (`onair:host` from the show's one host-mic
 identity, `operator-host-mic-<programId>`) into one mono feed, and pushes it as AAC to Palazzo's `RTMP_URL` on the internal
 broadcast-control network. It connects to Palazzo only while someone is on air: Palazzo counts a connected input as

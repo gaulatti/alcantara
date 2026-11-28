@@ -1,6 +1,6 @@
 # Alcantara Infrastructure & LiveKit Ingress
 
-This directory defines the production deployment topology and configuration templates for Alcantara media infrastructure, including LiveKit Server, LiveKit Ingress, and Redis.
+This directory defines the production deployment topology and configuration templates for Alcantara media infrastructure. Production runs LiveKit Server and Redis. LiveKit Ingress is defined here but not run, and there is no LiveKit Egress. The whole calls stack is mapped in [docs/calls.md](../docs/calls.md).
 
 ## Topology & Services
 
@@ -8,7 +8,7 @@ Production LiveKit runs on Helix, the on-premises host behind `helix.gaulatti.co
 
 Defined in [`helix/compose.livekit.yml`](helix/compose.livekit.yml), Compose project `alcantara-livekit`:
 
-- **`redis` (`redis:7.4-alpine`)**: State coordination between LiveKit Server and LiveKit Ingress. It is never published and is reached as `redis:6379` on the project's own network. It is limited to 0.5 CPU and 512 MiB.
+- **`redis` (`redis:7.4-alpine`)**: State coordination between LiveKit Server and LiveKit Ingress, which is not run. It is never published and is reached as `redis:6379` on the project's own network. It is limited to 0.5 CPU and 512 MiB.
 - **`livekit` (`livekit/livekit-server:v1.13.4`)**: Core WebRTC SFU for calls and broadcast rooms.
   - It has a healthcheck (`wget` of its own `http://127.0.0.1:7880/`, which answers `OK`).
   - It is limited to one CPU and 1 GiB, because Helix also runs other services.
@@ -129,7 +129,7 @@ TURN over TLS is on only when the runtime secret names `livekitTurnTlsDomain`. n
 
 ## TURN over TLS on 443
 
-For guests whose networks block UDP and `7881/tcp`. Without it, a network that allows only TCP 443 cannot join: the TCP proof on 2026-11-27 connected over `7881/tcp` and the only TURN offered is UDP `3478`. LiveKit tells clients to use `turns:<domain>:443`, always on 443, so nginx must share that port between the web sites and TURN. It does that by the name a client asks for (`ssl_preread`), ends TLS for the TURN name with its own certificate, and passes the plain stream to LiveKit (`turn.external_tls`).
+Live in production. It is for guests whose networks block UDP and `7881/tcp`: without it, a network that allows only TCP 443 cannot join (the TCP proof on 2026-11-27, before it was turned on, connected over `7881/tcp` and the only TURN offered was UDP `3478`). LiveKit tells clients to use `turns:<domain>:443`, always on 443, so nginx must share that port between the web sites and TURN. It does that by the name a client asks for (`ssl_preread`), ends TLS for the TURN name with its own certificate, and passes the plain stream to LiveKit (`turn.external_tls`).
 
 ### What it changes
 
@@ -230,7 +230,7 @@ Certbot renews the TURN certificate and the hook reloads nginx. A site added lat
 
 ## Protocol Gates & Enablement Requirements
 
-Per [ADR 001](../docs/adr-001-livekit-external-source-ingress.md), WHIP and HLS are enabled by default. RTMP and SRT remain disabled until their specific safety gates are satisfied:
+None of this runs in production: Ingress is not started. Per [ADR 001](../docs/adr-001-livekit-external-source-ingress.md), when it is, WHIP and HLS are enabled by default. RTMP and SRT remain disabled until their specific safety gates are satisfied:
 
 ### 1. RTMP (Disabled)
 - **Current State**: Disabled via `rtmp_port: 0` in [`ingress.production.example.yaml`](ingress.production.example.yaml) and omitted from published ports in [`helix/compose.livekit.yml`](helix/compose.livekit.yml).

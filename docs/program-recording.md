@@ -1,5 +1,8 @@
 # Program recording control
 
+> Television (Alana, Croccante) is not on air, so this has no live recorder behind it today. It records Alana's composed
+> Program only: guest calls are not recorded ([calls.md](calls.md)).
+
 Alcantara is the authenticated operator control plane for Alana's composed
 Program recording. It does not capture, store, verify, serve, or delete media.
 The consumed contract is the Alana recorder landed by

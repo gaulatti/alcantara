@@ -36,6 +36,11 @@ For one operator running a show alone. Labels are the words on screen, spelled a
 
 10. **When a guest reports no studio sound.** If your strip shows **Studio sound not reaching guest**, the guest sees "The studio sound isn't reaching you yet." Tell them to check their headphones and volume and to keep talking. The strip clears by itself and shows **Hears the studio** once the sound arrives. If it does not clear, ask them to leave and rejoin with the same link (**Leave**, then **Rejoin the studio**). Do not cue them live until **Hears the studio** shows.
 
-## Guests who cannot connect (TURN on 443): not yet
+## Guests who cannot connect
 
-Some guest networks block UDP and the usual TCP port, so the guest cannot join. TURN over TLS on port 443 would fix this, and it is **not yet live**. Until it is, ask the guest to switch network (Wi-Fi or mobile data) and rejoin with the same link. The guest page says so: "Check your Wi-Fi or mobile data, then try again."
+Some guest networks block UDP and the usual TCP port. TURN over TLS on port 443 is live for those: the guest does
+nothing different. If a guest still cannot join, their row on `/calls` says why their last join failed; ask them to
+switch network (Wi-Fi or mobile data) and rejoin with the same link. The guest page says so: "Check your Wi-Fi or
+mobile data, then try again."
+
+Guests cannot chat with you or share their screen, and nothing records the call.
