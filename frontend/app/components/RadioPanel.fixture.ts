@@ -114,3 +114,8 @@ export function radioPanelProps(overrides: Partial<RadioPanelProps> = {}): Radio
     ...overrides,
   } as RadioPanelProps;
 }
+
+/** Presses a channel's pre-listen control (its accessible name is "Pre-listen <label>"), as the operator does. */
+export function pressPreListen(screen: { getByRole: (role: string, options: { name: string }) => HTMLElement }, label: string) {
+  return screen.getByRole("button", { name: `Pre-listen ${label}` });
+}
