@@ -3997,7 +3997,10 @@ describe('the next song across a handover', () => {
       const { old, next, announced, sent, transitions } = await betweenSongs();
       old.palazzo.onAirEarly = announced;
       jest
-        .spyOn(next.engine as unknown as { playNext: () => boolean }, 'playNext')
+        .spyOn(
+          next.engine as unknown as { playNext: () => boolean },
+          'playNext',
+        )
         .mockReturnValueOnce(false);
       next.idle();
       await settle();
@@ -4115,7 +4118,10 @@ describe('the next song across a handover', () => {
       const { old, next, sent, withdrawals } = await betweenSongs();
       old.palazzo.queued = null;
       // Something this rotation does not know is on air at the takeover.
-      next.playing({ id: 'foreign-1', url: 'https://media.test/elsewhere.mp3' });
+      next.playing({
+        id: 'foreign-1',
+        url: 'https://media.test/elsewhere.mp3',
+      });
       await settle();
       next.idle();
       await settle();
@@ -4210,7 +4216,10 @@ describe('the next song across a handover', () => {
       const { old, next, announced, sent } = await betweenSongs();
       old.palazzo.onAirEarly = announced;
       jest
-        .spyOn(next.engine as unknown as { playNext: () => boolean }, 'playNext')
+        .spyOn(
+          next.engine as unknown as { playNext: () => boolean },
+          'playNext',
+        )
         .mockImplementationOnce(() => {
           throw new Error('boom');
         });
