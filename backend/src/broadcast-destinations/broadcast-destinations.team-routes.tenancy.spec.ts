@@ -1,3 +1,4 @@
+import { testDatabaseUrl } from '../../test/test-database';
 import { randomUUID } from 'node:crypto';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
@@ -5,10 +6,6 @@ import { AlanaClient, AlanaRequestError } from './alana.client';
 import { BroadcastDestinationsService } from './broadcast-destinations.service';
 import { ProgramTeamAccess } from '../tenancy/program-team-access';
 
-// CI's coverage step runs without DATABASE_URL and starts this database; a local run sets DATABASE_URL to its own
-// disposable one. Without a database the suite fails rather than passing unrun.
-const CI_DATABASE_URL =
-  'postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci?schema=public';
 
 // #122 slice 5: the destination routes that took no team (the program view, retire and restore, reorder, and the
 // selection a start or reload checks) read and write through the caller's team, against the real scoped client.
@@ -37,8 +34,15 @@ describe("destination routes confined to the caller's team, against Postgres", (
       error: 'Executor unavailable',
     } as never);
 
+  // The database this suite truncates comes from TEST_DATABASE_URL (CI's database by default), never from DATABASE_URL.
+  const savedDatabaseUrl = process.env.DATABASE_URL;
+  afterAll(() => {
+    if (savedDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = savedDatabaseUrl;
+  });
+
   beforeAll(async () => {
-    process.env.DATABASE_URL ||= CI_DATABASE_URL;
+    process.env.DATABASE_URL = testDatabaseUrl();
     prisma = new PrismaService();
     await prisma.$connect();
     service = new BroadcastDestinationsService(
