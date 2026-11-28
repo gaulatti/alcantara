@@ -498,6 +498,8 @@ interface SongEngineState {
   announcementWrites?: Promise<void>;
   /** What the previous backend left queued in Palazzo, until its song is adopted. */
   announcedAtBoot?: StoredAnnouncement;
+  /** Set while that announcement is withdrawn at an idle boot; nothing is commanded meanwhile. */
+  withdrawingAtBoot?: true;
   /** Serialises announcement refreshes per program. */
   announcementChain: Promise<void>;
   /** Palazzo boot from the latest snapshot. */
@@ -2324,6 +2326,17 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     } else {
       this.reconcileIdleSnapshot(programId, state, snapshot);
     }
+    // The previous backend's announcement is judged at the first reconciled snapshot only: a later idle snapshot is
+    // long past it, and Palazzo no longer holds it. One exception: Palazzo playing the song it follows. A catalogue
+    // song is recognised asynchronously, and the adoption at the end of that takes the announcement.
+    if (
+      !(
+        snapshot.status === 'playing' &&
+        snapshot.track?.playbackRequestId ===
+          state.announcedAtBoot?.forRequestId
+      )
+    )
+      state.announcedAtBoot = undefined;
   }
 
   /**
@@ -2880,25 +2893,29 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   ): void {
     const stored = state.announcedAtBoot;
     state.announcedAtBoot = undefined;
-    if (
-      !stored ||
-      state.announcement ||
-      stored.forRequestId !== requestId ||
-      stored.bootId !== state.palazzoBootId
-    )
-      return;
+    if (!stored || stored.forRequestId !== requestId) return;
+    this.holdAnnouncement(state, stored);
+  }
+
+  /** Holds a stored announcement as this backend's own, when the same Palazzo process holds it and it can still play. */
+  private holdAnnouncement(
+    state: SongEngineState,
+    stored: StoredAnnouncement,
+  ): boolean {
+    if (state.announcement || stored.bootId !== state.palazzoBootId)
+      return false;
     if (stored.queueEntryId) {
       if (
         state.queue.find((entry) => !entry.active)?.id !== stored.queueEntryId
       )
-        return;
+        return false;
     } else if (
       state.queue.some((entry) => !entry.active) ||
       (!stored.itemId.startsWith(CATALOG_ITEM_PREFIX) &&
         findUniqueProgramSongLeafById(state.sequence, stored.itemId)
           ?.audioUrl !== stored.audioUrl)
     )
-      return;
+      return false;
     const { bootId: _bootId, songId, ...queued } = stored;
     state.announcement = {
       ...queued,
@@ -2913,6 +2930,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       reason: 'superseded',
       deadline: null,
     });
+    return true;
   }
 
   private refreshAnnouncement(programId: string): void {
@@ -4179,10 +4197,91 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     state.busyWithForeignTrack = false;
     state.lastIdleSequence = snapshot.sequence;
 
+    // A takeover between two songs: the previous backend's next may still be queued in this Palazzo.
+    if (this.withdrawHeldAtBoot(programId, state)) return;
+
     // An idle authoritative snapshot is also the recovery boundary after a
     // restart adopted an already-playing track as foreign. Auto modes may
     // resume here; manual mode remains an explicit operator boundary.
     this.maybeStartSequence(programId);
+  }
+
+  /**
+   * At a takeover that finds Palazzo idle, between the song the previous backend played and the next it announced (a
+   * spot can be on air in front of it), that next can still be in the same Palazzo process. On 2026-11-28 07:07 it had
+   * already started: it played out in full while this backend's command waited behind it, and this backend believed
+   * its own song was on air, so none of Palazzo's reports matched. Palazzo's state names no next song, so it is
+   * withdrawn first and nothing is commanded until Palazzo answers:
+   * - an operator acted meanwhile (a take, a command, a stop): nothing more is done; the operator's action stands;
+   * - withdrawn (it was only queued), or no answer: the rotation starts as before;
+   * - not withdrawn: its gate is open (Palazzo started it, and its track start can follow seconds later). Unchanged
+   *   since the takeover and still valid, it is adopted as the song on air, promoted as at a handoff: no command, the
+   *   cursor or the queue moves to it, and its start, end and as-run match. Otherwise it is followed as a foreign
+   *   track: nothing is commanded over it, its end reads Palazzo's state and resumes the rotation, and if it never
+   *   starts the watchdog's no-playback bound does.
+   * Only for an announcement made in this Palazzo process, and only at the first reconciled snapshot. True when the
+   * start now waits on it.
+   */
+  private withdrawHeldAtBoot(
+    programId: string,
+    state: SongEngineState,
+  ): boolean {
+    const stored = state.announcedAtBoot;
+    state.announcedAtBoot = undefined;
+    if (!stored || stored.bootId !== state.palazzoBootId) return false;
+    state.withdrawingAtBoot = true;
+    const stops = state.stops ?? 0;
+    const sequence = state.sequence;
+    const queue = state.queue;
+    void this.radioService
+      .withdrawNext(programId)
+      .catch(() => null)
+      .then((withdrawn) => {
+        delete state.withdrawingAtBoot;
+        if (
+          state.activeSong ||
+          state.pendingRequestIds.size ||
+          (state.stops ?? 0) !== stops ||
+          this.flightService.isClockedLogRunning(programId)
+        ) {
+          this.metrics.recordTrackTransition('boot-next-superseded');
+          return;
+        }
+        if (withdrawn !== false) {
+          this.metrics.recordTrackTransition(
+            withdrawn ? 'boot-next-withdrawn' : 'boot-next-unknown',
+          );
+          if (withdrawn)
+            this.logger.log(
+              `Withdrew the previous backend's next song on ${programId} before starting the rotation`,
+            );
+          this.maybeStartSequence(programId);
+          return;
+        }
+        if (
+          state.sequence === sequence &&
+          state.queue === queue &&
+          this.holdAnnouncement(state, stored) &&
+          this.playNext(programId, true, stored.forRequestId)
+        ) {
+          this.metrics.recordTrackTransition('boot-next-adopted');
+          return;
+        }
+        if (state.announcement?.playbackId === stored.playbackId)
+          state.announcement = null;
+        this.metrics.recordTrackTransition('boot-next-followed');
+        this.logger.warn(
+          `The previous backend's next song on ${programId} is already started and cannot be adopted; following it until it ends`,
+        );
+        state.busyWithForeignTrack = true;
+      })
+      .catch((error: unknown) => {
+        delete state.withdrawingAtBoot;
+        this.logger.error(
+          `Takeover of the previous backend's next song on ${programId} failed: ${errorClass(error)}`,
+        );
+      });
+    return true;
   }
 
   /** Returns true only when the end was accepted and the engine advanced. */
@@ -4557,6 +4656,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       if (!this.telemetry?.isReconciled(programId)) return false;
     }
     if (state.busyWithForeignTrack) return false;
+    if (state.withdrawingAtBoot) return false;
     if (!this.passAiredCursorSong(programId, state)) return false;
     return this.playNext(programId);
   }

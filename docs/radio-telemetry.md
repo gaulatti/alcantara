@@ -187,6 +187,12 @@ root playback routes.
   Palazzo restart unfroze automation about 6 s before Palazzo could play, the
   first command failed, and the radio stayed silent until a person restarted
   the backend. `not-aired` counts a song Palazzo ended within a second of starting it; it is recorded and not counted (gaulatti/palazzo#75).
+  At a takeover that finds Palazzo idle, the previous backend's announced next is withdrawn before the rotation
+  starts: `boot-next-withdrawn` (it was only queued; the rotation starts), `boot-next-adopted` (its gate was open, so it
+  is followed as the song on air and nothing is commanded), `boot-next-followed` (its gate was open but it could not be
+  adopted, so it is followed as a foreign track until it ends), `boot-next-superseded` (an operator took, commanded or
+  stopped before Palazzo answered, and that stands) and `boot-next-unknown` (Palazzo did not answer, and the rotation
+  starts as before).
 
 ## Transports and failure behavior
 

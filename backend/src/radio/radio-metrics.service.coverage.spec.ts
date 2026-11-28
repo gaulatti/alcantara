@@ -133,6 +133,35 @@ describe('RadioMetricsService coverage', () => {
     expect(metrics.snapshot().trackTransitions).toEqual({ advanced: 1 });
   });
 
+  it('renders the takeover withdrawal results from zero and counts each (2026-11-28 07:07)', () => {
+    const results = [
+      'boot-next-withdrawn',
+      'boot-next-adopted',
+      'boot-next-followed',
+      'boot-next-superseded',
+      'boot-next-unknown',
+    ] as const;
+    const line = (text: string, result: string) =>
+      text
+        .split('\n')
+        .find((row) =>
+          row.startsWith(
+            `alcantara_radio_track_transitions_total{result="${result}"} `,
+          ),
+        );
+    for (const result of results)
+      expect(line(metrics.render(), result)?.split(' ')[1]).toBe('0');
+    metrics.recordTrackTransition('boot-next-withdrawn');
+    metrics.recordTrackTransition('boot-next-unknown');
+    metrics.recordTrackTransition('boot-next-unknown');
+    const text = metrics.render();
+    expect(line(text, 'boot-next-withdrawn')?.split(' ')[1]).toBe('1');
+    expect(line(text, 'boot-next-adopted')?.split(' ')[1]).toBe('0');
+    expect(line(text, 'boot-next-followed')?.split(' ')[1]).toBe('0');
+    expect(line(text, 'boot-next-superseded')?.split(' ')[1]).toBe('0');
+    expect(line(text, 'boot-next-unknown')?.split(' ')[1]).toBe('2');
+  });
+
   it('records only known intro transition results', () => {
     metrics.recordIntroTransition('started');
     metrics.recordIntroTransition('nope' as any);

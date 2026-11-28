@@ -120,7 +120,12 @@ export type TrackTransitionResult =
   | 'published-stopped'
   | 'rotation-ended'
   | 'aired-cursor-passed'
-  | 'not-aired';
+  | 'not-aired'
+  | 'boot-next-withdrawn'
+  | 'boot-next-adopted'
+  | 'boot-next-followed'
+  | 'boot-next-superseded'
+  | 'boot-next-unknown';
 
 export type SongRequestFailureReason = 'timeout' | 'other';
 
@@ -456,6 +461,11 @@ const TRANSITION_RESULTS: TrackTransitionResult[] = [
   'published-stopped',
   'rotation-ended',
   'aired-cursor-passed',
+  'boot-next-withdrawn',
+  'boot-next-adopted',
+  'boot-next-followed',
+  'boot-next-superseded',
+  'boot-next-unknown',
   'not-aired',
 ];
 

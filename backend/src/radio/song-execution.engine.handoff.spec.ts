@@ -245,6 +245,15 @@ function harness(
     loop?: boolean;
     items?: Song[];
     clockedLog?: () => boolean;
+    /** Library songs the catalogue lookup finds by audio address; without it the harness has no song model. */
+    catalog?: {
+      id: number;
+      title: string;
+      artist: string;
+      audioUrl: string;
+      coverUrl: string | null;
+      durationMs: number | null;
+    }[];
     metrics?: RadioMetricsService;
     intro?: number;
     similarity?: unknown;
@@ -284,6 +293,19 @@ function harness(
     ...((options.takeOverFrom?.stored() ?? {}) as object),
   };
   const prisma = {
+    ...(options.catalog
+      ? {
+          song: {
+            findMany: jest.fn(({ where }: { where: { audioUrl: string } }) =>
+              Promise.resolve(
+                options.catalog!.filter(
+                  (song) => song.audioUrl === where.audioUrl,
+                ),
+              ),
+            ),
+          },
+        }
+      : {}),
     asRunRecord: {
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
@@ -3746,6 +3768,460 @@ describe('the next song across a handover', () => {
     const { next, announced } = await takeOver(options);
     expect(next.palazzo.announced.length).toBeGreaterThan(1);
     expect(next.palazzo.queued).not.toBe(announced);
+  });
+
+  describe('a takeover between two songs (2026-11-28 07:07)', () => {
+    /**
+     * The first backend's song ended at the handover; the next it announced still waits in the same Palazzo (a spot
+     * can be on air in front of it), so the second backend's first snapshot is idle.
+     */
+    const betweenSongs = async (
+      options: {
+        change?: (row: Record<string, unknown>) => Record<string, unknown>;
+        stored?: (old: ReturnType<typeof harness>) => unknown;
+        queue?: unknown[];
+      } = {},
+    ) => {
+      const old = harness({ mode: 'shuffle', similarity: picker(1) });
+      await onAir(old);
+      old.engine.onModuleDestroy();
+      await settle();
+      const announced = old.palazzo.queued!;
+      old.palazzo.current = null;
+      const commandsBefore = old.palazzo.commands.length;
+      const withdrawalsBefore = old.palazzo.withdrawals;
+      const row = record(old)!;
+      const stored = () =>
+        options.stored
+          ? options.stored(old)
+          : {
+              ...(old.stored() as object),
+              playoutAnnounced: {
+                announcement: options.change ? options.change(row) : row,
+              },
+              ...(options.queue ? { songQueue: options.queue } : {}),
+            };
+      const next = harness({
+        mode: 'shuffle',
+        similarity: picker(3),
+        takeOverFrom: { palazzo: old.palazzo, stored },
+      });
+      await next.engine.onModuleInit();
+      const sent = () => old.palazzo.commands.slice(commandsBefore);
+      const withdrawals = () => old.palazzo.withdrawals - withdrawalsBefore;
+      const transitions = () => next.metrics.snapshot().trackTransitions;
+      /** The withdrawal waits for Palazzo's answer until `answer` is called. */
+      const holdWithdrawal = () => {
+        let answer: (withdrawn: boolean) => void = () => undefined;
+        old.palazzo.radioService.withdrawNext.mockImplementationOnce(
+          () =>
+            new Promise<boolean>((resolve) => {
+              answer = (withdrawn) => {
+                old.palazzo.withdrawals += 1;
+                if (withdrawn) old.palazzo.queued = null;
+                resolve(withdrawn);
+              };
+            }),
+        );
+        return (withdrawn: boolean) => answer(withdrawn);
+      };
+      /** The started next reaches the air, then ends. */
+      const airsAndEnds = async () => {
+        old.palazzo.current = { id: announced.id, url: announced.url };
+        old.palazzo.queued = null;
+        old.palazzo.start();
+        await settle();
+        old.palazzo.event('track.ended', {
+          playbackRequestId: announced.id,
+          url: announced.url,
+        });
+        old.palazzo.current = null;
+        await settle();
+      };
+      return {
+        old,
+        next,
+        announced,
+        sent,
+        withdrawals,
+        transitions,
+        holdWithdrawal,
+        airsAndEnds,
+      };
+    };
+    const gone = (row: Record<string, unknown>) => ({
+      ...row,
+      audioUrl: 'https://media.test/gone.mp3',
+    });
+    const idleState = () =>
+      Promise.resolve({
+        ...snapshot('boot-1', 900, null, undefined),
+        live: { onAir: false },
+      });
+
+    it("withdraws the previous backend's next before starting the rotation, so one song airs and its start matches", async () => {
+      const { old, next, announced, sent, withdrawals } = await betweenSongs();
+      next.idle();
+      await settle();
+
+      expect(withdrawals()).toBe(1);
+      expect(old.palazzo.queued).toBeNull();
+      expect(sent()).toHaveLength(1);
+      expect(sent()[0].id).not.toBe(announced.id);
+      old.palazzo.start();
+      await settle();
+      expect(next.engine.getPlaybackState(PROGRAM)?.telemetryStale).toBe(false);
+      expect(sent()).toHaveLength(1);
+    });
+
+    it('commands as today when the previous backend left no next', async () => {
+      const { old, next, sent, withdrawals } = await betweenSongs({
+        stored: (previous) => ({
+          ...(previous.stored() as object),
+          playoutAnnounced: null,
+        }),
+      });
+      old.palazzo.queued = null;
+      next.idle();
+      await settle();
+
+      expect(withdrawals()).toBe(0);
+      expect(sent()).toHaveLength(1);
+      old.palazzo.start();
+      await settle();
+      expect(next.engine.getPlaybackState(PROGRAM)?.telemetryStale).toBe(false);
+    });
+
+    it('commands as today when Palazzo does not answer the withdrawal', async () => {
+      const { old, next, sent, transitions } = await betweenSongs();
+      old.palazzo.radioService.withdrawNext.mockRejectedValueOnce(
+        new Error('unavailable'),
+      );
+      next.idle();
+      await settle();
+
+      expect(sent()).toHaveLength(1);
+      expect(transitions()['boot-next-unknown']).toBe(1);
+    });
+
+    it('adopts the next Palazzo already started (gate open, track start still to come) as the song on air, and commands nothing until it ends', async () => {
+      const { old, next, announced, sent, withdrawals, transitions } =
+        await betweenSongs();
+      // Its gate opened: a withdrawal no longer stops it, and its track start follows (07:07:13 to 07:07:16).
+      old.palazzo.onAirEarly = announced;
+      next.idle();
+      await settle();
+
+      expect(withdrawals()).toBe(1);
+      expect(sent()).toHaveLength(0);
+      expect(next.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(
+        announced.url,
+      );
+      old.palazzo.current = { id: announced.id, url: announced.url };
+      old.palazzo.queued = null;
+      old.palazzo.start();
+      await settle();
+      expect(next.engine.getPlaybackState(PROGRAM)?.telemetryStale).toBe(false);
+      expect(sent()).toHaveLength(0);
+      expect(transitions()['boot-next-adopted']).toBe(1);
+
+      // At its end the rotation goes on from it: the successor airs, announced or commanded, once.
+      old.palazzo.endCurrent();
+      await settle();
+      const onAir = next.engine.getPlaybackState(PROGRAM);
+      expect(onAir?.audioUrl).toBeDefined();
+      expect(onAir?.audioUrl).not.toBe(announced.url);
+    });
+
+    it('follows a started next it cannot adopt, commands nothing over it, and resumes at its end', async () => {
+      const { old, next, announced, sent, transitions, airsAndEnds } =
+        await betweenSongs({ change: gone });
+      old.palazzo.onAirEarly = announced;
+      next.engine.setPalazzoTelemetry({
+        isReconciled: () => true,
+        currentState: idleState,
+      } as never);
+      next.idle();
+      await settle();
+
+      expect(sent()).toHaveLength(0);
+      expect(transitions()['boot-next-followed']).toBe(1);
+      await airsAndEnds();
+      expect(sent()).toHaveLength(1);
+    });
+
+    it('lets the watchdog bound resume a followed next that never starts', async () => {
+      const { old, next, announced, sent, transitions } = await betweenSongs({
+        change: gone,
+      });
+      old.palazzo.onAirEarly = announced;
+      next.engine.setPalazzoTelemetry({
+        isReconciled: () => true,
+        currentState: idleState,
+      } as never);
+      next.idle();
+      await settle();
+      expect(transitions()['boot-next-followed']).toBe(1);
+      old.palazzo.queued = null;
+
+      for (let check = 0; check < 8; check += 1) {
+        jest.advanceTimersByTime(10_000);
+        await next.engine.checkPlayback();
+        await settle();
+      }
+      expect(sent()).toHaveLength(1);
+    });
+
+    it('lets the watchdog bound resume an adopted next that never starts (the accepted residual)', async () => {
+      const { old, next, announced, sent, transitions } = await betweenSongs();
+      old.palazzo.onAirEarly = announced;
+      next.engine.setPalazzoTelemetry({
+        isReconciled: () => true,
+        currentState: idleState,
+      } as never);
+      next.idle();
+      await settle();
+      expect(transitions()['boot-next-adopted']).toBe(1);
+      old.palazzo.queued = null;
+
+      for (let check = 0; check < 8; check += 1) {
+        jest.advanceTimersByTime(10_000);
+        await next.engine.checkPlayback();
+        await settle();
+      }
+      expect(sent()).toHaveLength(1);
+      expect(sent()[0].url).not.toBe(announced.url);
+    });
+
+    it('follows the started next when the adoption cannot start', async () => {
+      const { old, next, announced, sent, transitions } = await betweenSongs();
+      old.palazzo.onAirEarly = announced;
+      jest
+        .spyOn(next.engine as unknown as { playNext: () => boolean }, 'playNext')
+        .mockReturnValueOnce(false);
+      next.idle();
+      await settle();
+
+      expect(sent()).toHaveLength(0);
+      expect(transitions()['boot-next-followed']).toBe(1);
+      expect(next.engine.getPlaybackState(PROGRAM)).toBeNull();
+    });
+
+    it('commands nothing while the withdrawal is pending, even when the rotation changes', async () => {
+      const { next, sent, holdWithdrawal } = await betweenSongs();
+      const answer = holdWithdrawal();
+      next.idle();
+      await settle();
+      next.engine.handleSequenceUpdated(PROGRAM, next.sequence());
+      await settle();
+      expect(sent()).toHaveLength(0);
+
+      answer(true);
+      await settle();
+      expect(sent()).toHaveLength(1);
+    });
+
+    // Review probes (Yakko, 2026-11-28).
+    it('P1: an operator take while the withdrawal is pending stands, and the held next is not claimed as on air', async () => {
+      const { old, next, announced, sent, holdWithdrawal, transitions } =
+        await betweenSongs();
+      old.palazzo.onAirEarly = announced;
+      const answer = holdWithdrawal();
+      next.idle();
+      await settle();
+      next.engine.handleManualSong(
+        PROGRAM,
+        SONGS[4].url,
+        SONGS[4].title,
+        SONGS[4].artist,
+        200_000,
+      );
+      await settle();
+      answer(false);
+      await settle();
+
+      expect(transitions()['boot-next-superseded']).toBe(1);
+      expect(sent().map((command) => command.url)).toEqual([SONGS[4].url]);
+      expect(next.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(
+        SONGS[4].url,
+      );
+    });
+
+    it('P2: an operator stop while the withdrawal is pending stands: nothing is on air after it', async () => {
+      const { old, next, announced, sent, holdWithdrawal, transitions } =
+        await betweenSongs();
+      old.palazzo.onAirEarly = announced;
+      const answer = holdWithdrawal();
+      next.idle();
+      await settle();
+      next.engine.handleStopSong(PROGRAM);
+      await settle();
+      answer(false);
+      await settle();
+
+      expect(transitions()['boot-next-superseded']).toBe(1);
+      expect(sent()).toHaveLength(0);
+      expect(next.engine.getPlaybackState(PROGRAM)).toBeNull();
+    });
+
+    it('P3: adopts a started Play Next request instead of commanding the same song over it', async () => {
+      const { old, next, announced, sent, transitions } = await betweenSongs({
+        change: (row) => ({ ...row, queueEntryId: 'entry-1' }),
+        queue: [{ id: 'entry-1', itemId: SONGS[1].itemId, enqueuedAt: 1 }],
+      });
+      old.palazzo.onAirEarly = announced;
+      next.idle();
+      await settle();
+
+      expect(sent()).toHaveLength(0);
+      expect(transitions()['boot-next-adopted']).toBe(1);
+      expect(next.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(
+        announced.url,
+      );
+    });
+
+    it('P5: a request queued while the withdrawal is pending waits for the started next, then airs', async () => {
+      const {
+        old,
+        next,
+        announced,
+        sent,
+        holdWithdrawal,
+        transitions,
+        airsAndEnds,
+      } = await betweenSongs();
+      old.palazzo.onAirEarly = announced;
+      next.engine.setPalazzoTelemetry({
+        isReconciled: () => true,
+        currentState: idleState,
+      } as never);
+      const answer = holdWithdrawal();
+      next.idle();
+      await settle();
+      next.engine.handleQueueUpdated(PROGRAM, [
+        { id: 'entry-5', itemId: SONGS[5].itemId, enqueuedAt: 2 },
+      ]);
+      await settle();
+      answer(false);
+      await settle();
+
+      expect(sent()).toHaveLength(0);
+      expect(transitions()['boot-next-followed']).toBe(1);
+      await airsAndEnds();
+      expect(sent()).toHaveLength(1);
+    });
+
+    it('P6: a takeover during a foreign track judges the stored next then, and a later idle snapshot withdraws nothing', async () => {
+      const { old, next, sent, withdrawals } = await betweenSongs();
+      old.palazzo.queued = null;
+      // Something this rotation does not know is on air at the takeover.
+      next.playing({ id: 'foreign-1', url: 'https://media.test/elsewhere.mp3' });
+      await settle();
+      next.idle();
+      await settle();
+
+      expect(withdrawals()).toBe(0);
+      expect(sent()).toHaveLength(1);
+    });
+
+    it('keeps the held next at a takeover during a catalogue song, whose recognition is asynchronous (review, eed51c0a)', async () => {
+      const old = harness({ mode: 'shuffle', similarity: picker(1) });
+      await onAir(old);
+      old.engine.onModuleDestroy();
+      await settle();
+      const announced = old.palazzo.queued!;
+      const announcedBefore = old.palazzo.announced.length;
+      // The song on air is a catalogue similarity pick, not a playlist leaf, as production's shuffle runs.
+      const pick = {
+        id: 'catalog-play',
+        url: 'https://media.test/catalogue-pick.mp3',
+      };
+      old.palazzo.current = pick;
+      const row = record(old)!;
+      const next = harness({
+        mode: 'shuffle',
+        similarity: picker(3),
+        catalog: [
+          {
+            id: 900,
+            title: 'Catalogue pick',
+            artist: 'Someone',
+            audioUrl: pick.url,
+            coverUrl: null,
+            durationMs: 200_000,
+          },
+        ],
+        takeOverFrom: {
+          palazzo: old.palazzo,
+          stored: () => ({
+            ...(old.stored() as object),
+            playoutAnnounced: {
+              announcement: { ...row, forRequestId: pick.id },
+            },
+          }),
+        },
+      });
+      await next.engine.onModuleInit();
+      next.playing(pick);
+      await settle();
+
+      expect(next.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(pick.url);
+      expect(old.palazzo.queued).toBe(announced);
+      expect(old.palazzo.announced).toHaveLength(announcedBefore);
+      expect(old.palazzo.commands.at(-1)?.url).not.toBe(pick.url);
+    });
+
+    it('counts a scheduled block that starts while the withdrawal is pending as superseded, adopting nothing', async () => {
+      let clocked = false;
+      const old = harness({ mode: 'shuffle', similarity: picker(1) });
+      await onAir(old);
+      old.engine.onModuleDestroy();
+      await settle();
+      const announced = old.palazzo.queued!;
+      old.palazzo.current = null;
+      old.palazzo.onAirEarly = announced;
+      const next = harness({
+        mode: 'shuffle',
+        similarity: picker(3),
+        clockedLog: () => clocked,
+        takeOverFrom: old,
+      });
+      await next.engine.onModuleInit();
+      let answer: (withdrawn: boolean) => void = () => undefined;
+      old.palazzo.radioService.withdrawNext.mockImplementationOnce(
+        () =>
+          new Promise<boolean>((resolve) => {
+            answer = resolve;
+          }),
+      );
+      next.idle();
+      await settle();
+      clocked = true;
+      answer(false);
+      await settle();
+
+      const transitions = next.metrics.snapshot().trackTransitions;
+      expect(transitions['boot-next-superseded']).toBe(1);
+      expect(transitions['boot-next-adopted']).toBeUndefined();
+      expect(next.engine.getPlaybackState(PROGRAM)).toBeNull();
+    });
+
+    it('keeps the engine able to start after a failure past the answer', async () => {
+      const { old, next, announced, sent } = await betweenSongs();
+      old.palazzo.onAirEarly = announced;
+      jest
+        .spyOn(next.engine as unknown as { playNext: () => boolean }, 'playNext')
+        .mockImplementationOnce(() => {
+          throw new Error('boom');
+        });
+      next.idle();
+      await settle();
+      expect(sent()).toHaveLength(0);
+
+      next.idle();
+      await settle();
+      expect(sent()).toHaveLength(1);
+    });
   });
 
   it('keeps a queued request that still heads the queue', async () => {
