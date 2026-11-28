@@ -9,7 +9,6 @@ import { DestinationSecretsService } from './destination-secrets.service';
 import { DestinationTestService } from './destination-test.service';
 import { FillerBindingService } from '../filler/filler-binding.service';
 import { BroadcastDestinationsMcpTools } from '../mcp/capabilities/destinations';
-import { ProgramTeamAccess } from '../tenancy/program-team-access';
 
 @Module({
   controllers: [BroadcastDestinationsController],
@@ -23,7 +22,6 @@ import { ProgramTeamAccess } from '../tenancy/program-team-access';
     AlanaClient,
     FillerBindingService,
     PrismaService,
-    ProgramTeamAccess,
   ],
 })
 export class BroadcastDestinationsModule {}
