@@ -51,9 +51,9 @@ describe('ScenesController', () => {
       7,
     );
     const vote = { matchId: 1, voterId: 'v', songId: null };
-    await expect(
-      controller.voteBracket('8', vote, request),
-    ).resolves.toBe('vote');
+    await expect(controller.voteBracket('8', vote, request)).resolves.toBe(
+      'vote',
+    );
     expect(service.voteBracket).toHaveBeenCalledWith(8, vote, 7);
     await expect(
       controller.openBracketVoting('9', { matchId: 2 }, request),

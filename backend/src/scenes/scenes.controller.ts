@@ -83,11 +83,7 @@ export class ScenesController {
     @Body() data: { componentType?: string; seed?: number },
     @Req() request: TeamRequest,
   ) {
-    return this.scenesService.drawBracket(
-      +id,
-      data,
-      callerTeam(request),
-    );
+    return this.scenesService.drawBracket(+id, data, callerTeam(request));
   }
 
   @Post([':id/bracket/vote', ':id/modo-italiano-bracket/vote'])
@@ -103,11 +99,7 @@ export class ScenesController {
     },
     @Req() request: TeamRequest,
   ) {
-    return this.scenesService.voteBracket(
-      +id,
-      data,
-      callerTeam(request),
-    );
+    return this.scenesService.voteBracket(+id, data, callerTeam(request));
   }
 
   @Post([':id/bracket/voting/open', ':id/modo-italiano-bracket/voting/open'])
@@ -117,11 +109,7 @@ export class ScenesController {
     @Body() data: { componentType?: string; matchId?: number },
     @Req() request: TeamRequest,
   ) {
-    return this.scenesService.openBracketVoting(
-      +id,
-      data,
-      callerTeam(request),
-    );
+    return this.scenesService.openBracketVoting(+id, data, callerTeam(request));
   }
 
   @Delete(':id')

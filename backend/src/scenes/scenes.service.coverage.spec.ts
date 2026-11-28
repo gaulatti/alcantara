@@ -376,9 +376,7 @@ describe('ScenesService.drawBracket', () => {
   it('rejects unknown scenes', async () => {
     const { service, prisma } = build();
     prisma.scene.findUnique.mockResolvedValue(null);
-    await expect(service.drawBracket(1, {})).rejects.toThrow(
-      'Scene not found',
-    );
+    await expect(service.drawBracket(1, {})).rejects.toThrow('Scene not found');
   });
 
   it('rejects brackets that do not start at the quarterfinals', async () => {
@@ -505,22 +503,24 @@ describe('ScenesService.drawBracket', () => {
     prisma.scene.findUnique.mockResolvedValue(
       sceneWith(quarter({ drawSeed: 4.2 })),
     );
-    await expect(
-      service.drawBracket(1, { seed: undefined }),
-    ).resolves.toEqual({ drawId: 12345, durationSeconds: 4, sceneId: 1 });
+    await expect(service.drawBracket(1, { seed: undefined })).resolves.toEqual({
+      drawId: 12345,
+      durationSeconds: 4,
+      sceneId: 1,
+    });
 
     prisma.scene.findUnique.mockResolvedValue(
       sceneWith(quarter({ drawDurationSeconds: -1, drawSeed: 'nope' })),
     );
-    await expect(service.drawBracket(1, {})).resolves.toMatchObject(
-      { durationSeconds: 5 },
-    );
+    await expect(service.drawBracket(1, {})).resolves.toMatchObject({
+      durationSeconds: 5,
+    });
     prisma.scene.findUnique.mockResolvedValue(
       sceneWith(quarter({ drawDurationSeconds: 'x', drawSeed: 0 })),
     );
-    await expect(service.drawBracket(1, {})).resolves.toMatchObject(
-      { durationSeconds: 5 },
-    );
+    await expect(service.drawBracket(1, {})).resolves.toMatchObject({
+      durationSeconds: 5,
+    });
   });
 
   it('replacing a draw cancels the previous timer', async () => {
@@ -548,8 +548,7 @@ describe('ScenesService draw completion guards', () => {
       }
     ).completeBracketDraw(...args);
   const draws = (service: ScenesService) =>
-    (service as unknown as { bracketDraws: Map<number, unknown> })
-      .bracketDraws;
+    (service as unknown as { bracketDraws: Map<number, unknown> }).bracketDraws;
 
   it('ignores completions without a matching active draw', async () => {
     const { service, prisma } = build();
@@ -767,14 +766,14 @@ describe('ScenesService.openBracketVoting', () => {
   it('rejects invalid matches and unknown scenes', async () => {
     const { service, prisma } = build();
     for (const matchId of [0, 16, 2.5, Number.NaN, undefined]) {
-      await expect(
-        service.openBracketVoting(1, { matchId }),
-      ).rejects.toThrow('Invalid match');
+      await expect(service.openBracketVoting(1, { matchId })).rejects.toThrow(
+        'Invalid match',
+      );
     }
     prisma.scene.findUnique.mockResolvedValue(null);
-    await expect(
-      service.openBracketVoting(1, { matchId: 1 }),
-    ).rejects.toThrow('Scene not found');
+    await expect(service.openBracketVoting(1, { matchId: 1 })).rejects.toThrow(
+      'Scene not found',
+    );
   });
 
   it('refuses matches that are not ready or already decided', async () => {
@@ -790,9 +789,9 @@ describe('ScenesService.openBracketVoting', () => {
       ).rejects.toThrow('This match is not open for voting');
     }
     prisma.scene.findUnique.mockResolvedValue({ id: 1, metadata: null });
-    await expect(
-      service.openBracketVoting(1, { matchId: 3 }),
-    ).rejects.toThrow('This scene has no bracket');
+    await expect(service.openBracketVoting(1, { matchId: 3 })).rejects.toThrow(
+      'This scene has no bracket',
+    );
     prisma.scene.findUnique.mockResolvedValue(sceneWith('scalar' as never));
     await expect(
       service.openBracketVoting(1, {
@@ -841,12 +840,12 @@ describe('ScenesService bracket normalization', () => {
         ],
       }),
     );
-    await expect(
-      service.openBracketVoting(1, { matchId: 3 }),
-    ).rejects.toThrow('This match is not open for voting');
-    await expect(
-      service.openBracketVoting(1, { matchId: 4 }),
-    ).rejects.toThrow('This match is not open for voting');
+    await expect(service.openBracketVoting(1, { matchId: 3 })).rejects.toThrow(
+      'This match is not open for voting',
+    );
+    await expect(service.openBracketVoting(1, { matchId: 4 })).rejects.toThrow(
+      'This match is not open for voting',
+    );
     await service.openBracketVoting(1, {
       componentType: TYPE,
       matchId: 5,

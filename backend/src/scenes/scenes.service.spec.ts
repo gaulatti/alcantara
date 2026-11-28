@@ -246,7 +246,9 @@ describe('ScenesService persisted scene and program events', () => {
     expect(new Set(start.songIds)).toEqual(new Set([3, 4, 5]));
     expect(start.type).toBe('modoitaliano_bracket_draw_start');
     await jest.advanceTimersByTimeAsync(1000);
-    const saved = JSON.parse(f.current().metadata)['modoitaliano-giorgia-bracket'];
+    const saved = JSON.parse(f.current().metadata)[
+      'modoitaliano-giorgia-bracket'
+    ];
     expect(saved.matches[8]).toEqual({
       id: 9,
       songAId: 1,
@@ -280,12 +282,11 @@ describe('ScenesService persisted scene and program events', () => {
     jest.useFakeTimers();
     const f = fixture(bracketMetadata({ drawDurationSeconds: 0, drawSeed: 2 }));
     expect(
-      (await f.service.drawBracket(7, { seed: NaN }))
-        .durationSeconds,
+      (await f.service.drawBracket(7, { seed: NaN })).durationSeconds,
     ).toBe(2);
-    expect(
-      (await f.service.drawBracket(7, { seed: 4 })).durationSeconds,
-    ).toBe(2);
+    expect((await f.service.drawBracket(7, { seed: 4 })).durationSeconds).toBe(
+      2,
+    );
     await jest.advanceTimersByTimeAsync(2000);
     expect(f.prisma.scene.update).toHaveBeenCalledTimes(1);
   });
@@ -307,7 +308,9 @@ describe('ScenesService persisted scene and program events', () => {
     'rejects a bracket without a quarterfinal contract: %p',
     async (bracket) => {
       const f = fixture();
-      f.current().metadata = JSON.stringify({ 'harbor-light-bracket': bracket });
+      f.current().metadata = JSON.stringify({
+        'harbor-light-bracket': bracket,
+      });
       await expect(f.service.drawBracket(7, {})).rejects.toThrow(
         'only available for quarterfinal',
       );
@@ -351,7 +354,9 @@ describe('ScenesService persisted scene and program events', () => {
       componentType: 'modoitaliano-giorgia-bracket',
       matchId: 9,
     });
-    expect(JSON.parse(f.current().metadata)['modoitaliano-giorgia-bracket']).toEqual(
+    expect(
+      JSON.parse(f.current().metadata)['modoitaliano-giorgia-bracket'],
+    ).toEqual(
       expect.objectContaining({
         activeVotingMatchId: 9,
         votingWinnerId: null,
@@ -405,7 +410,9 @@ describe('ScenesService persisted scene and program events', () => {
       voterId: ' a ',
       songId: 1,
     });
-    let saved = JSON.parse(f.current().metadata)['modoitaliano-giorgia-bracket'];
+    let saved = JSON.parse(f.current().metadata)[
+      'modoitaliano-giorgia-bracket'
+    ];
     expect(saved.matchVotes['9']).toEqual({ a: 1 });
     expect(saved.votingWinnerId).toBeNull();
     await f.service.voteBracket(7, {
@@ -428,7 +435,9 @@ describe('ScenesService persisted scene and program events', () => {
       voterId: 'a',
       songId: null,
     });
-    const saved = JSON.parse(f.current().metadata)['modoitaliano-giorgia-bracket'];
+    const saved = JSON.parse(f.current().metadata)[
+      'modoitaliano-giorgia-bracket'
+    ];
     expect(saved.matchVotes['9']).toEqual({ a: null, b: 2 });
     expect(saved.votingWinnerId).toBeNull();
   });
@@ -451,7 +460,9 @@ describe('ScenesService persisted scene and program events', () => {
       voterId: 'a',
       songId: 2,
     });
-    const saved = JSON.parse(f.current().metadata)['modoitaliano-giorgia-bracket'];
+    const saved = JSON.parse(f.current().metadata)[
+      'modoitaliano-giorgia-bracket'
+    ];
     expect(saved.matches).toHaveLength(15);
     expect(saved.matches[14].winnerId).toBe(2);
   });

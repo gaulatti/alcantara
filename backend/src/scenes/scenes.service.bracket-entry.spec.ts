@@ -4,7 +4,10 @@ import { noRecorder } from '../operator-change/operator-change-recorder.testing'
 
 // A bracket is the scene's own: its layout element or its state key. No brand's key is assumed when the scene names none.
 describe('ScenesService bracket resolution', () => {
-  const sceneWith = (metadata: Record<string, unknown>, componentType = 'slideshow') => ({
+  const sceneWith = (
+    metadata: Record<string, unknown>,
+    componentType = 'slideshow',
+  ) => ({
     id: 3,
     metadata: JSON.stringify(metadata),
     layout: { componentType },
@@ -46,7 +49,9 @@ describe('ScenesService bracket resolution', () => {
     expect(persist).toHaveBeenCalledWith(
       3,
       expect.objectContaining({
-        'harbor-light-bracket': expect.objectContaining({ activeVotingMatchId: 2 }),
+        'harbor-light-bracket': expect.objectContaining({
+          activeVotingMatchId: 2,
+        }),
       }),
       0,
     );
@@ -64,4 +69,3 @@ describe('ScenesService bracket resolution', () => {
     ).rejects.toThrow('Unknown voter');
   });
 });
-
