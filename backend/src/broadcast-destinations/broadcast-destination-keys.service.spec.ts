@@ -28,6 +28,11 @@ function harness(
 ) {
   const rows = (options.taken ?? []).map((id) => ({ id }));
   const prisma: any = {
+    // The team-scoped client (gaulatti/alcantara#122) as a pass-through: its scoping is proven in scoped-prisma.spec,
+    // and the service still applies its explicit team checks.
+    $extends: jest.fn(function (this: unknown) {
+      return this;
+    }),
     broadcastDestination: {
       findFirst: jest
         .fn()
@@ -191,6 +196,15 @@ describe('BroadcastDestinationKeysService.add', () => {
       ConflictException,
     );
     expect(secrets.create).not.toHaveBeenCalled();
+  });
+
+  it("checks the name through the caller's team-scoped client, and team 0's unscoped", async () => {
+    const team = harness();
+    await team.service.add(youtube, 7, 'u');
+    expect(team.prisma.$extends).toHaveBeenCalledWith(expect.objectContaining({ name: 'team-7' }));
+    const local = harness();
+    await local.service.add(youtube, 0, 'u');
+    expect(local.prisma.$extends).not.toHaveBeenCalled();
   });
 
   it('checks the name across every team where none is configured', async () => {
