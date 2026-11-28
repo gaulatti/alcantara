@@ -49,6 +49,11 @@ function fixture(transport = 'hls', quota: unknown = 16) {
     updatedAt: new Date(),
   };
   const prisma = {
+    // The team-scoped client (gaulatti/alcantara#122) as a pass-through: its scoping is proven in scoped-prisma.spec,
+    // and the service still applies its explicit team filters.
+    $extends: jest.fn(function (this: unknown) {
+      return this;
+    }),
     externalSource: {
       count: jest.fn().mockResolvedValue(0),
       findMany: jest.fn(async () => [source]),

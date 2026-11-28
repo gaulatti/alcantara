@@ -14,7 +14,7 @@
     "broadcastIngestAccess": 1
   },
   "src/external-sources/external-sources.service.ts": {
-    "externalSource": 9
+    "externalSource": 3
   },
   "src/media-assets/media-asset-team-gauge.service.ts": {
     "mediaAsset": 1

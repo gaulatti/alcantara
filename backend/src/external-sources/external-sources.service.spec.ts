@@ -8,6 +8,11 @@ const keyring = '{"1":"YWxjYW50YXJhLWxvY2FsLXNvdXJjZS1rZXktMDAwMDA="}';
 function harness() {
   const created: any[] = [];
   const prisma: any = {
+    // The team-scoped client (gaulatti/alcantara#122) as a pass-through: its scoping is proven in scoped-prisma.spec,
+    // and the service still applies its explicit team filters.
+    $extends: jest.fn(function (this: unknown) {
+      return this;
+    }),
     externalSource: {
       count: jest.fn().mockResolvedValue(0),
       create: jest.fn(async ({ data }: any) => {

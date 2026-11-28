@@ -16,6 +16,11 @@ const FEED = 'https://93.184.216.34/feed.m3u8';
 
 function harness(extraConfig: Record<string, unknown> = {}) {
   const prisma: any = {
+    // The team-scoped client (gaulatti/alcantara#122) as a pass-through: its scoping is proven in scoped-prisma.spec,
+    // and the service still applies its explicit team filters.
+    $extends: jest.fn(function (this: unknown) {
+      return this;
+    }),
     externalSource: {
       count: jest.fn().mockResolvedValue(0),
       create: jest.fn(async ({ data }: any) => ({
@@ -109,6 +114,16 @@ const createBody = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe('ExternalSourcesService coverage', () => {
+  it("reads a team's sources through its team-scoped client, and team 0's unscoped", async () => {
+    const h = harness();
+    h.prisma.externalSource.findMany.mockResolvedValue([]);
+    await h.service.list(auth);
+    expect(h.prisma.$extends).toHaveBeenCalledWith(expect.objectContaining({ name: 'team-1' }));
+    h.prisma.$extends.mockClear();
+    await h.service.list({ teamId: 0, permissions: [] });
+    expect(h.prisma.$extends).not.toHaveBeenCalled();
+  });
+
   describe('reads', () => {
     it('lists team sources with presented fields and records success', async () => {
       const h = harness();
