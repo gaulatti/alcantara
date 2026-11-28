@@ -46,7 +46,7 @@ function makeState(overrides: Record<string, unknown> = {}) {
 }
 
 function build(opts: { metrics?: boolean; state?: any } = {}) {
-  const prisma: any = {
+  const prisma = {
     // The program's team (gaulatti/alcantara#122): none by default, so the library is read unscoped as before.
     program: { findUnique: jest.fn().mockResolvedValue(null) },
     $extends: jest.fn(function (this: unknown) {
@@ -96,32 +96,34 @@ function build(opts: { metrics?: boolean; state?: any } = {}) {
         .mockResolvedValue({ id: 1, timeOverrideEnabled: false }),
     },
   };
-  prisma.$transaction.mockImplementation((fn: any) => fn(prisma));
-  const radio: any = {
+  prisma.$transaction.mockImplementation((fn: (tx: typeof prisma) => unknown) =>
+    fn(prisma),
+  );
+  const radio: Record<string, jest.Mock> = {
     getRadioSettings: jest.fn().mockResolvedValue({ enabled: true }),
     playInstant: jest.fn().mockResolvedValue(undefined),
     stopAllInstants: jest.fn().mockResolvedValue(undefined),
     playSong: jest.fn().mockResolvedValue({ ok: true }),
     stopSong: jest.fn().mockResolvedValue(undefined),
   };
-  const engine: any = {
+  const engine = {
     handleSequenceUpdated: jest.fn(),
     handleStopSong: jest.fn(),
     setBroadcastHandler: jest.fn(),
     trackEvents$: EMPTY,
   };
-  const metrics: any = {
+  const metrics: Record<string, jest.Mock> = {
     recordSceneHandoff: jest.fn(),
     recordProgramSseConnection: jest.fn(),
     recordProgramSseSnapshot: jest.fn(),
   };
-  const confidence: any = { observe: jest.fn() };
+  const confidence: Record<string, jest.Mock> = { observe: jest.fn() };
   const service = new ProgramService(
-    prisma,
-    radio,
-    engine,
-    opts.metrics === false ? undefined : metrics,
-    confidence,
+    prisma as never,
+    radio as never,
+    engine as never,
+    (opts.metrics === false ? undefined : metrics) as never,
+    confidence as never,
     noRecorder(),
   );
   return { service, prisma, radio, engine, metrics, confidence };
@@ -409,7 +411,9 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
     it("reads the scene, media group or stinger to attach through the program team's scoped client, unscoped for a program with none", async () => {
       const { service, prisma } = build();
       prisma.stinger.findUnique.mockResolvedValue(null);
-      prisma.scene = { findUnique: jest.fn().mockResolvedValue(null) };
+      Object.assign(prisma, {
+        scene: { findUnique: jest.fn().mockResolvedValue(null) },
+      });
       prisma.mediaGroup = {
         ...prisma.mediaGroup,
         findUnique: jest.fn().mockResolvedValue(null),
