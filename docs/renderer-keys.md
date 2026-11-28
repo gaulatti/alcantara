@@ -61,8 +61,9 @@ Each endpoint reads `X-Renderer-Key` and the program it acts on (`backend/src/re
 - A valid key for another program is refused with `403`. Any other credential (the fleet key on a program endpoint, a
   program key on the router list, a wrong key or none) is refused with `401`.
 - The stream answers `401` or `403` before it opens, never as a stream that breaks.
-- The fleet key is the runtime secret's optional `webrtcFleetKey` (`WEBRTC_FLEET_KEY`, at least 32 characters). The shared
-  key is `webrtcRendererKey` (`WEBRTC_RENDERER_KEY`).
+- The fleet key is the runtime secret's optional `webrtcFleetKey` (`WEBRTC_FLEET_KEY`). The shared key is
+  `webrtcRendererKey` (`WEBRTC_RENDERER_KEY`). Each program's key, for the machines that serve it, is in
+  `webrtcProgramKeys` (`{ "<programId>": "alrk_…" }`), which the backend never reads: it checks a key by its stored hash.
 
 ## Program writes from the renderer page
 
@@ -107,5 +108,16 @@ Each endpoint's `program` and `shared` acceptances, and each program write's `no
 
 ## Holders
 
-The return runner, the contribution worker and the program pages move to per-program keys in the next step of #884. Until
-then they keep the shared key, which is still accepted.
+| Holder | Presents | From |
+| --- | --- | --- |
+| Return runner (Helix) | the fleet key on the router list; each program's key on its page | `webrtcFleetKey`, `webrtcProgramKeys`, each else the shared key |
+| Contribution worker (cumulus) | its station's key on every call | its program's `webrtcProgramKeys` entry, else the shared key |
+| Pilot's Program window (Carmencita) | its show's key in the page's `#key=` | the key the operator pastes into the pilot |
+| A program page opened by hand | the `#key=` it was opened with | the Shows panel |
+
+`backend/scripts/place-renderer-keys.cjs` issues the keys and places them in the secret (infra/README.md, "Placing the
+programs' renderer keys"); the holders' deploy scripts then write them into their env files.
+
+A page whose key is refused says so without drawing on the picture: its root gets `data-renderer-key="changed"` on a
+`401` (the key was rotated) or `"other-program"` on a `403`, the console logs `[renderer-key] renderer key changed,
+reload`, and a `renderer-key-refused` event fires for the page's holder. Reopening it with the new `#key=` clears it.

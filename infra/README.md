@@ -56,7 +56,7 @@ Guests hear their return from the return router, a console page (`/return-router
 
 - **It only dials out.** Every 3 s it asks the backend `GET /webrtc/return-routers` (the renderer key in `X-Renderer-Key`, the programs with its open pages in `?running=`) for `{"programs": [...]}`. An unchanged list is a 304. Nothing is published and no port is opened.
 - **It never cuts a live return for a missing answer.** A backend that is restarting, unreachable or without the list leaves the open pages as they are. A program must be absent from the list for 10 s before its page closes.
-- **The key** is rendered from the runtime secret into a 0600 `return-runner.env` on Helix, and reaches the page in its session storage, never in a URL or a log.
+- **The keys** (gaulatti/alcantara#884) are rendered from the runtime secret into a 0600 `return-runner.env` on Helix: the fleet key (`webrtcFleetKey`) for the router list, each program's key (`webrtcProgramKeys`) for that program's page, and the shared key for whichever of those the secret does not hold, until it is removed. A program's key reaches its page in session storage, never in a URL or a log. A program with neither its own key nor the shared key is not opened, and the log says so.
 - **A page that fails**, or is not connected for 45 s, is opened again after 5 s, 15 s, then every 60 s.
 - **Logs** (`docker logs alcantara-return-runner`) carry the page's own `[return-router] ` diagnostics, and its errors and failed requests with queries, long tokens and the renderer key removed.
 - **Health and metrics** are on `127.0.0.1:8090` inside the container (`/` and `/metrics`: `return_runner_routers{state}`, `return_runner_polls_total{result}`, `return_runner_opens_total{result}`), not published.
@@ -86,7 +86,24 @@ infra/helix/return-runner-up.sh --from-container <backend-ssh-target> <ssh-targe
 infra/cumulus/contribution-up.sh <cumulus-ssh-target>
 ```
 
-It renders the renderer key inside the running `alcantara-backend` container on the same host into a 0600 `contribution.env` (never printed, never written locally), copies the worker, builds and starts it, and waits for it to report healthy. `CONTRIBUTION_PROGRAM_ID` (default `modoitaliano.fm`), `CONTRIBUTION_RTMP_URL` (default `rtmp://palazzo:1935/live/contribution`) and `ALCANTARA_BACKEND_DOCKER` (for example `sudo docker`) change its defaults. Stop it with `docker rm -f alcantara-contribution` on cumulus (cumulus has no docker compose, so `contribution-run.sh` starts it with plain docker and the compose file's settings); Palazzo then simply has no live input.
+It renders the station's renderer key (its program's `webrtcProgramKeys` entry, else the shared key until it is removed) inside the running `alcantara-backend` container on the same host into a 0600 `contribution.env` (never printed, never written locally), copies the worker, builds and starts it, and waits for it to report healthy. `CONTRIBUTION_PROGRAM_ID` (default `modoitaliano.fm`), `CONTRIBUTION_RTMP_URL` (default `rtmp://palazzo:1935/live/contribution`) and `ALCANTARA_BACKEND_DOCKER` (for example `sudo docker`) change its defaults. Stop it with `docker rm -f alcantara-contribution` on cumulus (cumulus has no docker compose, so `contribution-run.sh` starts it with plain docker and the compose file's settings); Palazzo then simply has no live input.
+
+## Placing the programs' renderer keys
+
+Each program's machines (the return runner, its contribution worker, the pilot's Program window) present that program's own renderer key (gaulatti/alcantara#884). `backend/scripts/place-renderer-keys.cjs` issues the keys and places them in the runtime secret's `webrtcProgramKeys` in one command, so no key is ever shown. Its first step runs in the backend container, where the database is. Its second runs with operator AWS credentials in the backend image, which can write the secret. The key passes only on the pipe between them:
+
+```bash
+ssh <backend-ssh-target> "docker exec -i alcantara-backend node scripts/place-renderer-keys.cjs issue --allow-remote --program <program-id> [--program <program-id>…]" \
+  | docker run --rm -i -e AWS_REGION -e ALCANTARA_CONFIG_SECRET_ID ${AWS_PROFILE:+-e AWS_PROFILE} -v "$HOME/.aws:/root/.aws:ro" \
+      ghcr.io/gaulatti/alcantara:latest node scripts/place-renderer-keys.cjs write
+```
+
+- **First run** issues each named program a key and writes it into the secret, keeping every other field. The output is one line per program: `<program-id>: version <n>, written`.
+- **A program that already has a key is kept** (`kept, already placed`, or `kept, holder uses shared` when the secret has no copy, as for a key issued in the Shows panel or by the pilot). Its machines keep the key they hold, or the shared key. Add `--rotate` after `issue` to replace the key: every machine holding the old one stops until it is redeployed or reopened with the new one, and a key used in the last 15 minutes is warned about first.
+- **`--dry-run`** on both steps changes nothing and says what each would do.
+- **Then redeploy the holders** (`return-runner-up.sh`, `contribution-up.sh`) so their env files get the keys.
+- **If the write step fails** after an issue or a rotation, the database has a key no machine holds. Run both steps again with `--rotate`. A first issue breaks nothing meanwhile, because the shared key is still accepted.
+- Each issue and rotation is recorded as an operator change (via `script`), with the version only.
 
 ## Network Ports: Public vs. Private
 

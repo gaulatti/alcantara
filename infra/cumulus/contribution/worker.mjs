@@ -47,7 +47,8 @@ export function readConfig(env) {
   if (!/^rtmp:\/\/[^/\s]+\/\S+$/.test(target)) throw new Error("CONTRIBUTION_RTMP_URL must be rtmp://host:port/path");
   return {
     api: need("ALCANTARA_API_URL").replace(/\/$/, ""),
-    key: need("WEBRTC_RENDERER_KEY"),
+    // The station's own renderer key, else the shared key until it is removed (gaulatti/alcantara#884).
+    key: (env.WEBRTC_PROGRAM_KEY ?? "").trim() || need("WEBRTC_RENDERER_KEY"),
     programId,
     target,
     pollMs: Number(env.CONTRIBUTION_POLL_MS ?? 1_000),

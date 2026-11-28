@@ -28,7 +28,7 @@ export function readConfig(env) {
   return {
     api: need("ALCANTARA_API_URL").replace(/\/$/, ""),
     app: need("ALCANTARA_APP_URL").replace(/\/$/, ""),
-    key: need("WEBRTC_RENDERER_KEY"),
+    ...readKeys(env),
     engine,
     pollMs: Number(env.RETURN_RUNNER_POLL_MS ?? 3_000),
     maxRooms: Number(env.RETURN_RUNNER_MAX_ROOMS ?? 6),
@@ -36,10 +36,48 @@ export function readConfig(env) {
   };
 }
 
-/** Strips what could be a credential: queries, fragments, long token-like strings and the renderer key itself. */
-export function redact(text, key = "") {
+/**
+ * The runner's renderer keys (gaulatti/alcantara#884): the fleet key for the router list, each program's own key for its
+ * page, and the shared key for whichever of those is not configured, until it is removed. At least one of the fleet
+ * and shared keys is needed for the list.
+ */
+export function readKeys(env) {
+  const value = (name) => (env[name] ?? "").trim();
+  const shared = value("WEBRTC_RENDERER_KEY");
+  const fleet = value("WEBRTC_FLEET_KEY");
+  if (!fleet && !shared) throw new Error("WEBRTC_FLEET_KEY or WEBRTC_RENDERER_KEY is required");
+  const programs = new Map();
+  const raw = value("WEBRTC_PROGRAM_KEYS");
+  if (raw) {
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new Error("WEBRTC_PROGRAM_KEYS is not JSON");
+    }
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("WEBRTC_PROGRAM_KEYS is not an object");
+    for (const [programId, key] of Object.entries(parsed)) {
+      if (!PROGRAM_ID.test(programId) || typeof key !== "string" || !key.trim()) throw new Error("WEBRTC_PROGRAM_KEYS has an entry that is not a program id and a key");
+      programs.set(programId, key.trim());
+    }
+  }
+  return { shared, fleet, programs };
+}
+
+/** The key a program's page presents: its own, else the shared key. Empty when it has neither. */
+export function keyFor(config, programId) {
+  return config.programs.get(programId) ?? config.shared;
+}
+
+/** Every key the runner holds, for redaction. */
+export function allKeys(config) {
+  return [config.fleet, config.shared, ...config.programs.values()].filter(Boolean);
+}
+
+/** Strips what could be a credential: queries, fragments, long token-like strings and the renderer keys themselves. */
+export function redact(text, keys = []) {
   let line = String(text);
-  if (key) line = line.split(key).join("<key>");
+  for (const key of [keys].flat()) if (key) line = line.split(key).join("<key>");
   return line
     .replace(/\b((?:https?|wss?):\/\/[^\s?#"']+)[?#][^\s"']*/g, "$1?<redacted>")
     .replace(/[A-Za-z0-9_\-+=]{32,}(?:\.[A-Za-z0-9_\-+=]+)*/g, "<redacted>")
@@ -75,7 +113,7 @@ export async function wantedPrograms(config, running, fetchImpl = fetch, last = 
   const query = running.length ? `?running=${running.map(encodeURIComponent).join(",")}` : "";
   const url = `${config.api}/webrtc/return-routers${query}`;
   const response = await fetchImpl(url, {
-    headers: { "X-Renderer-Key": config.key, ...(last?.etag && last.url === url ? { "If-None-Match": last.etag } : {}) },
+    headers: { "X-Renderer-Key": config.fleet || config.shared, ...(last?.etag && last.url === url ? { "If-None-Match": last.etag } : {}) },
     signal: AbortSignal.timeout(10_000),
   });
   if (response.status === 304 && last) return { ...last, status: 304 };
@@ -252,6 +290,11 @@ async function main() {
   }[config.engine];
   let browser = null;
   const openPage = async (programId) => {
+    const key = keyFor(config, programId);
+    if (!key) {
+      console.log(`no renderer key for ${programId}: give it one in WEBRTC_PROGRAM_KEYS`);
+      throw new Error(`no renderer key for ${programId}`);
+    }
     if (!browser?.isConnected()) browser = await playwright[config.engine].launch(launch);
     // A context of its own per program, so one room's session never sees another's.
     const context = await browser.newContext();
@@ -259,10 +302,10 @@ async function main() {
       ([origin, storage, key]) => {
         if (window.location.origin === origin) window.sessionStorage.setItem(storage, key);
       },
-      [new URL(config.app).origin, KEY_STORAGE, config.key],
+      [new URL(config.app).origin, KEY_STORAGE, key],
     );
     const page = await context.newPage();
-    watchPage(page, programId, config.key);
+    watchPage(page, programId, allKeys(config));
     // runner=1 asks for the fixed identity return-router-<program>; a page opened by hand does not take it.
     await page.goto(`${config.app}/return-router/${encodeURIComponent(programId)}?runner=1`, { timeout: 30_000 });
     return { page, close: () => context.close() };

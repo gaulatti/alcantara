@@ -12,14 +12,14 @@ const compose = fs.readFileSync(path.join(repo, 'infra/cumulus/compose.contribut
 const script = path.join(repo, 'infra/cumulus/contribution-up.sh');
 const SECRET = 'fictional-renderer-key-for-the-test';
 
-function runUp({ render = 0, healthy = true, env = {} } = {}) {
+function runUp({ render = 0, healthy = true, env = {}, printed = `motd line\\nWEBRTC_RENDERER_KEY=${SECRET}\\n` } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'contribution-up-'));
   const bin = path.join(dir, 'bin');
   fs.mkdirSync(bin);
   const log = path.join(dir, 'calls.log');
   const stdin = path.join(dir, 'ssh-stdin');
   const stub = (name, body) => fs.writeFileSync(path.join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
-  stub('ssh', `printf 'ssh %s\\n' "$*" >> "${log}"\ncase "$*" in\n  *print-return-runner-env*) [ "${render}" -eq 0 ] && printf 'motd line\\nWEBRTC_RENDERER_KEY=${SECRET}\\n'; exit ${render} ;;\n  *"cat >"*) cat >> "${stdin}" ;;\n  *"inspect"*) exit ${healthy ? 0 : 1} ;;\nesac\nexit 0`);
+  stub('ssh', `printf 'ssh %s\\n' "$*" >> "${log}"\ncase "$*" in\n  *print-return-runner-env*) [ "${render}" -eq 0 ] && printf '${printed}'; exit ${render} ;;\n  *"cat >"*) cat >> "${stdin}" ;;\n  *"inspect"*) exit ${healthy ? 0 : 1} ;;\nesac\nexit 0`);
   stub('scp', `printf 'scp %s\\n' "$*" >> "${log}"`);
   const result = spawnSync('sh', [script, 'operator@cumulus.example.test'], {
     encoding: 'utf8',
@@ -48,7 +48,7 @@ test('contribution-up.sh writes the key only through ssh input, then builds, sta
     `ALCANTARA_API_URL=https://api.alcantara.gaulatti.com\nPROGRAM_ID=modoitaliano.fm\nCONTRIBUTION_RTMP_URL=rtmp://palazzo:1935/live/contribution\nWEBRTC_RENDERER_KEY=${SECRET}\n`,
   );
   for (const text of [run.calls, run.stdout, run.stderr]) assert.ok(!text.includes(SECRET));
-  assert.match(run.calls, /ssh .*operator@cumulus\.example\.test sh -c 'docker exec alcantara-backend node scripts\/print-return-runner-env\.mjs'/);
+  assert.match(run.calls, /ssh .*operator@cumulus\.example\.test sh -c 'docker exec alcantara-backend node scripts\/print-return-runner-env\.mjs --program modoitaliano\.fm'/);
   assert.match(run.calls, /umask 077 && cat > \$HOME\/\.alcantara-contribution\/contribution\.env\.new && mv -f/);
   assert.match(run.calls, /scp .*worker\.mjs/);
   assert.match(run.calls, /sh \$HOME\/\.alcantara-contribution\/contribution-run\.sh \"docker\"/);
@@ -95,4 +95,17 @@ test('the plain-docker runner applies the same caps and network as the compose f
   assert.match(runner, /--restart always --network broadcast-control/);
   assert.match(runner, /--env-file "\$dir\/contribution\.env"/);
   assert.doesNotMatch(runner, / -p | --publish|--network host|--privileged/);
+});
+
+test('contribution-up.sh passes the station key and the shared key, one line each, and nothing else', () => {
+  // A fictional value, built here.
+  const station = 'alrk_fictional-station-key-for-the-test';
+  const run = runUp({
+    printed: `motd\\nWEBRTC_PROGRAM_KEY=${station}\\nWEBRTC_RENDERER_KEY=${SECRET}\\nWEBRTC_PROGRAM_KEY=second\\nWEBRTC_FLEET_KEY=fleet\\n`,
+  });
+  assert.equal(run.status, 0, run.stderr);
+  assert.match(run.sent, new RegExp(`^WEBRTC_PROGRAM_KEY=${station}$`, 'm'));
+  assert.match(run.sent, new RegExp(`^WEBRTC_RENDERER_KEY=${SECRET}$`, 'm'));
+  assert.doesNotMatch(run.sent, /second|FLEET|motd/);
+  for (const text of [run.calls, run.stdout, run.stderr]) assert.ok(!text.includes(station));
 });

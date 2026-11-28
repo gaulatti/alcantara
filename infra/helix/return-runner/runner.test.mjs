@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createRunner, readConfig, wantedPrograms, redact, watchPage, BACKOFF_MS, GONE_MS, STUCK_MS } from "./runner.mjs";
+import { allKeys, createRunner, keyFor, readConfig, wantedPrograms, redact, watchPage, BACKOFF_MS, GONE_MS, STUCK_MS } from "./runner.mjs";
 
 const env = { ALCANTARA_API_URL: "https://api.example/", ALCANTARA_APP_URL: "https://app.example", WEBRTC_RENDERER_KEY: "secret-key" };
 const config = readConfig(env);
@@ -29,6 +29,39 @@ test("requires its settings and a browser it knows", () => {
   assert.equal(config.api, "https://api.example");
   assert.throws(() => readConfig({ ...env, WEBRTC_RENDERER_KEY: " " }), /WEBRTC_RENDERER_KEY/);
   assert.throws(() => readConfig({ ...env, WEBRTC_BROWSER: "ie" }), /chromium, webkit or firefox/);
+});
+
+// Fictional keys, built here.
+const FLEET = "fleet-key-fictional-built-in-this-test-0000";
+const STATION = "alrk_fictional-key-for-station-a";
+
+test("reads the fleet key, each program's key and the shared key, and refuses a key map it cannot use", () => {
+  const keyed = readConfig({ ...env, WEBRTC_FLEET_KEY: FLEET, WEBRTC_PROGRAM_KEYS: JSON.stringify({ "station-a": STATION }) });
+  assert.equal(keyed.fleet, FLEET);
+  assert.equal(keyFor(keyed, "station-a"), STATION);
+  assert.equal(keyFor(keyed, "station-b"), "secret-key");
+  assert.deepEqual(allKeys(keyed).sort(), [FLEET, STATION, "secret-key"].sort());
+  const fleetOnly = readConfig({ ...env, WEBRTC_RENDERER_KEY: "", WEBRTC_FLEET_KEY: FLEET });
+  assert.equal(keyFor(fleetOnly, "station-a"), "");
+  assert.throws(() => readConfig({ ...env, WEBRTC_RENDERER_KEY: "" }), /WEBRTC_FLEET_KEY or WEBRTC_RENDERER_KEY is required/);
+  assert.throws(() => readConfig({ ...env, WEBRTC_PROGRAM_KEYS: "{" }), /WEBRTC_PROGRAM_KEYS is not JSON/);
+  assert.throws(() => readConfig({ ...env, WEBRTC_PROGRAM_KEYS: "[]" }), /WEBRTC_PROGRAM_KEYS is not an object/);
+  assert.throws(() => readConfig({ ...env, WEBRTC_PROGRAM_KEYS: "null" }), /WEBRTC_PROGRAM_KEYS is not an object/);
+  for (const entry of [{ "../x": STATION }, { "station-a": 4 }, { "station-a": " " }])
+    assert.throws(() => readConfig({ ...env, WEBRTC_PROGRAM_KEYS: JSON.stringify(entry) }), /not a program id and a key/);
+});
+
+test("asks for the router list with the fleet key when it has one", async () => {
+  const seen = [];
+  await wantedPrograms(readConfig({ ...env, WEBRTC_FLEET_KEY: FLEET }), [], async (_url, init) => {
+    seen.push(init.headers["X-Renderer-Key"]);
+    return new Response(JSON.stringify({ programs: [] }));
+  });
+  assert.deepEqual(seen, [FLEET]);
+});
+
+test("redacts every key it holds", () => {
+  assert.equal(redact(`a ${FLEET} b ${STATION} c`, [FLEET, STATION, ""]), "a <key> b <key> c");
 });
 
 test("sends the key in a header, never in the address, and keeps only program ids", async () => {

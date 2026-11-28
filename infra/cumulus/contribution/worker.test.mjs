@@ -131,6 +131,10 @@ test("reads its configuration and refuses what it cannot use", () => {
   });
   assert.equal(readConfig({ ...env, CONTRIBUTION_POLL_MS: "250", CONTRIBUTION_HEALTH_PORT: "9000" }).pollMs, 250);
   assert.throws(() => readConfig({ ...env, WEBRTC_RENDERER_KEY: " " }), /WEBRTC_RENDERER_KEY is required/);
+  // The station's own key wins over the shared key, which is needed only without it. A fictional value, built here.
+  assert.equal(readConfig({ ...env, WEBRTC_PROGRAM_KEY: " alrk_fictional-station " }).key, "alrk_fictional-station");
+  assert.equal(readConfig({ ...env, WEBRTC_RENDERER_KEY: "", WEBRTC_PROGRAM_KEY: "alrk_fictional-station" }).key, "alrk_fictional-station");
+  assert.throws(() => readConfig({ ...env, WEBRTC_RENDERER_KEY: "", WEBRTC_PROGRAM_KEY: " " }), /WEBRTC_RENDERER_KEY is required/);
   assert.throws(() => readConfig({ ...env, PROGRAM_ID: "news/main" }), /not a program id/);
   assert.throws(() => readConfig({ ...env, CONTRIBUTION_RTMP_URL: "https://palazzo/" }), /must be rtmp/);
 });
