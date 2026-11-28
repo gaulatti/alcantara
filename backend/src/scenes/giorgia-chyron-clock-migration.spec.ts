@@ -9,7 +9,21 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { Client } from 'pg';
+import { Client as UntypedPgClient } from 'pg';
+
+// pg ships without types in this package set. These specs use only the calls below, so this is the typed view of
+// the client they get; it is a cast, not a new behaviour.
+interface PgClient {
+  connect(): Promise<void>;
+  end(): Promise<void>;
+  query<T = Record<string, unknown>>(
+    text: string,
+    values?: unknown[],
+  ): Promise<{ rows: T[]; rowCount: number | null }>;
+}
+const Client = UntypedPgClient as unknown as new (config: {
+  connectionString: string | undefined;
+}) => PgClient;
 
 /**
  * The retired chyron and clock migration on PostgreSQL: layouts that list them list the Giorgia ids in place, their
@@ -181,14 +195,18 @@ describeWithServer('retired chyron and clock migration', () => {
       const layouts = async () =>
         Object.fromEntries(
           (
-            await client.query(
+            await client.query<{ id: number; componentType: string }>(
               `SELECT id, "componentType" FROM "Layout" WHERE name LIKE 'fixture-%'`,
             )
           ).rows.map((row) => [row.id, row.componentType]),
         );
       const metadata = async (id: number) =>
-        (await client.query(`SELECT metadata FROM "Scene" WHERE id = $1`, [id]))
-          .rows[0].metadata as string | null;
+        (
+          await client.query<{ metadata: string | null }>(
+            `SELECT metadata FROM "Scene" WHERE id = $1`,
+            [id],
+          )
+        ).rows[0].metadata;
 
       expect(await layouts()).toEqual({
         [plates]:
@@ -206,9 +224,12 @@ describeWithServer('retired chyron and clock migration', () => {
       });
       // The props on air (the retired key the operator edited) win over an older Giorgia key.
       expect(
-        JSON.parse((await metadata(bothScene)) as string)[
-          'modoitaliano-giorgia-clock'
-        ],
+        (
+          JSON.parse((await metadata(bothScene)) as string) as Record<
+            string,
+            unknown
+          >
+        )['modoitaliano-giorgia-clock'],
       ).toEqual(clock);
       expect(await metadata(brokenScene)).toBe('not json');
       expect(await metadata(emptyScene)).toBeNull();

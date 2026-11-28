@@ -1,7 +1,27 @@
 // gaulatti/alcantara#391: the dead tournament-bracket element and key are removed from layout 2236 and scene 74, and
 // nothing else. The specs use the real production values.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const removal = require('../../scripts/remove-tournament-bracket.cjs');
+interface RemovalPlan {
+  refused?: string;
+  index?: number;
+  keysBefore?: string[];
+  keysAfter?: string[];
+  componentTypeBefore?: string;
+  componentTypeAfter?: string;
+  scrubbedMetadata: string;
+  restoredComponentType?: string;
+  restoredMetadata?: string;
+  [field: string]: unknown;
+}
+interface RemovalModule {
+  planLayout(layout: unknown): RemovalPlan;
+  planScene(sceneId: number, metadata: string | null | undefined): RemovalPlan;
+  planRevert(input: unknown, ...rest: unknown[]): RemovalPlan;
+  insertListElement(list: string, index: number): { value: string };
+  hostAllowed(url: string, allow: boolean): boolean;
+}
+const removal =
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require('../../scripts/remove-tournament-bracket.cjs') as RemovalModule;
 
 const REAL_LIST =
   'modoitaliano-giorgia-clock,tournament-bracket,modoitaliano-giorgia-bracket,slideshow';
@@ -44,7 +64,7 @@ describe('tournament-bracket removal', () => {
       'modoitaliano-giorgia-bracket',
       'modoitaliano-giorgia-clock',
     ]);
-    const original = JSON.parse(realMetadata());
+    const original = JSON.parse(realMetadata()) as Record<string, unknown>;
     expect(JSON.parse(plan.scrubbedMetadata)).toEqual(
       Object.fromEntries(
         Object.entries(original).filter(
