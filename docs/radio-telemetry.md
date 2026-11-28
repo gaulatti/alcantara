@@ -446,7 +446,10 @@ Every site is rendered from zero.
 `alcantara_radio_engine_resyncs_total{trigger,result}` counts the times the song
 engine read Palazzo's state itself. `trigger` is `boot` (Palazzo's first report arrived before the engine had taken
 up the rotation), `foreign_ended` (a foreign
-track ended), `watchdog` (Palazzo reported nothing on the air past the bound)
+track ended), `unissued_playback` (Palazzo reported a start or position for a playback this backend did not issue
+while the song it holds as on air had no report of its own; said once per playback with the warning `Palazzo reports
+playback <id> on <program>, which this backend did not issue, …`; an idle read is counted `undecided` and acted on no
+further), `watchdog` (Palazzo reported nothing on the air past the bound)
 or `command_failed` (the retry after a failed song command). `result` is
 `resumed` (Palazzo was idle and the engine reconciled from it, which for the
 watchdog means it commanded a song or advanced past an end),

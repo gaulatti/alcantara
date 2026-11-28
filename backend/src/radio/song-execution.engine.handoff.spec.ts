@@ -4343,3 +4343,308 @@ describe('the next song across a handover', () => {
     expect(next.palazzo.current?.id).toBe(announced.id);
   });
 });
+
+describe('a playback this backend did not issue (2026-11-28 07:07)', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-11-17T12:00:00.000Z'));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  const foreign = { id: 'previous-backend-next', url: SONGS[2].url };
+
+  /** The rotation commanded its first song, which Palazzo has not reported yet. */
+  const commanded = async (read: () => Promise<unknown>) => {
+    const h = harness();
+    const reads = jest.fn(read);
+    h.engine.setPalazzoTelemetry({
+      isReconciled: () => true,
+      currentState: reads,
+    } as never);
+    h.idle();
+    await settle();
+    const own = h.palazzo.commands[0];
+    return { h, reads, own };
+  };
+  const resyncs = (h: ReturnType<typeof harness>) =>
+    h.metrics.snapshot().engineResyncs;
+
+  it('reads Palazzo once on a start it did not issue, and adopts what plays', async () => {
+    const { h, reads, own } = await commanded(() =>
+      Promise.resolve(snapshot('boot-1', 50, foreign)),
+    );
+    h.palazzo.event('track.started', {
+      playbackRequestId: foreign.id,
+      url: foreign.url,
+    });
+    await settle();
+    h.palazzo.event('track.started', {
+      playbackRequestId: foreign.id,
+      url: foreign.url,
+    });
+    await settle();
+
+    expect(reads).toHaveBeenCalledTimes(1);
+    expect(resyncs(h)['unissued_playback:playing']).toBe(1);
+    const onAir = h.engine.getPlaybackState(PROGRAM);
+    expect(onAir?.audioUrl).toBe(foreign.url);
+    expect(onAir?.audioUrl).not.toBe(own.url);
+    expect(onAir?.telemetryStale).toBe(false);
+  });
+
+  it('reads Palazzo once for a run of positions it did not issue', async () => {
+    const { h, reads } = await commanded(() =>
+      Promise.resolve(snapshot('boot-1', 50, foreign)),
+    );
+    for (let second = 1; second <= 5; second += 1)
+      h.palazzo.event('playback.position', {
+        playbackRequestId: foreign.id,
+        positionSeconds: second,
+        remainingSeconds: 200 - second,
+      });
+    await settle();
+
+    expect(reads).toHaveBeenCalledTimes(1);
+    expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(foreign.url);
+  });
+
+  it('B2: never acts on an idle read, so an operator take after a foreign track is not ended or commanded over', async () => {
+    const h = harness();
+    const reads = jest.fn(() =>
+      Promise.resolve({
+        ...snapshot('boot-1', 60, null),
+        live: { onAir: false },
+      }),
+    );
+    h.engine.setPalazzoTelemetry({
+      isReconciled: () => true,
+      currentState: reads,
+    } as never);
+    // The engine follows a track this rotation does not know (withheld, not adopted).
+    const unknown = {
+      id: 'foreign-unknown',
+      url: 'https://media.test/elsewhere.mp3',
+    };
+    h.playing(unknown);
+    await settle();
+    expect(h.palazzo.commands).toHaveLength(0);
+    // The operator takes a song; Palazzo has not started it.
+    h.engine.handleManualSong(
+      PROGRAM,
+      SONGS[4].url,
+      SONGS[4].title,
+      SONGS[4].artist,
+      200_000,
+    );
+    await settle();
+    // One more report of the foreign track while Palazzo reads idle between the two.
+    h.palazzo.event('playback.position', {
+      playbackRequestId: unknown.id,
+      positionSeconds: 199,
+    });
+    await settle();
+
+    expect(reads).toHaveBeenCalledTimes(1);
+    expect(resyncs(h)['unissued_playback:undecided']).toBe(1);
+    expect(h.palazzo.commands.map((command) => command.url)).toEqual([
+      SONGS[4].url,
+    ]);
+    expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(SONGS[4].url);
+  });
+
+  it("B3: an adopted song with no library id is this backend's own, so its late reports never replace a take", async () => {
+    const h = harness({ withoutSongId: SONGS[2].itemId });
+    const inherited = { id: 'other-backend-play', url: SONGS[2].url };
+    const reads = jest.fn(() =>
+      Promise.resolve({
+        ...snapshot('boot-1', 70, inherited),
+        live: { onAir: false },
+      }),
+    );
+    h.engine.setPalazzoTelemetry({
+      isReconciled: () => true,
+      currentState: reads,
+    } as never);
+    // Taken over from another backend: its playlist item has no library song id.
+    h.playing(inherited);
+    await settle();
+    expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(inherited.url);
+    h.engine.handleManualSong(
+      PROGRAM,
+      SONGS[4].url,
+      SONGS[4].title,
+      SONGS[4].artist,
+      200_000,
+    );
+    await settle();
+    // One more report of the replaced song before Palazzo switches.
+    h.palazzo.event('playback.position', {
+      playbackRequestId: inherited.id,
+      positionSeconds: 120,
+    });
+    await settle();
+
+    expect(reads).not.toHaveBeenCalled();
+    expect(h.palazzo.commands.map((command) => command.url)).toEqual([
+      SONGS[4].url,
+    ]);
+    expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(SONGS[4].url);
+  });
+
+  it('B4: a promoted announced song with no library id is its own, so its late reports never replace a take', async () => {
+    // The announced successor of the first song has no library song id.
+    const h = harness({ withoutSongId: SONGS[1].itemId });
+    const reads = jest.fn(() =>
+      Promise.resolve({
+        ...snapshot('boot-1', 80, null),
+        live: { onAir: false },
+      }),
+    );
+    h.engine.setPalazzoTelemetry({
+      isReconciled: () => true,
+      currentState: reads,
+    } as never);
+    await onAir(h);
+    const promoted = h.palazzo.queued!;
+    expect(promoted.url).toBe(SONGS[1].url);
+    // A normal handoff: Palazzo starts the announced song itself, and the engine promotes it.
+    h.palazzo.endCurrent();
+    await settle();
+    expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(SONGS[1].url);
+    const commandsBefore = h.palazzo.commands.length;
+    h.engine.handleManualSong(
+      PROGRAM,
+      SONGS[4].url,
+      SONGS[4].title,
+      SONGS[4].artist,
+      200_000,
+    );
+    await settle();
+    h.palazzo.event('playback.position', {
+      playbackRequestId: promoted.id,
+      positionSeconds: 90,
+    });
+    await settle();
+
+    expect(reads).not.toHaveBeenCalled();
+    expect(
+      h.palazzo.commands.slice(commandsBefore).map((command) => command.url),
+    ).toEqual([SONGS[4].url]);
+    expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(SONGS[4].url);
+  });
+
+  it('changes nothing when Palazzo state cannot be read', async () => {
+    const { h, reads, own } = await commanded(() =>
+      Promise.reject(new Error('unavailable')),
+    );
+    const commandsBefore = h.palazzo.commands.length;
+    h.palazzo.event('track.started', {
+      playbackRequestId: foreign.id,
+      url: foreign.url,
+    });
+    await settle();
+
+    expect(reads).toHaveBeenCalledTimes(1);
+    expect(resyncs(h)['unissued_playback:unavailable']).toBe(1);
+    expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(own.url);
+    expect(h.palazzo.commands).toHaveLength(commandsBefore);
+  });
+
+  it('reads nothing once its own song is confirmed', async () => {
+    const { h, reads } = await commanded(() =>
+      Promise.resolve(snapshot('boot-1', 50, foreign)),
+    );
+    h.palazzo.start();
+    await settle();
+    h.palazzo.event('playback.position', {
+      playbackRequestId: foreign.id,
+      positionSeconds: 1,
+    });
+    h.palazzo.event('track.started', {
+      playbackRequestId: foreign.id,
+      url: foreign.url,
+    });
+    await settle();
+
+    expect(reads).not.toHaveBeenCalled();
+  });
+
+  it("reads nothing for its own earlier song's reports while the next waits for its start", async () => {
+    const { h, reads, own } = await commanded(() =>
+      Promise.resolve(snapshot('boot-1', 50, foreign)),
+    );
+    h.palazzo.start();
+    await settle();
+    // Its end promotes the announced successor, which Palazzo has not reported yet.
+    h.palazzo.event('track.ended', { playbackRequestId: own.id, url: own.url });
+    await settle();
+    // The successor is the song on air, with no report of its own yet.
+    expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).not.toBe(own.url);
+    h.palazzo.event('playback.position', {
+      playbackRequestId: own.id,
+      positionSeconds: 299,
+    });
+    await settle();
+
+    expect(reads).not.toHaveBeenCalled();
+  });
+});
+
+describe('what counts as a playback this backend issued', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-11-17T12:00:00.000Z'));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  type Internals = {
+    states: Map<string, { announcement: unknown }>;
+    noticeUnissuedPlayback(
+      programId: string,
+      state: unknown,
+      requestId: string,
+    ): void;
+  };
+
+  /** The rotation's first song commanded and not yet reported, with Palazzo's state read on each notice. */
+  const unconfirmed = async () => {
+    const h = harness();
+    const reads = jest.fn(() => Promise.resolve(null));
+    h.engine.setPalazzoTelemetry({
+      isReconciled: () => true,
+      currentState: reads,
+    } as never);
+    h.idle();
+    await settle();
+    const engine = h.engine as unknown as Internals;
+    const state = engine.states.get(PROGRAM)!;
+    return { engine, state, reads };
+  };
+
+  it("never reads for this backend's own announcement, or the one it replaces", async () => {
+    const { engine, state, reads } = await unconfirmed();
+    state.announcement = {
+      playbackId: 'own-next',
+      replaces: { playbackId: 'own-replaced' },
+    };
+    engine.noticeUnissuedPlayback(PROGRAM, state, 'own-next');
+    engine.noticeUnissuedPlayback(PROGRAM, state, 'own-replaced');
+    await settle();
+
+    expect(reads).not.toHaveBeenCalled();
+  });
+
+  it('keeps the playbacks already said bounded, and says an evicted one again', async () => {
+    const { engine, state, reads } = await unconfirmed();
+    for (let index = 0; index <= 32; index += 1)
+      engine.noticeUnissuedPlayback(PROGRAM, state, `unissued-${index}`);
+    await settle();
+    expect(reads).toHaveBeenCalledTimes(33);
+
+    // The oldest was evicted to keep 32: it is said once more; the newest is not.
+    engine.noticeUnissuedPlayback(PROGRAM, state, 'unissued-0');
+    engine.noticeUnissuedPlayback(PROGRAM, state, 'unissued-32');
+    await settle();
+    expect(reads).toHaveBeenCalledTimes(34);
+  });
+});

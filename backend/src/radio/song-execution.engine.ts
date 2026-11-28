@@ -512,6 +512,13 @@ interface SongEngineState {
    * designed, so a command lost in the restart still airs exactly once.
    */
   sentRequestIds?: Set<string>;
+  /** Playbacks this engine did not issue that it already said and reconciled once, bounded. */
+  unissuedNoticed?: Set<string>;
+  /**
+   * Every playback this engine commanded, announced, held, promoted or adopted, bounded, with or without a library
+   * song id: the ones it calls its own (commandedSongs keeps only those with an id).
+   */
+  knownRequestIds?: Set<string>;
   /** Boot of a Palazzo without the next route (404); undefined when supported. */
   nextUnsupportedBootId?: string | null;
   /** Announced songs replaced at the handoff before their start arrived. */
@@ -544,6 +551,12 @@ interface SongEngineState {
 }
 
 const MAX_ENDED_REQUEST_IDS = 128;
+
+/** Adds to a set that keeps at most `max` entries, dropping the oldest. */
+function addBounded(set: Set<string>, value: string, max: number): void {
+  set.add(value);
+  if (set.size > max) set.delete(set.values().next().value as string);
+}
 /** How often a leaf removal re-reads the row when another write moved it first. */
 const REMOVE_LEAVES_ATTEMPTS = 4;
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -1938,6 +1951,11 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     playbackRequestId: string,
     songId: number | null | undefined,
   ): void {
+    addBounded(
+      (state.knownRequestIds ??= new Set<string>()),
+      playbackRequestId,
+      MAX_ENDED_REQUEST_IDS,
+    );
     if (!songId) return;
     const songs = (state.commandedSongs ??= new Map<string, number>());
     songs.set(playbackRequestId, songId);
@@ -2041,6 +2059,12 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     }
     if (!snapshot) {
       this.metrics.recordEngineResync(trigger, 'unavailable');
+      return;
+    }
+    // A playback this backend did not issue is reconciled only when Palazzo plays it: an idle read in between (the
+    // foreign track ended, an operator's take not started yet) must not end the take and command over it.
+    if (trigger === 'unissued_playback' && snapshot.status !== 'playing') {
+      this.metrics.recordEngineResync(trigger, 'undecided');
       return;
     }
     this.metrics.recordEngineResync(
@@ -2659,6 +2683,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         this.metrics.recordTrackTransition('adopted');
       } else {
         this.metrics.recordTrackTransition('ignored-mismatch');
+        this.noticeUnissuedPlayback(programId, state, requestId);
       }
       return;
     }
@@ -5587,6 +5612,48 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * Palazzo reports a playback this engine never issued while the song it holds as on air has had no report of its
+   * own: something else is on the air, unseen. On 2026-11-28 the previous backend's next aired for 3.5 min under
+   * its own request while this one believed its command was on air, and every report was dropped without a word.
+   * It is said once per request, and Palazzo's state is read and reconciled as on a resync: a playing track is
+   * adopted as the song on air (the unconfirmed one is closed as superseded). A failed read changes nothing.
+   * Playbacks this engine sent, announced, adopted, ended or is waiting for are its own and never trigger it, so a
+   * handoff's overlapping reports do not.
+   */
+  private noticeUnissuedPlayback(
+    programId: string,
+    state: SongEngineState,
+    requestId: string,
+  ): void {
+    const song = state.activeSong;
+    if (!requestId || !song || song.authoritativeUpdatedAt !== null) return;
+    if (this.issuedHere(state, requestId)) return;
+    const noticed = (state.unissuedNoticed ??= new Set<string>());
+    if (noticed.has(requestId)) return;
+    addBounded(noticed, requestId, MAX_PREEMPTED_REQUEST_IDS);
+    this.logger.warn(
+      `Palazzo reports playback ${requestId} on ${programId}, which this backend did not issue, while ${song.playbackRequestId} has no report; reading Palazzo's state`,
+    );
+    void this.resync(programId, 'unissued_playback');
+  }
+
+  /** Whether this engine sent, announced, adopted (with or without a library id), ended or is waiting for the playback. */
+  private issuedHere(state: SongEngineState, requestId: string): boolean {
+    const announcement = state.announcement;
+    return (
+      state.activeSong?.playbackRequestId === requestId ||
+      announcement?.playbackId === requestId ||
+      announcement?.replaces?.playbackId === requestId ||
+      state.pendingRequestIds.has(requestId) ||
+      state.endedRequestIds.includes(requestId) ||
+      state.preemptedRequestIds.includes(requestId) ||
+      state.awaitingAir.has(requestId) ||
+      state.sentRequestIds?.has(requestId) === true ||
+      state.knownRequestIds?.has(requestId) === true
+    );
+  }
+
   private applyAuthoritativePosition(
     programId: string,
     state: SongEngineState,
@@ -5603,6 +5670,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       data.playbackRequestId &&
       data.playbackRequestId !== song.playbackRequestId
     ) {
+      this.noticeUnissuedPlayback(programId, state, data.playbackRequestId);
       return;
     }
     if (typeof data.positionSeconds === 'number' && data.positionSeconds >= 0) {
