@@ -27,6 +27,7 @@ import {
   type RecipeDefinition,
   type RecipeStep,
 } from './recipe-expand';
+import { readProgramTeam } from '../tenancy/program-team';
 
 /** The fields a recipe is created or updated with (contract C3, gaulatti/alcantara#222). */
 export interface RecipeInput {
@@ -386,11 +387,7 @@ export class RecipesService {
     callerTeam: number | undefined,
     artist: string,
   ): Promise<string | null> {
-    const program = await this.prisma.program.findUnique({
-      where: { programId },
-      select: { teamId: true },
-    });
-    const team = program?.teamId ?? callerTeam;
+    const team = (await readProgramTeam(this.prisma, programId)) ?? callerTeam;
     if (team === undefined) return null;
     return this.artistLabels.artistLabelFor(team, artist);
   }

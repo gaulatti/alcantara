@@ -43,7 +43,6 @@
     "stinger": 1
   },
   "src/program/recipes.service.ts": {
-    "program": 1,
     "scene": 1
   },
   "src/radio/radio-scope-preflight.service.ts": {
