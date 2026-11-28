@@ -1,5 +1,19 @@
 type RecordValue = Record<string, unknown>;
-const MAX_DEPTH = 8;
+export const MAX_SEQUENCE_DEPTH = 8;
+/** A song leaf's fields the on-air page plays and shows: its audio, title, artist, length, cover and chart rank. */
+export const PLAYABLE_SONG_LEAF_FIELDS = [
+  'id',
+  'kind',
+  'audioUrl',
+  'title',
+  'artist',
+  'durationMs',
+  'coverUrl',
+  'earoneSongId',
+  'earoneRank',
+  'earoneSpins',
+] as const;
+const MAX_DEPTH = MAX_SEQUENCE_DEPTH;
 
 export type ProgramSequenceMode = 'manual' | 'autoplay' | 'shuffle';
 

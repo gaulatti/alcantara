@@ -157,7 +157,7 @@ export class ProgramController {
   @Get(':programId/audio-bus')
   @Public()
   async getProgramAudioBusById(@Param('programId') programId: string) {
-    return this.programService.getProgramAudioBus(programId);
+    return this.programService.getPublicProgramAudioBus(programId);
   }
 
   /** The program's whole audio bus (rotation, queue, mixer) for the signed-in console. */

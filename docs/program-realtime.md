@@ -19,15 +19,29 @@ The signed-in console has its own state and stream, behind sign-in with `program
 team like every program route:
 
 - `GET /program/{programId}/control/state`: the program's whole state.
-- `GET /program/{programId}/control/audio-bus`: the program's whole audio bus (rotation, queue and mixer), what the
-  public `/program/{programId}/audio-bus` returns today.
+- `GET /program/{programId}/control/audio-bus`: the program's whole audio bus (rotation, queue and mixer).
 - `GET /program/{programId}/control/events` (SSE): the whole snapshot, then every signal, never projected to a
   template's contract, with a `heartbeat` every 15 s. A browser `EventSource` cannot send the `Authorization` header,
   so the console reads it with a fetch-based stream reader that sends its bearer token.
 
-The public `/program/{programId}/state`, `/program/{programId}/events` and `/program/{programId}/audio-bus` stay the
-renderer's. The console moves to the
-control routes, reading the public ones only while a control route answers 404.
+The public `/program/{programId}/state`, `/program/{programId}/events` and `/program/{programId}/audio-bus` are the
+renderer's, and send only what the on-air pages read (`backend/src/program/public-projection.ts`). A templated program
+keeps its template's versioned projection instead. For a program with no template manifest:
+
+- **State** (`GET /state`, the stream's `program_state_snapshot`, and the `state` of every live event such as
+  `fade_to_black`, `scene_change` and `program_*_changed`): `activeSceneId`, `version`, `fadeToBlack`, `stingers` (each
+  `{ stingerId, stinger: { name, videoUrl, cutPointMs } }`), and `activeScene` and `stagedScene`, each with `id`,
+  `layout.componentType`, `chyronText` and its whole `metadata`. The scene list, media groups, flights and every other
+  field stay on the control routes.
+- **`scene_staged`**: its `scene` is cut to the same scene fields.
+- **Audio bus** (`GET /audio-bus`, and the `settings` of `audio_bus_update`): `mixerSettings`, `sequenceVersion`,
+  `shuffleKeepsRows` and `songSequence`. The song queue stays on the control routes, and `song_queue_update` drops it too.
+- **Song sequence**: its structure is kept (`mode`, `items`, `activeItemId`, `intervalMs`, `loop`, `startedAt`,
+  `shuffleOrder`, `endedAt`, `cuedItemId`; each item's `id` and `kind`; a nested item's `label` and `sequence`). Each
+  leaf is cut to `id`, `kind`, `audioUrl`, `title`, `artist`, `durationMs`, `coverUrl`, `earoneSongId`, `earoneRank` and
+  `earoneSpins`.
+
+The console reads the control routes.
 
 Control treats SSE as the authoritative channel and keeps it connected whenever
 the console is open. The console does not attempt WebSocket during the initial

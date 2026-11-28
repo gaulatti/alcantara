@@ -770,7 +770,7 @@ describe('MCP radio read tools against a fake Palazzo and the console endpoints'
 
     it('get_queue: the entries equal the console audio bus, in order', async () => {
       const answer = await h.call('get_queue');
-      const bus = (await h.consoleGet(`/program/${PROGRAM}/audio-bus`)).body;
+      const bus = (await h.consoleGet(`/program/${PROGRAM}/control/audio-bus`)).body;
       expect(bus.songQueue).toHaveLength(2);
       expect(bus.sequenceVersion).toEqual(expect.any(String));
       expect(answer.body).toEqual({
@@ -1134,7 +1134,7 @@ describe('MCP radio read tools against a fake Palazzo and the console endpoints'
         automation: null,
       });
       // What Alcantara holds itself does not depend on Palazzo.
-      const bus = (await h.consoleGet(`/program/${PROGRAM}/audio-bus`)).body;
+      const bus = (await h.consoleGet(`/program/${PROGRAM}/control/audio-bus`)).body;
       expect(
         answers.get_queue.body.entries.map((e: any) => e.entry_id),
       ).toEqual(bus.songQueue.map((e: any) => e.id));

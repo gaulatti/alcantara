@@ -74,6 +74,11 @@ import {
   type ProgramTemplateManifest,
   type ProgramTemplateRegistration,
 } from './program-template.service';
+import {
+  projectPublicAudioBus,
+  projectPublicProgramSignal,
+  projectPublicProgramState,
+} from './public-projection';
 
 export interface ProgramAudioMeterChannel {
   vu: number;
@@ -2012,7 +2017,14 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
           ),
           manifest,
         )
-      : state;
+      : projectPublicProgramState(state);
+  }
+
+  /** The audio bus the public route sends: the mixer and the song sequence cut to what the on-air page reads. */
+  async getPublicProgramAudioBus(
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    return projectPublicAudioBus(await this.getProgramAudioBus(programId));
   }
 
   async getStagedScene(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
@@ -4424,7 +4436,9 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       const sendEvent = (data: unknown) => {
         const projected = templateManifest
           ? projectProgramTemplateSignal(withLiveState(data), templateManifest)
-          : data;
+          : audience === 'public'
+            ? projectPublicProgramSignal(data)
+            : data;
         if (projected) subscriber.next(serialize(projected));
       };
 
@@ -4468,7 +4482,9 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
           const publicState =
             templateManifest && templateState
               ? projectProgramTemplateState(templateState, templateManifest)
-              : state;
+              : audience === 'public'
+                ? projectPublicProgramState(state)
+                : state;
           subscriber.next(
             serialize({
               type: 'program_state_snapshot',

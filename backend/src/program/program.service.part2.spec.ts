@@ -447,10 +447,12 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       expect(await service.getState('other')).toMatchObject({ version: 1 });
     });
 
-    it('returns the raw state without a manifest and a projection with one', async () => {
+    it('returns the public projection without a manifest and the template projection with one', async () => {
       const { service, put } = build();
       put('main', { templateManifest: null, secret: 'x' });
-      expect(await service.getPublicState()).toMatchObject({ secret: 'x' });
+      const plain = await service.getPublicState();
+      expect(plain).toMatchObject({ activeSceneId: null, fadeToBlack: false, stingers: [] });
+      expect(plain).not.toHaveProperty('secret');
       put('tpl', {
         templateManifest: manifest,
         secret: 'x',

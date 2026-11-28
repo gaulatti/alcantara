@@ -1713,10 +1713,18 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
       expect(out).toEqual([]);
       resolveState(stateOf());
       await flush();
+      // A program with no template manifest: the public stream sends only what the on-air pages read.
       expect(out[0]).toEqual({
         type: 'program_state_snapshot',
         programId: 'main',
-        state: stateOf(),
+        state: {
+          activeSceneId: null,
+          version: 5,
+          fadeToBlack: false,
+          stingers: [],
+          activeScene: null,
+          stagedScene: null,
+        },
         version: 5,
       });
       expect(out[1]).toMatchObject({ n: 'early' });

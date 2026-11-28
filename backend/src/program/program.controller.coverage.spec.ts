@@ -16,6 +16,7 @@ function build() {
     'updateBroadcastSettings',
     'getPublicState',
     'getProgramAudioBus',
+    'getPublicProgramAudioBus',
     'getProgramAudioMeter',
     'updateProgramAudioMeter',
     'refuseOperatorStartWhileEngineUnavailable',
@@ -114,7 +115,7 @@ describe('ProgramController delegation', () => {
     const { controller, program } = build();
     const reads: Array<[string, () => Promise<unknown>, string | undefined]> = [
       ['getPublicState', () => controller.getStateById('p'), 'p'],
-      ['getProgramAudioBus', () => controller.getProgramAudioBusById('p'), 'p'],
+      ['getPublicProgramAudioBus', () => controller.getProgramAudioBusById('p'), 'p'],
       [
         'getProgramAudioMeter',
         () => controller.getProgramAudioMeterById('p'),
