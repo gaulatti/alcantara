@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma.service';
 import { BroadcastIngestService } from './broadcast-ingest.service';
 import { parseIngestPayload } from './ingest-payload';
 import { probeRtmp, type RtmpProbeResult } from './rtmp-probe';
+import { forTeam } from '../tenancy/scoped-prisma';
 
 /** One test per destination in this window: it opens a connection to a third party's ingest. */
 export const TEST_INTERVAL_MS = 15_000;
@@ -40,8 +41,10 @@ export class DestinationTestService {
     callerTeam: number,
     now = Date.now(),
   ): Promise<RtmpProbeResult> {
-    // The destination must be the caller's and live before its rate window or key is touched.
-    const destination = await this.prisma.broadcastDestination.findUnique({
+    // The destination must be the caller's and live before its rate window or key is touched. Read through the
+    // caller's team (gaulatti/alcantara#122): another team's destination is not found; team 0 (local) reads all.
+    const db = callerTeam > 0 ? forTeam(this.prisma, callerTeam) : this.prisma;
+    const destination = await db.broadcastDestination.findUnique({
       where: { id: destinationId },
       select: { teamId: true, retiredAt: true },
     });

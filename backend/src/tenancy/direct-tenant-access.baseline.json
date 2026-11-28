@@ -14,9 +14,6 @@
     "broadcastDestination": 1,
     "broadcastIngestAccess": 1
   },
-  "src/broadcast-destinations/destination-test.service.ts": {
-    "broadcastDestination": 1
-  },
   "src/external-sources/external-sources.service.ts": {
     "externalSource": 9
   },
