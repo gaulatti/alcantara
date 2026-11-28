@@ -27,15 +27,34 @@ const OPTIONAL_WEBRTC_SECRET_KEYS = Object.freeze(['webrtcRendererKey', 'webrtcF
 // LiveKit refuses an API secret shorter than 32 characters; the session secret
 // signs guest sessions and gets the same floor.
 const MINIMUM_WEBRTC_SECRET_LENGTH = 32;
+// webrtcProgramKeys (gaulatti/alcantara#884): each program's renderer key, as `{ "<programId>": "alrk_…" }`, for the
+// machines that serve it. Read by the holders' deploy only; the backend checks a key by its stored hash.
+const PROGRAM_KEYS_FIELD = 'webrtcProgramKeys';
+const PROGRAM_KEY_PROGRAM_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+const PROGRAM_RENDERER_KEY = /^alrk_[A-Za-z0-9_-]{43}$/;
 const WEBRTC_SECRET_FIELDS = new Set([
   ...LIVEKIT_SECRET_KEYS,
   ...OPTIONAL_WEBRTC_SECRET_KEYS,
+  PROGRAM_KEYS_FIELD,
 ]);
+
+/** The program key map, or null when it is not an object of program ids to renderer keys. */
+function parseProgramKeys(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const keys = {};
+  for (const [programId, key] of Object.entries(value)) {
+    if (!PROGRAM_KEY_PROGRAM_ID.test(programId)) return null;
+    if (typeof key !== 'string' || !PROGRAM_RENDERER_KEY.test(key)) return null;
+    keys[programId] = key;
+  }
+  return keys;
+}
 const allowedSecretFields = new Set([
   ...RUNTIME_SECRET_KEYS,
   ...ALLOWLISTED_OPTIONAL_SECRET_KEYS,
   ...LIVEKIT_SECRET_KEYS,
   ...OPTIONAL_WEBRTC_SECRET_KEYS,
+  PROGRAM_KEYS_FIELD,
 ]);
 const alanaTokenPattern = /^[a-f0-9]{64}$/;
 
@@ -259,6 +278,12 @@ function parseRuntimeSecretPayload(secretString, { strictWebrtc = true } = {}) {
   const invalidWebrtcFields = [];
   for (const [key, value] of Object.entries(payload)) {
     if (!allowedSecretFields.has(key)) continue;
+    if (key === PROGRAM_KEYS_FIELD) {
+      const keys = parseProgramKeys(value);
+      if (keys === null) invalidWebrtcFields.push(key);
+      else selected[key] = keys;
+      continue;
+    }
     if (WEBRTC_SECRET_FIELDS.has(key)) {
       // Judged with the LiveKit group below, so a lenient caller can drop it.
       if (typeof value !== 'string' || !value.trim())
@@ -352,6 +377,7 @@ module.exports = {
   ALLOWLISTED_OPTIONAL_SECRET_KEYS,
   LIVEKIT_SECRET_KEYS,
   OPTIONAL_WEBRTC_SECRET_KEYS,
+  PROGRAM_KEYS_FIELD,
   RUNTIME_SECRET_KEYS,
   isPrivateServiceHostname,
   isValidAlanaControlToken,

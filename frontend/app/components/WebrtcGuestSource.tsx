@@ -1,17 +1,14 @@
 import { useCallback } from 'react';
 import { WebrtcGuestSource as BleeckerWebrtcGuestSource, type WebrtcCredentials } from '../bleecker';
 import { apiUrl } from '../utils/apiBaseUrl';
-
-const RENDERER_KEY_STORAGE = 'alcantara-renderer-key';
+import { noteRendererKeyAnswer, pageRendererKey } from '../utils/rendererKey';
 
 /**
  * Reads the renderer key from the URL fragment (or the session) and asks the API for a room token
  * for this program. The Bleecker component only joins the room with what this returns.
  */
 async function requestRoomCredentials(programId: string): Promise<WebrtcCredentials> {
-  const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-  const rendererKey = fragment.get('key') || window.sessionStorage.getItem(RENDERER_KEY_STORAGE) || '';
-  if (rendererKey) window.sessionStorage.setItem(RENDERER_KEY_STORAGE, rendererKey);
+  const rendererKey = pageRendererKey();
   if (!rendererKey) throw new Error('Renderer source credential is missing.');
   const response = await fetch(apiUrl('/webrtc/renderer-source-token'), {
     method: 'POST',
@@ -21,6 +18,7 @@ async function requestRoomCredentials(programId: string): Promise<WebrtcCredenti
     },
     body: JSON.stringify({ programId }),
   });
+  noteRendererKeyAnswer(response.status);
   if (!response.ok) throw new Error(`Guest source authorization failed (${response.status}).`);
   return (await response.json()) as WebrtcCredentials;
 }

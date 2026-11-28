@@ -130,6 +130,12 @@ describe("scene activation", () => {
     reply(200, { id: 4 });
     await program.completeSceneCountdown("p");
     expect(fetchMock.mock.lastCall?.[1]).toEqual({ method: "POST", headers: { "X-Renderer-Key": "fictional-page-key" } });
+    // A refused key is noted for the page's holder.
+    reply(401, { message: "Renderer credential required." });
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await expect(program.completeSceneCountdown("p")).rejects.toThrow("Renderer credential required.");
+    expect(document.documentElement.dataset.rendererKey).toBe("changed");
+    delete document.documentElement.dataset.rendererKey;
     window.sessionStorage.clear();
     reply(409, { message: "No next scene" });
     await expect(program.completeSceneCountdown("p")).rejects.toThrow("No next scene");

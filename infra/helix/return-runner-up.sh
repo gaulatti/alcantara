@@ -11,6 +11,7 @@
 # 0600 file on Helix (never
 # printed, never written locally), copies the runner, builds and starts the `alcantara-return-runner` project, and
 # waits for it to report healthy. Nothing is published and no port is opened. Helix gets no cloud credential.
+# The env file gets the fleet key, each program's key and the shared key, whichever the secret holds (gaulatti/alcantara#884).
 # Exit codes: 3 when the secret has no renderer key (nothing on Helix changes), 1 on any other failure.
 set -eu
 
@@ -54,8 +55,10 @@ else
     -v "$HOME/.aws:/root/.aws:ro" \
     "$image" node scripts/print-return-runner-env.mjs) || status=$?
 fi
-# Only the key line is taken: anything else a host's shell prints must not reach the file.
-key_line=$(printf '%s\n' "$key_line" | grep '^WEBRTC_RENDERER_KEY=.' | head -n 1 || true)
+# Only the key lines are taken (the shared key, the fleet key and the programs' keys, one each): anything else a host's
+# shell prints must not reach the file. The runner needs the fleet key or the shared key for its router list.
+key_line=$(printf '%s\n' "$key_line" | grep -E '^WEBRTC_(RENDERER_KEY|FLEET_KEY|PROGRAM_KEYS)=.' | awk -F= '!seen[$1]++' || true)
+printf '%s\n' "$key_line" | grep -qE '^WEBRTC_(RENDERER|FLEET)_KEY=.' || key_line=
 if [ "$status" -eq 3 ]; then
   echo "The runtime secret has no renderer key; Helix is unchanged" >&2
   exit 3

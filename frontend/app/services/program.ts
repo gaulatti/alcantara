@@ -1,6 +1,7 @@
 import { apiUrl } from '../utils/apiBaseUrl';
 import { fetchProgramControl } from './programControl';
 import type { ProgramState, ProgramAudioBusSettings, BroadcastSettings, ProgramAudioMeterLevels, ProgramSongPlaybackState, SceneInstantPlaybackState } from '../models/broadcast';
+import { noteRendererKeyAnswer, pageRendererKey } from '../utils/rendererKey';
 
 export async function fetchProgramState(targetProgramId: string): Promise<unknown> {
   const res = await fetchProgramControl(targetProgramId, 'state');
@@ -123,16 +124,6 @@ export async function activateScene(
   return res.json();
 }
 
-const RENDERER_KEY_STORAGE = 'alcantara-renderer-key';
-
-/** The renderer key the page was opened with (`#key=` in its URL, kept for the session), or none. */
-function pageRendererKey(): string {
-  const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-  const key = fragment.get('key') || window.sessionStorage.getItem(RENDERER_KEY_STORAGE) || '';
-  if (key) window.sessionStorage.setItem(RENDERER_KEY_STORAGE, key);
-  return key;
-}
-
 /**
  * Tells the API that the countdown clock of the scene on air reached zero. The API takes the scene that
  * countdown points to. The on-air page has no sign-in, so it presents the renderer key it was opened with.
@@ -143,6 +134,7 @@ export async function completeSceneCountdown(targetProgramId: string): Promise<P
     method: 'POST',
     ...(key ? { headers: { 'X-Renderer-Key': key } } : {}),
   });
+  if (key) noteRendererKeyAnswer(res.status);
   if (!res.ok) {
     const payload = await res.json().catch(() => null);
     const message = typeof payload?.message === 'string' ? payload.message : `The countdown did not switch scenes (HTTP ${res.status}).`;

@@ -30,9 +30,10 @@ remote() {
 
 status=0
 key_line=$(ssh -o BatchMode=yes "$target" \
-  "sh -c '$docker_cmd exec ${ALCANTARA_BACKEND_CONTAINER:-alcantara-backend} node scripts/print-return-runner-env.mjs'") || status=$?
-# Only the key line is taken: anything else a host's shell prints must not reach the file.
-key_line=$(printf '%s\n' "$key_line" | grep '^WEBRTC_RENDERER_KEY=.' | head -n 1 || true)
+  "sh -c '$docker_cmd exec ${ALCANTARA_BACKEND_CONTAINER:-alcantara-backend} node scripts/print-return-runner-env.mjs --program $program'") || status=$?
+# Only the key lines are taken (the station's own key and the shared key, one each): anything else a host's shell prints
+# must not reach the file. The worker presents its station's key, else the shared key (gaulatti/alcantara#884).
+key_line=$(printf '%s\n' "$key_line" | grep -E '^WEBRTC_(RENDERER|PROGRAM)_KEY=.' | awk -F= '!seen[$1]++' || true)
 if [ "$status" -eq 3 ]; then
   echo "The runtime secret has no renderer key; cumulus is unchanged" >&2
   exit 3

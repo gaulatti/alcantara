@@ -12,7 +12,7 @@ const compose = fs.readFileSync(path.join(repo, 'infra/helix/compose.return-runn
 const script = path.join(repo, 'infra/helix/return-runner-up.sh');
 const SECRET = 'fictional-renderer-key-for-the-test';
 
-function runUp({ render = 0, healthy = true, fromContainer = false } = {}) {
+function runUp({ render = 0, healthy = true, fromContainer = false, printed = `motd line\\nWEBRTC_RENDERER_KEY=${SECRET}\\n` } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'return-runner-up-'));
   const bin = path.join(dir, 'bin');
   fs.mkdirSync(bin);
@@ -20,7 +20,7 @@ function runUp({ render = 0, healthy = true, fromContainer = false } = {}) {
   const stdin = path.join(dir, 'ssh-stdin');
   const stub = (name, body) => fs.writeFileSync(path.join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
   stub('docker', `printf 'docker %s\\n' "$*" >> "${log}"\n[ "${render}" -eq 0 ] && printf 'WEBRTC_RENDERER_KEY=${SECRET}\\n'\nexit ${render}`);
-  stub('ssh', `printf 'ssh %s\\n' "$*" >> "${log}"\ncase "$*" in\n  *print-return-runner-env*) [ "${render}" -eq 0 ] && printf 'motd line\\nWEBRTC_RENDERER_KEY=${SECRET}\\n'; exit ${render} ;;\n  *"cat >"*) cat >> "${stdin}" ;;\n  *"docker inspect"*) exit ${healthy ? 0 : 1} ;;\nesac\nexit 0`);
+  stub('ssh', `printf 'ssh %s\\n' "$*" >> "${log}"\ncase "$*" in\n  *print-return-runner-env*) [ "${render}" -eq 0 ] && printf '${printed}'; exit ${render} ;;\n  *"cat >"*) cat >> "${stdin}" ;;\n  *"docker inspect"*) exit ${healthy ? 0 : 1} ;;\nesac\nexit 0`);
   stub('scp', `printf 'scp %s\\n' "$*" >> "${log}"`);
   const args = [...(fromContainer ? ['--from-container', 'operator@backend.example.test'] : []), 'operator@helix.example.test'];
   const result = spawnSync('sh', [script, ...args], {
@@ -85,4 +85,26 @@ test('return-runner-up.sh --from-container renders in the running backend, with 
   const missing = runUp({ fromContainer: true, render: 3 });
   assert.equal(missing.status, 3);
   assert.doesNotMatch(missing.calls, /^scp /m);
+});
+
+test('return-runner-up.sh passes the fleet key and the programs\' keys, one line each, and nothing else', () => {
+  // Fictional values, built here.
+  const fleet = 'fictional-fleet-key-for-the-launcher-test';
+  const programs = '{"station-a":"alrk_fictional"}';
+  const run = runUp({
+    fromContainer: true,
+    printed: `motd\\nWEBRTC_FLEET_KEY=${fleet}\\nWEBRTC_PROGRAM_KEYS=${programs}\\nWEBRTC_FLEET_KEY=second\\nOTHER=1\\n`,
+  });
+  assert.equal(run.status, 0, run.stderr);
+  assert.match(run.sent, new RegExp(`^WEBRTC_FLEET_KEY=${fleet}$`, 'm'));
+  assert.match(run.sent, /^WEBRTC_PROGRAM_KEYS=\{"station-a":"alrk_fictional"\}$/m);
+  assert.doesNotMatch(run.sent, /second|OTHER|motd/);
+  for (const text of [run.calls, run.stdout, run.stderr]) assert.ok(!text.includes(fleet));
+});
+
+test('return-runner-up.sh leaves Helix unchanged with program keys but no key for the router list', () => {
+  const run = runUp({ fromContainer: true, printed: 'WEBRTC_PROGRAM_KEYS={"station-a":"alrk_fictional"}\\n' });
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /could not be read; Helix is unchanged/);
+  assert.equal(run.sent, '');
 });

@@ -20,6 +20,8 @@ export const LIVEKIT_SECRET_KEYS: readonly [
 
 export const OPTIONAL_WEBRTC_SECRET_KEYS: readonly ['webrtcRendererKey', 'webrtcFleetKey'];
 
+export const PROGRAM_KEYS_FIELD: 'webrtcProgramKeys';
+
 export type RuntimeSecretPayload = {
   palazzoAllowedUrls: string;
   alanaControlToken: string;
@@ -35,6 +37,8 @@ export type RuntimeSecretPayload = {
   webrtcSessionSecret?: string;
   webrtcRendererKey?: string;
   webrtcFleetKey?: string;
+  /** Each program's renderer key, for the machines that serve it (gaulatti/alcantara#884). */
+  webrtcProgramKeys?: Record<string, string>;
 };
 
 export function isPrivateServiceHostname(hostname: string): boolean;
