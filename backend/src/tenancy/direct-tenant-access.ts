@@ -11,7 +11,9 @@ import { TENANCY_CLASSIFICATION } from './tenancy-classification';
  * scoped client is named otherwise (`songDb`, `scoped`). A transaction client (`tx.song`) is not counted. Spec and
  * testing files, comment lines, and the tenancy module itself are not read.
  */
-export const TENANT_DELEGATES: readonly string[] = Object.entries(TENANCY_CLASSIFICATION)
+export const TENANT_DELEGATES: readonly string[] = Object.entries(
+  TENANCY_CLASSIFICATION,
+)
   .filter(([, tenancy]) => tenancy.kind === 'tenant')
   .map(([model]) => model.charAt(0).toLowerCase() + model.slice(1));
 
@@ -19,13 +21,21 @@ export const TENANT_DELEGATES: readonly string[] = Object.entries(TENANCY_CLASSI
 export type DirectUses = Record<string, number>;
 
 /** The direct uses in one file's text. */
-export function directTenantUses(text: string, delegates: readonly string[] = TENANT_DELEGATES): DirectUses {
-  const pattern = new RegExp(`\\bprisma\\s*\\.\\s*(${delegates.join('|')})\\s*\\.`, 'g');
+export function directTenantUses(
+  text: string,
+  delegates: readonly string[] = TENANT_DELEGATES,
+): DirectUses {
+  const pattern = new RegExp(
+    `\\bprisma\\s*\\.\\s*(${delegates.join('|')})\\s*\\.`,
+    'g',
+  );
   const uses: DirectUses = {};
   for (const line of text.split('\n')) {
     const code = line.trim();
-    if (code.startsWith('//') || code.startsWith('*') || code.startsWith('/*')) continue;
-    for (const match of line.matchAll(pattern)) uses[match[1]] = (uses[match[1]] ?? 0) + 1;
+    if (code.startsWith('//') || code.startsWith('*') || code.startsWith('/*'))
+      continue;
+    for (const match of line.matchAll(pattern))
+      uses[match[1]] = (uses[match[1]] ?? 0) + 1;
   }
   return uses;
 }
@@ -37,7 +47,10 @@ function sourceFiles(directory: string): string[] {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) {
       if (entry.name !== 'tenancy') files.push(...sourceFiles(path));
-    } else if (/\.ts$/.test(entry.name) && !/\.(spec|testing|d)\.ts$/.test(entry.name)) {
+    } else if (
+      /\.ts$/.test(entry.name) &&
+      !/\.(spec|testing|d)\.ts$/.test(entry.name)
+    ) {
       files.push(path);
     }
   }
@@ -45,7 +58,9 @@ function sourceFiles(directory: string): string[] {
 }
 
 /** Every direct use under backend/src, by file (relative to the backend) and delegate. */
-export function scanDirectTenantUses(backendRoot: string): Record<string, DirectUses> {
+export function scanDirectTenantUses(
+  backendRoot: string,
+): Record<string, DirectUses> {
   const found: Record<string, DirectUses> = {};
   for (const file of sourceFiles(join(backendRoot, 'src')).sort()) {
     const uses = directTenantUses(readFileSync(file, 'utf8'));
@@ -64,12 +79,18 @@ export function directAccessProblems(
   for (const [file, uses] of Object.entries(found))
     for (const [delegate, count] of Object.entries(uses)) {
       const allowed = baseline[file]?.[delegate] ?? 0;
-      if (count > allowed) added.push(`${file}: prisma.${delegate} ${count} (baseline ${allowed})`);
+      if (count > allowed)
+        added.push(
+          `${file}: prisma.${delegate} ${count} (baseline ${allowed})`,
+        );
     }
   for (const [file, uses] of Object.entries(baseline))
     for (const [delegate, allowed] of Object.entries(uses)) {
       const count = found[file]?.[delegate] ?? 0;
-      if (count < allowed) stale.push(`${file}: prisma.${delegate} ${count} (baseline ${allowed})`);
+      if (count < allowed)
+        stale.push(
+          `${file}: prisma.${delegate} ${count} (baseline ${allowed})`,
+        );
     }
   return { added, stale };
 }
