@@ -81,6 +81,34 @@ Engines use generated media, because a headless engine has no camera or micropho
 
 Install the three engines once with `pnpm --filter @gaulatti/alcantara-e2e browsers:all`. The plain `browsers` script installs Chromium only.
 
+## Three callers in one program (`three-guest-proof.mjs`, alcantara#51)
+
+Three external callers join one program and the full call path is checked against a running local stack: guest pages, green room, LiveKit, the operator side and the return runner's mix-minus.
+
+1. Three invitations are created through the API.
+2. Each guest opens the real guest page as a signed-out phone (375 × 812, touch). It has a generated camera and a microphone that plays a tone of its own: guest A 520 Hz, B 990 Hz, C 1340 Hz. The tones avoid 440 Hz, the shared synthetic tone, and its harmonics. Each guest passes the preflight and joins.
+3. Green room: every guest is held on **Waiting for the producer to let you in**, off air.
+4. The operator admits each one, and each page reports its mix-minus return.
+5. The operator receives every guest's audio and video, with bytes flowing.
+6. Mix-minus: each guest's page measures the spectrum of the return it plays, at all three tones.
+   - Each return must carry both other guests' tones and leave its own at least 20 dB below the quieter of them. That is no self-echo.
+   - It is measured once off air, then again with all three cued live. While anyone is live the program bed carries their voices a few seconds late and must leave every return, so no guest hears itself delayed either.
+   - The verdict is in `three-guest-tones.mjs` and tested by `three-guest-tones.test.mjs`.
+
+```sh
+docker compose up --build          # from the repository root: LiveKit, the return runner and the rest
+cd e2e && pnpm install && pnpm browsers
+pnpm three-guests                  # against http://localhost:3000 and :5173, program radio-demo.fm
+```
+
+Settings: `ALCANTARA_API_URL`, `ALCANTARA_APP_URL`, `ALCANTARA_PROGRAM_ID`, `ALCANTARA_OPERATOR_TOKEN` (without it the local test-auth session is used), `THREE_GUEST_RETURN_BUS` (default `master`), `WEBRTC_TIMEOUT_MS`, and `WEBRTC_HEADED=1` to watch.
+
+Measured on a fresh clone's Compose stack (2026-11-28): every return carried the other two tones at about 0.13 to 0.14 and its own at 0.0004 to 0.0009, about 44 to 50 dB below, both off air and on air. As a negative control, a return router changed to include each guest's own voice made all three guests fail, with their own tone at about 0.11.
+
+Not checked, because they are not built: chat (general and producer 1:1) and guest screen share.
+
+On macOS with Colima, clone under your home directory. Colima shares only that with its VM, so a checkout elsewhere (for example under `/tmp`) leaves LiveKit with an empty directory where `infra/livekit.dev.yaml` should be, and it exits with `read /etc/livekit.yaml: is a directory`.
+
 ## Program return proof (`return-proof-all.mjs`)
 
 A guest joins the real guest page in Chromium, WebKit and Firefox, then as a phone twice (`iphone`: WebKit with Playwright's iPhone 15 viewport, user agent and touch; `android`: Chromium with Pixel 7), one after another, and the level of the return that page plays is measured. `RETURN_RUNS=iphone,android` runs only those. `chromium-tcp` is Chromium with plain UDP forbidden to WebRTC, as behind an office or hotel Wi-Fi: it passes the same bar and also fails if the pair used was UDP. `chromium-relay` also allows only relayed paths (set on the page's connections by the harness, not by a product switch), as on a network that leaves only TCP 443: it must connect through a relay over TLS. It is not part of the default set. Until TURN over TLS is set up (`infra/README.md`) it fails with `no relay candidates offered`. Every run prints an `ice-path` line (candidate types, protocols and the server port, no addresses), and a run that cannot connect lists what the server offered. Nothing else is opened, so sound means the server's return router delivered it. It defaults to production and `modoitaliano.fm`.
