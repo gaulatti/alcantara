@@ -860,32 +860,12 @@
   "src/renderer-keys/renderer-write.http.spec.ts": {
     "@typescript-eslint/require-await": 3
   },
-  "src/scenes/bracket-component-migration.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 13,
-    "@typescript-eslint/no-unsafe-call": 19,
-    "@typescript-eslint/no-unsafe-member-access": 42
-  },
-  "src/scenes/giorgia-chyron-clock-migration.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 4,
-    "@typescript-eslint/no-unsafe-call": 16,
-    "@typescript-eslint/no-unsafe-member-access": 22,
-    "@typescript-eslint/no-unsafe-return": 1
-  },
-  "src/scenes/legacy-scene-keys-scrub.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 9,
-    "@typescript-eslint/no-unsafe-call": 13,
-    "@typescript-eslint/no-unsafe-member-access": 36
-  },
-  "src/scenes/scenes.service.bracket-entry.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 1
-  },
   "src/scenes/scenes.service.coverage.spec.ts": {
     "@typescript-eslint/no-unsafe-call": 3
   },
   "src/scenes/scenes.service.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 7,
-    "@typescript-eslint/no-unsafe-member-access": 38,
-    "@typescript-eslint/no-unsafe-return": 7,
+    "@typescript-eslint/no-unsafe-assignment": 5,
+    "@typescript-eslint/no-unsafe-member-access": 19,
     "@typescript-eslint/require-await": 6
   },
   "src/scenes/scenes.service.ts": {
@@ -895,11 +875,6 @@
   },
   "src/scenes/scenes.tenancy.spec.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": 1
-  },
-  "src/scenes/tournament-bracket-removal.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 11,
-    "@typescript-eslint/no-unsafe-call": 20,
-    "@typescript-eslint/no-unsafe-member-access": 44
   },
   "src/seed/demo-audio.spec.ts": {
     "@typescript-eslint/require-await": 1

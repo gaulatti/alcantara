@@ -1,7 +1,28 @@
 // gaulatti/alcantara#391: the bracket id migration plans only the change it names, refuses a row it cannot move safely,
 // and reverses cleanly. The planner is a plain module under scripts/, loaded the same way the other scripts are.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const migration = require('../../scripts/migrate-bracket-component.cjs');
+interface BracketPlan {
+  refused?: string;
+  layoutChange?: { componentTypeBefore: string; componentTypeAfter: string };
+  sceneChanges: Array<{
+    keysBefore?: string[];
+    keysAfter?: string[];
+    metadataAfter: string;
+  }>;
+  alreadyApplied?: boolean;
+  [field: string]: unknown;
+}
+interface BracketMigration {
+  planBracketMigration(input: unknown): BracketPlan;
+  replaceListElement(
+    list: string,
+    from: string,
+    to: string,
+  ): { refused?: string; [field: string]: unknown };
+  hostAllowed(url: string, allow: boolean): boolean;
+}
+const migration =
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require('../../scripts/migrate-bracket-component.cjs') as BracketMigration;
 
 const layout = {
   id: 2236,

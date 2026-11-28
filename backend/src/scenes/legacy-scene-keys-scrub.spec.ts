@@ -1,7 +1,26 @@
 // gaulatti/alcantara#391: the scrub removes only the inert legacy chyron and clock keys, and only where their Giorgia
 // replacement is present; it refuses anything else, and its revert restores a scene's metadata exactly.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const scrub = require('../../scripts/scrub-legacy-scene-keys.cjs');
+interface ScrubPlan {
+  refused?: string;
+  nothingToDo?: boolean;
+  removed?: string[];
+  keysBefore?: string[];
+  keysAfter?: string[];
+  originalMetadata?: string;
+  scrubbedMetadata: string;
+  restoredMetadata?: string;
+  [field: string]: unknown;
+}
+interface ScrubModule {
+  planSceneScrub(sceneId: number, text: string | null | undefined): ScrubPlan;
+  planSceneRevert(input: unknown, ...rest: unknown[]): ScrubPlan;
+  hostAllowed(url: string, allow: boolean): boolean;
+  SCENE_IDS: number[];
+  LEGACY_KEYS: string[];
+}
+const scrub =
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require('../../scripts/scrub-legacy-scene-keys.cjs') as ScrubModule;
 
 const giorgiaClock = { show: true, headline: 'Fictional' };
 const legacyChyron = { textSequence: ['legacy'] };

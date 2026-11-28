@@ -5,8 +5,17 @@ import {
   noRecorder,
 } from '../operator-change/operator-change-recorder.testing';
 
+interface FixtureScene {
+  id: number;
+  name: string;
+  layoutId: number;
+  chyronText: string;
+  externalSourceId: string | null;
+  metadata: string;
+}
+
 function fixture(metadata: unknown = {}) {
-  let scene: any = {
+  let scene: FixtureScene = {
     id: 7,
     name: 'Opening',
     layoutId: 2,
@@ -18,9 +27,12 @@ function fixture(metadata: unknown = {}) {
   const prisma = {
     scene: {
       findMany: jest.fn(async () => [scene]),
-      findUnique: jest.fn(async () => scene),
-      create: jest.fn(async (input: any) => ({ id: 8, ...input.data })),
-      update: jest.fn(async (input: any) => {
+      findUnique: jest.fn<Promise<FixtureScene | null>, []>(async () => scene),
+      create: jest.fn(async (input: { data: Record<string, unknown> }) => ({
+        id: 8,
+        ...input.data,
+      })),
+      update: jest.fn(async (input: { data: Partial<FixtureScene> }) => {
         scene = { ...scene, ...input.data };
         return scene;
       }),
@@ -38,7 +50,10 @@ function fixture(metadata: unknown = {}) {
       .fn()
       .mockResolvedValue(['program-a', 'program-b']),
     getProgramIdsByActiveScene: jest.fn().mockResolvedValue(['program-a']),
-    broadcastUpdate: jest.fn(),
+    broadcastUpdate: jest.fn<
+      void,
+      [string, { type: string; songIds: number[]; [field: string]: unknown }]
+    >(),
     clearActiveScene: jest.fn().mockResolvedValue(['program-a']),
     getState: jest.fn(async (programId: string) => ({
       programId,
@@ -296,7 +311,7 @@ describe('ScenesService persisted scene and program events', () => {
     'refuses a draw on a scene with no bracket: %p',
     async (metadata) => {
       const f = fixture();
-      f.current().metadata = metadata;
+      f.current().metadata = metadata as string;
       await expect(f.service.drawBracket(7, {})).rejects.toThrow(
         'This scene has no bracket',
       );
