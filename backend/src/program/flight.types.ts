@@ -115,4 +115,6 @@ export interface FlightRuntimeState {
   songDurationsMs?: Map<number, number>;
   /** A song cue ran since the last shadow observation, so the engine may not have confirmed it yet. */
   songCuedSinceShadow?: boolean;
+  /** The rundown sent a song in this run, so the engine's song on air is its own to compare. */
+  rundownSentSong?: boolean;
 }

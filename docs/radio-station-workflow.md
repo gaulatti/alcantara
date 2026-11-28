@@ -224,8 +224,10 @@ as an observation only (`backend/src/program/flight-shadow.ts`).
 **What it compares.**
 - **Cue:** the cue the executor waits on, against the cue the resolver says is in effect.
 - **Scene:** the program's scene on Program, against the resolver's.
-- **Song:** the song the playout engine has confirmed on air, against the resolver's. This is skipped at the first
-  wait after a song cue, since the engine confirms a song a moment after it is sent.
+- **Song:** the song the playout engine has confirmed on air, against the resolver's. Until the rundown has sent a
+  song of its own, the song on air is another source's (a rotation's), so it is counted as `unsupported` and never
+  logged. It is not compared at the first wait after a song cue, since the engine confirms a song a moment after it
+  is sent.
 
 **What it does not compare.**
 - **Runs the resolver does not model:** a clocked log, a run an operator advanced with Go, a wait for a song end that

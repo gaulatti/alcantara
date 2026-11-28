@@ -210,8 +210,23 @@ describe('the rundown shadow', () => {
     await jest.advanceTimersByTimeAsync(10_000);
     await flush();
     const counts = await shadow(f.metrics);
-    expect(counts).toMatchObject({ 'cue:agree': 2, 'scene:agree': 2, 'song:agree': 2 });
-    expect(counts).toMatchObject({ 'cue:disagree': 0, 'scene:disagree': 0, 'song:disagree': 0, 'cue:unsupported': 0 });
+    expect(counts).toMatchObject({ 'cue:agree': 2, 'scene:agree': 2 });
+    expect(counts).toMatchObject({ 'cue:disagree': 0, 'scene:disagree': 0, 'cue:unsupported': 0 });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("counts the song as unsupported until the rundown sends one, so a rotation's song is never counted against it", async () => {
+    const f = setup();
+    f.programs.onAirSongId.mockReturnValue(77);
+    f.sequence().items = [
+      { id: 'first', kind: 'wait', durationMs: 10_000 },
+      { id: 'second', kind: 'wait', durationMs: 10_000 },
+    ];
+    await f.service.start('news');
+    await flush();
+    await jest.advanceTimersByTimeAsync(10_000);
+    await flush();
+    expect(await shadow(f.metrics)).toMatchObject({ 'cue:agree': 2, 'song:unsupported': 2, 'song:agree': 0, 'song:disagree': 0 });
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -262,7 +277,8 @@ describe('the rundown shadow', () => {
       'cue:agree': 1,
       'cue:unsupported': 1,
       'scene:unsupported': 1,
-      'song:unsupported': 1,
+      // Once for the run after the Go, and once at the first wait, before the rundown sent any song.
+      'song:unsupported': 2,
       'cue:disagree': 0,
     });
 

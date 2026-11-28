@@ -51,6 +51,9 @@ import type {
 } from './flight.types';
 import { compareShadow, RUNDOWN_SHADOW_FIELDS, shadowObserves } from './flight-shadow';
 
+/** How a shadow observation treats the song: compared, not compared this time, or counted as unsupported. */
+type ShadowSong = 'compare' | 'skip' | 'unsupported';
+
 /** How late a published log may start: the scheduler skips one later than this. */
 export const START_GRACE_MS = 5000;
 /** A due block made from a daypart clock, as the schedule poll reads it. */
@@ -2815,6 +2818,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     const runtime = this.runtimes.get(programId);
     if (!runtime) return;
     runtime.songCuedSinceShadow = true;
+    runtime.rundownSentSong = true;
     if (typeof durationMs === 'number') (runtime.songDurationsMs ??= new Map()).set(songId, durationMs);
   }
 
@@ -2827,16 +2831,19 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Observes a wait the executor has just begun (gaulatti/alcantara#123): the resolver should be waiting on the same
-   * cue, with the same scene on Program. The song is compared only when no song cue ran since the last observation,
-   * since the engine confirms a song it was just sent a moment later. Observation only, never awaited by the run, and
+   * cue, with the same scene on Program. The song counts as unsupported until the rundown has sent one (before that
+   * the engine's song is another source's, a rotation's), and is not compared when a song cue ran since the last
+   * observation, since the engine confirms a song it was just sent a moment later. Observation only, never awaited by the run, and
    * it arms no timer.
    */
   private scheduleShadow(runtime: FlightRuntimeState, cue: FlightCue): void {
     if (runtime.shadowOff || runtime.scheduledAtMs !== null) return;
     if (!shadowObserves(cue)) return;
-    const compareSong = !runtime.songCuedSinceShadow;
+    // Before the rundown sent a song, the engine's song is another source's (a rotation's): unsupported. Just after it
+    // sent one, the engine may not have confirmed it yet: not compared this time.
+    const song: ShadowSong = !runtime.rundownSentSong ? 'unsupported' : runtime.songCuedSinceShadow ? 'skip' : 'compare';
     runtime.songCuedSinceShadow = false;
-    void this.observeShadow(runtime, runtime.generation, runtime.activeIndex, Date.now(), compareSong);
+    void this.observeShadow(runtime, runtime.generation, runtime.activeIndex, Date.now(), song);
   }
 
   private async observeShadow(
@@ -2844,7 +2851,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     generation: number,
     index: number,
     atMs: number,
-    compareSong: boolean,
+    song: ShadowSong,
   ): Promise<void> {
     const { programId } = runtime;
     try {
@@ -2867,7 +2874,11 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         songId: this.programService.onAirSongId(programId),
       });
       for (const field of RUNDOWN_SHADOW_FIELDS) {
-        if (field === 'song' && !compareSong) continue;
+        if (field === 'song' && song === 'skip') continue;
+        if (field === 'song' && song === 'unsupported') {
+          this.metrics.recordRundownShadow('song', 'unsupported');
+          continue;
+        }
         this.metrics.recordRundownShadow(field, result[field]);
         if (result[field] === 'disagree')
           this.logger.warn(
