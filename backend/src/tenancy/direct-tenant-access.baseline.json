@@ -37,10 +37,7 @@
   "src/program/program.service.ts": {
     "broadcastSettings": 1,
     "program": 4,
-    "instant": 2,
-    "scene": 1,
-    "mediaGroup": 1,
-    "stinger": 1
+    "instant": 2
   },
   "src/program/recipes.service.ts": {
     "scene": 1
