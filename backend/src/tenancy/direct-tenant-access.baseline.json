@@ -1,6 +1,5 @@
 {
   "src/artist-labels/artist-labels.service.ts": {
-    "artistLabel": 7,
     "mediaLabel": 1
   },
   "src/broadcast-destinations/broadcast-destination-keys.service.ts": {

@@ -63,6 +63,11 @@ function prismaWith(
   linkTeamId: number | null = programTeamId,
 ) {
   return {
+    // The team-scoped client (gaulatti/alcantara#122) as a pass-through: its scoping is proven in scoped-prisma.spec,
+    // and the artist link lookup still filters by team, which this stand-in honours.
+    $extends(this: unknown) {
+      return this;
+    },
     program: {
       findUnique: jest.fn(async () => ({ teamId: programTeamId })),
     },

@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { PrismaService } from '../prisma.service';
 import { artistKey } from './artist-key';
+import { forTeam } from '../tenancy/scoped-prisma';
 
 export const MAX_ARTIST_LENGTH = 200;
 
@@ -29,8 +30,16 @@ export class ArtistLabelsService {
     return callerTeam === 0 ? null : callerTeam;
   }
 
+  /**
+   * The client for a caller's team (gaulatti/alcantara#122): confined to that team's links, or the unscoped client for
+   * team 0, whose links carry no team. The explicit `teamId` filters below stay as they were.
+   */
+  private db(callerTeam: number): PrismaService {
+    return callerTeam > 0 ? (forTeam(this.prisma, callerTeam) as unknown as PrismaService) : this.prisma;
+  }
+
   async list(callerTeam: number): Promise<ArtistLabelRow[]> {
-    const rows = await this.prisma.artistLabel.findMany({
+    const rows = await this.db(callerTeam).artistLabel.findMany({
       where: { teamId: this.scope(callerTeam) },
       orderBy: [{ artistKey: 'asc' }, { id: 'asc' }],
     });
@@ -46,7 +55,7 @@ export class ArtistLabelsService {
     callerTeam: number,
     artist: string,
   ): Promise<string | null> {
-    const row = await this.prisma.artistLabel.findFirst({
+    const row = await this.db(callerTeam).artistLabel.findFirst({
       where: { teamId: this.scope(callerTeam), artistKey: artistKey(artist) },
       select: { labelId: true },
     });
@@ -67,15 +76,17 @@ export class ArtistLabelsService {
 
     const teamId = this.scope(callerTeam);
     const key = artistKey(display);
+    const db = this.db(callerTeam);
 
     if (labelId === null) {
-      await this.prisma.artistLabel.deleteMany({
+      await db.artistLabel.deleteMany({
         where: { teamId, artistKey: key },
       });
       this.metrics.recordArtistLabelWrite('cleared');
       return { artistKey: key, artist: display, labelId: null };
     }
 
+    // Unscoped on purpose: a label with no team is shared, and stays attachable by any team.
     const label = await this.prisma.mediaLabel.findUnique({
       where: { id: labelId },
       select: { id: true, teamId: true },
@@ -84,18 +95,18 @@ export class ArtistLabelsService {
       return this.reject('The label does not exist for this team');
 
     const data = { artist: display, labelId: label.id };
-    const existing = await this.prisma.artistLabel.findFirst({
+    const existing = await db.artistLabel.findFirst({
       where: { teamId, artistKey: key },
       select: { id: true },
     });
     if (existing) {
-      await this.prisma.artistLabel.update({
+      await db.artistLabel.update({
         where: { id: existing.id },
         data,
       });
     } else {
       try {
-        await this.prisma.artistLabel.create({
+        await db.artistLabel.create({
           data: { ...data, artistKey: key, teamId },
         });
       } catch (error) {
@@ -105,7 +116,7 @@ export class ArtistLabelsService {
           error.code !== 'P2002'
         )
           throw error;
-        await this.prisma.artistLabel.updateMany({
+        await db.artistLabel.updateMany({
           where: { teamId, artistKey: key },
           data,
         });
