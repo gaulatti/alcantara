@@ -4736,13 +4736,13 @@ describe('an active song gone stale while Palazzo is connected', () => {
     );
     await tick(16);
 
-    expect(
-      h.metrics.snapshot().engineResyncs['stale_active:unavailable'],
-    ).toBe(1);
+    expect(h.metrics.snapshot().engineResyncs['stale_active:unavailable']).toBe(
+      1,
+    );
     expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(own.url);
   });
 
-  it("changes nothing on a late read of one of its own earlier songs", async () => {
+  it('changes nothing on a late read of one of its own earlier songs', async () => {
     let playing: { id: string; url: string } = { id: '', url: '' };
     const { h, tick } = await commanded(() =>
       Promise.resolve(snapshot('boot-1', 90, playing)),
