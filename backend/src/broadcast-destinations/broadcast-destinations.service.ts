@@ -23,6 +23,7 @@ import {
   type DestinationSelectionPayload,
   type SafeAlanaState,
 } from './broadcast-destinations.types';
+import { forTeam } from '../tenancy/scoped-prisma';
 
 type CommandInput = {
   commandId?: unknown;
@@ -50,12 +51,21 @@ export class BroadcastDestinationsService {
   ) {}
 
   /**
+   * The client for a caller's team (gaulatti/alcantara#122): confined to that team's destinations, or every team's for
+   * team 0 (no team configured, never production) and the in-process callers that pass nothing. The explicit team
+   * filters and checks below stay as they were.
+   */
+  private teamDb(callerTeam: number): PrismaService {
+    return callerTeam > 0 ? (forTeam(this.prisma, callerTeam) as unknown as PrismaService) : this.prisma;
+  }
+
+  /**
    * `callerTeam` narrows the list to that team's destinations, so it never offers one the ingest
    * route would refuse (gaulatti/carmencita#4). `0` (no team configured, never production) and the
    * in-process callers that pass nothing see every destination, as before.
    */
   async listDestinations(callerTeam = 0) {
-    const destinations = await this.prisma.broadcastDestination.findMany({
+    const destinations = await this.teamDb(callerTeam).broadcastDestination.findMany({
       where: callerTeam === 0 ? undefined : { teamId: callerTeam },
       orderBy: [{ position: 'asc' }, { id: 'asc' }],
     });
@@ -69,7 +79,7 @@ export class BroadcastDestinationsService {
 
   /** The catalog of the caller's team (every destination where no team is configured). */
   async listCatalog(callerTeam = 0) {
-    const destinations = await this.prisma.broadcastDestination.findMany({
+    const destinations = await this.teamDb(callerTeam).broadcastDestination.findMany({
       where: callerTeam === 0 ? undefined : { teamId: callerTeam },
       orderBy: [{ position: 'asc' }, { id: 'asc' }],
     });
@@ -84,13 +94,14 @@ export class BroadcastDestinationsService {
   ) {
     validateDestinationId(destinationId);
     const displayName = cleanName(input.displayName);
-    const existing = await this.prisma.broadcastDestination.findUnique({
+    const db = this.teamDb(callerTeam);
+    const existing = await db.broadcastDestination.findUnique({
       where: { id: destinationId },
     });
     if (!existing || (callerTeam !== 0 && existing.teamId !== callerTeam)) {
       throw new NotFoundException('Destination not found');
     }
-    const clash = await this.prisma.broadcastDestination.findFirst({
+    const clash = await db.broadcastDestination.findFirst({
       where: {
         displayName: { equals: displayName, mode: 'insensitive' },
         id: { not: destinationId },
@@ -104,7 +115,7 @@ export class BroadcastDestinationsService {
       );
     }
     return catalogRow(
-      await this.prisma.broadcastDestination.update({
+      await db.broadcastDestination.update({
         where: { id: destinationId },
         data: { displayName },
       }),
