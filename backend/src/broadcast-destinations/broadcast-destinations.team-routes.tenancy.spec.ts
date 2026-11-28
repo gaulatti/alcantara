@@ -179,6 +179,97 @@ describe("destination routes confined to the caller's team, against Postgres", (
     }
   });
 
+  it("reconciles a program no team owns, and still reconciles when the owner lookup fails or hangs", async () => {
+    const liveState = (overrides: Record<string, unknown> = {}) =>
+      ({
+        requestedState: 'stopped',
+        actualState: 'stopped',
+        transition: null,
+        readiness: true,
+        lastSequence: 3,
+        activeDestinations: null,
+        pendingDestinations: null,
+        destinations: [],
+        commandResult: null,
+        error: null,
+        ...overrides,
+      }) as never;
+    const services = (teams: ProgramTeamAccess) =>
+      new BroadcastDestinationsService(
+        prisma,
+        { status: jest.fn(async () => liveState()) } as unknown as AlanaClient,
+        { recordBroadcastDestination: jest.fn() } as never,
+        {} as never,
+        { cancelDeletion: jest.fn(), scheduleDeletion: jest.fn() } as never,
+        teams,
+      );
+    const failing = new ProgramTeamAccess(
+      { program: { findUnique: jest.fn(async () => { throw new Error('lookup down'); }) } } as never,
+      { teamId: 0 } as never,
+      { recordProgramTeamCheck: jest.fn() } as never,
+    );
+    const hung = new ProgramTeamAccess(
+      { program: { findUnique: jest.fn(() => new Promise(() => undefined)) } } as never,
+      { teamId: 0 } as never,
+      { recordProgramTeamCheck: jest.fn() } as never,
+    );
+    const unowned = `${prefix}-unowned-tv`;
+    const failingProgram = `${prefix}-failing-tv`;
+    const hungProgram = `${prefix}-hung-tv`;
+    const all = [unowned, failingProgram, hungProgram];
+    try {
+      await prisma.program.create({ data: { programId: unowned, teamId: null } });
+      await prisma.programState.createMany({
+        data: all.map((id) => ({ programId: id, type: 'tv' })),
+      });
+      await services(new ProgramTeamAccess(prisma, { teamId: 0 } as never, { recordProgramTeamCheck: jest.fn() } as never)).getProgramState(unowned, team);
+      await services(failing).getProgramState(failingProgram, team);
+      await services(hung).getProgramState(hungProgram, team);
+      for (const id of all) {
+        expect(
+          await prisma.broadcastDestinationRuntime.findUnique({ where: { programId: id } }),
+        ).not.toBeNull();
+      }
+    } finally {
+      await prisma.broadcastDestinationRuntime.deleteMany({ where: { programId: { in: all } } });
+      await prisma.programState.deleteMany({ where: { programId: { in: all } } });
+      await prisma.program.deleteMany({ where: { programId: { in: all } } });
+    }
+  });
+
+  it("names only the caller's own destinations in the active and pending selections", async () => {
+    const selection = {
+      version: 'v1',
+      selectionHash: 'a'.repeat(64),
+      count: 2,
+      destinationIds: [mineA, theirs],
+    };
+    const withSelections = new BroadcastDestinationsService(
+      prisma,
+      {
+        status: jest.fn(async () => ({
+          requestedState: 'stopped',
+          actualState: 'stopped',
+          transition: null,
+          readiness: true,
+          lastSequence: 3,
+          activeDestinations: selection,
+          pendingDestinations: selection,
+          destinations: [],
+          commandResult: null,
+          error: null,
+        })),
+      } as unknown as AlanaClient,
+      { recordBroadcastDestination: jest.fn() } as never,
+      {} as never,
+      { cancelDeletion: jest.fn(), scheduleDeletion: jest.fn() } as never,
+      new ProgramTeamAccess(prisma, { teamId: 0 } as never, { recordProgramTeamCheck: jest.fn() } as never),
+    );
+    const view = await withSelections.getProgramState(programId, team);
+    expect(view.downstream.activeDestinations?.destinationIds).toEqual([mineA]);
+    expect(view.downstream.pendingDestinations?.destinationIds).toEqual([mineA]);
+  });
+
   it("retires and restores the caller's destination, and finds no other team's", async () => {
     await expect(service.setRetired(theirs, true, team)).rejects.toThrow(
       NotFoundException,

@@ -246,6 +246,17 @@ export class BroadcastDestinationsService {
     const destinations = await this.listDestinations(callerTeam);
     // The downstream state names every destination the executor holds, so a caller sees only its own team's entries.
     const visible = new Set(destinations.map((destination) => destination.id));
+    const confineIds = <M extends { destinationIds: string[] } | null>(
+      metadata: M,
+    ): M =>
+      metadata === null
+        ? metadata
+        : ({
+            ...metadata,
+            destinationIds: metadata.destinationIds.filter((id) =>
+              visible.has(id),
+            ),
+          } as M);
     const confine = (state: SafeAlanaState): SafeAlanaState =>
       callerTeam === 0
         ? state
@@ -254,6 +265,8 @@ export class BroadcastDestinationsService {
             destinations: state.destinations.filter((destination) =>
               visible.has(destination.id),
             ),
+            activeDestinations: confineIds(state.activeDestinations),
+            pendingDestinations: confineIds(state.pendingDestinations),
           };
     try {
       const downstream = await this.alana.status(programId);
@@ -722,11 +735,9 @@ export class BroadcastDestinationsService {
     downstream: SafeAlanaState,
     callerTeam = 0,
   ) {
-    // A caller reconciles only a program of its own team: another team's runtime row is not this caller's to write.
-    if (callerTeam > 0) {
-      const owner = await this.teams?.teamOf(programId);
-      if (owner !== callerTeam) return;
-    }
+    // A caller reconciles any program except one another team owns: a program with no team, or a lookup that failed
+    // or hung, reconciles as before (gaulatti/alcantara#122).
+    if (this.teams && !(await this.teams.allows(programId, callerTeam))) return;
     const current = await this.prisma.broadcastDestinationRuntime.findUnique({
       where: { programId },
       select: { nextSequence: true },
