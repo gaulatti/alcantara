@@ -45,6 +45,18 @@ describe('createSseParser', () => {
   });
 });
 
+describe('createSseParser field forms', () => {
+  it('takes a field with no colon, a value with no space, and ignores other fields', () => {
+    const seen: Array<{ event: string; data: string }> = [];
+    const parser = createSseParser((message) => seen.push(message));
+    parser.push('data\nid: 7\n\ndata:tight\n\n');
+    expect(seen).toEqual([
+      { event: 'message', data: '' },
+      { event: 'message', data: 'tight' }
+    ]);
+  });
+});
+
 describe('fetchProgramControl', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn());
@@ -156,6 +168,47 @@ describe('openProgramEvents', () => {
     expect(control.url).toMatch(/\/program\/p1\/control\/events$/);
     expect(fallback.url).toMatch(/\/program\/p1\/events$/);
     expect(new Headers(fallback.init?.headers).get('Authorization')).toBeNull();
+  });
+
+  it('reports a rejection that is not an Error as one', async () => {
+    vi.mocked(fetch).mockRejectedValueOnce('offline').mockImplementation(() => new Promise(() => {}));
+    const errors: Error[] = [];
+    const stop = openProgramEvents({
+      programId: 'p1',
+      onMessage: () => {},
+      onOpen: () => {},
+      onError: (error) => errors.push(error),
+      initialBackoffMs: 1
+    });
+    await vi.waitFor(() => expect(errors).toHaveLength(1));
+    stop();
+    expect(errors[0]).toBeInstanceOf(Error);
+    expect(errors[0].message).toBe('offline');
+  });
+
+  it('reports nothing for a request it stopped itself', async () => {
+    let fail!: (reason: Error) => void;
+    vi.mocked(fetch).mockImplementation(() => new Promise((_, reject) => (fail = reject)));
+    const errors: Error[] = [];
+    const stop = openProgramEvents({ programId: 'p1', onMessage: () => {}, onOpen: () => {}, onError: (error) => errors.push(error) });
+    await vi.waitFor(() => expect(fail).toBeDefined());
+    stop();
+    fail(new Error('aborted'));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(errors).toEqual([]);
+  });
+
+  it('skips a message that is not JSON and keeps reading the stream', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(streamOf('data: not json\n\ndata: {"n":2}\n\n'))
+      .mockImplementation(() => new Promise(() => {}));
+    const messages: unknown[] = [];
+    const stop = openProgramEvents({ programId: 'p1', onMessage: (data) => messages.push(data), onOpen: () => {} });
+    await vi.waitFor(() => expect(messages).toEqual([{ n: 2 }]));
+    stop();
+    expect(logged).toHaveBeenCalledWith('Failed to parse program event:', expect.any(SyntaxError));
+    logged.mockRestore();
   });
 
   it('stops reconnecting once stopped', async () => {

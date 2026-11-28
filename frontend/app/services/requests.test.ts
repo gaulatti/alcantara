@@ -90,6 +90,10 @@ describe("flight error details", () => {
     reply(400, { message: ["a", "b"] });
     await expect(flight.startFlight("p")).rejects.toThrow("a; b");
   });
+  it("names a missing permission instead of the status", async () => {
+    reply(403, { message: "Forbidden resource" });
+    await expect(flight.startFlight("p")).rejects.toThrow("Your account does not have permission for this rundown.");
+  });
   it("falls back to the status for any other body", async () => {
     reply(400, { message: 7 });
     await expect(flight.startFlight("p")).rejects.toThrow("Rundown request failed (400)");

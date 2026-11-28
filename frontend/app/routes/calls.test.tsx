@@ -996,6 +996,17 @@ it("catches up when the tab is shown or focused", async () => {
   }
 });
 
+it.each(["GET /webrtc/config", "GET /webrtc/invitations", "GET /webrtc/rooms/main show/participants"])(
+  "says the account may not see guest calls when %s is refused, not that the connection failed",
+  async (refused) => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    serve({ [refused]: () => new Response(null, { status: 403 }) });
+    render(<CallsRoute />);
+    expect(await screen.findByText("Your account does not have permission to see guest calls.")).toBeVisible();
+    expect(screen.queryByText(/Check the connection/)).toBeNull();
+  },
+);
+
 it("says the desk is not updating after two failed refreshes in a row, and clears it when one succeeds", async () => {
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   try {

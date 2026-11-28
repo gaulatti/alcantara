@@ -59,6 +59,7 @@ import {
   stopFlight,
   updateFlightSequence,
 } from "../services/flight";
+import { RUNDOWN_FORBIDDEN } from "../utils/rundownForbidden";
 import { RundownLibrary } from "./RundownLibrary";
 import { cueFor, type LibraryEntry } from "../utils/rundownBuilder";
 import {
@@ -113,6 +114,8 @@ export default function ManualRundown() {
   const [activeSequenceId, setActiveSequenceId] = useState<number | null>(null);
   const [runtime, setRuntime] = useState<FlightRuntime | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // A rundown the account may not read is said, never shown as a show with no rundowns.
+  const [forbidden, setForbidden] = useState(false);
 
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [songs, setSongs] = useState<SongCatalogItem[]>([]);
@@ -208,11 +211,14 @@ export default function ManualRundown() {
 
     const bootstrap = async () => {
       setIsLoading(true);
+      setForbidden(false);
       try {
         await readRundown(() => cancelled);
       } catch (err) {
         console.error("Failed to bootstrap flight mode:", err);
         showAlert("Failed to load rundown data.", "error");
+        if (!cancelled)
+          setForbidden(err instanceof Error && err.message === RUNDOWN_FORBIDDEN);
       } finally {
         if (!cancelled) {
           setIsLoading(false);
@@ -606,20 +612,24 @@ export default function ManualRundown() {
             title="Rundown"
             description={`Program: ${activeProgramId}`}
           />
-          <Button
-            type="button"
-            onClick={() => setIsCreateModalOpen(true)}
-            className="flex items-center gap-2 rounded bg-sea px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-sea/90"
-          >
-            <Plus size={16} />
-            New rundown
-          </Button>
+          {!forbidden && (
+            <Button
+              type="button"
+              onClick={() => setIsCreateModalOpen(true)}
+              className="flex items-center gap-2 rounded bg-sea px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-sea/90"
+            >
+              <Plus size={16} />
+              New rundown
+            </Button>
+          )}
         </div>
 
         {isLoading ? (
           <div className="flex h-64 items-center justify-center">
             <LoadingSpinner size="lg" />
           </div>
+        ) : forbidden ? (
+          <Empty title="Rundowns are not available" description={RUNDOWN_FORBIDDEN} />
         ) : sequences.length === 0 ? (
           <Empty
             title="No rundowns yet"

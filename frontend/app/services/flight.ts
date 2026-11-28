@@ -1,7 +1,9 @@
 import { apiUrl } from "../utils/apiBaseUrl";
+import { RUNDOWN_FORBIDDEN } from "../utils/rundownForbidden";
 import type { FlightCue, FlightSequence } from "../models/broadcast";
 
 async function flightError(response: Response): Promise<Error> {
+  if (response.status === 403) return new Error(RUNDOWN_FORBIDDEN);
   const body = await response.json().catch(() => null);
   const detail =
     body && typeof body === "object" && "message" in body ? body.message : null;

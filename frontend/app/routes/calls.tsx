@@ -97,6 +97,7 @@ async function copyLinkFromTap(created: Promise<{ url: string }>): Promise<boole
 }
 
 const CONTROL_PLANE_UNREACHABLE = "The guest-call control plane can't be reached. Guests can't join until it is back.";
+const CALLS_FORBIDDEN = "Your account does not have permission to see guest calls.";
 
 export default function CallsRoute() {
   const [programId] = useGlobalProgramId();
@@ -155,6 +156,7 @@ function CallsDesk({ programId }: { programId: string }) {
     const configResponse = await fetch(apiUrl('/webrtc/config')).catch(() => {
       throw new Error(CONTROL_PLANE_UNREACHABLE);
     });
+    if (configResponse.status === 403) throw new Error(CALLS_FORBIDDEN);
     if (!configResponse.ok) throw new Error(await readError(configResponse));
     const config = (await configResponse.json()) as { enabled?: boolean };
     const enabled = config.enabled === true;
@@ -168,6 +170,8 @@ function CallsDesk({ programId }: { programId: string }) {
       authFetch('/webrtc/invitations'),
       authFetch(`/webrtc/rooms/${encodeURIComponent(programId)}/participants`)
     ]);
+    // Refused is not a lost connection: the page says which.
+    if (invitationResponse.status === 403 || participantResponse.status === 403) throw new Error(CALLS_FORBIDDEN);
     if (!invitationResponse.ok) throw new Error(await readError(invitationResponse));
     if (!participantResponse.ok) throw new Error(await readError(participantResponse));
     const allInvitations = (await invitationResponse.json()) as Invitation[];
@@ -191,7 +195,8 @@ function CallsDesk({ programId }: { programId: string }) {
       },
       (error) => {
         console.error('Unable to load guest calls:', error);
-        setLoadError(error instanceof Error && error.message === CONTROL_PLANE_UNREACHABLE ? CONTROL_PLANE_UNREACHABLE : null);
+        const named = error instanceof Error && [CONTROL_PLANE_UNREACHABLE, CALLS_FORBIDDEN].includes(error.message);
+        setLoadError(named ? (error as Error).message : null);
         setLoadState('error');
       }
     );
@@ -465,7 +470,7 @@ function CallsDesk({ programId }: { programId: string }) {
           </span>
         </section>
         <CallHealthBanner programId={programId} className='mb-5' />
-        {failedPolls >= 2 ? (
+        {failedPolls >= 2 && loadError !== CALLS_FORBIDDEN ? (
           <div role='alert' className='mb-5 rounded-[var(--radius-ui)] border border-terracotta/30 bg-terracotta/[0.08] px-4 py-3 text-sm'>
             The desk is not updating: the last {failedPolls} refreshes failed. Guests who join now may not appear until it
             recovers. Press Refresh, or reload the page.
