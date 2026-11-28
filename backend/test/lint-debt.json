@@ -453,18 +453,6 @@
   "src/program/instants.tenancy.spec.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": 2
   },
-  "src/program/program-table.migration.spec.ts": {
-    "@typescript-eslint/no-redundant-type-constituents": 1,
-    "@typescript-eslint/no-unsafe-assignment": 4,
-    "@typescript-eslint/no-unsafe-call": 18,
-    "@typescript-eslint/no-unsafe-member-access": 20
-  },
-  "src/program/program-team-backfill.migration.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 20,
-    "@typescript-eslint/no-unsafe-call": 28,
-    "@typescript-eslint/no-unsafe-member-access": 37,
-    "@typescript-eslint/no-unsafe-return": 2
-  },
   "src/program/program-template.service.coverage.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 5,
     "@typescript-eslint/no-unsafe-member-access": 2,
