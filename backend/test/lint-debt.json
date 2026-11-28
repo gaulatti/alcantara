@@ -365,33 +365,10 @@
     "@typescript-eslint/no-unsafe-assignment": 1
   },
   "src/operator-change/change-record-team-backfill.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 4,
-    "@typescript-eslint/no-unsafe-call": 9,
-    "@typescript-eslint/no-unsafe-member-access": 8,
-    "@typescript-eslint/no-unsafe-return": 2,
     "@typescript-eslint/require-await": 2
   },
-  "src/operator-change/library-change.integration.spec.ts": {
-    "@typescript-eslint/no-unsafe-call": 1,
-    "@typescript-eslint/no-unsafe-member-access": 1
-  },
-  "src/operator-change/operator-change-library-migration.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 6,
-    "@typescript-eslint/no-unsafe-call": 18,
-    "@typescript-eslint/no-unsafe-member-access": 16,
-    "@typescript-eslint/no-unsafe-return": 1
-  },
-  "src/operator-change/operator-change-migration.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 7,
-    "@typescript-eslint/no-unsafe-call": 18,
-    "@typescript-eslint/no-unsafe-member-access": 17
-  },
   "src/operator-change/operator-change-recorder.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 8,
-    "@typescript-eslint/no-unsafe-member-access": 8,
-    "@typescript-eslint/no-unsafe-return": 1,
-    "@typescript-eslint/only-throw-error": 1,
-    "@typescript-eslint/require-await": 5
+    "@typescript-eslint/require-await": 4
   },
   "src/operator-change/operator-change-recorder.testing.ts": {
     "@typescript-eslint/require-await": 1

@@ -8,7 +8,21 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { Client } from 'pg';
+import { Client as UntypedPgClient } from 'pg';
+
+// pg ships without types in this package set. These specs use only the calls below, so this is the typed view of
+// the client they get; it is a cast, not a new behaviour.
+interface PgClient {
+  connect(): Promise<void>;
+  end(): Promise<void>;
+  query<T = Record<string, unknown>>(
+    text: string,
+    values?: unknown[],
+  ): Promise<{ rows: T[]; rowCount: number | null }>;
+}
+const Client = UntypedPgClient as unknown as new (config: {
+  connectionString: string | undefined;
+}) => PgClient;
 
 /**
  * The OperatorChangeRecord migration (gaulatti/alcantara#236) on PostgreSQL: it applies to an empty

@@ -23,18 +23,30 @@ const summary = {
 };
 
 function build(createError?: unknown) {
-  const prisma: any = {
+  const prisma = {
     operatorChangeRecord: {
-      create: jest.fn(async () => {
-        if (createError !== undefined) throw createError;
-        return {};
-      }),
+      create: jest.fn<Promise<object>, [{ data: Record<string, unknown> }]>(
+        () => {
+          if (createError !== undefined)
+            return Promise.reject(createError as Error);
+          return Promise.resolve({});
+        },
+      ),
     },
   };
-  const metrics: any = { recordOperatorChangeRecord: jest.fn() };
-  const recorder = new OperatorChangeRecorder(prisma, metrics);
+  const metrics = {
+    recordOperatorChangeRecord: jest.fn<void, [string, string]>(),
+  };
+  const recorder = new OperatorChangeRecorder(
+    prisma as never,
+    metrics as never,
+  );
   const warn = jest
-    .spyOn((recorder as any).logger, 'warn')
+    .spyOn(
+      (recorder as unknown as { logger: { warn: (message: string) => void } })
+        .logger,
+      'warn',
+    )
     .mockImplementation(() => undefined);
   return { recorder, prisma, metrics, warn };
 }
@@ -159,11 +171,15 @@ describe('summarizeChange', () => {
 
 describe("a change record's team (gaulatti/alcantara#122)", () => {
   const recorderWith = (teams: unknown, pompeii: unknown) => {
-    const prisma: any = {
-      operatorChangeRecord: { create: jest.fn(async () => ({})) },
+    const prisma = {
+      operatorChangeRecord: {
+        create: jest.fn<Promise<object>, [{ data: { teamId: unknown } }]>(
+          async () => ({}),
+        ),
+      },
     };
     const recorder = new OperatorChangeRecorder(
-      prisma,
+      prisma as never,
       { recordOperatorChangeRecord: jest.fn() } as never,
       teams as never,
       pompeii as never,

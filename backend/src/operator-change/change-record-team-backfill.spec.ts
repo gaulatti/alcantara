@@ -1,5 +1,19 @@
 import { randomUUID } from 'node:crypto';
-import { Client } from 'pg';
+import { Client as UntypedPgClient } from 'pg';
+
+// pg ships without types in this package set. These specs use only the calls below, so this is the typed view of
+// the client they get; it is a cast, not a new behaviour.
+interface PgClient {
+  connect(): Promise<void>;
+  end(): Promise<void>;
+  query<T = Record<string, unknown>>(
+    text: string,
+    values?: unknown[],
+  ): Promise<{ rows: T[]; rowCount: number | null }>;
+}
+const Client = UntypedPgClient as unknown as new (config: {
+  connectionString: string | undefined;
+}) => PgClient;
 
 // gaulatti/alcantara#122: the one-off backfill that gives operator change records written with no team their
 // program's team. Unit cases on a stand-in client; the SQL itself against PostgreSQL when DATABASE_URL names one.
@@ -196,7 +210,7 @@ const databaseUrl = process.env.DATABASE_URL;
     const tag = `backfill-122-${process.pid}-${Date.now()}`;
     const owned = `${tag}-owned`;
     const unowned = `${tag}-unowned`;
-    let db: Client;
+    let db: PgClient;
 
     beforeAll(async () => {
       db = new Client({ connectionString: databaseUrl });
