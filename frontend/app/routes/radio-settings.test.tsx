@@ -21,6 +21,24 @@ vi.mock("../components/RecoveryPlaylistPanel", () => ({
     <p>Recovery playlist for {programId}</p>
   ),
 }));
+vi.mock("../hooks/useFeatures", () => ({
+  useFeatures: () => ({
+    hasPermission: (permission: string) => permission === "broadcast.manage",
+  }),
+}));
+// gaulatti/alcantara#20: the radio's filler is configured from its own settings page.
+vi.mock("../components/ProgramFillerPanel", () => ({
+  ProgramFillerPanel: (props: {
+    programId: string;
+    canManage: boolean;
+    only?: string;
+  }) => (
+    <p>
+      Filler for {props.programId}, {props.only} leg,{" "}
+      {props.canManage ? "may manage" : "read only"}
+    </p>
+  ),
+}));
 vi.mock("../components/SongSimilarityPanel", () => ({
   SongSimilarityPanel: ({ programId }: { programId: string }) => (
     <p>Song similarity for {programId}</p>
@@ -455,4 +473,14 @@ it("confirms a saved radio settings on the form, beside the Save button", async 
   expect(screen.queryByText("Radio settings saved.")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: /Save radio settings/ }));
   expect(await screen.findByText("Radio settings saved.")).toBeVisible();
+});
+
+it("shows the radio filler beside the recovery playlist once the radio is set up", async () => {
+  serve();
+  render(<RadioSettingsRoute />);
+  expect(
+    await screen.findByText(
+      "Filler for night radio, radio leg, may manage",
+    ),
+  ).toBeInTheDocument();
 });

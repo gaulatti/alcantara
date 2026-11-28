@@ -131,6 +131,19 @@ export function FillerLegSummary({
   );
 }
 
+/** Every media asset of a type: a station's songs are more than one page of the list. */
+async function everyAsset(mediaType: string): Promise<MediaAssetOption[]> {
+  const all: MediaAssetOption[] = [];
+  for (let page = 1; ; page += 1) {
+    const response = await api.get<{
+      data: MediaAssetOption[];
+      meta?: { totalPages: number };
+    }>('/media-assets', { params: { mediaType, limit: 200, page } });
+    all.push(...response.data.data);
+    if (page >= (response.data.meta?.totalPages ?? 1)) return all;
+  }
+}
+
 /**
  * Per-program filler configuration (gaulatti/alcantara#127 over the #126
  * API). Shows each leg's active (in-session) and pending (next-session)
@@ -140,9 +153,12 @@ export function FillerLegSummary({
 export function ProgramFillerPanel({
   programId,
   canManage,
+  only,
 }: {
   programId: string;
   canManage: boolean;
+  /** Show one leg only, as on the radio's own settings page. */
+  only?: FillerLegName;
 }) {
   const [state, setState] = useState<ProgramFillerState | null>(null);
   const [supported, setSupported] = useState(true);
@@ -180,25 +196,13 @@ export function ProgramFillerPanel({
   useEffect(() => {
     if (!canManage || !state) return;
     const types = [
-      ...(state.legs.television ? ['IMAGE', 'VIDEO'] : []),
-      ...(state.legs.radio ? ['AUDIO'] : []),
+      ...(state.legs.television && only !== 'radio' ? ['IMAGE', 'VIDEO'] : []),
+      ...(state.legs.radio && only !== 'television' ? ['AUDIO'] : []),
     ];
-    void Promise.all(
-      types.map((mediaType) =>
-        api.get<{ data: MediaAssetOption[] }>('/media-assets', {
-          params: { mediaType, limit: 200 },
-        }),
-      ),
-    )
-      .then((responses) =>
-        setAssets(
-          responses
-            .flatMap((response) => response.data.data)
-            .filter((asset) => asset.enabled),
-        ),
-      )
+    void Promise.all(types.map(everyAsset))
+      .then((lists) => setAssets(lists.flat().filter((asset) => asset.enabled)))
       .catch((cause) => setError(failureMessage(cause)));
-  }, [canManage, state]);
+  }, [canManage, only, state]);
 
   const prepare = async (leg: FillerLegName) => {
     setBusy(leg);
@@ -233,7 +237,7 @@ export function ProgramFillerPanel({
     ? audioAssets.filter((asset) => foldForSearch(asset.name).includes(radioQuery))
     : audioAssets;
   const legs = (['television', 'radio'] as const).filter(
-    (leg) => state?.legs[leg],
+    (leg) => state?.legs[leg] && (!only || leg === only),
   );
 
   return (

@@ -743,7 +743,9 @@ withdrawal carry no key, and Palazzo cannot scope them to one playback, so a lat
 stop the song that followed. They fail after the first timeout instead, so a frozen engine answers an operator's
 stop in about 10 s. They still retry a server error (429 or 5xx) or a refused connection, which Palazzo answered or
 never received. The event stream is long-lived and output-monitor has its own 10 s bound, so neither uses this
-one. A caller's own cancellation still wins.
+one. `filler-prepare` has its own bound (30 s plus 15 s per file, at most 15 minutes) and is not sent again after
+a timeout, because Palazzo prepares every file before it answers (gaulatti/alcantara#20). A caller's own
+cancellation still wins.
 
 ## A silent event stream (#734)
 

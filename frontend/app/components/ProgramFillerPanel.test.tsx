@@ -210,3 +210,19 @@ it('says a leg needs preparing again after a rename left it with nothing prepare
   render(<ProgramFillerPanel programId="both-1" canManage={false} />);
   expect(await screen.findByText('Filler needs preparing again')).toBeInTheDocument();
 });
+
+// gaulatti/alcantara#20: a station has more songs than one page of the asset list, and its settings page shows
+// only the radio leg.
+it('offers every page of songs, and only the leg asked for', async () => {
+  vi.mocked(api.get).mockImplementation((url: string, config?: any) => {
+    if (url !== '/media-assets') return Promise.resolve({ data: state });
+    const page = config.params.page as number;
+    return Promise.resolve({
+      data: { data: [{ id: `song:${page}`, name: `Page ${page} song`, mediaType: 'AUDIO', enabled: true }], meta: { totalPages: 3 } },
+    });
+  });
+  render(<ProgramFillerPanel programId="both-1" canManage only="radio" />);
+  expect(await screen.findByLabelText('Page 3 song')).toBeInTheDocument();
+  expect(screen.getByLabelText('Page 1 song')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Television filler')).not.toBeInTheDocument();
+});

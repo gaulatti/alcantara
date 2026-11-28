@@ -153,6 +153,31 @@ describe('PalazzoMachineClient request timeout', () => {
     expect(metrics.recordMachineRetry).toHaveBeenCalledWith('song-stop');
   });
 
+  // gaulatti/alcantara#20: Palazzo downloads, verifies and transcodes every file before it answers a preparation,
+  // one after another, so its bound grows with the number of files.
+  it.each([
+    [1, 45_000],
+    [10, 180_000],
+    [100, 900_000],
+  ])(
+    'gives a preparation of %i file(s) %i ms, and sends it once',
+    async (count, bound) => {
+      const assets = Array.from({ length: count }, (_, index) => ({
+        id: `song-${index}`,
+        sha256: 'a'.repeat(64),
+        downloadUrl: `https://media.test/${index}.mp3`,
+      }));
+      const { error, attempts, timeouts, metrics } = await runFrozen((client) =>
+        client.prepareFiller(BASE, 'radio-1', 'filler-1', assets),
+      );
+      expect((error as PalazzoMachineError).reason).toBe('unavailable');
+      expect(timeouts.spy.mock.calls).toEqual([[bound]]);
+      // A second send would only queue behind the preparation still running.
+      expect(attempts).toEqual(['PUT /fillers/filler-1']);
+      expect(metrics.recordMachineRetry).not.toHaveBeenCalled();
+    },
+  );
+
   it('does not bound the long-lived event stream', async () => {
     const timeouts = controlledTimeouts();
     const fetchImpl = jest.fn(

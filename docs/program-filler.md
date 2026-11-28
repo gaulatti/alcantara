@@ -39,7 +39,7 @@ All routes sit under `/broadcast/programs/:programId/fillers`.
 3. Otherwise it sends the exact profile in Alana's `PUT /fillers/:version`. Every one of the nine known keys must be present and valid, and the checksum must equal the SHA-256 of the canonical JSON of the profile as received. A profile key Alcantara does not know (gaulatti/ariston#217) does not refuse the profile: it is not read, it is forwarded in the `PUT` exactly as received so the acknowledged `profileChecksum` still binds the same profile, and it is counted in `alcantara_alana_live_profile_unknown_keys_total`. Another `contractVersion`, another `programId` or a checksum mismatch is still a 502 "invalid live profile".
 4. The version is ready only when the acknowledgement matches on all of: version, `ready: true`, `status: "ready"`, source id, source SHA-256, and `profileChecksum` equal to the live-profile checksum.
 
-**Radio preparation** uses Palazzo's `PUT /fillers/:version` with the mode and seed, through the existing private Palazzo URL allowlist.
+**Radio preparation** uses Palazzo's `PUT /fillers/:version` with the mode and seed, through the existing private Palazzo URL allowlist. Palazzo downloads, verifies and transcodes every file before it answers, so this request is bounded at 30 s plus 15 s per file, at most 15 minutes, and is not sent again after a timeout. The same bound applies to the older recovery preparation. A radio program configures and reads its filler on **Radio distribution**.
 
 A filler uses only the media assets of the program's team (gaulatti/alcantara#122): another team's asset is refused as
 if it did not qualify, and a program with no team is refused (counted as `no-team`). Without a station team (local and

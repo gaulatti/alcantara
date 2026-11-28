@@ -31,6 +31,14 @@ const FILLER_NOT_READY_STATUSES: ReadonlySet<string> = new Set([
  * so neither uses this one.
  */
 export const PALAZZO_COMMAND_TIMEOUT_MS = 10_000;
+/**
+ * A filler preparation is not a command: Palazzo downloads, verifies and transcodes every file, one after another,
+ * before it answers (gaulatti/alcantara#20). Its bound is a base plus a share per file, never above the maximum.
+ */
+const FILLER_PREPARE_BASE_MS = 30_000;
+const FILLER_PREPARE_PER_FILE_MS = 15_000;
+const FILLER_PREPARE_MAX_MS = 15 * 60_000;
+
 const UNTIMED_OPERATIONS: ReadonlySet<string> = new Set([
   'event-connect',
   'output-monitor',
@@ -44,6 +52,8 @@ const UNTIMED_OPERATIONS: ReadonlySet<string> = new Set([
  * first timeout instead.
  */
 function replaySafeAfterTimeout(options: RequestOptions): boolean {
+  // Palazzo goes on preparing after the caller gives up, and a second send only queues behind it.
+  if (options.operation === 'filler-prepare') return false;
   const method = options.method ?? 'GET';
   return method === 'GET' || method === 'PUT' || !!options.idempotencyKey;
 }
@@ -128,6 +138,8 @@ interface RequestOptions {
   lastEventId?: string;
   signal?: AbortSignal;
   retryable?: boolean;
+  /** How long one attempt may go unanswered, when not PALAZZO_COMMAND_TIMEOUT_MS. */
+  timeoutMs?: number;
 }
 
 const MAX_ATTEMPTS = 3;
@@ -616,6 +628,10 @@ export class PalazzoMachineClient {
         method: 'PUT',
         idempotencyKey: version,
         retryable: true,
+        timeoutMs: Math.min(
+          FILLER_PREPARE_BASE_MS + FILLER_PREPARE_PER_FILE_MS * assets.length,
+          FILLER_PREPARE_MAX_MS,
+        ),
         body: { commandId: version, ...order, assets },
       },
     );
@@ -732,7 +748,7 @@ export class PalazzoMachineClient {
       // Each attempt is bounded; a caller's own signal still cancels it (and is rethrown below).
       const timeout = UNTIMED_OPERATIONS.has(options.operation)
         ? undefined
-        : AbortSignal.timeout(PALAZZO_COMMAND_TIMEOUT_MS);
+        : AbortSignal.timeout(options.timeoutMs ?? PALAZZO_COMMAND_TIMEOUT_MS);
       const signal =
         timeout && options.signal
           ? AbortSignal.any([options.signal, timeout])

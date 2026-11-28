@@ -3,9 +3,11 @@ import { Plus, Save, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { AppPage } from '../components/AppPage';
 import { BrandingSection } from '../components/BrandingSection';
+import { ProgramFillerPanel } from '../components/ProgramFillerPanel';
 import { RecoveryPlaylistPanel } from '../components/RecoveryPlaylistPanel';
 import { SongSimilarityPanel } from '../components/SongSimilarityPanel';
 import { apiUrl } from '../utils/apiBaseUrl';
+import { useFeatures } from '../hooks/useFeatures';
 import { useGlobalProgramId } from '../utils/globalProgram';
 import type { Route } from './+types/radio-settings';
 
@@ -91,6 +93,7 @@ function normalizeConsumer(value: any): ConsumerDraft {
 
 export default function RadioSettingsRoute() {
   const [programId] = useGlobalProgramId();
+  const { hasPermission } = useFeatures();
   const [settings, setSettings] = useState<RadioSettings | null>(null);
   // A show with no radio settings loads as a blank draft; the first save creates them.
   const [settingsExist, setSettingsExist] = useState(true);
@@ -232,6 +235,7 @@ export default function RadioSettingsRoute() {
           {settingsExist ? (
             <>
               <RecoveryPlaylistPanel programId={programId} />
+              <ProgramFillerPanel programId={programId} canManage={hasPermission('broadcast.manage')} only='radio' />
               <SongSimilarityPanel programId={programId} />
               <BrandingSection programId={programId} />
             </>
