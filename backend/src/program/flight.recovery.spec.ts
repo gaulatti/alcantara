@@ -238,6 +238,43 @@ describe('manual rundown recovery on backend start', () => {
     },
   );
 
+  it.each(['end', 'play'])(
+    'arms nothing while a song that should be playing is not confirmed on air (at %s)',
+    async (activeItemId) => {
+      const f = setup(
+        {
+          items:
+            activeItemId === 'end'
+              ? SONGS
+              : [SONGS[0], { id: 'play', kind: 'wait', durationMs: 20_000 }],
+          activeItemId: activeItemId === 'end' ? 'end' : 'play',
+          lastStartedAt: ago(10_000),
+        },
+        { onAirSongId: null },
+      );
+      await f.service.onModuleInit();
+      await jest.advanceTimersByTimeAsync(600_000);
+      f.untouched();
+      expect(f.run).not.toHaveBeenCalled();
+      expect(await f.counts()).toEqual(only('diverged'));
+    },
+  );
+
+  it('leaves no runtime or timer behind when recovery fails after building it', async () => {
+    const f = setup();
+    jest.spyOn((f.service as any).logger, 'error').mockImplementation(() => {});
+    f.program.broadcastUpdate.mockImplementation(() => {
+      throw new Error('no listeners');
+    });
+    await f.service.onModuleInit();
+    await jest.advanceTimersByTimeAsync(600_000);
+    f.untouched();
+    expect(f.run).not.toHaveBeenCalled();
+    expect(f.runtime()).toBeUndefined();
+    expect(f.row.isRunning).toBe(false);
+    expect(await f.counts()).toEqual(only('failed'));
+  });
+
   it('marks a rundown finished when its last cue has passed', async () => {
     const f = setup({ lastStartedAt: ago(70_000), activeItemId: 'tail' });
     await f.service.onModuleInit();
