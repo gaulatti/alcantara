@@ -4648,3 +4648,156 @@ describe('what counts as a playback this backend issued', () => {
     expect(reads).toHaveBeenCalledTimes(34);
   });
 });
+
+describe('an active song gone stale while Palazzo is connected', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-11-17T12:00:00.000Z'));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  const foreign = { id: 'unseen-play', url: SONGS[2].url };
+  const idle = () => ({
+    ...snapshot('boot-1', 90, null),
+    live: { onAir: false },
+  });
+
+  /** The rotation commanded its first song; Palazzo is connected and reports nothing for it. */
+  const commanded = async (
+    read: () => Promise<unknown>,
+    options: { lease?: { current: string } } = {},
+  ) => {
+    const h = harness(options);
+    const refresh = jest.fn();
+    h.engine.setPalazzoTelemetry({
+      isReconciled: () => true,
+      currentState: jest.fn(read),
+      refreshAggregateMetrics: refresh,
+    } as never);
+    h.idle();
+    await settle();
+    h.engine.handlePalazzoStatus(PROGRAM, { connection: 'connected' } as never);
+    const own = h.palazzo.commands[0];
+    /** One watchdog tick after `seconds` more. */
+    const tick = async (seconds: number) => {
+      jest.advanceTimersByTime(seconds * 1000);
+      await h.engine.checkPlayback();
+      await settle();
+    };
+    const stale = () =>
+      Object.entries(h.metrics.snapshot().engineResyncs)
+        .filter(([key]) => key.startsWith('stale_active:'))
+        .reduce((sum, [, count]) => sum + count, 0);
+    return { h, own, tick, stale, refresh };
+  };
+
+  it('reads Palazzo once and adopts the unissued track it plays', async () => {
+    const { h, own, tick, stale } = await commanded(() =>
+      Promise.resolve(snapshot('boot-1', 90, foreign)),
+    );
+    await tick(16);
+    await tick(10);
+
+    expect(stale()).toBe(1);
+    expect(h.metrics.snapshot().engineResyncs['stale_active:playing']).toBe(1);
+    const onAir = h.engine.getPlaybackState(PROGRAM);
+    expect(onAir?.audioUrl).toBe(foreign.url);
+    expect(onAir?.audioUrl).not.toBe(own.url);
+  });
+
+  it('takes the missed start when Palazzo plays the active song itself', async () => {
+    let ownTrack: { id: string; url: string } = { id: '', url: '' };
+    const { h, own, tick } = await commanded(() =>
+      Promise.resolve(snapshot('boot-1', 90, ownTrack)),
+    );
+    ownTrack = own;
+    await tick(16);
+
+    const onAir = h.engine.getPlaybackState(PROGRAM);
+    expect(onAir?.audioUrl).toBe(own.url);
+    expect(onAir?.telemetryStale).toBe(false);
+  });
+
+  it('changes nothing on an idle read', async () => {
+    const { h, own, tick } = await commanded(() => Promise.resolve(idle()));
+    const commands = h.palazzo.commands.length;
+    await tick(16);
+
+    expect(h.metrics.snapshot().engineResyncs['stale_active:undecided']).toBe(
+      1,
+    );
+    expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(own.url);
+    expect(h.palazzo.commands).toHaveLength(commands);
+  });
+
+  it('changes nothing when Palazzo cannot be read', async () => {
+    const { h, own, tick } = await commanded(() =>
+      Promise.reject(new Error('unavailable')),
+    );
+    await tick(16);
+
+    expect(
+      h.metrics.snapshot().engineResyncs['stale_active:unavailable'],
+    ).toBe(1);
+    expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(own.url);
+  });
+
+  it("changes nothing on a late read of one of its own earlier songs", async () => {
+    let playing: { id: string; url: string } = { id: '', url: '' };
+    const { h, tick } = await commanded(() =>
+      Promise.resolve(snapshot('boot-1', 90, playing)),
+    );
+    // The first song airs and ends; its successor is commanded or promoted and reports nothing.
+    const first = h.palazzo.commands[0];
+    h.palazzo.start();
+    await settle();
+    h.palazzo.queued = null;
+    h.palazzo.event('track.ended', {
+      playbackRequestId: first.id,
+      url: first.url,
+    });
+    await settle();
+    const successor = h.engine.getPlaybackState(PROGRAM)?.audioUrl;
+    playing = first;
+    await tick(16);
+
+    expect(h.metrics.snapshot().engineResyncs['stale_active:undecided']).toBe(
+      1,
+    );
+    expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(successor);
+  });
+
+  it('reads nothing within the window, while not connected, or once the lease is released', async () => {
+    const lease = { current: 'active' };
+    const { h, tick, stale } = await commanded(
+      () => Promise.resolve(snapshot('boot-1', 90, foreign)),
+      { lease },
+    );
+    await tick(10);
+    expect(stale()).toBe(0);
+
+    h.engine.handlePalazzoStatus(PROGRAM, { connection: 'polling' } as never);
+    await tick(10);
+    expect(stale()).toBe(0);
+
+    h.engine.handlePalazzoStatus(PROGRAM, {
+      connection: 'connected',
+    } as never);
+    lease.current = 'standby';
+    await tick(10);
+    expect(stale()).toBe(0);
+
+    lease.current = 'active';
+    await tick(10);
+    expect(stale()).toBe(1);
+  });
+
+  it('refreshes the telemetry gauges on every watchdog tick', async () => {
+    const { tick, refresh } = await commanded(() => Promise.resolve(idle()));
+    const before = refresh.mock.calls.length;
+    await tick(10);
+    await tick(10);
+
+    expect(refresh.mock.calls.length - before).toBe(2);
+  });
+});

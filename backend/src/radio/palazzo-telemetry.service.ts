@@ -350,7 +350,8 @@ export class PalazzoRadioTelemetryService
     this.refreshAggregateMetrics();
   }
 
-  private refreshAggregateMetrics(): void {
+  /** Also run on the engine's watchdog tick, so the stale gauge rises while a stream stays connected. */
+  refreshAggregateMetrics(): void {
     const statuses = this.listStatuses();
     const degraded = statuses.filter((status) => status.degraded).length;
     this.metrics.recordDegradedPrograms(degraded);

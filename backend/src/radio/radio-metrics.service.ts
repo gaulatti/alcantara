@@ -65,6 +65,7 @@ export type EngineResyncTrigger =
   | 'boot'
   | 'foreign_ended'
   | 'unissued_playback'
+  | 'stale_active'
   | 'watchdog'
   | 'command_failed';
 export type EngineResyncResult =
@@ -99,6 +100,7 @@ const RESYNC_TRIGGERS: EngineResyncTrigger[] = [
   'boot',
   'foreign_ended',
   'unissued_playback',
+  'stale_active',
   'watchdog',
   'command_failed',
 ];
