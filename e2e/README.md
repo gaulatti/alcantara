@@ -109,6 +109,48 @@ Not checked, because they are not built: chat (general and producer 1:1) and gue
 
 On macOS with Colima, clone under your home directory. Colima shares only that with its VM, so a checkout elsewhere (for example under `/tmp`) leaves LiveKit with an empty directory where `infra/livekit.dev.yaml` should be, and it exits with `read /etc/livekit.yaml: is a directory`.
 
+## Routing, levels and source loss (`routing-proof.mjs`, alcantara#51)
+
+This proof checks what is built against a running local stack, the same way as the three-caller proof.
+
+Scenes, on program `tv-demo`:
+1. **Preview is independent of Program.** Staging a scene (`POST /program/:id/stage`) changes Preview and leaves Program on air.
+2. **The output page shows Program, and its `?confidence=preview` view shows Preview.**
+3. **TAKE** (`POST /program/:id/activate`) moves the staged scene to Program, and the open output page follows over its stream, with no reload. The scenes are put back afterwards.
+
+Guests, on program `radio-demo.fm`: two callers, each with a tone of its own (A 520 Hz, B 990 Hz). B is measured in A's return.
+
+4. **Gain.** B's `sourceGain` at 0.25 (`PATCH /webrtc/invitations/:id/return`) puts B 12 dB down. At 1 it returns.
+5. **Mute.** B's `sourceMuted` takes B out of A's return. Unmuted, B returns.
+6. **Video drop.** B turns its camera off on its page. The room shows B's camera muted and its microphone live, and A still hears B.
+7. **Offline.** B's page closes without leaving. The participants list flags B `reconnecting`, then `offline` once its 60-second session lease runs out, and B leaves A's return.
+
+```sh
+cd e2e && pnpm routing-proof       # against a docker compose up --build stack
+```
+
+Settings: `ALCANTARA_API_URL`, `ALCANTARA_APP_URL`, `ROUTING_SCENE_PROGRAM` (default `tv-demo`), `ROUTING_GUEST_PROGRAM` (default `radio-demo.fm`), `ALCANTARA_OPERATOR_TOKEN`, `WEBRTC_TIMEOUT_MS`, `WEBRTC_HEADED=1`. The level verdicts are in `routing-levels.mjs`, tested by `routing-levels.test.mjs`.
+
+Measured on a fresh clone's Compose stack (2026-11-28):
+- **Gain:** 0.25 set, ratio 0.251 to 0.254 measured (−12.0 dB).
+- **Mute:** B's tone at 0 in A's return.
+- **Video drop:** B's camera muted, its microphone at 0.200 in A's return.
+- **Drop:** `reconnecting` 20 s after the page closed, then `offline` 25 s later.
+
+Two negative controls both failed the proof, as they should:
+- A return router that ignored gain measured a ratio of 1.03.
+- A return router that ignored mute left B at 0.20.
+
+A camera that goes away fires `ended`, and LiveKit opens it again by itself. So a lost camera that the system can reopen never shows as missing; the proof drops video with the page's camera button instead.
+
+Not built, so not checked:
+- Preview and Program audio buses. Guests ride the program's stream master, and the staged layer is always muted.
+- A Preview/Program routing field for a guest or a source. A guest reaches Program only through a scene's guest slot.
+- Per-guest solo, pan and audio-follow-video.
+- A TAKE that refuses a source that is not ready.
+- Last-frame hold.
+- Protection against reassigning a source that is routed to Program.
+
 ## Program return proof (`return-proof-all.mjs`)
 
 A guest joins the real guest page in Chromium, WebKit and Firefox, then as a phone twice (`iphone`: WebKit with Playwright's iPhone 15 viewport, user agent and touch; `android`: Chromium with Pixel 7), one after another, and the level of the return that page plays is measured. `RETURN_RUNS=iphone,android` runs only those. `chromium-tcp` is Chromium with plain UDP forbidden to WebRTC, as behind an office or hotel Wi-Fi: it passes the same bar and also fails if the pair used was UDP. `chromium-relay` also allows only relayed paths (set on the page's connections by the harness, not by a product switch), as on a network that leaves only TCP 443: it must connect through a relay over TLS. It is not part of the default set. Until TURN over TLS is set up (`infra/README.md`) it fails with `no relay candidates offered`. Every run prints an `ice-path` line (candidate types, protocols and the server port, no addresses), and a run that cannot connect lists what the server offered. Nothing else is opened, so sound means the server's return router delivered it. It defaults to production and `modoitaliano.fm`.
