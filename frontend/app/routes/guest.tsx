@@ -77,6 +77,8 @@ export default function GuestRoute() {
   const [preflightAttempt, setPreflightAttempt] = useState(0);
   // Set when the page itself ends the call (leave, or a revoked session), so the disconnect is not reported as a drop.
   const intentionalEndRef = useRef(false);
+  // Set when the page unmounts: a late heartbeat answer or disconnect must not set state or touch the timers after teardown.
+  const unmountedRef = useRef(false);
   // Set when the studio removes this guest, so the disconnect that follows is reported as a removal, not a drop.
   const removedRef = useRef(false);
   // The join was refused (401/403): the invitation is closed, so a rejoin cannot succeed (gaulatti/alcantara#353).
@@ -265,14 +267,19 @@ export default function GuestRoute() {
       }
     };
     void prepare();
+    unmountedRef.current = false;
     window.addEventListener('pagehide', sayLeft);
     return () => {
       cancelled = true;
+      unmountedRef.current = true;
       window.removeEventListener('pagehide', sayLeft);
       if (heartbeatRef.current !== null) sayLeft();
       stopHeartbeat();
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
-      roomRef.current?.disconnect();
+      // Detach every room listener first, so the disconnect this causes reaches no handler.
+      const room = roomRef.current;
+      room?.removeAllListeners();
+      room?.disconnect();
     };
   }, [preflightAttempt]);
 
@@ -490,7 +497,7 @@ export default function GuestRoute() {
             void heartbeatNowRef.current().catch(() => undefined);
           }
         }
-        if (state === ConnectionState.Disconnected && !intentionalEndRef.current) {
+        if (state === ConnectionState.Disconnected && !intentionalEndRef.current && !unmountedRef.current) {
           if (!removedRef.current) setError(DROPPED);
           setStatus('ended');
         }
@@ -592,12 +599,12 @@ export default function GuestRoute() {
     });
     // Admitting or declining ends this connection: ask at once which it was.
     room.on(RoomEvent.Disconnected, () => {
-      if (roomRef.current !== room || intentionalEndRef.current) return;
+      if (unmountedRef.current || roomRef.current !== room || intentionalEndRef.current) return;
       void heartbeat()
         .catch(() => undefined)
         .finally(() => {
           // Neither: the connection itself is gone. Nobody can see or hear the guest, so offer to rejoin.
-          if (!waitingRef.current || roomRef.current !== room) return;
+          if (unmountedRef.current || !waitingRef.current || roomRef.current !== room) return;
           waitingRef.current = false;
           stopHeartbeat();
           intentionalEndRef.current = true;
