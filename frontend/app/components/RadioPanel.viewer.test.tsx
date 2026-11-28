@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createElement } from "react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -65,6 +65,33 @@ describe("the radio desk for an account that may only view", () => {
     expect(screen.queryByRole("button", { name: /cue next/i })).toBeNull();
   });
 
+  it("disables Add fillers, Stop all and the mixer, and leaves Search songs", async () => {
+    const calls = {
+      onStopAllInstants: vi.fn(),
+      onSongVolumeChange: vi.fn(),
+      onToggleSongMuted: vi.fn(),
+      onToggleInstantMuted: vi.fn(),
+    };
+    show(panel(calls));
+    await screen.findByText(NOTICE);
+    expect(screen.getByRole("button", { name: /add fillers/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Stop all sounders" })).toBeDisabled();
+    for (const label of ["Music level", "Cartwall level", "Output level"])
+      expect(screen.getByRole("slider", { name: label })).toBeDisabled();
+    const mutes = screen.getAllByRole("button", { name: /^View only|^MUTE$/ }).filter((button) => button.textContent === "MUTE");
+    expect(mutes).toHaveLength(2);
+    for (const mute of mutes) {
+      expect(mute).toBeDisabled();
+      fireEvent.click(mute);
+    }
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Music level" }), { key: "ArrowDown" });
+    const handle = screen.getAllByTestId("fader-handle")[0];
+    fireEvent.pointerDown(handle, { clientX: 10, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientX: 90, pointerId: 1 });
+    for (const call of Object.values(calls)) expect(call).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /search songs/i })).toBeEnabled();
+  });
+
   it("still shows a failure that is not a refusal", async () => {
     show(panel({ songCatalogLoadError: "HTTP 500" }));
     expect(await screen.findByText("Song library did not load: HTTP 500")).toBeVisible();
@@ -76,5 +103,7 @@ describe("the radio desk for an account that may only view", () => {
     expect(await screen.findByText("Song library did not load: HTTP 403")).toBeVisible();
     expect(screen.queryByText(NOTICE)).toBeNull();
     expect(screen.getByRole("button", { name: /cue next/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add fillers/i })).toBeEnabled();
+    expect(screen.getByRole("slider", { name: "Music level" })).toBeEnabled();
   });
 });

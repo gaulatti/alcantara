@@ -54,6 +54,7 @@ import {
 } from "../services/flight";
 import { apiUrl } from "../utils/apiBaseUrl";
 import { fetchProgramControl } from "../services/programControl";
+import { useProgramEvents } from "../hooks/useProgramEvents";
 import { useGlobalProgramId } from "../utils/globalProgram";
 
 function nextLocalStart(): string {
@@ -199,6 +200,45 @@ export default function ScheduledRundown({
   useEffect(() => {
     void load().catch((cause) => setError(message(cause)));
   }, [load]);
+
+  // A block created or deleted elsewhere: the list is read again. A block being edited is kept as it is, so the
+  // reread never takes unsaved events away.
+  const editingRef = useRef<number | null>(null);
+  editingRef.current = dirty ? selectedId : null;
+  const readList = useCallback(async () => {
+    try {
+      const sequences = await fetchFlightSequences(programId);
+      const editing = editingRef.current;
+      setLogs((current) => {
+        const kept = editing === null ? undefined : current.find((log) => log.id === editing);
+        if (!kept) return sequences;
+        return sequences.some((log) => log.id === kept.id)
+          ? sequences.map((log) => (log.id === kept.id ? kept : log))
+          : [...sequences, kept];
+      });
+      setSelectedId((current) =>
+        current && (current === editing || sequences.some((log) => log.id === current))
+          ? current
+          : (sequences.find((log) => log.scheduledAt)?.id ?? null),
+      );
+    } catch (cause) {
+      console.error("Failed to reload the rundown list:", cause);
+    }
+  }, [programId]);
+  const streamOpened = useRef(false);
+  useProgramEvents({
+    programId,
+    enabled: !fixtureData,
+    onMessage: (data: any) => {
+      if (data?.type === "flight_update" && data.programId === programId && data.sequencesChanged) void readList();
+    },
+    // Events sent while the stream was down are not sent again: a reconnect reads the list.
+    onConnectionStateChange: (connection) => {
+      if (connection !== "connected") return;
+      if (streamOpened.current) void readList();
+      streamOpened.current = true;
+    },
+  });
   useEffect(() => {
     setItems(selected?.items ?? []);
     const current = `${selectedId}:${selected?.revision}`;

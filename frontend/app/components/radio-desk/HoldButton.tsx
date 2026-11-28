@@ -5,6 +5,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
+import { DisabledHelp } from "./DisabledHelp";
 import { useHoldToConfirm } from "./holdToConfirm";
 
 /**
@@ -17,6 +18,7 @@ export function HoldButton({
   holdMs = 600,
   onConfirm,
   disabled = false,
+  disabledHelp,
   tone = "default",
   globalKey,
   children,
@@ -27,6 +29,8 @@ export function HoldButton({
   holdMs?: number;
   onConfirm: () => void;
   disabled?: boolean;
+  /** Why it is disabled, shown on pointing at it. */
+  disabledHelp?: string;
   tone?: "default" | "danger";
   /**
    * A window-wide key that holds the control too (for example ⌥.): holding it for `holdMs` acts,
@@ -95,6 +99,7 @@ export function HoldButton({
   };
   return (
     <span className="relative inline-flex flex-col">
+      <DisabledHelp help={disabledHelp}>
       <button
         type="button"
         aria-label={label}
@@ -121,6 +126,7 @@ export function HoldButton({
           {children ?? label}
         </span>
       </button>
+      </DisabledHelp>
       {tapped ? (
         <span
           id={`hold-${label}`}

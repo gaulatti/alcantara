@@ -24,8 +24,8 @@ team like every program route:
   template's contract, with a `heartbeat` every 15 s. A browser `EventSource` cannot send the `Authorization` header,
   so the console reads it with a fetch-based stream reader that sends its bearer token.
 
-Creating or deleting a flight sequence sends a `flight_update` with `sequencesChanged: true`; an open operator-cue
-rundown reads its list again on it.
+Creating or deleting a flight sequence sends a `flight_update` with `sequencesChanged: true`; an open rundown, operator
+cues or timed blocks, reads its list again on it. A timed block with unsaved events is kept as it is.
 
 The public `/program/{programId}/state`, `/program/{programId}/events` and `/program/{programId}/audio-bus` are the
 renderer's, and send only what the on-air pages read (`backend/src/program/public-projection.ts`). A templated program

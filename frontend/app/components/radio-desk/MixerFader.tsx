@@ -18,8 +18,11 @@ export function MixerFader({
   label,
   value,
   onChange,
+  disabled = false,
 }: {
   label: string;
+  /** Neither the keyboard nor the handle moves it. */
+  disabled?: boolean;
   /** Fader position, 0 to 1. */
   value: number;
   onChange: (value: number) => void;
@@ -37,10 +40,12 @@ export function MixerFader({
         max={1}
         step={0.01}
         value={value}
+        disabled={disabled}
         // Only the keyboard reaches it: a pointer on the track does nothing.
         style={{ pointerEvents: "none" }}
         onChange={(event) => onChange(Number(event.target.value))}
         onKeyDown={(event) => {
+          if (disabled) return;
           if (JUMP_KEYS.has(event.key)) {
             event.preventDefault();
             return;
@@ -66,7 +71,7 @@ export function MixerFader({
         onPointerDown={(event) => {
           event.preventDefault();
           // A right or control click opens a menu, whose release the handle may never see.
-          if (event.button > 0 || event.ctrlKey) return;
+          if (disabled || event.button > 0 || event.ctrlKey) return;
           event.currentTarget.setPointerCapture?.(event.pointerId);
           drag.current = { x: event.clientX, value, pointerId: event.pointerId };
         }}

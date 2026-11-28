@@ -1,4 +1,5 @@
 import { useFeatures } from "../hooks/useFeatures";
+import { DisabledHelp } from "./radio-desk/DisabledHelp";
 import { RUNDOWN_FORBIDDEN } from "../utils/rundownForbidden";
 import { TooltipButton } from "./BleeckerButtons";
 import { useCallback, useEffect, useRef, useState, useMemo, type ReactNode } from "react";
@@ -243,6 +244,9 @@ export function deadAirLine(deadAir: DeadAirStatus | null | undefined): string |
 /** Why the desk refuses what would be accepted and not air while Palazzo's playout is down. */
 const PLAYOUT_DOWN_REASON = "Playout down: nothing can air";
 
+/** The tooltip of every control an account that may only view cannot use. */
+const VIEW_ONLY_CONTROL = "View only: your account cannot run the radio.";
+
 /** The engine chip when the console cannot reach the Alcántara server at all (Dot's recovery walk). */
 
 /** The Recovery & session headline for a recovery status the console has read. */
@@ -302,6 +306,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   // A refused read is expected for such an account; any other failure is still shown.
   const refusedRead = (message: string | null) =>
     viewOnly && message !== null && (message === RUNDOWN_FORBIDDEN || /\b403\b/.test(message));
+  const viewOnlyHelp = viewOnly ? VIEW_ONLY_CONTROL : undefined;
   const rotation = normalizeProgramSongSequence(songSequence) ?? {
     ...createProgramSongSequence("manual"),
     activeItemId: null,
@@ -782,6 +787,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     size="xs"
                     variant="secondary"
                     onClick={() => setAddingFillers((value) => !value)}
+                    disabled={viewOnly}
+                    {...(viewOnly ? { title: VIEW_ONLY_CONTROL } : {})}
                   >
                     <Plus size={13} />{" "}
                     {addingFillers ? "Done adding" : "Add fillers"}
@@ -1256,6 +1263,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                         size="xs"
                         variant="secondary"
                         onClick={onToggleSongMuted}
+                        disabled={viewOnly}
+                        {...(viewOnly ? { title: VIEW_ONLY_CONTROL } : {})}
                       >
                         Unmute music
                       </Button>
@@ -1317,6 +1326,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   hint="Hold to stop every sounder (0.6 s)."
                   tone="danger"
                   onConfirm={onStopAllInstants}
+                  disabled={viewOnly}
+                  disabledHelp={viewOnlyHelp}
                 >
                   Hold · stop all
                 </HoldButton>
@@ -1388,6 +1399,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                 <RadioMixerChannel
                   label="Music"
                   channel={mixer.song}
+                  viewOnlyHelp={viewOnlyHelp}
                   onVolumeChange={onSongVolumeChange}
                   onToggleMuted={onToggleSongMuted}
                   preListen={<ChannelPreListen channel="song" label="Music" sources={musicOnAir} onActive={onPreFade} activeOwner={preFadeOwner} />}
@@ -1395,6 +1407,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                 <RadioMixerChannel
                   label="Cartwall"
                   channel={mixer.instants}
+                  viewOnlyHelp={viewOnlyHelp}
                   onVolumeChange={onInstantVolumeChange}
                   onToggleMuted={onToggleInstantMuted}
                   preListen={<ChannelPreListen channel="instant" label="Cartwall" sources={cartwallOnAir} onActive={onPreFade} activeOwner={preFadeOwner} />}
@@ -1402,6 +1415,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                 <RadioMixerChannel
                   label="Output"
                   channel={mixer.main}
+                  viewOnlyHelp={viewOnlyHelp}
                   onVolumeChange={onMainVolumeChange}
                 />
                 {/* The guests are a row of the mixer grid, under its channels, as on a broadcast console. */}
@@ -1603,7 +1617,9 @@ function RadioMixerChannel({
   onVolumeChange,
   onToggleMuted,
   preListen,
+  viewOnlyHelp,
 }: {
+  viewOnlyHelp?: string;
   label: string;
   channel: RadioMixerChannelState;
   onVolumeChange: (value: number) => void;
@@ -1616,11 +1632,14 @@ function RadioMixerChannel({
     <section className="console-channel" aria-label={`${label} mixer channel`}>
       <div className="console-channel-label">{label}</div>
       <div className="console-channel-db">{level}</div>
-      <MixerFader
-        label={`${label} level`}
-        value={channel.volume}
-        onChange={onVolumeChange}
-      />
+      <DisabledHelp help={viewOnlyHelp}>
+        <MixerFader
+          label={`${label} level`}
+          value={channel.volume}
+          onChange={onVolumeChange}
+          disabled={viewOnlyHelp !== undefined}
+        />
+      </DisabledHelp>
       <Meter
         label={`${label} live peak`}
         value={Math.max(0, Math.min(100, (channel.vu ?? channel.peak) * 100))}
@@ -1639,6 +1658,8 @@ function RadioMixerChannel({
           type="button"
           onClick={onToggleMuted}
           aria-pressed={channel.muted === true}
+          disabled={viewOnlyHelp !== undefined}
+          {...(viewOnlyHelp ? { title: viewOnlyHelp } : {})}
         >
           {channel.muted ? "MUTED" : "MUTE"}
         </TooltipButton>
