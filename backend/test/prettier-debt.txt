@@ -6,9 +6,6 @@ src/broadcast-destinations/broadcast-destinations.service.coverage.spec.ts
 src/broadcast-destinations/broadcast-destinations.service.ts
 src/broadcast-destinations/destination-test.service.spec.ts
 src/charts/charts.service.metadata.spec.ts
-src/config/runtime-secret-contract.d.ts
-src/config/runtime-secret-contract.program-keys.spec.ts
-src/config/runtime-secrets.livekit.spec.ts
 src/cors.http.spec.ts
 src/database-backup/database-backup.service.coverage.spec.ts
 src/external-sources/external-sources.service.coverage.spec.ts
