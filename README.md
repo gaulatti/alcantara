@@ -539,7 +539,7 @@ can prepare a recovery playlist (gaulatti/alcantara#695). In Radio settings,
 **Prepared local playlist** with those songs reaches Palazzo's filler
 preparation; without a Palazzo attached, it fails as Palazzo unavailable, not as
 a URL refusal. The seeded songs 9001 and 9002 keep their relative
-`/fifthbell/audio/` URLs, which the browser plays but Palazzo cannot download,
+`/demo/` URLs, which the browser plays but Palazzo cannot download,
 so they are refused for recovery. The production media guard is unchanged.
 
 The `postgres-data` volume otherwise preserves local changes across restarts.

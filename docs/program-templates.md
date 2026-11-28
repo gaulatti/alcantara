@@ -1,102 +1,101 @@
-# Program template contracts
+# Program templates and renderers
 
-Alcantara owns program state and control. It does not own the Fifthbell visual
-template. Brokaw builds the renderer and its machine-readable contract;
-Cronkite validates that package and publishes an immutable release to the CDN.
-Alcantara registers the release manifest against a program and opens the
-manifest's entrypoint with its declared runtime query parameters.
+Alcántara is the control plane. It owns program state, control and delivery of that state; it does not own how a
+program looks.
+
+## Where renderers live
+
+Renderers belong to the brand libraries:
+
+| Brand | Library |
+| --- | --- |
+| gaulatti | `@gaulatti/bleecker` |
+| Fifth Bell | `@fifthbell/brokaw` |
+| Modo Italiano | `@modoitaliano/giorgia` |
+
+A renderer reaches air in one of two ways:
+
+- **Placed by the program page.** `frontend/app/routes/program.tsx` places library components for a scene's component
+  types and passes them the stored settings. The app holds adapters, not copies: a guard test
+  (`frontend/app/scenes/noLocalRenderers.test.ts`) keeps each one a thin host over a library export.
+- **Published as a template.** A library's release is published to a CDN with a manifest, and a program is registered
+  against that manifest. The release's own page reads the program's public state and events.
+
+A new visual piece is added to its library, released, and then consumed here by bumping the pinned version.
 
 ## Published contract
 
-The initial contract is `kind: alcantara.program-template`,
-`contractVersion: 1`, and state `schemaVersion: 1`. A manifest declares:
+A manifest is `kind: alcantara.program-template` with `contractVersion` 1 or 2 and a matching state `schemaVersion`.
+It declares:
 
-- template identity, package, bundle version, and relative HTML entrypoint;
-- bounded capabilities such as `audio.playback`, `media.groups`,
-  `scene.configuration`, and `stinger.transitions`;
-- the `alcantara.program.v1` control protocol over server-sent events;
+- template identity, package, bundle version, and a relative HTML entrypoint;
+- bounded capabilities such as `audio.playback`, `media.groups`, `scene.configuration` and `stinger.transitions`;
+- the control protocol over server-sent events;
 - relative snapshot and event paths;
 - query-parameter names for `programId` and `apiBaseUrl`;
-- the exact signal types accepted by the renderer; and
-- release files, content types, byte counts, and SHA-256 digests.
+- the signal types the renderer accepts; and
+- release files, content types, byte counts and SHA-256 digests.
 
-For Brokaw `0.1.65`, Cronkite publishes the immutable registration URL at:
-
-```text
-https://cdn.fifthbell.com/html/program-releases/0.1.65/live-program-manifest.json
-```
-
-The manifest entrypoint resolves within that same release prefix. The rendered
-page runs on `https://cdn.fifthbell.com`, so Alcantara's API permits that exact
-browser origin. `https://fifthbell.com` is also allowed for a later public-route
-alias; wildcard origins are not used.
+[program-templates-v2.md](program-templates-v2.md) describes contract v2, its projected state and signals, how unknown
+members are handled, approved publisher origins and the fetch limits. The JSON Schema is
+`docs/contracts/program-template-v2.schema.json`.
 
 ## Register a program
 
-Open **Programs**, create or edit a program, paste the immutable JSON manifest
-URL into **Template URL**, and choose **Inspect**. Alcantara fetches the URL on
-the server, verifies the contract, and displays its capabilities. Saving repeats
-the inspection so a stale preview cannot bypass validation. Program list cards
-and the global **Open Program Output** action then open the external entrypoint
-with the selected program ID and the configured Alcantara API origin.
+Open **Shows**, create or edit a show, paste the manifest URL into **Template URL** and choose **Inspect**. The server
+fetches the URL, verifies the contract and shows its capabilities. Saving inspects it again, so a stale preview cannot
+bypass validation. **Open renderer** then opens the registered entrypoint with the program ID and API origin. Radio
+programs do not take a visual template.
 
-The production registration endpoint accepts only HTTPS manifests from the
-code-owned Cronkite publisher origin `https://cdn.fifthbell.com`. Local
-development additionally permits `http://localhost` and `http://127.0.0.1`.
-Manifest requests reject credentials, query strings, fragments, unsafe
-relative paths, non-JSON responses, bodies larger than 256 KiB, more than three
-redirects, and hosts resolving to private, loopback, link-local, multicast, or
-documentation networks. Each redirect is checked again.
+Production accepts HTTPS manifests from the built-in publisher origin `https://cdn.fifthbell.com` and the origins in
+the runtime secret's `programTemplateOrigins`. Local development also permits `http://localhost` and
+`http://127.0.0.1`. Manifest requests reject credentials, query strings, fragments, unsafe relative paths, non-JSON
+responses, bodies over 256 KiB, more than three redirects, and hosts that resolve to non-public networks.
 
-Registration stores the final manifest URL, the normalized contract, its
-same-origin entrypoint URL, and the verification time. It does not load or
-execute template JavaScript inside the Alcantara application.
+Registration stores the final manifest URL, the normalized contract, its same-origin entrypoint URL and the
+verification time. It does not load or run template JavaScript inside the Alcántara application. Never overwrite an
+immutable release prefix: publish a new release and register it.
 
 ## Public state and signals
 
-For a registered program, `GET /program/:programId/state` returns only schema
-version, program identity, active/staged scene projections, fade-to-black state,
-timestamps, and version. It omits operator queues, assignments, stored template
-metadata, and unrelated persistence fields.
+For a registered program, `GET /program/:programId/state` and `GET /program/:programId/events` carry a bounded
+projection: schema version, program identity, active and staged scene projections, fade-to-black state, timestamps and
+version, without operator queues, assignments or stored template metadata. The stream sends only the signals the
+manifest declares, and a heartbeat when it declares one.
 
-`GET /program/:programId/events` begins with the bounded snapshot, forwards only
-signal types declared by the stored manifest, projects each signal to its
-renderer fields, and emits a 15-second heartbeat when declared. Existing
-unregistered programs keep the legacy response during migration so the current
-renderer remains a rollback path.
+A program with no registered template gets the whole state and stream. The signed-in console reads its own routes
+under `/program/:programId/control/` (see [program-realtime.md](program-realtime.md)).
 
-The private authenticated `/metrics` collector includes:
+Removing a program's template URL returns it to the program page's rendering. That is a data change, with no deploy.
+
+## Renderer keys
+
+The pages and machines that serve a program, including a program feed that brings guests in, authenticate with that
+program's renderer key (header `X-Renderer-Key`). Keys are issued and rotated per show. See
+[renderer-keys.md](renderer-keys.md), including which holders still use the shared key.
+
+## Fifth Bell today
+
+Two Fifth Bell renderings exist, both Brokaw's:
+
+- the program page places `LiveProgram` from the pinned `@fifthbell/brokaw`
+  (`frontend/app/components/BrokawFifthBellProgramRenderer.tsx`), with images and audio Alcántara serves from
+  `frontend/public/fifthbell`;
+- Cronkite publishes immutable Brokaw releases with manifests under
+  `https://cdn.fifthbell.com/html/program-releases/<version>/live-program-manifest.json`, which a program can register.
+
+Which one airs Fifth Bell output is not yet decided (gaulatti/alcantara#25). Until it is, both the bundled renderer
+and `frontend/public/fifthbell` stay.
+
+## Metrics
+
+The private `/metrics` collector includes:
 
 - `alcantara_dependency_operations_total{dependency="program-template",operation="fetch",result}`;
 - `alcantara_dependency_duration_seconds{dependency="program-template",operation="fetch"}`;
 - `alcantara_program_sse_connections`;
 - `alcantara_program_sse_snapshots_total{result}`; and
-- `alcantara_program_template_unknowns_ignored_total{member}` for manifest
-  signals, capabilities and properties left out because Alcantara does not
-  know them (see
-  [program-templates-v2.md](program-templates-v2.md)).
+- `alcantara_program_template_unknowns_ignored_total{member}`.
 
-Template URLs and identities never appear in metric labels. A successful
-inspection records `success`; any rejected or failed inspection records the
-bounded `failure` result. HTTP route metrics continue to cover response status
-and latency for registration and public state/SSE requests.
-
-## Release and cutover
-
-Release in dependency order:
-
-1. Publish the tagged Brokaw package.
-2. Configure Cronkite with that exact package version and let startup publish
-   the immutable release before its canonical HTML pointer.
-3. Deploy the Alcantara schema migration and application.
-4. Register the Fifthbell program with the immutable manifest URL.
-5. Verify the CDN manifest and entrypoint, browser CORS, initial state, live SSE
-   scene changes, audio control, and reconnect heartbeat.
-6. Remove `frontend/app/programs/fifthbell/**`,
-   `frontend/public/fifthbell/**`, and the legacy Alcantara output route only
-   after the external renderer has passed those production checks.
-
-Rollback is data-only until step 6: clear the program's Template URL to return
-to the legacy Alcantara renderer. After step 6, roll back by redeploying the
-last frontend version containing that route or register a previously verified
-immutable Brokaw release. Never overwrite an immutable release prefix.
+Template URLs and identities never appear in metric labels. HTTP route metrics cover response status and latency for
+registration and the public state and event requests.

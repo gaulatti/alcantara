@@ -172,7 +172,7 @@ export async function seedLocalDatabase(
     update: {
       ...team,
       name: 'Local demo song intro',
-      audioUrl: '/fifthbell/audio/pipes.ogg',
+      audioUrl: '/demo/tone.ogg',
       volume: 0.72,
       enabled: true,
       position: 9001,
@@ -181,7 +181,7 @@ export async function seedLocalDatabase(
       ...team,
       id: 9001,
       name: 'Local demo song intro',
-      audioUrl: '/fifthbell/audio/pipes.ogg',
+      audioUrl: '/demo/tone.ogg',
       volume: 0.72,
       enabled: true,
       position: 9001,
@@ -192,7 +192,7 @@ export async function seedLocalDatabase(
     update: {
       ...team,
       name: 'Local available voice recording',
-      audioUrl: '/fifthbell/audio/pipes.ogg',
+      audioUrl: '/demo/tone.ogg',
       volume: 0.9,
       enabled: true,
       position: 9002,
@@ -201,7 +201,7 @@ export async function seedLocalDatabase(
       ...team,
       id: 9002,
       name: 'Local available voice recording',
-      audioUrl: '/fifthbell/audio/pipes.ogg',
+      audioUrl: '/demo/tone.ogg',
       volume: 0.9,
       enabled: true,
       position: 9002,
@@ -214,7 +214,7 @@ export async function seedLocalDatabase(
       ...team,
       artist: 'Seed Artist',
       title: 'Song with recorded intro',
-      audioUrl: '/fifthbell/audio/pipes.ogg',
+      audioUrl: '/demo/tone.ogg',
       enabled: true,
     },
     create: {
@@ -222,7 +222,7 @@ export async function seedLocalDatabase(
       id: 9001,
       artist: 'Seed Artist',
       title: 'Song with recorded intro',
-      audioUrl: '/fifthbell/audio/pipes.ogg',
+      audioUrl: '/demo/tone.ogg',
       enabled: true,
     },
   });
@@ -232,7 +232,7 @@ export async function seedLocalDatabase(
       ...team,
       artist: 'Seed Artist',
       title: 'Song without intro',
-      audioUrl: '/fifthbell/audio/pipes.ogg',
+      audioUrl: '/demo/tone.ogg',
       enabled: true,
     },
     create: {
@@ -240,7 +240,7 @@ export async function seedLocalDatabase(
       id: 9002,
       artist: 'Seed Artist',
       title: 'Song without intro',
-      audioUrl: '/fifthbell/audio/pipes.ogg',
+      audioUrl: '/demo/tone.ogg',
       enabled: true,
     },
   });
@@ -337,7 +337,7 @@ export async function seedLocalDatabase(
         artist: 'Seed Artist',
         title: 'Song with recorded intro',
         coverUrl: '/cover.jpg',
-        audioUrl: '/fifthbell/audio/pipes.ogg',
+        audioUrl: '/demo/tone.ogg',
       },
       {
         id: 'seed-song-9002',
@@ -346,7 +346,7 @@ export async function seedLocalDatabase(
         artist: 'Seed Artist',
         title: 'Song without intro',
         coverUrl: '/cover.jpg',
-        audioUrl: '/fifthbell/audio/pipes.ogg',
+        audioUrl: '/demo/tone.ogg',
       },
     ],
     activeItemId: 'seed-song-9001',
@@ -481,14 +481,14 @@ export async function seedLocalDatabase(
     where: { id: 9001 },
     update: {
       ...team,
-      name: 'Local New York still',
-      imageUrl: '/fifthbell/images/nyc.jpg',
+      name: 'Local demo still',
+      imageUrl: '/demo/still.jpg',
     },
     create: {
       ...team,
       id: 9001,
-      name: 'Local New York still',
-      imageUrl: '/fifthbell/images/nyc.jpg',
+      name: 'Local demo still',
+      imageUrl: '/demo/still.jpg',
     },
   });
   const localMediaGroup = await prisma.mediaGroup.upsert({
@@ -537,7 +537,7 @@ export async function seedLocalDatabase(
     update: {
       ...team,
       name: 'Local rehearsal transition',
-      videoUrl: '/fifthbell/video/local-transition.webm',
+      videoUrl: '/demo/transition.webm',
       cutPointMs: 700,
       enabled: false,
     },
@@ -545,7 +545,7 @@ export async function seedLocalDatabase(
       ...team,
       id: 9001,
       name: 'Local rehearsal transition',
-      videoUrl: '/fifthbell/video/local-transition.webm',
+      videoUrl: '/demo/transition.webm',
       cutPointMs: 700,
       enabled: false,
     },

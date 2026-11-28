@@ -166,7 +166,7 @@ try {
       // The seeded image is the TV show's.
       await selectProgram(page, "main");
       await page.getByRole("tab", { name: "Images", exact: true }).tap();
-      const edit = page.getByRole("button", { name: "Edit Local New York still" });
+      const edit = page.getByRole("button", { name: "Edit Local demo still" });
       await edit.waitFor();
       await edit.tap();
       const dialog = page.getByRole("dialog", { name: "Edit image" });

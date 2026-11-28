@@ -401,7 +401,7 @@ export default function ConsoleFixture() {
             programId="fixture"
             fixtureData={withSampleAge(fixture, {
               monitorAudioUrl: new URL(
-                "/fifthbell/audio/pipes.ogg",
+                "/demo/tone.ogg",
                 window.location.origin,
               ).toString(),
               stream: { running: fixture !== "radio-offline", uptime: 180_000 },

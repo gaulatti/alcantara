@@ -5,7 +5,7 @@ import type { InstantItem } from '../models/broadcast';
 const available: InstantItem = {
   id: 1,
   name: 'Morning voice segue',
-  audioUrl: '/fifthbell/audio/pipes.ogg',
+  audioUrl: '/demo/tone.ogg',
   volume: 0.72,
   enabled: true,
   position: 1,
