@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProgramSongPlaybackState, SongCatalogItem } from "../../models/broadcast";
-import type { ProgramSongSequence } from "../../utils/programSequence";
+import type { ProgramSongSequence } from "@modoitaliano/giorgia/scenes";
 import { findPlayableSongs, nextUp, onAirLeaf, rotationLeaves, type SongLeaf } from "./songs";
 
 // gaulatti/alcantara#404 (radio desk songs, from the full-run table): rotation items that come without a

@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlayNextQueue } from "./PlayNextQueue";
-import type { ProgramSongSequence } from "../utils/programSequence";
+import type { ProgramSongSequence } from "@modoitaliano/giorgia/scenes";
 
 const sequence: ProgramSongSequence = {
   mode: "shuffle",

@@ -17,7 +17,7 @@ import {
   shuffleProgramSongSequence,
   programSongPlayOrder,
   type ProgramSongSequence,
-} from "../utils/programSequence";
+} from "@modoitaliano/giorgia/scenes";
 import type { ProgramSongPlaybackState } from "../models/broadcast";
 
 function flattenProgramSongItems(

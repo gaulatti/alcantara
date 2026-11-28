@@ -6,8 +6,8 @@ import type {
 import type {
   ProgramSongSequence,
   ProgramSongSequenceItem,
-} from "../../utils/programSequence";
-import { programSongPlayOrder } from "../../utils/programSequence";
+} from "@modoitaliano/giorgia/scenes";
+import { programSongPlayOrder } from "@modoitaliano/giorgia/scenes";
 import type { NextUp } from "./onAir";
 
 export type SongLeaf = Extract<ProgramSongSequenceItem, { kind: "preset" }>;

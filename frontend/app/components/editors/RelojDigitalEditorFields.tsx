@@ -1,7 +1,7 @@
 import { TooltipButton } from "../BleeckerButtons";
 import { useMemo, useState } from 'react';
 import { Field, Input, Select } from '@gaulatti/bleecker';
-import { normalizeProgramTextSequence, createProgramTextSequence, type ProgramTextSequence } from '../../utils/programSequence';
+import { normalizeProgramTextSequence, createProgramTextSequence, type ProgramTextSequence } from '@modoitaliano/giorgia/scenes';
 import { ProgramTextSequenceEditor } from './ProgramTextSequenceEditor';
 import { SearchableSelect } from './SearchableSelect';
 import { SCENE_TRANSITIONS } from '../../utils/sceneTransitions';

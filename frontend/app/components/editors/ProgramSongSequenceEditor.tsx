@@ -44,7 +44,7 @@ import {
   type ProgramSongSequence,
   type ProgramSongSequenceItem,
   type ProgramSongSequenceLeafItem
-} from '../../utils/programSequence';
+} from '@modoitaliano/giorgia/scenes';
 import type { SongCatalogItem, ProgramSongPlaybackState } from '../../models/broadcast';
 
 /** A song sequence flattened to its songs: legacy nested blocks are inlined. */

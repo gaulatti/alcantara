@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProgramSongPlaybackState } from "../../models/broadcast";
-import type { ProgramSongSequence } from "../../utils/programSequence";
+import type { ProgramSongSequence } from "@modoitaliano/giorgia/scenes";
 import { nextUp, type SongLeaf } from "./songs";
 
 // Walk part 4 (an operator's hour on the radio desk): a song put on air from Play Next stays in the queue, marked

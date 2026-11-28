@@ -31,7 +31,7 @@ import {
   createProgramSongSequenceItem,
   type ProgramSongSequence,
   type ProgramSongSequenceItem
-} from './programSequence';
+} from '@modoitaliano/giorgia/scenes';
 
 afterEach(() => {
   vi.unstubAllGlobals();

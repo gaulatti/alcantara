@@ -28,7 +28,7 @@ import {
   normalizeProgramSongSequence,
   createProgramSongSequence,
   type ProgramSongSequence,
-} from "../utils/programSequence";
+} from "@modoitaliano/giorgia/scenes";
 import { RadioOutputPlayer } from "./RadioOutputPlayer";
 import { usePreListen } from "./radio-desk/usePreListen";
 import { ChannelPreListen, type PreFadeSource } from "./radio-desk/ChannelPreListen";

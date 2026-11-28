@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeProgramSongSequence } from './programSequence';
+import { normalizeProgramSongSequence } from '@modoitaliano/giorgia/scenes';
 
 const song = (overrides: Record<string, unknown> = {}) => ({
   title: 'Fictional song',

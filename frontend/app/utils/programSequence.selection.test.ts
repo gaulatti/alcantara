@@ -8,7 +8,7 @@ import {
   resolveProgramTextLeaf,
   shuffleProgramSongSequence,
   songIdsInProgramSongSequence,
-} from './programSequence';
+} from '@modoitaliano/giorgia/scenes';
 
 // gaulatti/alcantara#404 (group C): which item a sequence shows at a given time, for text and song
 // sequences, in every mode and loop setting.

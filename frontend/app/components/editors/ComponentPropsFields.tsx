@@ -9,7 +9,7 @@ import { ModoItalianoBracketEditorFields } from './ModoItalianoBracketEditorFiel
 import { ModoItalianoPodcastPlayerEditorFields } from './ModoItalianoPodcastPlayerEditorFields';
 import { ModoItalianoGiorgiaArtistBumperEditorFields } from './ModoItalianoGiorgiaArtistBumperEditorFields';
 import { FIFTHBELL_AVAILABLE_WEATHER_CITIES, normalizeSceneInstantId } from '../../utils/broadcast';
-import { createProgramTextSequence } from '../../utils/programSequence';
+import { createProgramTextSequence } from '@modoitaliano/giorgia/scenes';
 import type { Scene, SongCatalogItem, MediaGroup, MediaLabel } from '../../models/broadcast';
 import { getDefaultPropsForComponent } from '../../models/components';
 

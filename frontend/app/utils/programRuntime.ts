@@ -1,5 +1,5 @@
 // Moved byte-for-byte from routes/program.tsx (gaulatti/alcantara#195) so the pure helpers can be tested; only `export` was added.
-import { normalizeProgramSongSequence, type ProgramSongSequence, type ProgramSongSequenceItem } from './programSequence';
+import { normalizeProgramSongSequence, type ProgramSongSequence, type ProgramSongSequenceItem } from '@modoitaliano/giorgia/scenes';
 import { sceneInstantBelongsToActiveScene } from './programSceneInstant';
 import type { SceneTransitionPreset } from './sceneTransitions';
 

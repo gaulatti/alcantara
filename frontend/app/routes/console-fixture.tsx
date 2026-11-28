@@ -11,7 +11,7 @@ import type { Scene } from "../models/broadcast";
 import { SimulcastStatusRail } from "../components/SimulcastStatusRail";
 import { PlaybackBar } from "../components/PlaybackBar";
 import { PlayNextQueue } from "../components/PlayNextQueue";
-import type { ProgramSongSequence } from "../utils/programSequence";
+import type { ProgramSongSequence } from "@modoitaliano/giorgia/scenes";
 import type { ProgramSongQueueEntry } from "../models/broadcast";
 import { ProgramSongSequenceEditor } from "../components/editors";
 import { ScenePreparationFixture } from "../components/ScenePreparationFixture";

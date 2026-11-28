@@ -5,7 +5,7 @@ import type { ProgramSongQueueEntry } from "../models/broadcast";
 import type {
   ProgramSongSequence,
   ProgramSongSequenceItem,
-} from "../utils/programSequence";
+} from "@modoitaliano/giorgia/scenes";
 
 type SongLeaf = Extract<ProgramSongSequenceItem, { kind: "preset" }>;
 

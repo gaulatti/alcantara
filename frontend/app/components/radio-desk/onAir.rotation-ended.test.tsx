@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { normalizeProgramSongSequence } from "../../utils/programSequence";
+import { normalizeProgramSongSequence } from "@modoitaliano/giorgia/scenes";
 import { OnAirStrip } from "./OnAirStrip";
 import { deriveOnAir, type OnAirInput } from "./onAir";
 

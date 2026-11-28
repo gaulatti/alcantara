@@ -1,5 +1,5 @@
 import type { ProgramSongPlaybackState, SongCatalogItem } from '../../models/broadcast';
-import type { ProgramSongSequence } from '../../utils/programSequence';
+import type { ProgramSongSequence } from '@modoitaliano/giorgia/scenes';
 import { ProgramSongSequenceEditor } from '../editors';
 
 interface PlaylistPanelProps {

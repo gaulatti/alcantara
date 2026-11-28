@@ -8,7 +8,7 @@ import {
   normalizeProgramTextSequence,
   type ProgramTextSequence,
   type ProgramTextSequenceItem
-} from '../../utils/programSequence';
+} from '@modoitaliano/giorgia/scenes';
 
 export function ProgramTextSequenceEditor({
   sequence: _sequence,

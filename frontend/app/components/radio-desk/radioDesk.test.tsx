@@ -14,7 +14,7 @@ import type {
   ProgramSongPlaybackState,
   SongCatalogItem,
 } from "../../models/broadcast";
-import type { ProgramSongSequence } from "../../utils/programSequence";
+import type { ProgramSongSequence } from "@modoitaliano/giorgia/scenes";
 import { deriveOnAir, formatClock, type OnAirInput } from "./onAir";
 import { OnAirStrip } from "./OnAirStrip";
 import { PlaySongNow } from "./PlaySongNow";

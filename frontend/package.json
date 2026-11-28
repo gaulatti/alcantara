@@ -13,7 +13,7 @@
   "dependencies": {
     "@fifthbell/brokaw": "0.1.83",
     "@gaulatti/bleecker": "0.1.58",
-    "@modoitaliano/giorgia": "0.1.122",
+    "@modoitaliano/giorgia": "0.1.126",
     "@react-router/node": "7.12.0",
     "@react-router/serve": "7.12.0",
     "@remotion/player": "4.0.524",

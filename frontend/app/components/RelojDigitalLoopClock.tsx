@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { RelojDigitalLoopClock as BrokawRelojDigitalLoopClock } from '@gaulatti/bleecker/components/reloj-digital-loop-clock';
-import { normalizeProgramTextSequence, resolveProgramTextLeaf } from '../utils/programSequence';
+import { normalizeProgramTextSequence, resolveProgramTextLeaf } from '@modoitaliano/giorgia/scenes';
 import { completeSceneCountdown } from '../services/program';
 import { GiorgiaMark } from '@modoitaliano/giorgia/scenes';
 

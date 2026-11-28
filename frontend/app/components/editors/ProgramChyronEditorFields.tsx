@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Input, Switch } from '@gaulatti/bleecker';
-import { normalizeProgramTextSequence, createProgramTextSequence, createProgramTextSequenceItem, type ProgramTextSequence, type ProgramTextSequenceItem } from '../../utils/programSequence';
+import { normalizeProgramTextSequence, createProgramTextSequence, createProgramTextSequenceItem, type ProgramTextSequence, type ProgramTextSequenceItem } from '@modoitaliano/giorgia/scenes';
 import { ProgramTextSequenceEditor } from './ProgramTextSequenceEditor';
 
 export function ProgramChyronEditorFields({

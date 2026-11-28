@@ -42,7 +42,7 @@ import {
   rowsAsPlayOrder,
   type ProgramSongSequence,
   type ProgramSongSequenceItem,
-} from "../utils/programSequence";
+} from "@modoitaliano/giorgia/scenes";
 import type { Route } from "./+types/control";
 
 import { PlaybackBar } from "../components/PlaybackBar";

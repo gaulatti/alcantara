@@ -4,7 +4,7 @@ import { PlaybackBar } from "./PlaybackBar";
 import type {
   ProgramSongSequence,
   ProgramSongSequenceLeafItem,
-} from "../utils/programSequence";
+} from "@modoitaliano/giorgia/scenes";
 import type { ProgramSongPlaybackState } from "../models/broadcast";
 
 const sequence: ProgramSongSequence = {

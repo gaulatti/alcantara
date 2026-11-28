@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 
-import { normalizeProgramSongSequence, programSongPlayOrder, shuffleProgramSongSequence, rowsAsPlayOrder, type ProgramSongSequence } from './programSequence';
+import { normalizeProgramSongSequence, programSongPlayOrder, shuffleProgramSongSequence, rowsAsPlayOrder, type ProgramSongSequence } from '@modoitaliano/giorgia/scenes';
 
 function sequence(ids: string[], overrides: Partial<ProgramSongSequence> = {}): ProgramSongSequence {
   return {

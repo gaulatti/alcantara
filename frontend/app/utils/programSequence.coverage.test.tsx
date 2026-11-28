@@ -14,7 +14,7 @@ import {
   shuffleProgramSongSequence,
   type ProgramSongSequence,
   type ProgramTextSequence
-} from './programSequence';
+} from '@modoitaliano/giorgia/scenes';
 
 const nest = (depth: number): unknown =>
   depth === 0

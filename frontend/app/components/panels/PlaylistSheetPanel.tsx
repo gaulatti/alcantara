@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Sheet } from '@gaulatti/bleecker';
 import type { ProgramSongPlaybackState } from '../../models/broadcast';
 import type { SongCatalogItem } from '../../models/broadcast';
-import type { ProgramSongSequence } from '../../utils/programSequence';
+import type { ProgramSongSequence } from '@modoitaliano/giorgia/scenes';
 import { ProgramSongSequenceEditor } from '../editors';
 
 interface PlaylistSheetPanelProps {

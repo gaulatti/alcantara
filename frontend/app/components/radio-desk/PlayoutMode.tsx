@@ -4,7 +4,7 @@ import {
   programSongPlayOrder,
   shuffleProgramSongSequence,
   type ProgramSongSequence,
-} from "../../utils/programSequence";
+} from "@modoitaliano/giorgia/scenes";
 
 /**
  * Manual, Autoplay, Shuffle and Loop, above the rotation they change. Each choice builds the same

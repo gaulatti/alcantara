@@ -54,8 +54,8 @@ vi.mock("../contexts/ConsolePreferencesContext", async (original) => {
 // The real normaliser, except that it answers null for a sequence that names the unreadable title and is not the
 // raw server fixture (marked `fixtureRaw`, which normalising drops). That is how a sequence it cannot read reaches
 // the console's fallbacks after the loaders have already accepted the stored one.
-vi.mock("../utils/programSequence", async (original) => {
-  const actual = await original<typeof import("../utils/programSequence")>();
+vi.mock("@modoitaliano/giorgia/scenes", async (original) => {
+  const actual = await original<typeof import("@modoitaliano/giorgia/scenes")>();
   return {
     ...actual,
     normalizeProgramSongSequence: (value: unknown, depth?: number) => {

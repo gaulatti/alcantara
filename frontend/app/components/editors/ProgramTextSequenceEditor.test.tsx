@@ -9,7 +9,7 @@ import {
 import { useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { ProgramTextSequenceEditor } from "./ProgramTextSequenceEditor";
-import type { ProgramTextSequence } from "../../utils/programSequence";
+import type { ProgramTextSequence } from "@modoitaliano/giorgia/scenes";
 
 // gaulatti/alcantara#186: the nested text-sequence editor behind chyrons and
 // lower thirds, driven the way a scene editor drives it.

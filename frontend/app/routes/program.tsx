@@ -52,7 +52,7 @@ import {
   subscribeProgramAudioBus
 } from '../utils/programAudioBus';
 import { faderToGain } from '../utils/audioTaper';
-import { normalizeProgramSongSequence, resolveProgramSongLeaf, type ProgramSongSequence, type ProgramSongSequenceItem } from '../utils/programSequence';
+import { normalizeProgramSongSequence, resolveProgramSongLeaf, type ProgramSongSequence, type ProgramSongSequenceItem } from '@modoitaliano/giorgia/scenes';
 import { resolveToniChyronLeaf } from '../utils/toniChyronSequence';
 import { getSceneTransitionPreset, type SceneTransitionPreset } from '../utils/sceneTransitions';
 import { loadChartLookup, realtimeChartValues, type ChartFeedLookup } from '../utils/chartFeed';
