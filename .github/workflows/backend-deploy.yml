@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  ALCANTARA_CONFIG_SECRET_ID: broadcast/production/config
+  ALCANTARA_CONFIG_SECRET_ID: ${{ secrets.ALCANTARA_CONFIG_SECRET_ID }}
 
 jobs:
   production-config-preflight:
@@ -38,7 +38,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: us-east-1
-          role-to-assume: arn:aws:iam::792025092931:role/alcantara-github-deploy
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
 
       - name: Validate production runtime secret without revealing values
         run: |
@@ -291,7 +291,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: us-east-1
-          role-to-assume: arn:aws:iam::792025092931:role/alcantara-github-deploy
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
 
       - name: Deploy to Cumulus through SSM
         if: vars.ON_PREMISES != 'true'
