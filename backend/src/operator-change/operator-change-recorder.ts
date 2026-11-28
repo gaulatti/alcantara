@@ -1,7 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Actor, ActorContext } from '../auth/actor-context';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { PrismaService } from '../prisma.service';
+import { PompeiiService } from '../auth/pompeii.service';
+import { ProgramTeamAccess } from '../tenancy/program-team-access';
 
 /** What an operator change record is about; bounded, so it can label a metric. */
 export const OPERATOR_CHANGE_TARGETS = [
@@ -92,7 +94,19 @@ export class OperatorChangeRecorder {
   constructor(
     private readonly prisma: PrismaService,
     private readonly metrics: ManagedMetricsService,
+    @Optional() private readonly teams?: ProgramTeamAccess,
+    @Optional() private readonly pompeii?: PompeiiService,
   ) {}
+
+  /**
+   * The team a change record belongs to (gaulatti/alcantara#122): its program's team, or the station's for a change in
+   * no single program (a scene or a layout). Null when there is none: local and test run as team 0.
+   */
+  private async teamFor(programId: string | null): Promise<number | null> {
+    if (programId) return (await this.teams?.teamOf(programId)) ?? null;
+    const station = this.pompeii?.teamId ?? 0;
+    return station > 0 ? station : null;
+  }
 
   /** The acting identity of the command being handled; read it synchronously when the command arrives. */
   actor(): Actor | null {
@@ -104,7 +118,7 @@ export class OperatorChangeRecorder {
     try {
       await this.prisma.operatorChangeRecord.create({
         data: {
-          teamId: null,
+          teamId: await this.teamFor(input.programId),
           programId: input.programId,
           principal: input.actor.principalId,
           via: input.actor.via,

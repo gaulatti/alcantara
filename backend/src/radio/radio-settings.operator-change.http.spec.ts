@@ -16,6 +16,7 @@ import { RadioOutputConfidenceService } from './radio-output-confidence.service'
 import { RadioService } from './radio.service';
 import { SongExecutionEngine } from './song-execution.engine';
 import { SongSimilarityService } from './song-similarity.service';
+import { ProgramTeamAccess } from '../tenancy/program-team-access';
 
 // gaulatti/alcantara#236: the console route, through the real global actor interceptor, the real
 // controller and the real service, records who changed the radio settings (via=console) and never
@@ -45,6 +46,8 @@ describe('PUT /radio/:programId/settings records its actor', () => {
       providers: [
         RadioService,
         { provide: PompeiiService, useValue: { teamId: 0 } },
+        // The program's team, stored on the record (gaulatti/alcantara#122).
+        { provide: ProgramTeamAccess, useValue: { teamOf: jest.fn(async (programId: string) => (programId === 'p' ? 7 : null)) } },
         ActorContextInterceptor,
         { provide: PrismaService, useValue: prisma },
         {
@@ -84,14 +87,14 @@ describe('PUT /radio/:programId/settings records its actor', () => {
     jest.restoreAllMocks();
   });
 
-  it('records the authenticated principal as via=console with the field and before/after', async () => {
+  it("records the authenticated principal as via=console, the program's team, and the field with before/after", async () => {
     const res = await request(app.getHttpServer())
       .put('/radio/p/settings')
       .send({ enabled: true });
     expect(res.status).toBe(200);
     expect(prisma.operatorChangeRecord.create).toHaveBeenCalledTimes(1);
     expect(prisma.operatorChangeRecord.create.mock.calls[0][0].data).toEqual({
-      teamId: null,
+      teamId: 7,
       programId: 'p',
       principal: 'principal-console',
       via: 'console',

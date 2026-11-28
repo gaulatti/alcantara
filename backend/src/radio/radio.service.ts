@@ -48,6 +48,7 @@ import {
   SIMILARITY_MODES,
   SIMILARITY_POOLS,
 } from './song-similarity.utils';
+import { ProgramTeamAccess } from '../tenancy/program-team-access';
 
 export interface RadioSettingsPayload {
   palazzoUrl?: string;
@@ -159,6 +160,8 @@ export class RadioService {
     private readonly pompeii: PompeiiService,
     @Optional() private readonly songScope?: PlayoutSongScope,
     @Optional() private readonly managedMetrics?: ManagedMetricsService,
+    /** The program's team, stored on its operator change records (gaulatti/alcantara#122). */
+    @Optional() private readonly teams?: ProgramTeamAccess,
   ) {}
 
   /**
@@ -612,7 +615,7 @@ export class RadioService {
     try {
       await this.prisma.operatorChangeRecord.create({
         data: {
-          teamId: null,
+          teamId: (await this.teams?.teamOf(programId)) ?? null,
           programId,
           principal: actor.principalId,
           via: actor.via,

@@ -11,7 +11,17 @@ of what changed. The capabilities that write it and their summaries are listed i
 was made in one, such as radio settings, a flight sequence or a program rename. A change to something that belongs to
 no single program is stored with `programId` NULL. That covers a scene, a layout, and the library: instants, stingers,
 songs, media, media labels and media groups. One write stores one record; what changed is named in `summary.target`
-(`{ kind, id }`). `teamId` stays NULL, as for every record so far.
+(`{ kind, id }`).
+
+`teamId` is the team the record belongs to (#122):
+- **A change in a program:** the program's team, read through the program team check (`ProgramTeamAccess.teamOf`, the
+  same 30-second cache).
+- **A change in no single program:** the station's team.
+- **No team:** NULL when the program has none, its team could not be read, or the station runs as team 0 (local and
+  test).
+
+The general recorder, the radio settings save and the renderer-key placement script all store it this way. Records
+written before this change have NULL; a one-off script backfills them from each record's program.
 
 The migration is additive: existing records keep their program, and the `(programId, createdAt)` index is unchanged.
 

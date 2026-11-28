@@ -97,6 +97,8 @@ describe('place-renderer-keys issue', () => {
     expect(db.queries[2].values).toEqual([1, serviceHash(KEY_A)]);
     const change = db.queries[3].values!;
     expect(change.slice(1, 5)).toEqual(['station-a', 'script', 'place-renderer-keys', 'program.rotate-renderer-key']);
+    // The record takes the program's team from its Program row (gaulatti/alcantara#122).
+    expect(db.queries[3].text).toContain('(SELECT "teamId" FROM "Program" WHERE "programId" = $2)');
     expect(JSON.parse(change[5] as string)).toEqual({
       target: { kind: 'program', id: 'station-a' },
       changed: ['rendererKey', 'version'],

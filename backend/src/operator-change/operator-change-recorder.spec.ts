@@ -157,6 +157,47 @@ describe('summarizeChange', () => {
   });
 });
 
+describe("a change record's team (gaulatti/alcantara#122)", () => {
+  const recorderWith = (teams: unknown, pompeii: unknown) => {
+    const prisma: any = { operatorChangeRecord: { create: jest.fn(async () => ({})) } };
+    const recorder = new OperatorChangeRecorder(prisma, { recordOperatorChangeRecord: jest.fn() } as never, teams as never, pompeii as never);
+    return { recorder, teamOf: () => prisma.operatorChangeRecord.create.mock.calls[0][0].data.teamId };
+  };
+  const programInput = { ...input(mcp), target: 'program' as const, targetId: 'news', programId: 'news' };
+
+  it("stores the program's team for a change in a program, read through the program team check", async () => {
+    const teams = { teamOf: jest.fn(async () => 7) };
+    const { recorder, teamOf } = recorderWith(teams, { teamId: 3 });
+    await recorder.record(programInput);
+    expect(teams.teamOf).toHaveBeenCalledWith('news');
+    expect(teamOf()).toBe(7);
+  });
+
+  it('stores no team for a program with none, or whose team could not be read', async () => {
+    const { recorder, teamOf } = recorderWith({ teamOf: jest.fn(async () => null) }, { teamId: 3 });
+    await recorder.record(programInput);
+    expect(teamOf()).toBeNull();
+  });
+
+  it("stores the station's team for a change in no single program, and none for team 0", async () => {
+    const station = recorderWith({ teamOf: jest.fn() }, { teamId: 3 });
+    await station.recorder.record(input(mcp));
+    expect(station.teamOf()).toBe(3);
+    const local = recorderWith({ teamOf: jest.fn() }, { teamId: 0 });
+    await local.recorder.record(input(mcp));
+    expect(local.teamOf()).toBeNull();
+  });
+
+  it('stores no team when the team services are not provided', async () => {
+    const bare = recorderWith(undefined, undefined);
+    await bare.recorder.record(programInput);
+    expect(bare.teamOf()).toBeNull();
+    const noStation = recorderWith(undefined, undefined);
+    await noStation.recorder.record(input(mcp));
+    expect(noStation.teamOf()).toBeNull();
+  });
+});
+
 describe('OperatorChangeRecorder dependency metadata', () => {
   it('records Object for the constructor types of dependencies that are not yet defined', () => {
     jest.isolateModules(() => {
@@ -164,6 +205,8 @@ describe('OperatorChangeRecorder dependency metadata', () => {
       jest.doMock('../observability/managed-metrics.service', () => ({
         ManagedMetricsService: undefined,
       }));
+      jest.doMock('../tenancy/program-team-access', () => ({ ProgramTeamAccess: undefined }));
+      jest.doMock('../auth/pompeii.service', () => ({ PompeiiService: undefined }));
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const loaded = require('./operator-change-recorder') as {
         OperatorChangeRecorder: new (...args: never[]) => unknown;
@@ -172,9 +215,11 @@ describe('OperatorChangeRecorder dependency metadata', () => {
         'design:paramtypes',
         loaded.OperatorChangeRecorder,
       ) as Array<{ name: string }>;
-      expect(types.map((type) => type.name)).toEqual(['Object', 'Object']);
+      expect(types.map((type) => type.name)).toEqual(['Object', 'Object', 'Object', 'Object']);
     });
     jest.dontMock('../prisma.service');
     jest.dontMock('../observability/managed-metrics.service');
+    jest.dontMock('../tenancy/program-team-access');
+    jest.dontMock('../auth/pompeii.service');
   });
 });

@@ -5,7 +5,7 @@ Every program has one `Program` row (`backend/prisma/schema.prisma`), and its `t
 ## How a program gets its team
 
 - **New programs (#335):** `createProgram` creates the `Program` row in the same transaction as the `ProgramState`, with the creating caller's team.
-- **Programs that predate #335:** the `20261123120000_program_branding` backfill gave them a row with `teamId` NULL. The creator isn't recorded anywhere, and `OperatorChangeRecord.teamId` is always NULL.
+- **Programs that predate #335:** the `20261123120000_program_branding` backfill gave them a row with `teamId` NULL. The creator isn't recorded anywhere. `OperatorChangeRecord.teamId` was NULL on every record then; records now store their program's team (#122, docs/operator-change-records.md).
 - **Backfill (#478):** `20261124000000_program_team_backfill` reads the team from the library rows the program is built from: its scenes (`ProgramScene`), media groups (`ProgramMediaGroup`), stingers (`ProgramStinger`) and external sources (`ExternalSourceProgram`). All four are tenant-scoped, so an operator can attach only their own team's rows.
   - **Exactly one positive team** on those rows: the program gets that team.
   - **No positive team, or more than one:** `teamId` stays NULL, and the migration raises a notice: `program_team_backfill: <programId> keeps no team (<n> candidate teams)`.

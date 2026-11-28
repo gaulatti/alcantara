@@ -106,7 +106,8 @@ async function issueKeys({ db, programs, rotate, dryRun, say, emit, now = () => 
         [row.id, hashRendererKey(key)],
       );
       await db.query(
-        'INSERT INTO "OperatorChangeRecord" ("id", "teamId", "programId", "principal", "via", "client", "capability", "summary") VALUES ($1, NULL, $2, NULL, $3, $4, $5, $6)',
+        // The record belongs to the program's team (gaulatti/alcantara#122), null when the program has none.
+        'INSERT INTO "OperatorChangeRecord" ("id", "teamId", "programId", "principal", "via", "client", "capability", "summary") VALUES ($1, (SELECT "teamId" FROM "Program" WHERE "programId" = $2), $2, NULL, $3, $4, $5, $6)',
         [
           randomUUID(),
           programId,

@@ -12,6 +12,7 @@ jest.mock('./radio-metrics.service', () => ({
 jest.mock('../observability/managed-metrics.service', () => ({
   ManagedMetricsService: undefined,
 }));
+jest.mock('../tenancy/program-team-access', () => ({ ProgramTeamAccess: undefined }));
 jest.mock('./palazzo-machine.client', () => ({
   PalazzoMachineClient: undefined,
   PalazzoMachineError: class PalazzoMachineError extends Error {},
@@ -22,6 +23,7 @@ import { RadioService } from './radio.service';
 describe('RadioService constructor metadata', () => {
   it('falls back to Object parameter types when dependencies are unresolved', () => {
     expect(Reflect.getMetadata('design:paramtypes', RadioService)).toEqual([
+      Object,
       Object,
       Object,
       Object,

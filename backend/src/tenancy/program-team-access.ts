@@ -50,6 +50,15 @@ export class ProgramTeamAccess {
     return this.allows(programId, this.pompeii.teamId);
   }
 
+  /**
+   * The team a program belongs to, for a row that records it (gaulatti/alcantara#122): null when the program has no
+   * team or none could be read. Read through the same cache as the check.
+   */
+  async teamOf(programId: string): Promise<number | null> {
+    const owner = await this.ownerOf(programId.trim());
+    return owner !== undefined && owner !== null && owner > 0 ? owner : null;
+  }
+
   /** Forgets a program's team, after it is created, renamed or deleted, or its team changes. */
   invalidate(programId: string): void {
     this.cache.delete(programId.trim());
