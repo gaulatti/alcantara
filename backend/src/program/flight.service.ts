@@ -49,6 +49,7 @@ import type {
   FlightRuntimeState,
   FlightSequence,
 } from './flight.types';
+import { compareShadow, RUNDOWN_SHADOW_FIELDS, shadowObserves } from './flight-shadow';
 
 /** How late a published log may start: the scheduler skips one later than this. */
 export const START_GRACE_MS = 5000;
@@ -2036,6 +2037,9 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     this.clearTimer(runtime);
     runtime.waitingForSongEnd = false;
     runtime.generation += 1;
+    // An operator's Go moves the run off the resolver's clock (gaulatti/alcantara#123).
+    runtime.shadowOff = true;
+    this.noteShadowUnsupported(runtime);
     console.log(
       `[Flight] go(${normalizedProgramId}): advancing from cue #${runtime.activeIndex} to #${runtime.activeIndex + 1}`,
     );
@@ -2192,6 +2196,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     runtime.waitingForSongEnd = false;
     await this.persistRuntimeState(runtime);
     await this.broadcastFlightUpdate(programId);
+    if (runtime.scheduledAtMs !== null) this.noteShadowUnsupported(runtime);
 
     try {
       if (
@@ -2267,6 +2272,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       runtime.timer = setTimeout(() => {
         void this.advance(programId, generation);
       }, durationMs);
+      this.scheduleShadow(runtime, cue);
       return;
     }
 
@@ -2278,9 +2284,13 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         if (current?.waitingForSongEnd) {
           current.waitingForSongEnd = false;
           current.generation += 1;
+          // The executor gave up on the song end; the resolver does not model that.
+          current.shadowOff = true;
+          this.noteShadowUnsupported(current);
           void this.advance(programId, current.generation);
         }
       }, songEndTimeoutMs);
+      this.scheduleShadow(runtime, cue);
       return;
     }
 
@@ -2692,6 +2702,8 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         programId,
       );
     }
+    // For the rundown shadow (gaulatti/alcantara#123): a song was sent, with its duration.
+    this.rememberSongCue(programId, selectedSong.id, selectedSong.durationMs);
     this.programService.takeCatalogSongOnAir(
       programId,
       selectedSong,
@@ -2796,6 +2808,79 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       { mixerSettings: patch },
       programId,
     );
+  }
+
+  /** A song cue sent, for the rundown shadow: its duration for the resolver, and a song not confirmed yet. */
+  private rememberSongCue(programId: string, songId: number, durationMs: number | null): void {
+    const runtime = this.runtimes.get(programId);
+    if (!runtime) return;
+    runtime.songCuedSinceShadow = true;
+    if (typeof durationMs === 'number') (runtime.songDurationsMs ??= new Map()).set(songId, durationMs);
+  }
+
+  /** Counts, once per run, that the resolver does not model it (gaulatti/alcantara#123). */
+  private noteShadowUnsupported(runtime: FlightRuntimeState): void {
+    if (runtime.shadowUnsupportedNoted) return;
+    runtime.shadowUnsupportedNoted = true;
+    for (const field of RUNDOWN_SHADOW_FIELDS) this.metrics.recordRundownShadow(field, 'unsupported');
+  }
+
+  /**
+   * Observes a wait the executor has just begun (gaulatti/alcantara#123): the resolver should be waiting on the same
+   * cue, with the same scene on Program. The song is compared only when no song cue ran since the last observation,
+   * since the engine confirms a song it was just sent a moment later. Observation only, never awaited by the run, and
+   * it arms no timer.
+   */
+  private scheduleShadow(runtime: FlightRuntimeState, cue: FlightCue): void {
+    if (runtime.shadowOff || runtime.scheduledAtMs !== null) return;
+    if (!shadowObserves(cue)) return;
+    const compareSong = !runtime.songCuedSinceShadow;
+    runtime.songCuedSinceShadow = false;
+    void this.observeShadow(runtime, runtime.generation, runtime.activeIndex, Date.now(), compareSong);
+  }
+
+  private async observeShadow(
+    runtime: FlightRuntimeState,
+    generation: number,
+    index: number,
+    atMs: number,
+    compareSong: boolean,
+  ): Promise<void> {
+    const { programId } = runtime;
+    try {
+      const state = await this.prisma.programState.findUnique({
+        where: { programId },
+        select: { activeSceneId: true },
+      });
+      // The run moved on or stopped while the scene was read: nothing to compare.
+      if (!runtime.isRunning || runtime.generation !== generation || runtime.activeIndex !== index) return;
+      const desired = resolve(
+        { items: runtime.items, loop: runtime.loop },
+        runtime.startedAt,
+        atMs,
+        runtime.songDurationsMs ?? new Map(),
+      );
+      const cueId = runtime.items[index].id;
+      const result = compareShadow(desired, {
+        activeCueId: cueId,
+        sceneId: state?.activeSceneId ?? null,
+        songId: this.programService.onAirSongId(programId),
+      });
+      for (const field of RUNDOWN_SHADOW_FIELDS) {
+        if (field === 'song' && !compareSong) continue;
+        this.metrics.recordRundownShadow(field, result[field]);
+        if (result[field] === 'disagree')
+          this.logger.warn(
+            `Rundown shadow disagrees on ${field} for program ${programId}, sequence ${runtime.sequenceId}, cue ${cueId}`,
+          );
+      }
+    } catch (error) {
+      runtime.shadowOff = true;
+      this.noteShadowUnsupported(runtime);
+      this.logger.warn(
+        `Rundown shadow not compared for program ${programId}: ${error instanceof Error ? error.name : 'unknown'}`,
+      );
+    }
   }
 
   private async persistRuntimeState(

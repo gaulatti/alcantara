@@ -212,6 +212,35 @@ A timed-block cue that fails while the automation engine is unavailable (the son
 - A retry that fails again stays held until the same deadline. A cue failure while the engine is up still stops the block (`cue-failed`), as before.
 
 
+## Rundown shadow (#123)
+
+The pure resolver (`backend/src/program/flight-resolver.ts`, #152) computes, from a sequence, the time it started and
+the time now, what should be on air. It does not drive anything yet. The executor compares it with what is on air,
+as an observation only (`backend/src/program/flight-shadow.ts`).
+
+**When it compares.** Each time a manually started sequence begins a wait: a `wait` of at least 200 ms, or a
+`waitForSongEnd`.
+
+**What it compares.**
+- **Cue:** the cue the executor waits on, against the cue the resolver says is in effect.
+- **Scene:** the program's scene on Program, against the resolver's.
+- **Song:** the song the playout engine has confirmed on air, against the resolver's. This is skipped at the first
+  wait after a song cue, since the engine confirms a song a moment after it is sent.
+
+**What it does not compare.**
+- **Runs the resolver does not model:** a clocked log, a run an operator advanced with Go, a wait for a song end that
+  timed out, or a run whose scene could not be read. Each is counted once as `unsupported`, and nothing is compared
+  after it.
+- **Nothing on air changes:** the comparison arms no timer and is never awaited by the run.
+
+`alcantara_rundown_shadow_total{field,result}` counts the comparisons:
+- `field` is `cue`, `scene` or `song`;
+- `result` is `agree`, `disagree` or `unsupported`;
+- every series is exposed from zero.
+
+A disagreement is logged as `Rundown shadow disagrees on <field> for program <id>, sequence <n>, cue <cueId>`, with ids
+only.
+
 ## Fillers between timed blocks
 
 Build and review content first, then select its filler tag and artist separation in **Fill the gaps**. `POST /program/:programId/flight/:sequenceId/fill` requires `flight.manage` and `{revision,items,rules:{labelId,artistSeparation}}`, and returns a preview `{items,warnings}`. The input includes the current reviewed draft, including unsaved content. The endpoint accepts only unaired unpublished scheduled drafts, checks program scope and revision, and does not save or publish.

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { RUNDOWN_SHADOW_FIELDS, RUNDOWN_SHADOW_RESULTS } from '../program/flight-shadow';
 
 export type PalazzoEventIgnoreReason =
   | 'duplicate'
@@ -621,6 +622,8 @@ export class RadioMetricsService {
   };
   private readonly outputConfidenceTransitions = new Map<string, number>();
   private readonly radioLogResults = new Map<string, number>();
+  /** Rundown shadow comparisons by field and result (gaulatti/alcantara#123), keyed `field:result`. */
+  private readonly rundownShadow = new Map<string, number>();
   private readonly daypartBlocks = new Map<string, number>();
   private readonly recoveryPreparations = new Map<string, number>();
   private outputSilentPrograms = 0;
@@ -997,6 +1000,17 @@ export class RadioMetricsService {
       result,
       (this.radioLogResults.get(result) ?? 0) + 1,
     );
+  }
+
+  /** One rundown shadow comparison of one field (gaulatti/alcantara#123); anything outside the bounded sets is dropped. */
+  recordRundownShadow(field: string, result: string): void {
+    if (
+      !(RUNDOWN_SHADOW_FIELDS as readonly string[]).includes(field) ||
+      !(RUNDOWN_SHADOW_RESULTS as readonly string[]).includes(result)
+    )
+      return;
+    const key = `${field}:${result}`;
+    this.rundownShadow.set(key, (this.rundownShadow.get(key) ?? 0) + 1);
   }
 
   recordRecoveryPreparation(result: string): void {
@@ -1413,6 +1427,15 @@ export class RadioMetricsService {
       lines.push(
         `alcantara_radio_log_transitions_total{result="${result}"} ${this.radioLogResults.get(result) ?? 0}`,
       );
+    lines.push(
+      '# HELP alcantara_rundown_shadow_total Rundown shadow comparisons (gaulatti/alcantara#123): what the resolver says should be on air against what is, by field (cue, scene or song) and result (agree, disagree, or unsupported for a sequence the resolver does not model).',
+      '# TYPE alcantara_rundown_shadow_total counter',
+    );
+    for (const field of RUNDOWN_SHADOW_FIELDS)
+      for (const result of RUNDOWN_SHADOW_RESULTS)
+        lines.push(
+          `alcantara_rundown_shadow_total{field="${field}",result="${result}"} ${this.rundownShadow.get(`${field}:${result}`) ?? 0}`,
+        );
     lines.push(
       '# HELP alcantara_radio_daypart_blocks_total Hours made from daypart clocks by bounded result.',
       '# TYPE alcantara_radio_daypart_blocks_total counter',

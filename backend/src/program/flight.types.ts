@@ -106,4 +106,13 @@ export interface FlightRuntimeState {
   scheduledAtMs: number | null;
   /** A timed-block cue held through an engine outage (#719): its row and the time its grace runs from. */
   engineRetry?: { index: number; dueAt: number };
+  /**
+   * The rundown shadow (gaulatti/alcantara#123): off once the run left what the resolver models (an operator's Go,
+   * a wait for a song end that timed out), and whether that was counted. Songs' durations as the cues played them.
+   */
+  shadowOff?: boolean;
+  shadowUnsupportedNoted?: boolean;
+  songDurationsMs?: Map<number, number>;
+  /** A song cue ran since the last shadow observation, so the engine may not have confirmed it yet. */
+  songCuedSinceShadow?: boolean;
 }
