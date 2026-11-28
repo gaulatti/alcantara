@@ -21,7 +21,18 @@ songs, media, media labels and media groups. One write stores one record; what c
   test).
 
 The general recorder, the radio settings save and the renderer-key placement script all store it this way. Records
-written before this change have NULL; a one-off script backfills them from each record's program.
+written before this change have NULL. A one-off script backfills them from each record's program, in the backend
+container:
+
+```sh
+node scripts/backfill-change-record-teams.cjs --allow-remote           # dry run: counts, writes nothing
+node scripts/backfill-change-record-teams.cjs --allow-remote --apply   # sets them, in one transaction
+```
+
+- **What it sets:** only records with no team, from their own program's team.
+- **What stays NULL:** a record with no program, or whose program has no team. Both are counted.
+- **Idempotent:** a second run sets nothing.
+- **Output:** counts only.
 
 The migration is additive: existing records keep their program, and the `(programId, createdAt)` index is unchanged.
 
