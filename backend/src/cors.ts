@@ -1,3 +1,4 @@
+import { isProductionEnvironment } from './config/local-media';
 import { validateProgramTemplateOrigins } from './config/runtime-secret-contract';
 import { MCP_PUBLIC_ORIGIN } from './mcp/mcp.constants';
 
@@ -37,13 +38,19 @@ export function getAllowedOrigins(): Set<string> {
   ]);
 }
 
+/** A page served from this machine: the local stack's browser origins, never production's. */
+const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
 /**
- * The API's CORS policy. An origin outside it is refused without an error:
- * the response simply carries no CORS headers, so the browser blocks it,
- * instead of the request failing with a server error.
+ * The API's CORS policy: the listed origins, and outside production a page served from this machine. The opaque
+ * "null" origin is never allowed. An origin outside the policy is refused without an error: the response simply
+ * carries no CORS headers, so the browser blocks it, instead of the request failing with a server error.
  */
-export function corsOptions() {
+export function corsOptions(
+  environment: Record<string, string | undefined> = process.env,
+) {
   const allowedOrigins = getAllowedOrigins();
+  const production = isProductionEnvironment(environment);
   return {
     origin: (
       origin: string | undefined,
@@ -52,9 +59,8 @@ export function corsOptions() {
       callback(
         null,
         !origin ||
-          origin === 'null' ||
           allowedOrigins.has(origin) ||
-          /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin),
+          (!production && LOCAL_ORIGIN.test(origin)),
       );
     },
     credentials: true,

@@ -71,4 +71,56 @@ describe('CORS policy over HTTP', () => {
     expect(get.statusCode).toBe(200);
     expect(get.headers['access-control-allow-origin']).toBeUndefined();
   });
+
+  it('never lets the opaque null origin call the API', async () => {
+    const response = await preflight('null');
+    expect(response.headers['access-control-allow-origin']).toBeUndefined();
+  });
 });
+
+// In production a page served from localhost is not the console's: only the listed origins call the API.
+describe('CORS policy over HTTP, in production', () => {
+  let app: NestFastifyApplication;
+
+  beforeAll(async () => {
+    app = await NestFactory.create<NestFastifyApplication>(
+      ProbeModule,
+      new FastifyAdapter(),
+      { logger: false },
+    );
+    app.enableCors(corsOptions({ NODE_ENV: 'production' }));
+    await app.init();
+    await app.getHttpAdapter().getInstance().ready();
+  });
+
+  afterAll(() => app.close());
+
+  const preflight = (origin: string) =>
+    app.inject({
+      method: 'OPTIONS',
+      url: '/probe',
+      headers: { origin, 'access-control-request-method': 'GET' },
+    });
+
+  it.each([
+    'https://alcantara.gaulatti.com',
+    'https://fifthbell.com',
+    'https://cdn.fifthbell.com',
+    'tauri://localhost',
+    'http://tauri.localhost',
+  ])('still lets %s call the API, with credentials', async (origin) => {
+    const response = await preflight(origin);
+    expect(response.statusCode).toBe(204);
+    expect(response.headers['access-control-allow-origin']).toBe(origin);
+    expect(response.headers['access-control-allow-credentials']).toBe('true');
+  });
+
+  it.each(['http://localhost', 'https://localhost:5173', 'http://127.0.0.1:3000', 'null'])(
+    'refuses %s',
+    async (origin) => {
+      const response = await preflight(origin);
+      expect(response.headers['access-control-allow-origin']).toBeUndefined();
+    },
+  );
+});
+

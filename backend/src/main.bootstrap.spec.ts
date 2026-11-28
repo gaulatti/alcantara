@@ -236,14 +236,13 @@ describe('main bootstrap', () => {
   });
 
   describe('CORS origin policy', () => {
-    it('allows absent, null, built-in, and localhost origins', async () => {
+    it('allows absent, built-in, and, outside production, localhost origins', async () => {
       const h = await runMain({
         fastifyInstance: { server: { on: jest.fn() } },
       });
       const check = corsOrigin(h);
       for (const origin of [
         undefined,
-        'null',
         // The consent page's own form POST (bastille#34).
         'https://api.alcantara.gaulatti.com',
         'https://alcantara.gaulatti.com',
@@ -260,6 +259,13 @@ describe('main bootstrap', () => {
       ]) {
         expect(check(origin)).toHaveBeenCalledWith(null, true);
       }
+    });
+
+    it('never allows the opaque null origin', async () => {
+      const h = await runMain({
+        fastifyInstance: { server: { on: jest.fn() } },
+      });
+      expect(corsOrigin(h)('null')).toHaveBeenCalledWith(null, false);
     });
 
     it('refuses unknown origins without an error, so they get no CORS headers rather than a server error', async () => {
