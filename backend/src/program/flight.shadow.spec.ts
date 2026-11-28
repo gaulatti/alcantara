@@ -159,7 +159,6 @@ function fixture() {
   };
 }
 
-
 describe('the rundown shadow', () => {
   const active: FlightService[] = [];
   const setup = () => {
@@ -180,7 +179,8 @@ describe('the rundown shadow', () => {
         .split('\n')
         .filter((line) => line.startsWith('alcantara_rundown_shadow_total{'))
         .map((line) => {
-          const [, field, result, count] = /field="(\w+)",result="(\w+)"\} (\d+)/.exec(line)!;
+          const [, field, result, count] =
+            /field="(\w+)",result="(\w+)"\} (\d+)/.exec(line)!;
           return [`${field}:${result}`, Number(count)];
         }),
     );
@@ -190,7 +190,9 @@ describe('the rundown shadow', () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-01-01T12:00:00Z'));
     jest.spyOn(console, 'log').mockImplementation(() => undefined);
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
   });
   afterEach(() => {
     for (const service of active.splice(0)) service.onModuleDestroy();
@@ -211,7 +213,11 @@ describe('the rundown shadow', () => {
     await flush();
     const counts = await shadow(f.metrics);
     expect(counts).toMatchObject({ 'cue:agree': 2, 'scene:agree': 2 });
-    expect(counts).toMatchObject({ 'cue:disagree': 0, 'scene:disagree': 0, 'cue:unsupported': 0 });
+    expect(counts).toMatchObject({
+      'cue:disagree': 0,
+      'scene:disagree': 0,
+      'cue:unsupported': 0,
+    });
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -226,7 +232,12 @@ describe('the rundown shadow', () => {
     await flush();
     await jest.advanceTimersByTimeAsync(10_000);
     await flush();
-    expect(await shadow(f.metrics)).toMatchObject({ 'cue:agree': 2, 'song:unsupported': 2, 'song:agree': 0, 'song:disagree': 0 });
+    expect(await shadow(f.metrics)).toMatchObject({
+      'cue:agree': 2,
+      'song:unsupported': 2,
+      'song:agree': 0,
+      'song:disagree': 0,
+    });
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -240,8 +251,13 @@ describe('the rundown shadow', () => {
     ];
     await f.service.start('news');
     await flush();
-    expect(await shadow(f.metrics)).toMatchObject({ 'cue:agree': 1, 'scene:disagree': 1 });
-    expect(warn).toHaveBeenCalledWith('Rundown shadow disagrees on scene for program news, sequence 7, cue hold');
+    expect(await shadow(f.metrics)).toMatchObject({
+      'cue:agree': 1,
+      'scene:disagree': 1,
+    });
+    expect(warn).toHaveBeenCalledWith(
+      'Rundown shadow disagrees on scene for program news, sequence 7, cue hold',
+    );
   });
 
   it('leaves the song out of a wait that follows a song cue, and compares it at the next', async () => {
@@ -254,10 +270,17 @@ describe('the rundown shadow', () => {
     ];
     await f.service.start('news');
     await flush();
-    expect(await shadow(f.metrics)).toMatchObject({ 'cue:agree': 1, 'song:agree': 0, 'song:disagree': 0 });
+    expect(await shadow(f.metrics)).toMatchObject({
+      'cue:agree': 1,
+      'song:agree': 0,
+      'song:disagree': 0,
+    });
     await jest.advanceTimersByTimeAsync(400);
     await flush();
-    expect(await shadow(f.metrics)).toMatchObject({ 'cue:agree': 2, 'song:agree': 1 });
+    expect(await shadow(f.metrics)).toMatchObject({
+      'cue:agree': 2,
+      'song:agree': 1,
+    });
   });
 
   it('compares the song after a recipe-expanded song cue, which sends its song through the same path', async () => {
@@ -268,7 +291,13 @@ describe('the rundown shadow', () => {
         id: 'recipe-song',
         kind: 'playSong',
         songId: 5,
-        recipeUse: { useId: 'use-1', step: 1, recipeId: 3, recipeRevision: 2, songId: 5 },
+        recipeUse: {
+          useId: 'use-1',
+          step: 1,
+          recipeId: 3,
+          recipeRevision: 2,
+          songId: 5,
+        },
       },
       { id: 'first', kind: 'wait', durationMs: 400 },
       { id: 'second', kind: 'wait', durationMs: 400 },
@@ -277,8 +306,16 @@ describe('the rundown shadow', () => {
     await flush();
     await jest.advanceTimersByTimeAsync(400);
     await flush();
-    expect(f.programs.takeCatalogSongOnAir).toHaveBeenCalledWith('news', expect.objectContaining({ id: 5 }), undefined);
-    expect(await shadow(f.metrics)).toMatchObject({ 'song:agree': 1, 'song:unsupported': 0, 'song:disagree': 0 });
+    expect(f.programs.takeCatalogSongOnAir).toHaveBeenCalledWith(
+      'news',
+      expect.objectContaining({ id: 5 }),
+      undefined,
+    );
+    expect(await shadow(f.metrics)).toMatchObject({
+      'song:agree': 1,
+      'song:unsupported': 0,
+      'song:disagree': 0,
+    });
   });
 
   it('sends a song for a Go that lands on a song cue through the same path, and counts the run unsupported', async () => {
@@ -292,8 +329,16 @@ describe('the rundown shadow', () => {
     await flush();
     await f.service.go('news');
     await flush();
-    expect(f.programs.takeCatalogSongOnAir).toHaveBeenCalledWith('news', expect.objectContaining({ id: 5 }), undefined);
-    expect(await shadow(f.metrics)).toMatchObject({ 'song:unsupported': 2, 'song:agree': 0, 'song:disagree': 0 });
+    expect(f.programs.takeCatalogSongOnAir).toHaveBeenCalledWith(
+      'news',
+      expect.objectContaining({ id: 5 }),
+      undefined,
+    );
+    expect(await shadow(f.metrics)).toMatchObject({
+      'song:unsupported': 2,
+      'song:agree': 0,
+      'song:disagree': 0,
+    });
   });
 
   it("counts a run the resolver does not model once, and compares nothing after it: an operator's Go, a clocked log", async () => {
@@ -321,11 +366,17 @@ describe('the rundown shadow', () => {
     const clocked = setup();
     Object.assign(clocked.sequence(), {
       scheduledAt: new Date(),
-      items: [{ id: 'song', kind: 'playSong', songId: 5, clockOffsetSeconds: 0 }],
+      items: [
+        { id: 'song', kind: 'playSong', songId: 5, clockOffsetSeconds: 0 },
+      ],
     });
     await clocked.service.start('news');
     await flush();
-    expect(await shadow(clocked.metrics)).toMatchObject({ 'cue:unsupported': 1, 'cue:agree': 0, 'cue:disagree': 0 });
+    expect(await shadow(clocked.metrics)).toMatchObject({
+      'cue:unsupported': 1,
+      'cue:agree': 0,
+      'cue:disagree': 0,
+    });
   });
 
   it('stops comparing a run whose state cannot be read, counted once and logged by error class', async () => {
@@ -336,14 +387,21 @@ describe('the rundown shadow', () => {
     ];
     const read = f.prisma.programState.findUnique.getMockImplementation();
     f.prisma.programState.findUnique.mockImplementation(async (args: any) =>
-      args?.select?.activeSceneId ? Promise.reject(new TypeError('db down')) : read(args),
+      args?.select?.activeSceneId
+        ? Promise.reject(new TypeError('db down'))
+        : read(args),
     );
     await f.service.start('news');
     await flush();
     await jest.advanceTimersByTimeAsync(10_000);
     await flush();
-    expect(await shadow(f.metrics)).toMatchObject({ 'cue:unsupported': 1, 'cue:agree': 0 });
-    expect(warn).toHaveBeenCalledWith('Rundown shadow not compared for program news: TypeError');
+    expect(await shadow(f.metrics)).toMatchObject({
+      'cue:unsupported': 1,
+      'cue:agree': 0,
+    });
+    expect(warn).toHaveBeenCalledWith(
+      'Rundown shadow not compared for program news: TypeError',
+    );
   });
 
   it('logs a failure that is not an error as unknown', async () => {
@@ -355,7 +413,9 @@ describe('the rundown shadow', () => {
     );
     await f.service.start('news');
     await flush();
-    expect(warn).toHaveBeenCalledWith('Rundown shadow not compared for program news: unknown');
+    expect(warn).toHaveBeenCalledWith(
+      'Rundown shadow not compared for program news: unknown',
+    );
   });
 
   it('drops a shadow count outside its bounded labels', () => {
@@ -363,7 +423,9 @@ describe('the rundown shadow', () => {
     metrics.recordRundownShadow('position', 'agree');
     metrics.recordRundownShadow('cue', 'maybe');
     expect(metrics.render()).not.toMatch(/field="position"|result="maybe"/);
-    expect(metrics.render()).toContain('alcantara_rundown_shadow_total{field="cue",result="agree"} 0');
+    expect(metrics.render()).toContain(
+      'alcantara_rundown_shadow_total{field="cue",result="agree"} 0',
+    );
   });
 
   it('compares nothing when the run moves on before the scene is read', async () => {
@@ -372,13 +434,19 @@ describe('the rundown shadow', () => {
     let release!: () => void;
     const read = f.prisma.programState.findUnique.getMockImplementation();
     f.prisma.programState.findUnique.mockImplementation(async (args: any) =>
-      args?.select?.activeSceneId ? new Promise((resolve) => (release = () => resolve(read(args)))) : read(args),
+      args?.select?.activeSceneId
+        ? new Promise((resolve) => (release = () => resolve(read(args))))
+        : read(args),
     );
     await f.service.start('news');
     await flush();
     await f.service.stop('news');
     release();
     await flush();
-    expect(await shadow(f.metrics)).toMatchObject({ 'cue:agree': 0, 'cue:disagree': 0, 'cue:unsupported': 0 });
+    expect(await shadow(f.metrics)).toMatchObject({
+      'cue:agree': 0,
+      'cue:disagree': 0,
+      'cue:unsupported': 0,
+    });
   });
 });

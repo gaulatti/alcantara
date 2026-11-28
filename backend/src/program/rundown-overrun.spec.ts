@@ -60,7 +60,12 @@ describe('rundownOverrunMs', () => {
     expect(
       rundownOverrunMs(
         [
-          { kind: 'playSong', songId: 1, clockOffsetSeconds: 0, isFiller: true },
+          {
+            kind: 'playSong',
+            songId: 1,
+            clockOffsetSeconds: 0,
+            isFiller: true,
+          },
           { kind: 'playSong', songId: 2, clockOffsetSeconds: 60 },
           { kind: 'playSong', songId: 1 },
         ],

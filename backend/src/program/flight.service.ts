@@ -49,7 +49,11 @@ import type {
   FlightRuntimeState,
   FlightSequence,
 } from './flight.types';
-import { compareShadow, RUNDOWN_SHADOW_FIELDS, shadowObserves } from './flight-shadow';
+import {
+  compareShadow,
+  RUNDOWN_SHADOW_FIELDS,
+  shadowObserves,
+} from './flight-shadow';
 import { readProgramTeam } from '../tenancy/program-team';
 
 /** How a shadow observation treats the song: compared, not compared this time, or counted as unsupported. */
@@ -502,7 +506,12 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       return notRunning('skipped_unsupported' as const);
     }
 
-    const desired = resolve({ items, loop: row.loop }, startedAt, now, durations);
+    const desired = resolve(
+      { items, loop: row.loop },
+      startedAt,
+      now,
+      durations,
+    );
     const onAir = this.programService.onAirSongId(programId);
     const diverged =
       row.activeItemId !== desired.activeCueId ||
@@ -2824,19 +2833,25 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** A song cue sent, for the rundown shadow: its duration for the resolver, and a song not confirmed yet. */
-  private rememberSongCue(programId: string, songId: number, durationMs: number | null): void {
+  private rememberSongCue(
+    programId: string,
+    songId: number,
+    durationMs: number | null,
+  ): void {
     const runtime = this.runtimes.get(programId);
     if (!runtime) return;
     runtime.songCuedSinceShadow = true;
     runtime.rundownSentSong = true;
-    if (typeof durationMs === 'number') (runtime.songDurationsMs ??= new Map()).set(songId, durationMs);
+    if (typeof durationMs === 'number')
+      (runtime.songDurationsMs ??= new Map()).set(songId, durationMs);
   }
 
   /** Counts, once per run, that the resolver does not model it (gaulatti/alcantara#123). */
   private noteShadowUnsupported(runtime: FlightRuntimeState): void {
     if (runtime.shadowUnsupportedNoted) return;
     runtime.shadowUnsupportedNoted = true;
-    for (const field of RUNDOWN_SHADOW_FIELDS) this.metrics.recordRundownShadow(field, 'unsupported');
+    for (const field of RUNDOWN_SHADOW_FIELDS)
+      this.metrics.recordRundownShadow(field, 'unsupported');
   }
 
   /**
@@ -2851,9 +2866,19 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     if (!shadowObserves(cue)) return;
     // Before the rundown sent a song, the engine's song is another source's (a rotation's): unsupported. Just after it
     // sent one, the engine may not have confirmed it yet: not compared this time.
-    const song: ShadowSong = !runtime.rundownSentSong ? 'unsupported' : runtime.songCuedSinceShadow ? 'skip' : 'compare';
+    const song: ShadowSong = !runtime.rundownSentSong
+      ? 'unsupported'
+      : runtime.songCuedSinceShadow
+        ? 'skip'
+        : 'compare';
     runtime.songCuedSinceShadow = false;
-    void this.observeShadow(runtime, runtime.generation, runtime.activeIndex, Date.now(), song);
+    void this.observeShadow(
+      runtime,
+      runtime.generation,
+      runtime.activeIndex,
+      Date.now(),
+      song,
+    );
   }
 
   private async observeShadow(
@@ -2870,7 +2895,12 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         select: { activeSceneId: true },
       });
       // The run moved on or stopped while the scene was read: nothing to compare.
-      if (!runtime.isRunning || runtime.generation !== generation || runtime.activeIndex !== index) return;
+      if (
+        !runtime.isRunning ||
+        runtime.generation !== generation ||
+        runtime.activeIndex !== index
+      )
+        return;
       const desired = resolve(
         { items: runtime.items, loop: runtime.loop },
         runtime.startedAt,

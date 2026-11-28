@@ -451,7 +451,11 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       const { service, put } = build();
       put('main', { templateManifest: null, secret: 'x' });
       const plain = await service.getPublicState();
-      expect(plain).toMatchObject({ activeSceneId: null, fadeToBlack: false, stingers: [] });
+      expect(plain).toMatchObject({
+        activeSceneId: null,
+        fadeToBlack: false,
+        stingers: [],
+      });
       expect(plain).not.toHaveProperty('secret');
       put('tpl', {
         templateManifest: manifest,

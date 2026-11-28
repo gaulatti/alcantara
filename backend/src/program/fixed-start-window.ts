@@ -26,7 +26,10 @@ export function fixedStartWindowRefusal(
     if (seconds === undefined) continue;
     if (seconds * 1000 >= FIXED_START_MAX_HOURS * HOUR_MS)
       return `A fixed start at ${offset(seconds)} is more than ${FIXED_START_MAX_HOURS} hours after this block starts at ${scheduledAt.toISOString()}.`;
-    if (nextScheduledAt && startMs + seconds * 1000 >= nextScheduledAt.getTime())
+    if (
+      nextScheduledAt &&
+      startMs + seconds * 1000 >= nextScheduledAt.getTime()
+    )
       return `A fixed start at ${offset(seconds)} is after the next block starts at ${nextScheduledAt.toISOString()}.`;
   }
   return null;
