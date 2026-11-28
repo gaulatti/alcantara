@@ -113,3 +113,22 @@ describe('daypart capabilities', () => {
     });
   });
 });
+describe('daypart capabilities decorator metadata under unresolved circular imports', () => {
+  it('records Object for dependencies whose modules have not resolved yet', () => {
+    const paths = [
+      '../../program/radio-clocks.service',
+      '../../program/radio-dayparts.service',
+      '../../program/radio-daypart-planner.service',
+    ];
+    jest.isolateModules(() => {
+      for (const path of paths) jest.doMock(path, () => ({}));
+      const { DaypartMcpTools: Isolated } = require('./dayparts');
+      expect(Reflect.getMetadata('design:paramtypes', Isolated)).toEqual([
+        Object,
+        Object,
+        Object,
+      ]);
+    });
+    for (const path of paths) jest.dontMock(path);
+  });
+});

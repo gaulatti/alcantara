@@ -14,6 +14,7 @@ import { FlightService } from './flight.service';
 import { ProgramModule } from './program.module';
 import { ProgramService } from './program.service';
 import { RecipesService } from './recipes.service';
+import { RadioDaypartPlanner } from './radio-daypart-planner.service';
 
 // gaulatti/alcantara#427: the integrator. In the real program module, the song recipe finds the
 // artist's label through #423's ArtistLabelsService, so a use of a labelled artist needs no label of
@@ -104,6 +105,8 @@ async function compile(prisma: ReturnType<typeof prismaWith>) {
     .useValue({ addEventListener: jest.fn(() => jest.fn()) })
     .overrideProvider(FlightService)
     .useValue({ programSongDb: jest.fn(async () => prisma) })
+    .overrideProvider(RadioDaypartPlanner)
+    .useValue({})
     .overrideProvider(PrismaService)
     .useValue(prisma)
     .compile();

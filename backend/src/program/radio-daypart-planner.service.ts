@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { isDeployCandidate } from '../config/deploy-candidate';
 import {
-  PlayoutLeaseService,
+  PlayoutLease,
   startWhenActive,
 } from '../playout/playout-lease.service';
 import { PrismaService } from '../prisma.service';
@@ -65,7 +65,7 @@ export class RadioDaypartPlanner implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly flights: FlightService,
     private readonly metrics: RadioMetricsService,
-    @Optional() private readonly lease?: PlayoutLeaseService,
+    @Optional() private readonly lease?: PlayoutLease,
   ) {}
 
   async onModuleInit(): Promise<void> {

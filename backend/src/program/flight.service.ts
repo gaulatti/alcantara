@@ -49,6 +49,14 @@ import type {
 
 /** How late a published log may start: the scheduler skips one later than this. */
 export const START_GRACE_MS = 5000;
+/** A due block made from a daypart clock, as the schedule poll reads it. */
+interface DaypartBlock {
+  id: number;
+  daypartStart: string | null;
+  scheduledAt: Date | null;
+  items: unknown;
+  programState: { programId: string };
+}
 /** The longest a daypart block with a soft start waits for the song on air to end before cutting it. */
 export const DAYPART_SOFT_WAIT_MS = 6 * 60_000;
 
@@ -1209,9 +1217,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
    * gaulatti/alcantara#124: only a station playing by itself is taken over, so a block made from a clock is skipped
    * in Manual (which off air leaves it in) or while the engine is frozen. A soft start lets the song on air finish.
    */
-  private async startDaypartBlock(
-    sequence: FlightSequence & { programState: { programId: string } },
-  ): Promise<void> {
+  private async startDaypartBlock(sequence: DaypartBlock): Promise<void> {
     const programId = sequence.programState.programId;
     const rotation = this.programService.getRotationOnAir(programId);
     if (
@@ -1239,9 +1245,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
    * Gives a block the rundown without cutting the song on air: it owns what plays next, so the song's end starts its
    * first cue, and a song still on air after DAYPART_SOFT_WAIT_MS is cut as a hard start would cut it.
    */
-  private async startAfterSongOnAir(
-    sequence: FlightSequence & { programState: { programId: string } },
-  ): Promise<void> {
+  private async startAfterSongOnAir(sequence: DaypartBlock): Promise<void> {
     const programId = sequence.programState.programId;
     const scheduledAtMs = sequence.scheduledAt!.getTime();
     await this.serializeCueOperation(programId, async () => {

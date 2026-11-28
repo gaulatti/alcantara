@@ -225,3 +225,27 @@ it("turns painted hours into dayparts and back", () => {
   ] as const;
   expect(daypartsFrom(cellsOf([...grid]))).toEqual(grid);
 });
+
+it("drops answers that arrive after the page is left", async () => {
+  const answers: Array<() => void> = [];
+  const later = <T,>(value: T) =>
+    new Promise<T>((resolve) => answers.push(() => resolve(value)));
+  const failing = () =>
+    new Promise<never>((_resolve, reject) =>
+      answers.push(() => reject(new Error("late"))),
+    );
+  const open = () =>
+    render(
+      <MemoryRouter>
+        <DaypartsRoute />
+      </MemoryRouter>,
+    );
+  vi.mocked(dayparts.fetchRadioClocks).mockReturnValueOnce(later([clock]));
+  vi.mocked(flight.fetchFlightSequences).mockReturnValueOnce(later([]));
+  open().unmount();
+  vi.mocked(dayparts.fetchRadioClocks).mockReturnValueOnce(failing());
+  open().unmount();
+  answers.forEach((answer) => answer());
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(screen.queryByRole("table")).toBeNull();
+});

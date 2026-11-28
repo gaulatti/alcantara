@@ -12,6 +12,7 @@ import { RadioService } from '../radio/radio.service';
 import { InstantsController } from './instants.controller';
 import { InstantsModule } from './instants.module';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
+import { RadioDaypartPlanner } from '../program/radio-daypart-planner.service';
 
 const request = { user: { authorization: { teamId: 7 } } };
 
@@ -159,6 +160,8 @@ describe('InstantsModule (coverage)', () => {
       .overrideProvider(ProgramRealtimeService)
       .useValue({})
       .overrideProvider(FlightService)
+      .useValue({})
+      .overrideProvider(RadioDaypartPlanner)
       .useValue({})
       .overrideProvider(ProgramTemplateService)
       .useValue({})

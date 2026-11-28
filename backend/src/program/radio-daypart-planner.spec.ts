@@ -1,5 +1,8 @@
 import { Logger } from '@nestjs/common';
+import { PlayoutLease } from '../playout/playout-lease.service';
+import { PrismaService } from '../prisma.service';
 import { RadioMetricsService } from '../radio/radio-metrics.service';
+import { FlightService } from './flight.service';
 import { hoursStartingWithin } from './radio-daypart-hours';
 import {
   DAYPART_PLAN_EVERY_MS,
@@ -402,7 +405,39 @@ describe('daypart block metric', () => {
   });
 });
 
-describe('planner decorator metadata under unresolved circular imports', () => {
+describe('planner decorator metadata', () => {
+  // Without the real class here the lease is not injected, and every instance would plan.
+  it('asks for the playout lease and the services it works through', () => {
+    expect(
+      Reflect.getMetadata('design:paramtypes', RadioDaypartPlanner),
+    ).toEqual([
+      PrismaService,
+      FlightService,
+      RadioMetricsService,
+      PlayoutLease,
+    ]);
+  });
+
+  it('plans only once the lease is held', async () => {
+    let active!: () => void;
+    const lease = {
+      whenActive: jest.fn((start: () => unknown) => {
+        active = () => void start();
+      }),
+    };
+    const findMany = jest.fn().mockResolvedValue([]);
+    const planner = new RadioDaypartPlanner(
+      { radioDaypartGrid: { findMany } } as never,
+      {} as never,
+      new RadioMetricsService(),
+      lease as never,
+    );
+    void planner.onModuleInit();
+    expect(findMany).not.toHaveBeenCalled();
+    expect(active).toBeDefined();
+    planner.onModuleDestroy();
+  });
+
   it('records Object for dependencies whose modules have not resolved yet', () => {
     jest.isolateModules(() => {
       for (const path of [
@@ -486,5 +521,24 @@ describe('daypart preview', () => {
     const { hours } = await made.read();
     expect(hours).toHaveLength(1);
     expect(hours[0]).toMatchObject({ problem: 'unknown error' });
+  });
+});
+
+describe('hours of a zone that reports no numeric offset', () => {
+  it('labels them as zero offset', () => {
+    jest.spyOn(Intl.DateTimeFormat.prototype, 'formatToParts').mockReturnValue(
+      Object.entries({
+        weekday: 'Mon',
+        year: '2026',
+        month: '12',
+        day: '07',
+        hour: '06',
+        minute: '00',
+        timeZoneName: 'GMT',
+      }).map(([type, value]) => ({ type, value })) as never,
+    );
+    expect(hoursStartingWithin(NOW, NOW + 15 * 60_000, 'UTC')[0].label).toBe(
+      '2026-12-07 06:00 +00:00',
+    );
   });
 });
