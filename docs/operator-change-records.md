@@ -33,6 +33,9 @@ node scripts/backfill-change-record-teams.cjs --allow-remote --apply   # sets th
 - **What stays NULL:** a record with no program, or whose program has no team. Both are counted.
 - **Idempotent:** a second run sets nothing.
 - **Output:** counts only.
+- **`--station-team`:** gives the records that name no program the station's team instead, as the recorder now does
+  for such a change. The team is the backend's own `POMPEII_TEAM_ID`, never a typed value. It is refused unless that
+  is a positive id some program belongs to. It has the same dry run, apply and count check.
 
 The migration is additive: existing records keep their program, and the `(programId, createdAt)` index is unchanged.
 

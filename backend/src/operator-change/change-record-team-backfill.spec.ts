@@ -11,9 +11,19 @@ const script = require('../../scripts/backfill-change-record-teams.cjs') as {
     program_without_team: number;
     updated: number;
   }>;
+  backfillStation(options: {
+    db: { query: (text: string, values?: unknown[]) => Promise<any> };
+    apply: boolean;
+    team: number;
+    say: (line: string) => void;
+  }): Promise<{ settable: number; updated: number }>;
+  stationTeamOf(argv: string[], environment?: Record<string, string | undefined>): number | null;
   hostAllowed(url: string, allowRemote: boolean): boolean;
   COUNT_SQL: string;
   UPDATE_SQL: string;
+  STATION_COUNT_SQL: string;
+  STATION_UPDATE_SQL: string;
+  TEAM_HAS_PROGRAM_SQL: string;
 };
 
 function fakeDb(counts = { settable: 4, no_program: 1, program_without_team: 1 }, rowCount = counts.settable) {
@@ -62,6 +72,47 @@ describe('backfill-change-record-teams', () => {
 
   it('only ever touches records with no team, through their own Program row', () => {
     expect(script.UPDATE_SQL).toMatch(/WHERE r\."teamId" IS NULL AND r\."programId" = p\."programId" AND p\."teamId" IS NOT NULL/);
+  });
+
+  it("takes the station team from the backend's POMPEII_TEAM_ID, never the command line, and refuses anything but a positive id", () => {
+    expect(script.stationTeamOf(['--apply'], { POMPEII_TEAM_ID: '7' })).toBeNull();
+    expect(script.stationTeamOf(['--station-team'], { POMPEII_TEAM_ID: ' 7 ' })).toBe(7);
+    expect(script.stationTeamOf(['--station-team', '9'], { POMPEII_TEAM_ID: '7' })).toBe(7);
+    for (const raw of [undefined, '', '0', '-2', 'x', '1.5'])
+      expect(() => script.stationTeamOf(['--station-team'], { POMPEII_TEAM_ID: raw })).toThrow(
+        '--station-team needs a positive POMPEII_TEAM_ID; nothing written',
+      );
+  });
+
+  it('gives the records with no program the station team, counted first, with the same dry run and rollback', async () => {
+    let programsOfTeam = 2;
+    const run = async (apply: boolean, rowCount = 4) => {
+      const queries: Array<[string, unknown[] | undefined]> = [];
+      const said: string[] = [];
+      const db = {
+        query: jest.fn(async (text: string, values?: unknown[]) => {
+          queries.push([text.trim().split(/\s+/)[0], values]);
+          if (text === script.TEAM_HAS_PROGRAM_SQL) return { rows: [{ programs: programsOfTeam }] };
+          if (text === script.STATION_COUNT_SQL) return { rows: [{ settable: 4 }] };
+          if (text === script.STATION_UPDATE_SQL) return { rowCount };
+          return { rows: [] };
+        }),
+      };
+      const result = await script.backfillStation({ db, apply, team: 7, say: (line) => said.push(line) });
+      return { queries, said, result };
+    };
+    const dry = await run(false);
+    expect(dry.queries.map(([verb]) => verb)).toEqual(['BEGIN', 'SELECT', 'SELECT', 'ROLLBACK']);
+    expect(dry.queries[1][1]).toEqual([7]);
+    expect(dry.said).toEqual(['records with no program and no team: 4', 'dry run: nothing written; --apply would give 4 the station team']);
+    const applied = await run(true);
+    expect(applied.queries.map(([verb]) => verb)).toEqual(['BEGIN', 'SELECT', 'SELECT', 'UPDATE', 'COMMIT']);
+    expect(applied.queries[3][1]).toEqual([7]);
+    expect(applied.result.updated).toBe(4);
+    await expect(run(true, 3)).rejects.toThrow('would set 3, counted 4; nothing written');
+    programsOfTeam = 0;
+    await expect(run(true)).rejects.toThrow('no program belongs to the station team; nothing written');
+    expect(script.STATION_UPDATE_SQL).toMatch(/WHERE "teamId" IS NULL AND "programId" IS NULL/);
   });
 
   it('writes only to a local database unless --allow-remote is given', () => {
@@ -128,5 +179,17 @@ const databaseUrl = process.env.DATABASE_URL;
     const again = await run(false);
     expect(again.updated).toBe(0);
     expect(await teams()).toContainEqual(['-owned', 41]);
+  });
+
+  // The station mode's apply touches every record that names no program, other suites' included, so on the shared
+  // database only its read-only paths run: the refusal and the dry run.
+  it('refuses a station team no program belongs to, and counts on a dry run without writing', async () => {
+    await expect(script.backfillStation({ db, apply: true, team: 999_001, say: () => undefined })).rejects.toThrow(
+      'no program belongs to the station team',
+    );
+    const dry = await script.backfillStation({ db, apply: false, team: 41, say: () => undefined });
+    expect(dry.settable).toBeGreaterThanOrEqual(1);
+    expect(dry.updated).toBe(0);
+    expect(await teams()).toContainEqual([null, null]);
   });
 });
