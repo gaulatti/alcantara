@@ -198,6 +198,8 @@ export interface PalazzoTelemetrySource {
   currentState?(programId: string): Promise<PalazzoPlaybackState | null>;
   /** Stops following a deleted program and drops what was held for it. */
   removeProgram?(programId: string): void;
+  /** Recomputes the degraded and stale-telemetry gauges, which otherwise move only on a status change. */
+  refreshAggregateMetrics?(): void;
   /** Moves a renamed program's telemetry to its new id, in one synchronous step. */
   renameProgram?(
     current: string,
@@ -248,6 +250,8 @@ const NOT_AIRED_WITHIN_MS = 1_000;
 const NOT_AIRED_MIN_DURATION_MS = 20_000;
 
 export const WATCHDOG_INTERVAL_MS = 10_000;
+/** How long the active song may go without a Palazzo report before it reads as stale. */
+export const TELEMETRY_STALE_MS = 15_000;
 export const NO_PLAYBACK_BOUND_MS = 45_000;
 /**
  * An announced spot on air (instant.started seen, instant.ended not yet) is
@@ -519,6 +523,10 @@ interface SongEngineState {
    * song id: the ones it calls its own (commandedSongs keeps only those with an id).
    */
   knownRequestIds?: Set<string>;
+  /** Palazzo's connection as its telemetry last reported it; absent before the first report. */
+  palazzoConnection?: string;
+  /** The active song whose staleness was already said and reconciled, so once per song. */
+  staleNoticedFor?: string;
   /** Boot of a Palazzo without the next route (404); undefined when supported. */
   nextUnsupportedBootId?: string | null;
   /** Announced songs replaced at the handoff before their start arrived. */
@@ -2019,6 +2027,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   handlePalazzoStatus(programId: string, status: PalazzoProgramStatus): void {
     if (!this.isRadioCapable(programId)) return;
     const state = this.ensureState(programId);
+    state.palazzoConnection = status.connection;
     const unavailable =
       status.connection === 'unavailable' ||
       status.connection === 'instance-mismatch' ||
@@ -2061,9 +2070,14 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       this.metrics.recordEngineResync(trigger, 'unavailable');
       return;
     }
-    // A playback this backend did not issue is reconciled only when Palazzo plays it: an idle read in between (the
-    // foreign track ended, an operator's take not started yet) must not end the take and command over it.
-    if (trigger === 'unissued_playback' && snapshot.status !== 'playing') {
+    // A playback this backend did not issue, or an active song gone stale, is reconciled only when Palazzo plays the
+    // active song itself or a track this backend never issued. An idle read in between (the foreign track ended, an
+    // operator's take not started yet) or a late read of one of its own earlier songs must not end the active song
+    // and command over it.
+    if (
+      (trigger === 'unissued_playback' || trigger === 'stale_active') &&
+      !this.playsActiveOrUnissued(snapshot, this.states.get(programId))
+    ) {
       this.metrics.recordEngineResync(trigger, 'undecided');
       return;
     }
@@ -2107,9 +2121,12 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
 
   async checkPlayback(): Promise<void> {
     this.countUnaired();
+    // On this tick, not only at a status change: a stream that stays connected while its events go stale moves them.
+    this.telemetry?.refreshAggregateMetrics?.();
     for (const programId of [...this.radioProgramIds]) {
       const state = this.states.get(programId);
       if (!state) continue;
+      this.noticeStaleActive(programId, state);
       const automatic =
         state.sequence?.mode === 'autoplay' ||
         state.sequence?.mode === 'shuffle';
@@ -5638,6 +5655,46 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     void this.resync(programId, 'unissued_playback');
   }
 
+  /** Palazzo plays the active song, or a track this engine never issued. */
+  private playsActiveOrUnissued(
+    snapshot: PalazzoPlaybackState,
+    state: SongEngineState | undefined,
+  ): boolean {
+    const requestId = snapshot.track?.playbackRequestId;
+    if (snapshot.status !== 'playing' || !requestId || !state) return false;
+    return (
+      requestId === state.activeSong?.playbackRequestId ||
+      !this.issuedHere(state, requestId)
+    );
+  }
+
+  /**
+   * The active song has had no report for longer than its stale window (15 s since the last report, or since it was
+   * commanded when none came) while Palazzo's telemetry reads connected: the reports are reaching the engine for
+   * something else, or not at all. Said and counted once per song, then Palazzo's state is read as for a playback this
+   * engine did not issue: only Palazzo playing the active song or an unissued track is reconciled. Runs on the
+   * watchdog's tick, so it adds no timer, and does nothing once the playout lease is released.
+   */
+  private noticeStaleActive(programId: string, state: SongEngineState): void {
+    const song = state.activeSong;
+    if (
+      !song ||
+      this.playoutReleased() ||
+      !this.isRadioCapable(programId) ||
+      state.frozen ||
+      state.palazzoConnection !== 'connected' ||
+      state.staleNoticedFor === song.playbackRequestId
+    )
+      return;
+    const heardAt = song.authoritativeUpdatedAt ?? song.startedAt;
+    if (Date.now() - heardAt <= TELEMETRY_STALE_MS) return;
+    state.staleNoticedFor = song.playbackRequestId;
+    this.logger.warn(
+      `${song.playbackRequestId} on ${programId} has had no Palazzo report for over ${TELEMETRY_STALE_MS / 1000} s while Palazzo is connected; reading Palazzo's state`,
+    );
+    void this.resync(programId, 'stale_active');
+  }
+
   /** Whether this engine sent, announced, adopted (with or without a library id), ended or is waiting for the playback. */
   private issuedHere(state: SongEngineState, requestId: string): boolean {
     const announcement = state.announcement;
@@ -5749,7 +5806,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       updatedAt: new Date(now).toISOString(),
       telemetryStale:
         this.isRadioCapable(programId) &&
-        (heardAt === null || now - heardAt > 15_000),
+        (heardAt === null || now - heardAt > TELEMETRY_STALE_MS),
       introStatus: s.introStatus,
       introFailureReason: s.introFailureReason,
       queueEntryId: s.queueEntryId,

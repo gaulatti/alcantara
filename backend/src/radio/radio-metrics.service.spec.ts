@@ -214,12 +214,14 @@ describe('RadioMetricsService engine resyncs', () => {
       .filter((line) =>
         line.startsWith('alcantara_radio_engine_resyncs_total{'),
       );
-    // unissued_playback (2026-11-28 07:07): a reconcile after a playback this backend did not issue.
-    expect(series).toHaveLength(21);
-    for (const result of ['resumed', 'playing', 'unavailable', 'undecided'])
-      expect(series).toContain(
-        `alcantara_radio_engine_resyncs_total{trigger="unissued_playback",result="${result}"} 0`,
-      );
+    // unissued_playback (2026-11-28 07:07): a reconcile after a playback this backend did not issue; stale_active: an
+    // active song with no Palazzo report past its window while Palazzo is connected.
+    expect(series).toHaveLength(25);
+    for (const trigger of ['unissued_playback', 'stale_active'])
+      for (const result of ['resumed', 'playing', 'unavailable', 'undecided'])
+        expect(series).toContain(
+          `alcantara_radio_engine_resyncs_total{trigger="${trigger}",result="${result}"} 0`,
+        );
     expect(metrics.snapshot().engineResyncs).toEqual({
       'foreign_ended:resumed': 1,
       'watchdog:resumed': 2,

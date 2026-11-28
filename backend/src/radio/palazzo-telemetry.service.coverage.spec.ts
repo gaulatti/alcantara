@@ -388,5 +388,34 @@ describe('PalazzoRadioTelemetryService coverage', () => {
         jest.useRealTimers();
       }
     });
+
+    it('counts a stream gone stale on a refresh, with no status change (the watchdog tick)', async () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-10-02T10:00:00.000Z'));
+      try {
+        const { service, prisma, metrics } = build();
+        prisma.radioSettings.findFirst.mockResolvedValue({
+          palazzoUrl: 'http://a',
+          programState: { type: 'radio' },
+        });
+        await service.handleRadioSettingsChanged('a');
+        mockClients[0].status = {
+          degraded: false,
+          lastEventAt: '2026-10-02T10:00:00.000Z',
+        };
+        mockClients[0].options.callbacks.onStatus('a', mockClients[0].status);
+        expect(metrics.recordStaleTelemetryPrograms).toHaveBeenLastCalledWith(
+          0,
+        );
+        // Connected the whole time: no status change, only the clock moves.
+        jest.setSystemTime(new Date('2026-10-02T10:00:20.000Z'));
+        service.refreshAggregateMetrics();
+        expect(metrics.recordStaleTelemetryPrograms).toHaveBeenLastCalledWith(
+          1,
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
   });
 });

@@ -279,6 +279,11 @@ replace the stored playback state with `isPlaying: false` before fan-out.
 A song promoted at a gapless handoff is not marked stale while its start is on its way: Palazzo accepted it and starts
 it itself. It is marked stale if neither a start nor a position has arrived 15 seconds after the promotion.
 
+An active song that stays stale past that window (15 s since its last report, or since it was commanded when none
+came) while Palazzo's telemetry reads connected is said once with the warning `<id> on <program> has had no Palazzo
+report for over 15 s while Palazzo is connected; reading Palazzo's state`, and Palazzo's state is read on the watchdog
+tick (resync trigger `stale_active`, no new timer). It is reconciled by the same rule as `unissued_playback`.
+
 The control console keeps `GET /program/:programId/events` SSE connected as its
 authoritative feedback channel. Palazzo samples levels at 10 Hz by default and
 Alcantara forwards each accepted sample immediately through that stream. The
@@ -449,7 +454,8 @@ up the rotation), `foreign_ended` (a foreign
 track ended), `unissued_playback` (Palazzo reported a start or position for a playback this backend did not issue
 while the song it holds as on air had no report of its own; said once per playback with the warning `Palazzo reports
 playback <id> on <program>, which this backend did not issue, …`; an idle read is counted `undecided` and acted on no
-further), `watchdog` (Palazzo reported nothing on the air past the bound)
+further), `stale_active` (the active song had no report past its stale window while Palazzo was connected; the same
+rule), `watchdog` (Palazzo reported nothing on the air past the bound)
 or `command_failed` (the retry after a failed song command). `result` is
 `resumed` (Palazzo was idle and the engine reconciled from it, which for the
 watchdog means it commanded a song or advanced past an end),
@@ -529,7 +535,8 @@ wait for analysis and reaches zero when the backfill is done. See
 The existing radio families remain unchanged:
 `alcantara_palazzo_sse_connections{state}`, reconnect attempts/failures,
 snapshot reconciliation results, ignored-event reasons, stale-telemetry and
-degraded program gauges, track transition results (including `rotation-ended`: a rotation that does not loop ran out and the engine left it manual, walk part 4),
+degraded program gauges (recomputed on every status change and on the engine's 10 s watchdog tick, so a stream that
+stays connected while its events go stale still raises the stale gauge), track transition results (including `rotation-ended`: a rotation that does not loop ran out and the engine left it manual, walk part 4),
 `alcantara_radio_intro_transitions_total{result}` for submitted, accepted,
 started, ended, failed, and mismatched intro lifecycle events,
 `alcantara_radio_song_request_failures_total{reason}` for songs Palazzo could
