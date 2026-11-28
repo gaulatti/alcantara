@@ -71,7 +71,7 @@ export function DaypartGrid({
                     : ", no clock"
                 }`;
                 return (
-                  <td key={day} className="border border-border-subtle p-0">
+                  <td key={day} className="border border-sand/30 p-0 dark:border-white/10">
                     <button
                       type="button"
                       aria-label={text}
