@@ -47,9 +47,6 @@
   "src/auth/pompeii-authorization.guard.session-tokens.spec.ts": {
     "@typescript-eslint/unbound-method": 3
   },
-  "src/auth/pompeii-authorization.guard.spec.ts": {
-    "prettier/prettier": 5
-  },
   "src/auth/pompeii.service.coverage.spec.ts": {
     "@typescript-eslint/no-require-imports": 1,
     "@typescript-eslint/no-unsafe-assignment": 1,
@@ -74,8 +71,7 @@
     "@typescript-eslint/no-unsafe-return": 1
   },
   "src/auth/viewer-writes.http.spec.ts": {
-    "@typescript-eslint/no-unused-vars": 1,
-    "prettier/prettier": 16
+    "@typescript-eslint/no-unused-vars": 1
   },
   "src/broadcast-destinations/alana.client.boundaries.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 1,
