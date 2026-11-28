@@ -257,5 +257,75 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # The call workers production runs beside the stream (gaulatti/alcantara#51): without them a local guest is never
+  # on air and gets no return without hand steps. Both use host networking because the backend hands every client the
+  # LiveKit address a browser uses (ws://localhost:7880), and the return router's page must be a localhost origin.
+  # On Docker Desktop, host networking has to be enabled in its settings; on Linux and Colima it needs nothing.
+  # A local stand-in for the station's live input: it only receives the RTMP push. Listen to what is on air with
+  # `ffplay rtmp://localhost:1935/live/contribution`.
+  air-sink:
+    image: bluenviron/mediamtx:1.15.4@sha256:4ad800aa1df715211f44a7a5fabc67a308f01c128c5ce4ebf72c34d172812639
+    ports:
+      - "127.0.0.1:${AIR_SINK_PORT:-1935}:1935"
+    restart: unless-stopped
+  contribution:
+    build:
+      context: ./infra/cumulus/contribution
+    network_mode: host
+    environment:
+      ALCANTARA_API_URL: http://localhost:${BACKEND_PORT:-3000}
+      WEBRTC_RENDERER_KEY: alcantara-local-renderer-secret-change-me-now
+      PROGRAM_ID: ${CONTRIBUTION_PROGRAM_ID:-radio-demo.fm}
+      CONTRIBUTION_RTMP_URL: rtmp://localhost:${AIR_SINK_PORT:-1935}/live/contribution
+      CONTRIBUTION_HEALTH_PORT: ${CONTRIBUTION_HEALTH_PORT:-8091}
+    init: true
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+      air-sink:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:' + process.env.CONTRIBUTION_HEALTH_PORT + '/').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+  return-runner:
+    build:
+      context: ./infra/helix/return-runner
+    network_mode: host
+    environment:
+      ALCANTARA_API_URL: http://localhost:${BACKEND_PORT:-3000}
+      ALCANTARA_APP_URL: http://localhost:${VITE_PORT:-5173}
+      WEBRTC_RENDERER_KEY: alcantara-local-renderer-secret-change-me-now
+      RETURN_RUNNER_HEALTH_PORT: ${RETURN_RUNNER_HEALTH_PORT:-8090}
+    init: true
+    shm_size: 1g
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:' + process.env.RETURN_RUNNER_HEALTH_PORT + '/').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
 volumes:
   postgres-data:

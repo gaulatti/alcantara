@@ -289,6 +289,24 @@ guest on the real guest page, the operator and program receiving the guest, and
 the guest receiving the program return. It also has a guest-only mode for a
 production invitation.
 
+Compose also runs the two call workers production runs beside the stream, so
+nothing is started by hand:
+
+- **return-runner** opens the return router page for every program with guests
+  (`/return-router/<programId>`), so a guest gets the program return and the
+  other guests with nothing else open.
+- **contribution** puts the guests cued live, and the host's microphone, on one
+  program's air: `radio-demo.fm`, or `CONTRIBUTION_PROGRAM_ID`. Locally "air" is
+  **air-sink**, an RTMP receiver on `127.0.0.1:1935` (`AIR_SINK_PORT`) that only
+  receives; listen with `ffplay rtmp://localhost:1935/live/contribution` while a
+  guest is live. Nothing leaves the machine.
+
+Both workers use host networking, because the backend gives every client the
+LiveKit address a browser uses. Linux and Colima need nothing; Docker Desktop
+needs host networking enabled in its settings. Their health ports are 8090 and
+8091 (`RETURN_RUNNER_HEALTH_PORT`, `CONTRIBUTION_HEALTH_PORT`). The first build
+downloads the Playwright image for the return runner, which is large.
+
 In production, LiveKit runs on Helix, the on-premises host, not on the backend's
 service host (#354). `infra/helix/livekit-up.sh` starts it there, and
 [`infra/README.md`](infra/README.md) has the ports, the nginx server block and
