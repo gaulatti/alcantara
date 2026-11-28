@@ -47,10 +47,3 @@ src/radio/song-similarity.service.metadata.spec.ts
 src/radio/song-similarity.service.ts
 src/seed/demo-audio.spec.ts
 src/seed/demo-audio.ts
-src/tenancy/direct-tenant-access.spec.ts
-src/tenancy/direct-tenant-access.ts
-src/tenancy/program-team-access.cached.spec.ts
-src/tenancy/program-team-access.team-of.spec.ts
-src/tenancy/program-team-access.ts
-src/tenancy/program-team.spec.ts
-src/tenancy/program-team.ts

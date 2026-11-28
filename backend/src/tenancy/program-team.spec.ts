@@ -7,7 +7,10 @@ describe('readProgramTeam', () => {
     const prisma = { program: { findUnique } } as never;
     findUnique.mockResolvedValueOnce({ teamId: 7 });
     expect(await readProgramTeam(prisma, 'news')).toBe(7);
-    expect(findUnique).toHaveBeenCalledWith({ where: { programId: 'news' }, select: { teamId: true } });
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { programId: 'news' },
+      select: { teamId: true },
+    });
     findUnique.mockResolvedValueOnce({ teamId: null });
     expect(await readProgramTeam(prisma, 'news')).toBeNull();
     findUnique.mockResolvedValueOnce(null);

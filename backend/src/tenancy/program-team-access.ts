@@ -66,7 +66,9 @@ export class ProgramTeamAccess {
    */
   cachedTeamOf(programId: string): number | null {
     const known = this.cache.get(programId.trim());
-    return known && known.teamId !== null && known.teamId > 0 ? known.teamId : null;
+    return known && known.teamId !== null && known.teamId > 0
+      ? known.teamId
+      : null;
   }
 
   /** Reads a program's team into the cache in the background, for a later write. Never awaited by the caller. */

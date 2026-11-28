@@ -35,7 +35,9 @@ describe('cachedTeamOf and warmTeamOf', () => {
 
   it('warms the cache in the background without waiting for the lookup', async () => {
     let answer!: (value: { teamId: number }) => void;
-    const findUnique = jest.fn(() => new Promise<{ teamId: number }>((resolve) => (answer = resolve)));
+    const findUnique = jest.fn(
+      () => new Promise<{ teamId: number }>((resolve) => (answer = resolve)),
+    );
     const access = build(findUnique);
     expect(() => access.warmTeamOf('p')).not.toThrow();
     expect(findUnique).toHaveBeenCalledTimes(1);

@@ -1036,12 +1036,6 @@
   "src/stingers/stingers.tenancy.spec.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": 1
   },
-  "src/tenancy/direct-tenant-access.spec.ts": {
-    "prettier/prettier": 7
-  },
-  "src/tenancy/direct-tenant-access.ts": {
-    "prettier/prettier": 9
-  },
   "src/tenancy/library-team-backfill.migration.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 1,
     "@typescript-eslint/no-unsafe-call": 20,
@@ -1055,21 +1049,10 @@
     "@typescript-eslint/no-unsafe-member-access": 23
   },
   "src/tenancy/program-team-access.cached.spec.ts": {
-    "@typescript-eslint/require-await": 2,
-    "prettier/prettier": 1
+    "@typescript-eslint/require-await": 2
   },
   "src/tenancy/program-team-access.team-of.spec.ts": {
-    "@typescript-eslint/require-await": 4,
-    "prettier/prettier": 6
-  },
-  "src/tenancy/program-team-access.ts": {
-    "prettier/prettier": 1
-  },
-  "src/tenancy/program-team.spec.ts": {
-    "prettier/prettier": 1
-  },
-  "src/tenancy/program-team.ts": {
-    "prettier/prettier": 1
+    "@typescript-eslint/require-await": 4
   },
   "src/uploads/uploads.controller.coverage.spec.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": 1,
