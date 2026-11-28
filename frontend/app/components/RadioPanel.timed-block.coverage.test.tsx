@@ -1,9 +1,10 @@
-import { cleanup, render } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 import { RadioPanel } from "./RadioPanel";
 import { RadioMonitorProvider } from "./RadioMonitor";
-import { radioPanelProps } from "./RadioPanel.fixture";
+import { pressPreListen, radioPanelProps } from "./RadioPanel.fixture";
+import * as flight from "../services/flight";
 
 // The radio desk's timed block: the on-air rundown with a playing song and cartwall, and the branches a rundown's
 // position and an ended cartwall sound take. Fictional names only.
@@ -17,8 +18,14 @@ vi.mock("../services/flight", () => ({
   goFlight: vi.fn(),
 }));
 
+beforeEach(() => {
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
+});
 afterEach(() => {
   cleanup();
+  vi.clearAllMocks();
   vi.restoreAllMocks();
 });
 
@@ -60,4 +67,37 @@ it("renders a timed block whose cartwall sound is still sounding", () => {
     },
   });
   expect(container.textContent).toBeTruthy();
+});
+
+it("advances and stops the rundown from its transport, which the timed block always shows", async () => {
+  mount();
+  const advance = screen.getByRole("button", { name: "Advance rundown" });
+  expect(advance).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Start rundown" })).toBeDisabled();
+  fireEvent.click(advance);
+  await waitFor(() => expect(flight.goFlight).toHaveBeenCalledWith("radio-demo"));
+  fireEvent.click(screen.getByRole("button", { name: "Stop rundown / Take Off Air" }));
+  await waitFor(() => expect(flight.stopFlight).toHaveBeenCalledWith("radio-demo"));
+});
+
+it("disables advance on the last item of the rundown", () => {
+  const base = radioPanelProps();
+  const log = base.fixtureData!.logs[0];
+  mount({
+    fixtureData: {
+      ...base.fixtureData!,
+      logs: [{ ...log, activeItemId: `cue-${log.items.length}` }],
+    },
+  });
+  expect(screen.getByRole("button", { name: "Advance rundown" })).toBeDisabled();
+});
+
+it("pre-listens the song on air, and lets it go when the press ends", () => {
+  const { unmount } = mount();
+  const control = pressPreListen(screen, "Music");
+  fireEvent.pointerDown(control);
+  fireEvent.pointerUp(control);
+  fireEvent.click(control);
+  expect(control).toBeInTheDocument();
+  unmount();
 });
