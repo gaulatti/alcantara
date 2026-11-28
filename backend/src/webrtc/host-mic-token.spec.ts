@@ -1,7 +1,11 @@
 import { isolateEnv } from '../../test/env-isolation';
 const restoreEnv = isolateEnv();
 afterAll(restoreEnv);
-import { BadRequestException, ServiceUnavailableException, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ServiceUnavailableException,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { WebrtcController } from './webrtc.controller';

@@ -35,7 +35,12 @@ function serviceWith(
   return { service, roomService, mute };
 }
 
-const track = (name: string, sid: string, muted = false) => ({ name, sid, muted, source: 2 });
+const track = (name: string, sid: string, muted = false) => ({
+  name,
+  sid,
+  muted,
+  source: 2,
+});
 
 describe('taking the host microphone off air', () => {
   it('reports no host microphone when no operator publishes the Mic on air track', async () => {
@@ -43,14 +48,27 @@ describe('taking the host microphone off air', () => {
       { identity: OPERATOR, tracks: [track('camera', 'TR_cam')] },
       { identity: 'guest-1', tracks: [track('onair:host', 'TR_guest')] },
     ]);
-    await expect(service.muteHostMic('main')).resolves.toEqual({ status: 'no-host-mic', muted: 0 });
+    await expect(service.muteHostMic('main')).resolves.toEqual({
+      status: 'no-host-mic',
+      muted: 0,
+    });
     expect(mute).not.toHaveBeenCalled();
   });
 
   it('mutes the operator Mic on air track on the server and reports it only then', async () => {
-    const { service, mute } = serviceWith([{ identity: OPERATOR, tracks: [track('onair:host', 'TR_mic')] }]);
-    await expect(service.muteHostMic('main')).resolves.toEqual({ status: 'muted', muted: 1 });
-    expect(mute).toHaveBeenCalledWith('alcantara-main', OPERATOR, 'TR_mic', true);
+    const { service, mute } = serviceWith([
+      { identity: OPERATOR, tracks: [track('onair:host', 'TR_mic')] },
+    ]);
+    await expect(service.muteHostMic('main')).resolves.toEqual({
+      status: 'muted',
+      muted: 1,
+    });
+    expect(mute).toHaveBeenCalledWith(
+      'alcantara-main',
+      OPERATOR,
+      'TR_mic',
+      true,
+    );
   });
 
   it('mutes every operator Mic on air track in the program', async () => {
@@ -58,7 +76,10 @@ describe('taking the host microphone off air', () => {
       { identity: OPERATOR, tracks: [track('onair:host', 'TR_a')] },
       { identity: OTHER, tracks: [track('onair:host', 'TR_b', true)] },
     ]);
-    await expect(service.muteHostMic('main')).resolves.toEqual({ status: 'muted', muted: 2 });
+    await expect(service.muteHostMic('main')).resolves.toEqual({
+      status: 'muted',
+      muted: 2,
+    });
     expect(mute).toHaveBeenCalledTimes(2);
   });
 
@@ -80,13 +101,20 @@ describe('taking the host microphone off air', () => {
 
   it('reports no host microphone when the program room does not exist yet', async () => {
     const { service, roomService } = serviceWith([]);
-    roomService.listParticipants.mockRejectedValueOnce(new Error('room not found'));
-    await expect(service.muteHostMic('main')).resolves.toEqual({ status: 'no-host-mic', muted: 0 });
+    roomService.listParticipants.mockRejectedValueOnce(
+      new Error('room not found'),
+    );
+    await expect(service.muteHostMic('main')).resolves.toEqual({
+      status: 'no-host-mic',
+      muted: 0,
+    });
   });
 
   it('fails, without reporting anything muted, when LiveKit cannot list the room', async () => {
     const { service, roomService, mute } = serviceWith([]);
-    roomService.listParticipants.mockRejectedValueOnce(new Error('connection reset'));
+    roomService.listParticipants.mockRejectedValueOnce(
+      new Error('connection reset'),
+    );
     await expect(service.muteHostMic('main')).rejects.toThrow();
     expect(mute).not.toHaveBeenCalled();
   });
@@ -101,14 +129,22 @@ describe('who is on air through calls, for the dead-air watchdog', () => {
       { identity: 'guest-1', tracks: [track('onair:host', 'TR_guest')] },
     ]);
     Object.defineProperty(service, 'onAirList', {
-      value: jest.fn(async () => ({ programId: 'main', guests: ['guest-a', 'guest-b'] })),
+      value: jest.fn(async () => ({
+        programId: 'main',
+        guests: ['guest-a', 'guest-b'],
+      })),
     });
-    await expect(service.onAirPresence('main')).resolves.toEqual({ guestsLive: 2, hostMics: 1 });
+    await expect(service.onAirPresence('main')).resolves.toEqual({
+      guestsLive: 2,
+      hostMics: 1,
+    });
   });
 
   it('throws when LiveKit cannot be read, so the watchdog holds', async () => {
     const { service, roomService } = serviceWith([]);
-    roomService.listParticipants.mockRejectedValueOnce(new Error('livekit down'));
+    roomService.listParticipants.mockRejectedValueOnce(
+      new Error('livekit down'),
+    );
     Object.defineProperty(service, 'onAirList', {
       value: jest.fn(async () => ({ programId: 'main', guests: [] })),
     });
@@ -116,7 +152,14 @@ describe('who is on air through calls, for the dead-air watchdog', () => {
   });
 
   it('reports nobody where calls are not configured', async () => {
-    const service = new WebrtcService(new ConfigService({}), {} as never, new ManagedMetricsService());
-    await expect(service.onAirPresence('main')).resolves.toEqual({ guestsLive: 0, hostMics: 0 });
+    const service = new WebrtcService(
+      new ConfigService({}),
+      {} as never,
+      new ManagedMetricsService(),
+    );
+    await expect(service.onAirPresence('main')).resolves.toEqual({
+      guestsLive: 0,
+      hostMics: 0,
+    });
   });
 });

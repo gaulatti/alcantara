@@ -142,8 +142,14 @@ describe('program room admission without LiveKit', () => {
   it('looks at nothing and removes nobody', async () => {
     const prisma = { guestInvitation: { findMany: jest.fn() } };
     const list = jest.spyOn(RoomServiceClient.prototype, 'listParticipants');
-    const service = new WebrtcService(new ConfigService({}), prisma as never, new ManagedMetricsService());
-    await expect(service.enforceProgramRoomAdmission()).resolves.toBeUndefined();
+    const service = new WebrtcService(
+      new ConfigService({}),
+      prisma as never,
+      new ManagedMetricsService(),
+    );
+    await expect(
+      service.enforceProgramRoomAdmission(),
+    ).resolves.toBeUndefined();
     expect(prisma.guestInvitation.findMany).not.toHaveBeenCalled();
     expect(list).not.toHaveBeenCalled();
   });

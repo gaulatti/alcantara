@@ -116,8 +116,12 @@ describe('the call chain health', () => {
     jest.useFakeTimers();
     try {
       const h = setup();
-      const first = (await h.webrtc.onAirStream(KEY, PROGRAM)).subscribe(() => {});
-      const second = (await h.webrtc.onAirStream(KEY, PROGRAM)).subscribe(() => {});
+      const first = (await h.webrtc.onAirStream(KEY, PROGRAM)).subscribe(
+        () => {},
+      );
+      const second = (await h.webrtc.onAirStream(KEY, PROGRAM)).subscribe(
+        () => {},
+      );
       await settle();
       expect((await h.returns.health(PROGRAM)).contribution).toBe('ok');
       expect((await h.returns.health('other.fm')).contribution).toBe('unknown');
@@ -129,7 +133,9 @@ describe('the call chain health', () => {
       (await h.webrtc.onAirStream(KEY, PROGRAM))
         .subscribe(() => {})
         .unsubscribe();
-      const again = (await h.webrtc.onAirStream(KEY, PROGRAM)).subscribe(() => {});
+      const again = (await h.webrtc.onAirStream(KEY, PROGRAM)).subscribe(
+        () => {},
+      );
       expect((await h.returns.health(PROGRAM)).contribution).toBe('ok');
       // Shutdown ends the streams, and with them the link.
       h.webrtc.onModuleDestroy();
