@@ -1,0 +1,80 @@
+{
+  "src/artist-labels/artist-labels.service.ts": {
+    "artistLabel": 7,
+    "mediaLabel": 1
+  },
+  "src/as-run/as-run.service.ts": {
+    "program": 1
+  },
+  "src/broadcast-destinations/broadcast-destination-keys.service.ts": {
+    "broadcastDestination": 6,
+    "broadcastDestinationKeyChange": 2
+  },
+  "src/broadcast-destinations/broadcast-destinations.service.ts": {
+    "broadcastDestination": 10
+  },
+  "src/broadcast-destinations/broadcast-ingest.service.ts": {
+    "broadcastDestination": 1,
+    "broadcastIngestAccess": 1
+  },
+  "src/broadcast-destinations/destination-test.service.ts": {
+    "broadcastDestination": 1
+  },
+  "src/external-sources/external-sources.service.ts": {
+    "externalSource": 9
+  },
+  "src/filler/filler.service.ts": {
+    "program": 1
+  },
+  "src/media-assets/media-asset-team-gauge.service.ts": {
+    "mediaAsset": 1
+  },
+  "src/media-assets/media-assets.service.ts": {
+    "mediaLabel": 1
+  },
+  "src/operator-change/operator-change-recorder.ts": {
+    "operatorChangeRecord": 1
+  },
+  "src/program/flight.service.ts": {
+    "program": 1,
+    "mediaLabel": 2,
+    "instant": 1,
+    "scene": 2
+  },
+  "src/program/program.service.ts": {
+    "broadcastSettings": 1,
+    "program": 4,
+    "instant": 2,
+    "scene": 1,
+    "mediaGroup": 1,
+    "stinger": 1
+  },
+  "src/program/recipes.service.ts": {
+    "program": 1,
+    "scene": 1
+  },
+  "src/program/scene-asset-scope.ts": {
+    "program": 1
+  },
+  "src/radio/playout-song-scope.ts": {
+    "program": 1
+  },
+  "src/radio/radio-scope-preflight.service.ts": {
+    "program": 1,
+    "song": 1
+  },
+  "src/radio/radio.service.ts": {
+    "program": 1,
+    "operatorChangeRecord": 1
+  },
+  "src/radio/song-execution.engine.ts": {
+    "instant": 3
+  },
+  "src/radio/song-similarity.service.ts": {
+    "program": 2,
+    "song": 1
+  },
+  "src/songs/songs.service.ts": {
+    "song": 1
+  }
+}
