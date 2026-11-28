@@ -6,6 +6,7 @@ import {
   Logger,
   NotFoundException,
   ServiceUnavailableException,
+  Optional,
 } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
@@ -24,6 +25,7 @@ import {
   type SafeAlanaState,
 } from './broadcast-destinations.types';
 import { forTeam } from '../tenancy/scoped-prisma';
+import { ProgramTeamAccess } from '../tenancy/program-team-access';
 
 type CommandInput = {
   commandId?: unknown;
@@ -48,6 +50,7 @@ export class BroadcastDestinationsService {
     private readonly metrics: ManagedMetricsService,
     private readonly fillers: FillerBindingService,
     private readonly secrets: DestinationSecretsService,
+    @Optional() private readonly teams?: ProgramTeamAccess,
   ) {}
 
   /**
@@ -241,14 +244,25 @@ export class BroadcastDestinationsService {
     await this.requireTelevisionProgram(programId);
     // Only what start would accept for this caller (gaulatti/alcantara#122).
     const destinations = await this.listDestinations(callerTeam);
+    // The downstream state names every destination the executor holds, so a caller sees only its own team's entries.
+    const visible = new Set(destinations.map((destination) => destination.id));
+    const confine = (state: SafeAlanaState): SafeAlanaState =>
+      callerTeam === 0
+        ? state
+        : {
+            ...state,
+            destinations: state.destinations.filter((destination) =>
+              visible.has(destination.id),
+            ),
+          };
     try {
       const downstream = await this.alana.status(programId);
-      await this.reconcileRuntime(programId, downstream);
+      await this.reconcileRuntime(programId, downstream, callerTeam);
       return {
         programId,
         available: true,
         destinations,
-        downstream: this.decorateState(downstream, destinations),
+        downstream: this.decorateState(confine(downstream), destinations),
       };
     } catch (error) {
       if (!(error instanceof AlanaRequestError)) throw error;
@@ -256,7 +270,7 @@ export class BroadcastDestinationsService {
         programId,
         available: false,
         destinations,
-        downstream: this.decorateState(error.state, destinations),
+        downstream: this.decorateState(confine(error.state), destinations),
       };
     }
   }
@@ -706,7 +720,13 @@ export class BroadcastDestinationsService {
   private async reconcileRuntime(
     programId: string,
     downstream: SafeAlanaState,
+    callerTeam = 0,
   ) {
+    // A caller reconciles only a program of its own team: another team's runtime row is not this caller's to write.
+    if (callerTeam > 0) {
+      const owner = await this.teams?.teamOf(programId);
+      if (owner !== callerTeam) return;
+    }
     const current = await this.prisma.broadcastDestinationRuntime.findUnique({
       where: { programId },
       select: { nextSequence: true },

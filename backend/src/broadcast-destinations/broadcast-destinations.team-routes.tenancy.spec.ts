@@ -3,6 +3,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { AlanaClient, AlanaRequestError } from './alana.client';
 import { BroadcastDestinationsService } from './broadcast-destinations.service';
+import { ProgramTeamAccess } from '../tenancy/program-team-access';
 
 // CI's coverage step runs without DATABASE_URL and starts this database; a local run sets DATABASE_URL to its own
 // disposable one. Without a database the suite fails rather than passing unrun.
@@ -92,6 +93,90 @@ describe("destination routes confined to the caller's team, against Postgres", (
     expect(ids((await service.getProgramState(programId)).destinations)).toEqual(
       expect.arrayContaining([mineA, mineB, theirs]),
     );
+  });
+
+  it("a caller's program state and reconcile never reach another team's downstream entries or runtime rows", async () => {
+    const ownProgram = `${prefix}-own-tv`;
+    const otherProgram = `${prefix}-other-tv`;
+    const live = new BroadcastDestinationsService(
+      prisma,
+      {
+        status: jest.fn(async () => ({
+          requestedState: 'stopped',
+          actualState: 'stopped',
+          transition: null,
+          readiness: true,
+          lastSequence: 3,
+          activeDestinations: null,
+          pendingDestinations: null,
+          destinations: [
+            { id: mineA, state: 'stopped' },
+            { id: theirs, state: 'stopped' },
+          ],
+          commandResult: null,
+          error: null,
+        })),
+      } as unknown as AlanaClient,
+      { recordBroadcastDestination: jest.fn() } as never,
+      {} as never,
+      { cancelDeletion: jest.fn(), scheduleDeletion: jest.fn() } as never,
+      new ProgramTeamAccess(
+        prisma,
+        { teamId: 0 } as never,
+        { recordProgramTeamCheck: jest.fn() } as never,
+      ),
+    );
+    try {
+      await prisma.program.createMany({
+        data: [
+          { programId: ownProgram, teamId: team },
+          { programId: otherProgram, teamId: other },
+        ],
+      });
+      await prisma.programState.createMany({
+        data: [
+          { programId: ownProgram, type: 'tv' },
+          { programId: otherProgram, type: 'tv' },
+        ],
+      });
+      await prisma.broadcastDestinationRuntime.create({
+        data: {
+          programId: otherProgram,
+          nextSequence: 42,
+          requestedState: 'stopped',
+          actualState: 'stopped',
+        },
+      });
+
+      const view = await live.getProgramState(ownProgram, team);
+      expect(ids(view.downstream.destinations)).toEqual([mineA]);
+      expect(ids(view.downstream.destinations)).not.toContain(theirs);
+      expect(
+        await prisma.broadcastDestinationRuntime.findUnique({
+          where: { programId: ownProgram },
+        }),
+      ).not.toBeNull();
+
+      // Asking for another team's program with this team's caller reconciles nothing of it.
+      await live.getProgramState(otherProgram, team);
+      expect(
+        (
+          await prisma.broadcastDestinationRuntime.findUniqueOrThrow({
+            where: { programId: otherProgram },
+          })
+        ).nextSequence,
+      ).toBe(42);
+    } finally {
+      await prisma.broadcastDestinationRuntime.deleteMany({
+        where: { programId: { in: [ownProgram, otherProgram] } },
+      });
+      await prisma.programState.deleteMany({
+        where: { programId: { in: [ownProgram, otherProgram] } },
+      });
+      await prisma.program.deleteMany({
+        where: { programId: { in: [ownProgram, otherProgram] } },
+      });
+    }
   });
 
   it("retires and restores the caller's destination, and finds no other team's", async () => {
