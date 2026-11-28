@@ -5,8 +5,55 @@ import { noRecorder } from '../operator-change/operator-change-recorder.testing'
 
 // The rundown shadow (gaulatti/alcantara#123, slice A) through the real executor with fake time: each wait the run
 // begins is compared with what the pure resolver says should be on air. The fixture is flight.lifecycle.spec's.
+interface ShadowState {
+  id: number;
+  programId: string;
+  type: string;
+  radioSettings: { enabled: boolean; palazzoUrl: string };
+  activeFlightSequenceId: number | null;
+  [field: string]: unknown;
+}
+interface ShadowSequence {
+  id: number;
+  programStateId: number;
+  name: string;
+  items: Array<{
+    id: string;
+    kind: string;
+    durationMs?: number;
+    [field: string]: unknown;
+  }>;
+  loop: boolean;
+  isRunning: boolean;
+  activeItemId: string | null;
+  scheduledAt: Date | null;
+  publishedAt: Date | null;
+  lastStartedAt: Date | null;
+  revision: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+interface ShadowArgs {
+  where: ShadowWhere;
+  select?: { activeSceneId?: boolean };
+  [field: string]: unknown;
+}
+interface ShadowScene {
+  id: number;
+  metadata: string;
+}
+interface ShadowWhere {
+  id?: number;
+  programId?: string;
+  scheduledAt?: { not: null } | null;
+  isRunning?: boolean;
+  revision?: number;
+  lastStartedAt?: Date | null;
+  [field: string]: unknown;
+}
+
 function fixture() {
-  const state: any = {
+  const state: ShadowState = {
     id: 1,
     programId: 'news',
     type: 'radio',
@@ -14,7 +61,7 @@ function fixture() {
     radioSettings: { enabled: true, palazzoUrl: 'http://palazzo:3100' },
     activeFlightSequenceId: 7,
   };
-  let sequence: any = {
+  let sequence: ShadowSequence = {
     id: 7,
     programStateId: 1,
     name: 'Rundown',
@@ -29,7 +76,7 @@ function fixture() {
     createdAt: new Date(),
     updatedAt: new Date(),
   };
-  let scene: any = {
+  let scene: ShadowScene = {
     id: 3,
     metadata: '{"title":{"text":"Old","color":"red"},"remove":true}',
   };
@@ -43,57 +90,69 @@ function fixture() {
     durationMs: 1000,
     asset: { labels: [{ labelId: 'music', position: 0 }] },
   };
-  const prisma: any = {
+  const prisma = {
     asRunRecord: { findMany: jest.fn().mockResolvedValue([]) },
     programState: {
-      findUnique: jest.fn(async ({ where }: any) =>
+      findUnique: jest.fn(async ({ where }: ShadowArgs) =>
         where.programId === 'news' ? state : null,
       ),
-      update: jest.fn(async ({ data }: any) => Object.assign(state, data)),
+      update: jest.fn(async ({ data }: { data: Record<string, unknown> }) =>
+        Object.assign(state, data),
+      ),
     },
     flightSequence: {
-      findMany: jest.fn(async ({ where }: any = {}) =>
+      findMany: jest.fn(async ({ where }: Partial<ShadowArgs> = {}) =>
         where?.scheduledAt ? [] : [sequence],
       ),
-      findFirst: jest.fn(async ({ where }: any) =>
+      findFirst: jest.fn(async ({ where }: ShadowArgs) =>
         where.id === sequence.id ? sequence : null,
       ),
-      findUnique: jest.fn(async ({ where }: any) =>
+      findUnique: jest.fn(async ({ where }: ShadowArgs) =>
         where.id === sequence.id ? sequence : null,
       ),
       findUniqueOrThrow: jest.fn(async () => sequence),
-      create: jest.fn(async ({ data }: any) => {
+      create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         sequence = { ...sequence, ...data };
         return sequence;
       }),
-      update: jest.fn(async ({ data }: any) => {
+      update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         sequence = { ...sequence, ...data };
         return sequence;
       }),
-      updateMany: jest.fn(async ({ where, data }: any) => {
-        if (
-          where?.isRunning !== undefined &&
-          where.isRunning !== sequence.isRunning
-        )
-          return { count: 0 };
-        if (where?.scheduledAt?.not === null && !sequence.scheduledAt)
-          return { count: 0 };
-        if (
-          where?.revision !== undefined &&
-          where.revision !== sequence.revision
-        )
-          return { count: 0 };
-        if (where?.lastStartedAt === null && sequence.lastStartedAt)
-          return { count: 0 };
-        sequence = {
-          ...sequence,
-          ...data,
-          ...(data.revision
-            ? { revision: sequence.revision + data.revision.increment }
-            : {}),
-        };
-        return { count: 1 };
-      }),
+      updateMany: jest.fn(
+        async ({
+          where,
+          data,
+        }: {
+          where: ShadowWhere;
+          data: Partial<Omit<ShadowSequence, 'revision'>> & {
+            revision?: { increment: number };
+          };
+        }) => {
+          if (
+            where?.isRunning !== undefined &&
+            where.isRunning !== sequence.isRunning
+          )
+            return { count: 0 };
+          if (where?.scheduledAt?.not === null && !sequence.scheduledAt)
+            return { count: 0 };
+          if (
+            where?.revision !== undefined &&
+            where.revision !== sequence.revision
+          )
+            return { count: 0 };
+          if (where?.lastStartedAt === null && sequence.lastStartedAt)
+            return { count: 0 };
+          sequence = {
+            ...sequence,
+            ...data,
+            ...(data.revision
+              ? { revision: sequence.revision + data.revision.increment }
+              : {}),
+          } as ShadowSequence;
+          return { count: 1 };
+        },
+      ),
       delete: jest.fn(),
     },
     song: {
@@ -111,7 +170,7 @@ function fixture() {
     },
     scene: {
       findUnique: jest.fn(async () => scene),
-      update: jest.fn(async ({ data }: any) => {
+      update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         scene = { ...scene, ...data };
         return scene;
       }),
@@ -121,7 +180,7 @@ function fixture() {
       findUnique: jest.fn().mockResolvedValue({ id: 'music', name: 'Music' }),
     },
   };
-  const programs: any = {
+  const programs: Record<string, jest.Mock> = {
     broadcastUpdate: jest.fn(),
     takeProgramSongOffAir: jest.fn(),
     stopProgramSongForTimedBlock: jest.fn(),
@@ -145,9 +204,15 @@ function fixture() {
     }),
   };
   const metrics = new RadioMetricsService();
-  const service = new FlightService(prisma, programs, metrics, noRecorder(), {
-    teamId: 0,
-  } as never);
+  const service = new FlightService(
+    prisma as never,
+    programs as never,
+    metrics,
+    noRecorder(),
+    {
+      teamId: 0,
+    } as never,
+  );
   return {
     service,
     prisma,
@@ -385,11 +450,14 @@ describe('the rundown shadow', () => {
       { id: 'first', kind: 'wait', durationMs: 10_000 },
       { id: 'second', kind: 'wait', durationMs: 10_000 },
     ];
-    const read = f.prisma.programState.findUnique.getMockImplementation();
-    f.prisma.programState.findUnique.mockImplementation(async (args: any) =>
-      args?.select?.activeSceneId
-        ? Promise.reject(new TypeError('db down'))
-        : read(args),
+    const read = f.prisma.programState.findUnique.getMockImplementation() as (
+      args: ShadowArgs,
+    ) => Promise<ShadowState | null>;
+    f.prisma.programState.findUnique.mockImplementation(
+      async (args: ShadowArgs) =>
+        args?.select?.activeSceneId
+          ? Promise.reject(new TypeError('db down'))
+          : read(args),
     );
     await f.service.start('news');
     await flush();
@@ -407,9 +475,14 @@ describe('the rundown shadow', () => {
   it('logs a failure that is not an error as unknown', async () => {
     const f = setup();
     f.sequence().items = [{ id: 'first', kind: 'wait', durationMs: 10_000 }];
-    const read = f.prisma.programState.findUnique.getMockImplementation();
-    f.prisma.programState.findUnique.mockImplementation(async (args: any) =>
-      args?.select?.activeSceneId ? Promise.reject('not an error') : read(args),
+    const read = f.prisma.programState.findUnique.getMockImplementation() as (
+      args: ShadowArgs,
+    ) => Promise<ShadowState | null>;
+    f.prisma.programState.findUnique.mockImplementation(
+      async (args: ShadowArgs) =>
+        args?.select?.activeSceneId
+          ? Promise.reject('not an error')
+          : read(args),
     );
     await f.service.start('news');
     await flush();
@@ -432,11 +505,14 @@ describe('the rundown shadow', () => {
     const f = setup();
     f.sequence().items = [{ id: 'first', kind: 'wait', durationMs: 10_000 }];
     let release!: () => void;
-    const read = f.prisma.programState.findUnique.getMockImplementation();
-    f.prisma.programState.findUnique.mockImplementation(async (args: any) =>
-      args?.select?.activeSceneId
-        ? new Promise((resolve) => (release = () => resolve(read(args))))
-        : read(args),
+    const read = f.prisma.programState.findUnique.getMockImplementation() as (
+      args: ShadowArgs,
+    ) => Promise<ShadowState | null>;
+    f.prisma.programState.findUnique.mockImplementation(
+      async (args: ShadowArgs) =>
+        args?.select?.activeSceneId
+          ? new Promise((resolve) => (release = () => resolve(read(args))))
+          : read(args),
     );
     await f.service.start('news');
     await flush();

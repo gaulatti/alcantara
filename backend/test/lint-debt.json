@@ -440,12 +440,8 @@
   },
   "src/program/flight.shadow.spec.ts": {
     "@typescript-eslint/await-thenable": 1,
-    "@typescript-eslint/no-unsafe-assignment": 11,
-    "@typescript-eslint/no-unsafe-call": 15,
-    "@typescript-eslint/no-unsafe-member-access": 49,
-    "@typescript-eslint/no-unsafe-return": 15,
     "@typescript-eslint/prefer-promise-reject-errors": 1,
-    "@typescript-eslint/require-await": 18
+    "@typescript-eslint/require-await": 15
   },
   "src/program/flight.song-scope.tenancy.spec.ts": {
     "@typescript-eslint/require-await": 3
