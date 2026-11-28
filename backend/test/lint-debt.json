@@ -418,16 +418,15 @@
     "@typescript-eslint/require-await": 2
   },
   "src/program/flight.recovery.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 4,
-    "@typescript-eslint/no-unsafe-call": 6,
-    "@typescript-eslint/no-unsafe-member-access": 22,
-    "@typescript-eslint/no-unsafe-return": 3,
+    "@typescript-eslint/no-unsafe-call": 2,
+    "@typescript-eslint/no-unsafe-member-access": 6,
+    "@typescript-eslint/no-unsafe-return": 1,
     "@typescript-eslint/require-await": 3
   },
   "src/program/flight.service.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 9,
+    "@typescript-eslint/no-unsafe-assignment": 6,
     "@typescript-eslint/no-unsafe-call": 5,
-    "@typescript-eslint/no-unsafe-member-access": 8,
+    "@typescript-eslint/no-unsafe-member-access": 6,
     "@typescript-eslint/no-unsafe-return": 2,
     "@typescript-eslint/require-await": 3
   },
