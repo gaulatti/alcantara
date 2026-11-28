@@ -75,9 +75,9 @@ function setup() {
   const lists: unknown[] = [];
   let completed = false;
   const subscriptions: Subscription[] = [];
-  const open = (programId = PROGRAM) =>
+  const open = async (programId = PROGRAM) =>
     subscriptions.push(
-      service.onAirStream(KEY, programId).subscribe({
+      (await service.onAirStream(KEY, programId)).subscribe({
         next: (event) => lists.push(JSON.parse(event.data)),
         complete: () => (completed = true),
       }),
@@ -112,7 +112,7 @@ describe('the on-air stream', () => {
 
   it('sends the list at once, then each change without waiting for a poll', async () => {
     const h = setup();
-    h.open();
+    await h.open();
     await settle();
     expect(h.lists).toEqual([{ programId: PROGRAM, guests: [] }]);
 
@@ -143,7 +143,7 @@ describe('the on-air stream', () => {
 
   it('sends an unchanged list only on the refresh, and ignores other programs', async () => {
     const h = setup();
-    h.open();
+    await h.open();
     await settle();
     await h.service.controlParticipant(PROGRAM, `guest-${ANNA}`, {
       type: 'cue',
@@ -192,7 +192,7 @@ describe('the on-air stream', () => {
   ])('reads the list again after %s', async (_name, act) => {
     const h = setup();
     h.setOnAir([anna]);
-    h.open();
+    await h.open();
     await settle();
     h.setOnAir([]);
     await act(h);
@@ -207,7 +207,7 @@ describe('the on-air stream', () => {
     h.prisma.guestInvitation.findMany.mockImplementationOnce(
       () => new Promise((resolve) => (release = resolve)),
     );
-    h.open();
+    await h.open();
     await settle();
     h.setOnAir([anna]);
     await h.service.controlParticipant(PROGRAM, `guest-${ANNA}`, {
@@ -231,8 +231,8 @@ describe('the on-air stream', () => {
 
   it('counts open streams, stops reading once closed, and ends every stream at shutdown', async () => {
     const h = setup();
-    h.open();
-    h.open();
+    await h.open();
+    await h.open();
     await settle();
     expect(await metric(h.metrics, 'alcantara_webrtc_on_air_streams')).toMatch(
       / 2$/,
@@ -253,13 +253,16 @@ describe('the on-air stream', () => {
     );
   });
 
-  it('refuses without the renderer key or with a bad program id, before opening', () => {
+  it('refuses without the renderer key or with a bad program id, before opening', async () => {
     const h = setup();
-    expect(() => h.service.onAirStream('wrong', PROGRAM)).toThrow(
+    await expect(h.service.onAirStream('wrong', PROGRAM)).rejects.toThrow(
       UnauthorizedException,
     );
-    expect(() => h.service.onAirStream(KEY, 'news/main')).toThrow(
+    await expect(h.service.onAirStream(KEY, 'news/main')).rejects.toThrow(
       BadRequestException,
+    );
+    await expect(h.service.onAirStream('wrong', 'news/main')).rejects.toThrow(
+      UnauthorizedException,
     );
   });
 });

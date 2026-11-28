@@ -8,7 +8,6 @@ import {
   Query,
   Sse,
 } from '@nestjs/common';
-import type { Observable } from 'rxjs';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { Public } from '../auth/public.decorator';
 import { RequirePermission } from '../auth/require-permission.decorator';
@@ -69,7 +68,8 @@ export class ReturnRouterController {
   onAirStream(
     @Headers('x-renderer-key') rendererKey: string | undefined,
     @Query('programId') programId: unknown,
-  ): Observable<{ data: string }> {
+  ) {
+    // Nest awaits the stream before it answers, so a refused credential is a 401 or 403, not a broken stream.
     return this.webrtc.onAirStream(rendererKey, programId);
   }
 }

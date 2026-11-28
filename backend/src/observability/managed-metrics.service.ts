@@ -390,6 +390,19 @@ const SONG_SEQUENCE_SAVE_RESULTS = [
   'refused_emptying',
 ] as const;
 
+/** The calls endpoints that take a renderer credential (gaulatti/alcantara#884); bounded, so they can label a metric. */
+export const RENDERER_AUTH_ENDPOINTS = [
+  'renderer_token',
+  'renderer_state',
+  'renderer_source_token',
+  'return_routers',
+  'return_audio_ticket',
+  'on_air',
+] as const;
+export type RendererAuthEndpoint = (typeof RENDERER_AUTH_ENDPOINTS)[number];
+/** Which credential a renderer presented: a program's key, the shared key, the fleet key, or none that matched. */
+export type RendererAuthCredential = 'program' | 'shared' | 'fleet' | 'none';
+
 @Injectable()
 export class ManagedMetricsService {
   readonly registry = new Registry();
@@ -437,6 +450,7 @@ export class ManagedMetricsService {
   private readonly onAirGuests: Gauge;
   private readonly onAirStreams: Gauge;
   private readonly chainOk: Gauge<string>;
+  private readonly rendererAuth: Counter<string>;
   private readonly onAirStreamChanges: Counter;
   private readonly mcpAuth: Counter<string>;
   private readonly mcpOAuth: Counter<string>;
@@ -715,6 +729,15 @@ export class ManagedMetricsService {
       help: 'Open on-air list streams (one per connected contribution worker).',
       registers: [this.registry],
     });
+    this.rendererAuth = new Counter({
+      name: 'alcantara_webrtc_renderer_auth_total',
+      help: 'Renderer credential checks on the calls endpoints (gaulatti/alcantara#884), by bounded endpoint, the credential that matched (program, shared, fleet or none) and the result.',
+      labelNames: ['endpoint', 'credential', 'result'],
+      registers: [this.registry],
+    });
+    for (const endpoint of RENDERER_AUTH_ENDPOINTS)
+      for (const credential of ['program', 'shared'] as const)
+        this.rendererAuth.labels(endpoint, credential, 'accepted').inc(0);
     this.chainOk = new Gauge({
       name: 'alcantara_webrtc_chain_ok',
       help: 'Whether the last call-chain health check found the component ok (1) or not (0).',
@@ -1201,6 +1224,14 @@ export class ManagedMetricsService {
 
   recordOnAirStream(delta: 1 | -1): void {
     this.onAirStreams.inc(delta);
+  }
+
+  recordRendererAuth(
+    endpoint: RendererAuthEndpoint,
+    credential: RendererAuthCredential,
+    result: 'accepted' | 'refused',
+  ): void {
+    this.rendererAuth.labels(endpoint, credential, result).inc();
   }
 
   setChainOk(component: 'return_runner' | 'livekit', ok: boolean): void {

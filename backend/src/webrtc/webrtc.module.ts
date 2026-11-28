@@ -5,8 +5,11 @@ import { WebrtcService } from './webrtc.service';
 import { ReturnRouterController } from './return-router.controller';
 import { ReturnRouterService } from './return-router.service';
 import { WebrtcMcpTools } from '../mcp/capabilities/webrtc';
+import { RendererKeysModule } from '../renderer-keys/renderer-keys.module';
 
 @Module({
+  // The per-program renderer credential the calls endpoints check (gaulatti/alcantara#884).
+  imports: [RendererKeysModule],
   controllers: [WebrtcController, ReturnRouterController],
   providers: [
     WebrtcMcpTools,

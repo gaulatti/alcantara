@@ -18,7 +18,7 @@ export const LIVEKIT_SECRET_KEYS: readonly [
   'webrtcSessionSecret',
 ];
 
-export const OPTIONAL_WEBRTC_SECRET_KEYS: readonly ['webrtcRendererKey'];
+export const OPTIONAL_WEBRTC_SECRET_KEYS: readonly ['webrtcRendererKey', 'webrtcFleetKey'];
 
 export type RuntimeSecretPayload = {
   palazzoAllowedUrls: string;
@@ -34,6 +34,7 @@ export type RuntimeSecretPayload = {
   livekitApiSecret?: string;
   webrtcSessionSecret?: string;
   webrtcRendererKey?: string;
+  webrtcFleetKey?: string;
 };
 
 export function isPrivateServiceHostname(hostname: string): boolean;

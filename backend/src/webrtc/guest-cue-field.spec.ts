@@ -92,7 +92,7 @@ describe('the guest heartbeat carries the guest own cue state', () => {
       guestEvent: { create: jest.fn(async () => ({})) },
     };
     const service = new WebrtcService(config(), prisma as never, new ManagedMetricsService());
-    jest.spyOn(service, 'authorizeRenderer').mockImplementation(() => {});
+    jest.spyOn(service, 'authorizeFor').mockImplementation(async (_endpoint, _key, programId) => String(programId));
     const list = await service.onAirGuests(undefined, 'main');
     const answer = await service.heartbeat(service['signSessionToken'](INVITATION, SESSION), null);
     expect(list.guests).toHaveLength(1);

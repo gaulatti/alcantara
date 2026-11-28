@@ -28,7 +28,44 @@ does not exist.
 Each rotation is recorded as an operator change (who, when, through which route) under the program, with `rendererKey`
 named but never valued and `version` valued before and after.
 
-## Checks and migration
+## Checks on the calls endpoints
 
-The checks on the calls endpoints, the fleet credential for the cross-program router list, and the holders' move to
-per-program keys follow in later steps of #884. Until then every caller keeps using its current credential.
+Each endpoint reads `X-Renderer-Key` and the program it acts on (`backend/src/renderer-keys/renderer-auth.service.ts`):
+
+| Endpoint | Program | Accepts |
+| --- | --- | --- |
+| `POST /webrtc/renderer-token` | body `programId` | that program's key, or the shared key |
+| `POST /webrtc/renderer-state` | body `programId` | that program's key, or the shared key |
+| `POST /webrtc/renderer-source-token` | body `programId` | that program's key, or the shared key |
+| `POST /webrtc/return-audio-ticket` | body `programId` | that program's key, or the shared key |
+| `GET /webrtc/on-air` and `GET /webrtc/on-air/stream` | query `programId` | that program's key, or the shared key |
+| `GET /webrtc/return-routers` | every program | the fleet key, or the shared key |
+
+- A valid key for another program is refused with `403`. Any other credential (the fleet key on a program endpoint, a
+  program key on the router list, a wrong key or none) is refused with `401`.
+- The stream answers `401` or `403` before it opens, never as a stream that breaks.
+- The fleet key is the runtime secret's optional `webrtcFleetKey` (`WEBRTC_FLEET_KEY`, at least 32 characters). The shared
+  key is `webrtcRendererKey` (`WEBRTC_RENDERER_KEY`).
+
+## Shared-key fallback and its closer
+
+The shared key is accepted on every endpoint until it is removed. Each acceptance is counted and logged with its program
+and endpoint (`Shared renderer key accepted for program <id> on <endpoint>`), never with a key's value, so its last
+use shows. The shared key is removed once production shows no shared-key acceptance for 24 hours.
+
+## Metric
+
+`alcantara_webrtc_renderer_auth_total{endpoint,credential,result}`:
+
+- `endpoint`: `renderer_token`, `renderer_state`, `renderer_source_token`, `return_routers`, `return_audio_ticket` or
+  `on_air`;
+- `credential`: the one that matched, `program`, `shared`, `fleet` or `none`;
+- `result`: `accepted` or `refused`.
+
+Each endpoint's `program` and `shared` acceptances are exposed from zero. For the closer, read
+`sum(increase(alcantara_webrtc_renderer_auth_total{credential="shared",result="accepted"}[24h]))`.
+
+## Holders
+
+The return runner, the contribution worker and the program pages move to per-program keys in the next step of #884. Until
+then they keep the shared key, which is still accepted.

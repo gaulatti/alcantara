@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { RadioMonitorService } from '../radio/radio-monitor.service';
 import { WebrtcService } from './webrtc.service';
@@ -41,7 +45,7 @@ export class ReturnRouterService {
     runningValue: unknown,
   ): Promise<{ programs: string[] }> {
     try {
-      this.webrtc.authorizeRenderer(rendererKey);
+      this.webrtc.authorizeFleet(rendererKey);
     } catch (error) {
       this.metrics.recordReturnRouterPoll(
         error instanceof UnauthorizedException ? 'rejected' : 'failure',
@@ -96,13 +100,22 @@ export class ReturnRouterService {
   }
 
   async audioTicket(rendererKey: string | undefined, programIdValue: unknown) {
+    let programId: string;
     try {
-      this.webrtc.authorizeRenderer(rendererKey);
+      programId = await this.webrtc.authorizeFor(
+        'return_audio_ticket',
+        rendererKey,
+        programIdValue,
+      );
     } catch (error) {
-      this.metrics.recordReturnAudioTicket('rejected');
+      // A credential refusal is counted; an invalid program id is refused as before, uncounted.
+      if (
+        error instanceof UnauthorizedException ||
+        error instanceof ForbiddenException
+      )
+        this.metrics.recordReturnAudioTicket('rejected');
       throw error;
     }
-    const programId = this.webrtc.normalizeRendererProgramId(programIdValue);
     try {
       const grant = await this.monitor.issue(programId, { skipBurst: true });
       this.metrics.recordReturnAudioTicket('issued');

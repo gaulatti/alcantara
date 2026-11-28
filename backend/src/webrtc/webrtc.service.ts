@@ -40,8 +40,10 @@ import {
   WEBRTC_JOIN_RESULTS,
   type WebrtcIcePath,
   type WebrtcJoinResult,
+  type RendererAuthEndpoint,
 } from '../observability/managed-metrics.service';
 import { validProgramId } from '../program/program-id';
+import { RendererAuthService } from '../renderer-keys/renderer-auth.service';
 
 type ReturnVideo = 'program' | 'preview' | 'none';
 type ReturnAudioBus = 'master' | 'monitor' | `aux-${number}`;
@@ -158,6 +160,8 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly metrics: ManagedMetricsService,
     @Optional() private readonly lease?: PlayoutLease,
+    /** The per-program renderer credential (gaulatti/alcantara#884). The app always provides it (webrtc.module.ts). */
+    @Optional() private readonly rendererAuth?: RendererAuthService,
   ) {}
 
   onModuleInit() {
@@ -948,8 +952,11 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
     roleValue?: unknown,
   ) {
     this.requireConfiguration();
-    this.requireRendererKey(rendererKey);
-    const programId = this.normalizeProgramId(programIdValue);
+    const programId = await this.authorizeFor(
+      'renderer_token',
+      rendererKey,
+      programIdValue,
+    );
     if (
       roleValue !== undefined &&
       roleValue !== 'return-router' &&
@@ -1022,8 +1029,10 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
    * open invitation. Anyone else is off air, including a guest who rejoined in a new session after being cued.
    */
   async onAirGuests(rendererKey: string | undefined, programIdValue: unknown) {
-    this.authorizeRenderer(rendererKey);
-    return this.onAirList(this.normalizeProgramId(programIdValue));
+    this.requireConfiguration();
+    return this.onAirList(
+      await this.authorizeFor('on_air', rendererKey, programIdValue),
+    );
   }
 
   /**
@@ -1032,12 +1041,16 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
    * list identical to the last one sent is sent only on the refresh. A failed read sends nothing; the reader then
    * finds the stream stale and polls.
    */
-  onAirStream(
+  async onAirStream(
     rendererKey: string | undefined,
     programIdValue: unknown,
-  ): Observable<{ data: string }> {
-    this.authorizeRenderer(rendererKey);
-    const programId = this.normalizeProgramId(programIdValue);
+  ): Promise<Observable<{ data: string }>> {
+    this.requireConfiguration();
+    const programId = await this.authorizeFor(
+      'on_air',
+      rendererKey,
+      programIdValue,
+    );
     return new Observable<{ data: string }>((subscriber) => {
       let closed = false;
       let last: string | null = null;
@@ -1177,10 +1190,36 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
     return this.normalizeProgramId(value);
   }
 
-  /** Refuses anything but the renderer key; the return router's endpoints share it with the renderer pages. */
-  authorizeRenderer(rendererKey: string | undefined) {
+  /**
+   * A program endpoint's renderer credential: that program's key, or the shared key until it is removed
+   * (gaulatti/alcantara#884). Returns the program's id. A program id that is not valid is refused as before, after
+   * the credential is checked against the shared key alone.
+   */
+  async authorizeFor(
+    endpoint: RendererAuthEndpoint,
+    rendererKey: string | undefined,
+    programIdValue: unknown,
+  ): Promise<string> {
+    let programId: string;
+    try {
+      programId = this.normalizeProgramId(programIdValue);
+    } catch (error) {
+      this.requireRendererKey(rendererKey);
+      throw error;
+    }
+    if (this.rendererAuth) {
+      await this.rendererAuth.authorizeProgram(endpoint, rendererKey, programId);
+    } else {
+      this.requireRendererKey(rendererKey);
+    }
+    return programId;
+  }
+
+  /** The return runner's cross-program router list: the fleet key, or the shared key until it is removed. */
+  authorizeFleet(rendererKey: string | undefined) {
     this.requireConfiguration();
-    this.requireRendererKey(rendererKey);
+    if (this.rendererAuth) this.rendererAuth.authorizeFleet(rendererKey);
+    else this.requireRendererKey(rendererKey);
   }
 
   /**
@@ -1224,8 +1263,11 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
     programIdValue: unknown,
   ) {
     this.requireConfiguration();
-    this.requireRendererKey(rendererKey);
-    const programId = this.normalizeProgramId(programIdValue);
+    const programId = await this.authorizeFor(
+      'renderer_state',
+      rendererKey,
+      programIdValue,
+    );
     const invitations = await this.prisma.guestInvitation.findMany({
       where: { programId, revokedAt: null, expiresAt: { gt: new Date() } },
       orderBy: { slotNumber: 'asc' },
@@ -1250,8 +1292,11 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
     programIdValue: unknown,
   ) {
     this.requireConfiguration();
-    this.requireRendererKey(rendererKey);
-    const programId = this.normalizeProgramId(programIdValue);
+    const programId = await this.authorizeFor(
+      'renderer_source_token',
+      rendererKey,
+      programIdValue,
+    );
     const token = new AccessToken(this.apiKey, this.apiSecret, {
       identity: `renderer-source-${programId}-${randomUUID()}`,
       name: `Alcantara guest source ${programId}`,

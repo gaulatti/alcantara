@@ -22,7 +22,8 @@ const LIVEKIT_SECRET_KEYS = Object.freeze([
   'webrtcSessionSecret',
 ]);
 // The program renderer's key for the WebRTC renderer routes; optional.
-const OPTIONAL_WEBRTC_SECRET_KEYS = Object.freeze(['webrtcRendererKey']);
+// webrtcFleetKey (gaulatti/alcantara#884): the return runner's credential for the one cross-program call.
+const OPTIONAL_WEBRTC_SECRET_KEYS = Object.freeze(['webrtcRendererKey', 'webrtcFleetKey']);
 // LiveKit refuses an API secret shorter than 32 characters; the session secret
 // signs guest sessions and gets the same floor.
 const MINIMUM_WEBRTC_SECRET_LENGTH = 32;

@@ -155,6 +155,7 @@ const LIVEKIT_ENVIRONMENT = [
   ['livekitApiSecret', 'LIVEKIT_API_SECRET'],
   ['webrtcSessionSecret', 'WEBRTC_SESSION_SECRET'],
   ['webrtcRendererKey', 'WEBRTC_RENDERER_KEY'],
+  ['webrtcFleetKey', 'WEBRTC_FLEET_KEY'],
 ] as const;
 
 export function validateExternalSourceEncryption(
