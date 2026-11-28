@@ -1,4 +1,7 @@
-import { PlayoutLease, startWhenActive } from '../playout/playout-lease.service';
+import {
+  PlayoutLease,
+  startWhenActive,
+} from '../playout/playout-lease.service';
 import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   BadRequestException,

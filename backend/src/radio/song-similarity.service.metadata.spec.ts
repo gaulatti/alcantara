@@ -3,7 +3,10 @@ import 'reflect-metadata';
 // Exercise the `design:paramtypes` fallback to `Object` that TypeScript emits
 // when a constructor dependency is unresolved at decoration time.
 jest.mock('../prisma.service', () => ({ PrismaService: undefined }));
-jest.mock('../playout/playout-lease.service', () => ({ ...jest.requireActual('../playout/playout-lease.service'), PlayoutLease: undefined }));
+jest.mock('../playout/playout-lease.service', () => ({
+  ...jest.requireActual('../playout/playout-lease.service'),
+  PlayoutLease: undefined,
+}));
 jest.mock('./radio-metrics.service', () => ({
   RadioMetricsService: undefined,
 }));

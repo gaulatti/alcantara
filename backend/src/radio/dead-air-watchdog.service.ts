@@ -15,10 +15,7 @@ import {
   RadioOutputConfidenceService,
   type DeadAirStatus,
 } from './radio-output-confidence.service';
-import {
-  RadioMetricsService,
-  type DeadAirStep,
-} from './radio-metrics.service';
+import { RadioMetricsService, type DeadAirStep } from './radio-metrics.service';
 import { RadioService } from './radio.service';
 import {
   SongExecutionEngine,
@@ -160,7 +157,9 @@ export class DeadAirWatchdogService implements OnModuleInit, OnModuleDestroy {
       if (episode?.step && reading.state === 'audible' && !episode.gaveUp)
         this.metrics.recordDeadAirStep(episode.step, 'recovered');
       if (episode?.gaveUp)
-        this.logger.log(`Dead air on ${programId} ended: the radio is heard again`);
+        this.logger.log(
+          `Dead air on ${programId} ended: the radio is heard again`,
+        );
       this.endEpisode(programId, watch);
       return;
     }
@@ -231,7 +230,8 @@ export class DeadAirWatchdogService implements OnModuleInit, OnModuleDestroy {
     this.logger.warn(
       `Dead air on ${programId}: ${step} (${this.describe(seen)}, guards=ok)`,
     );
-    if (current.step) this.metrics.recordDeadAirStep(current.step, 'still_silent');
+    if (current.step)
+      this.metrics.recordDeadAirStep(current.step, 'still_silent');
     if (step === 'resend') {
       const replay = this.engine.resendForDeadAir(programId, requestId);
       if (!replay) {
@@ -348,7 +348,8 @@ export class DeadAirWatchdogService implements OnModuleInit, OnModuleDestroy {
     quietForMs: number,
     capped: boolean,
   ): void {
-    if (episode.step) this.metrics.recordDeadAirStep(episode.step, 'still_silent');
+    if (episode.step)
+      this.metrics.recordDeadAirStep(episode.step, 'still_silent');
     this.metrics.recordDeadAirStep('give_up', 'still_silent');
     episode.step = 'give_up';
     episode.gaveUp = true;

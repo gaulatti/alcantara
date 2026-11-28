@@ -551,7 +551,10 @@ describe('the engine side of the dead-air watchdog', () => {
       playbackId: 'intro-1',
       parentPlaybackId: id,
     });
-    expect(h.engine.deadAirTarget(PROGRAM)).toEqual({ ok: false, reason: 'busy' });
+    expect(h.engine.deadAirTarget(PROGRAM)).toEqual({
+      ok: false,
+      reason: 'busy',
+    });
     h.palazzo.event('intro.ended', {
       programId: PROGRAM,
       playbackId: 'intro-1',
@@ -561,14 +564,20 @@ describe('the engine side of the dead-air watchdog', () => {
     // The only song ends and the rotation does not loop: it ends, and a rotation that ended is not automatic.
     h.palazzo.endCurrent();
     await settle();
-    expect(h.engine.deadAirTarget(PROGRAM)).toEqual({ ok: false, reason: 'not_automatic' });
+    expect(h.engine.deadAirTarget(PROGRAM)).toEqual({
+      ok: false,
+      reason: 'not_automatic',
+    });
   });
 
   it('has no song to judge when the automatic rotation has nothing it can play', async () => {
     const h = harness({ items: [] });
     h.idle();
     await settle();
-    expect(h.engine.deadAirTarget(PROGRAM)).toEqual({ ok: false, reason: 'no_song' });
+    expect(h.engine.deadAirTarget(PROGRAM)).toEqual({
+      ok: false,
+      reason: 'no_song',
+    });
   });
 
   it('plays a song with no library id again without inventing one', async () => {
@@ -578,7 +587,8 @@ describe('the engine side of the dead-air watchdog', () => {
     await settle();
     expect(replay).not.toBeNull();
     // The eighth argument of RadioService.playSong is the library song id.
-    expect((h.palazzo.radioService.playSong.mock.calls[1] as unknown[])[7]).toBeUndefined();
+    expect(
+      (h.palazzo.radioService.playSong.mock.calls[1] as unknown[])[7],
+    ).toBeUndefined();
   });
 });
-

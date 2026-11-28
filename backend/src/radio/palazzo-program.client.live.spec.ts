@@ -137,7 +137,10 @@ describe('PalazzoProgramClient live input', () => {
       await settle();
       h.push(event(1, 'snapshot', { state: state(1, true, { onAir }) }));
       await settle();
-      expect(h.client.getStatus()).toMatchObject({ connection: 'connected', live: { onAir } });
+      expect(h.client.getStatus()).toMatchObject({
+        connection: 'connected',
+        live: { onAir },
+      });
       h.client.stop();
     }
   });

@@ -139,7 +139,9 @@ export class PalazzoProgramClient {
       degraded: this.isDegraded(),
       detail: this.detail,
       playout: this.playout,
-      ...(this.live && this.liveFresh(Date.now()) ? { live: { onAir: this.live.onAir } } : {}),
+      ...(this.live && this.liveFresh(Date.now())
+        ? { live: { onAir: this.live.onAir } }
+        : {}),
     };
   }
 
@@ -153,7 +155,10 @@ export class PalazzoProgramClient {
     if (this.live === null || this.liveReportedAt === null) return false;
     const hearing =
       this.connection === 'connected' || this.connection === 'polling';
-    return hearing && now - this.liveReportedAt <= PALAZZO_EVENT_IDLE_MS + this.stalenessMs;
+    return (
+      hearing &&
+      now - this.liveReportedAt <= PALAZZO_EVENT_IDLE_MS + this.stalenessMs
+    );
   }
 
   /**
@@ -413,7 +418,10 @@ export class PalazzoProgramClient {
       const liveChanged = this.live?.onAir !== live?.onAir;
       this.live = live;
       this.liveReportedAt = Date.now();
-      if (!this.setConnection('connected', null) && (playoutChanged || liveChanged))
+      if (
+        !this.setConnection('connected', null) &&
+        (playoutChanged || liveChanged)
+      )
         this.options.callbacks.onStatus(
           this.options.programId,
           this.getStatus(),

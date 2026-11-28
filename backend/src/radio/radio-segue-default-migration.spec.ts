@@ -8,7 +8,10 @@ const migration = readFileSync(
   ),
   'utf8',
 );
-const schema = readFileSync(join(process.cwd(), 'prisma/schema.prisma'), 'utf8');
+const schema = readFileSync(
+  join(process.cwd(), 'prisma/schema.prisma'),
+  'utf8',
+);
 
 describe('segueMode default-on migration', () => {
   it('changes only the column default, so existing programs keep their stored segueMode', () => {

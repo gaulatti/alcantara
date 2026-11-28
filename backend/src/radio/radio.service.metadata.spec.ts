@@ -12,7 +12,9 @@ jest.mock('./radio-metrics.service', () => ({
 jest.mock('../observability/managed-metrics.service', () => ({
   ManagedMetricsService: undefined,
 }));
-jest.mock('../tenancy/program-team-access', () => ({ ProgramTeamAccess: undefined }));
+jest.mock('../tenancy/program-team-access', () => ({
+  ProgramTeamAccess: undefined,
+}));
 jest.mock('./palazzo-machine.client', () => ({
   PalazzoMachineClient: undefined,
   PalazzoMachineError: class PalazzoMachineError extends Error {},

@@ -261,19 +261,105 @@ describe('PalazzoMachineClient', () => {
     const metrics = new RadioMetricsService();
     const client = new PalazzoMachineClient(config(), metrics, fetchImpl);
 
-    const invalidCases: Array<{ duration?: number; segue?: any; loudness?: any }> = [
+    const invalidCases: Array<{
+      duration?: number;
+      segue?: any;
+      loudness?: any;
+    }> = [
       { segue: null },
       { segue: 'not-an-object' },
-      { segue: { cueInSeconds: NaN, cueOutSeconds: 10, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 0 } },
-      { segue: { cueInSeconds: -1, cueOutSeconds: 10, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 0 } },
-      { segue: { cueInSeconds: 10, cueOutSeconds: 5, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 0 } },
-      { segue: { cueInSeconds: 5, cueOutSeconds: 5, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 0 } },
-      { duration: 20, segue: { cueInSeconds: 0, cueOutSeconds: 25, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 0 } },
-      { duration: NaN, segue: { cueInSeconds: 0, cueOutSeconds: 10, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 0 } },
-      { segue: { cueInSeconds: 0, cueOutSeconds: 10, fadeInSeconds: -1, fadeOutSeconds: 0, overlapSeconds: 0 } },
-      { segue: { cueInSeconds: 0, cueOutSeconds: 10, fadeInSeconds: 0, fadeOutSeconds: -1, overlapSeconds: 0 } },
-      { segue: { cueInSeconds: 0, cueOutSeconds: 10, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: -1 } },
-      { segue: { cueInSeconds: 2, cueOutSeconds: 10, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 9 } },
+      {
+        segue: {
+          cueInSeconds: NaN,
+          cueOutSeconds: 10,
+          fadeInSeconds: 0,
+          fadeOutSeconds: 0,
+          overlapSeconds: 0,
+        },
+      },
+      {
+        segue: {
+          cueInSeconds: -1,
+          cueOutSeconds: 10,
+          fadeInSeconds: 0,
+          fadeOutSeconds: 0,
+          overlapSeconds: 0,
+        },
+      },
+      {
+        segue: {
+          cueInSeconds: 10,
+          cueOutSeconds: 5,
+          fadeInSeconds: 0,
+          fadeOutSeconds: 0,
+          overlapSeconds: 0,
+        },
+      },
+      {
+        segue: {
+          cueInSeconds: 5,
+          cueOutSeconds: 5,
+          fadeInSeconds: 0,
+          fadeOutSeconds: 0,
+          overlapSeconds: 0,
+        },
+      },
+      {
+        duration: 20,
+        segue: {
+          cueInSeconds: 0,
+          cueOutSeconds: 25,
+          fadeInSeconds: 0,
+          fadeOutSeconds: 0,
+          overlapSeconds: 0,
+        },
+      },
+      {
+        duration: NaN,
+        segue: {
+          cueInSeconds: 0,
+          cueOutSeconds: 10,
+          fadeInSeconds: 0,
+          fadeOutSeconds: 0,
+          overlapSeconds: 0,
+        },
+      },
+      {
+        segue: {
+          cueInSeconds: 0,
+          cueOutSeconds: 10,
+          fadeInSeconds: -1,
+          fadeOutSeconds: 0,
+          overlapSeconds: 0,
+        },
+      },
+      {
+        segue: {
+          cueInSeconds: 0,
+          cueOutSeconds: 10,
+          fadeInSeconds: 0,
+          fadeOutSeconds: -1,
+          overlapSeconds: 0,
+        },
+      },
+      {
+        segue: {
+          cueInSeconds: 0,
+          cueOutSeconds: 10,
+          fadeInSeconds: 0,
+          fadeOutSeconds: 0,
+          overlapSeconds: -1,
+        },
+      },
+      {
+        segue: {
+          cueInSeconds: 2,
+          cueOutSeconds: 10,
+          fadeInSeconds: 0,
+          fadeOutSeconds: 0,
+          overlapSeconds: 9,
+        },
+      },
       { loudness: null },
       { loudness: 'invalid' },
       { loudness: { integratedLufs: NaN, truePeakDbtp: 0 } },

@@ -5,7 +5,10 @@ import { Client } from 'pg';
 // gaulatti/alcantara#164: the defaults for NEW RadioSettings rows match production
 // (similarityMode 'on', bumperEnabled true). No existing row is changed by the migration.
 
-const schema = readFileSync(join(process.cwd(), 'prisma/schema.prisma'), 'utf8');
+const schema = readFileSync(
+  join(process.cwd(), 'prisma/schema.prisma'),
+  'utf8',
+);
 const migration = readFileSync(
   join(
     process.cwd(),
