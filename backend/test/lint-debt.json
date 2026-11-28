@@ -1134,36 +1134,18 @@
   "src/uploads/uploads.service.local-media.spec.ts": {
     "@typescript-eslint/no-unsafe-return": 1
   },
-  "src/webrtc/chain-health.spec.ts": {
-    "prettier/prettier": 3
-  },
   "src/webrtc/guest-cue-field.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 2,
-    "@typescript-eslint/require-await": 19,
-    "prettier/prettier": 35
+    "@typescript-eslint/require-await": 19
   },
   "src/webrtc/guest-cue-parity.spec.ts": {
-    "@typescript-eslint/require-await": 1,
-    "prettier/prettier": 1
+    "@typescript-eslint/require-await": 1
   },
   "src/webrtc/host-mic-off.spec.ts": {
-    "@typescript-eslint/require-await": 5,
-    "prettier/prettier": 14
-  },
-  "src/webrtc/host-mic-token.spec.ts": {
-    "prettier/prettier": 1
-  },
-  "src/webrtc/on-air-stream.http.spec.ts": {
-    "prettier/prettier": 9
+    "@typescript-eslint/require-await": 5
   },
   "src/webrtc/return-router.metadata.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 1
-  },
-  "src/webrtc/webrtc.admission.spec.ts": {
-    "prettier/prettier": 2
-  },
-  "src/webrtc/webrtc.controller.coverage.spec.ts": {
-    "prettier/prettier": 1
   },
   "src/webrtc/webrtc.dotted-program.http.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 1,
@@ -1176,21 +1158,12 @@
     "@typescript-eslint/no-unsafe-return": 7,
     "@typescript-eslint/require-await": 7
   },
-  "src/webrtc/webrtc.metadata.coverage.spec.ts": {
-    "prettier/prettier": 1
-  },
   "src/webrtc/webrtc.screening.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 2,
     "@typescript-eslint/no-unsafe-call": 1,
     "@typescript-eslint/no-unsafe-member-access": 13,
     "@typescript-eslint/no-unsafe-return": 1,
     "@typescript-eslint/require-await": 1
-  },
-  "src/webrtc/webrtc.service.coverage.spec.ts": {
-    "prettier/prettier": 15
-  },
-  "src/webrtc/webrtc.service.ts": {
-    "prettier/prettier": 1
   },
   "src/webrtc/webrtc.telemetry.spec.ts": {
     "@typescript-eslint/no-unsafe-member-access": 3,
