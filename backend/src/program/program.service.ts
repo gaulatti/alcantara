@@ -77,6 +77,7 @@ import {
 import {
   projectPublicAudioBus,
   projectPublicProgramSignal,
+  PUBLIC_PROGRAM_CONTRACT_VERSION,
   projectPublicProgramState,
 } from './public-projection';
 import { readProgramTeam } from '../tenancy/program-team';
@@ -4509,7 +4510,9 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
                     schemaVersion:
                       programTemplateSchemaVersion(templateManifest),
                   }
-                : {}),
+                : audience === 'public'
+                  ? { contractVersion: PUBLIC_PROGRAM_CONTRACT_VERSION }
+                  : {}),
               state: publicState,
               version: state.version,
             }),
@@ -4519,7 +4522,17 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
             sendEvent(event);
           }
           pendingEvents.length = 0;
-          if (
+          if (audience === 'public' && !templateManifest) {
+            // The public contract's heartbeat (gaulatti/alcantara#25): it carries no version, so a renderer's version
+            // watermark never moves on it, and a renderer that does not read it ignores it.
+            heartbeatTimer = setInterval(() => {
+              sendEvent({
+                type: 'heartbeat',
+                programId: normalizedProgramId,
+                sentAt: new Date().toISOString(),
+              });
+            }, PROGRAM_SSE_HEARTBEAT_MS);
+          } else if (
             audience === 'control' ||
             templateManifest?.control.signals.includes('heartbeat')
           ) {
@@ -4533,7 +4546,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
                 ),
                 sentAt: new Date().toISOString(),
               });
-            }, 15_000);
+            }, PROGRAM_SSE_HEARTBEAT_MS);
           }
           this.metrics?.recordProgramSseSnapshot('success');
         })
@@ -4553,6 +4566,9 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     });
   }
 }
+
+/** How often a program's event stream sends a heartbeat, so its consumer can tell a quiet stream from a dead one. */
+export const PROGRAM_SSE_HEARTBEAT_MS = 15_000;
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

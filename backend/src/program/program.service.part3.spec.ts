@@ -1737,6 +1737,8 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
       expect(out[0]).toEqual({
         type: 'program_state_snapshot',
         programId: 'main',
+        // The public contract's version (gaulatti/alcantara#25).
+        contractVersion: 1,
         state: {
           activeSceneId: null,
           version: 5,
@@ -1866,6 +1868,31 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
         sentAt: '2026-01-01T00:00:15.000Z',
       });
       sub.unsubscribe();
+    });
+
+    it('gives the public stream of a program with no manifest a heartbeat with no version (gaulatti/alcantara#25)', async () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+      const { service } = build();
+      jest.spyOn(service, 'getState').mockResolvedValue(stateOf());
+      const out: any[] = [];
+      const sub = service
+        .getEventStream('main')
+        .subscribe((m) => out.push(JSON.parse(m.data)));
+      await flush();
+      expect(out[0]).toMatchObject({
+        type: 'program_state_snapshot',
+        contractVersion: 1,
+      });
+      await jest.advanceTimersByTimeAsync(15_000);
+      await jest.advanceTimersByTimeAsync(15_000);
+      expect(out.slice(1)).toEqual([
+        { type: 'heartbeat', programId: 'main', sentAt: '2026-01-01T00:00:15.000Z' },
+        { type: 'heartbeat', programId: 'main', sentAt: '2026-01-01T00:00:30.000Z' },
+      ]);
+      sub.unsubscribe();
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(out).toHaveLength(3);
     });
 
     it('does not start a heartbeat when the manifest lacks the signal', async () => {

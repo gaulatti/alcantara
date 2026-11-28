@@ -11,6 +11,18 @@ import {
 
 type Value = Record<string, unknown>;
 
+/**
+ * The version of this public contract (gaulatti/alcantara#25), sent as `contractVersion` on the stream's
+ * `program_state_snapshot`. A change that removes or renames a field a renderer reads raises it.
+ */
+export const PUBLIC_PROGRAM_CONTRACT_VERSION = 1;
+
+/**
+ * Who acted on a change (ActorContext.eventFields): the operator's principal, how and from which client. The
+ * on-air pages never read it, so no public event carries it; the control routes keep it.
+ */
+const ACTOR_FIELDS = ['actorPrincipalId', 'actorVia', 'actorClient'] as const;
+
 function isRecord(value: unknown): value is Value {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -105,6 +117,7 @@ export function projectPublicAudioBus(value: unknown): Value | null {
 export function projectPublicProgramSignal(value: unknown): unknown {
   if (!isRecord(value)) return value;
   const event: Value = { ...value };
+  for (const field of ACTOR_FIELDS) delete event[field];
   if (event.state !== undefined) event.state = projectPublicProgramState(event.state);
   if (event.type === 'scene_staged' && event.scene !== undefined) event.scene = projectPublicScene(event.scene);
   if (event.settings !== undefined && (event.type === 'audio_bus_update' || event.type === 'audio_bus_snapshot'))
