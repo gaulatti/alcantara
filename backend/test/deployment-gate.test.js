@@ -62,7 +62,12 @@ test('validates the production secret contract before build, push, or host mutat
   );
   assert.match(
     workflow,
-    /ALCANTARA_CONFIG_SECRET_ID: broadcast\/production\/config/,
+    /ALCANTARA_CONFIG_SECRET_ID: \$\{\{ secrets\.ALCANTARA_CONFIG_SECRET_ID \}\}/,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /broadcast\/production\//,
+    'the config secret id comes from a repository secret, never a literal',
   );
   assert.doesNotMatch(workflow, /echo .*SecretString/);
 });
@@ -70,10 +75,15 @@ test('validates the production secret contract before build, push, or host mutat
 test('preserves on-premises deployment and selects Cumulus when the gate is not true', () => {
   assert.match(workflow, /if: vars\.ON_PREMISES == 'true'/);
   assert.match(workflow, /if: vars\.ON_PREMISES != 'true'/);
-  assert.match(workflow, /role\/alcantara-github-deploy/);
+  assert.match(workflow, /role-to-assume: \$\{\{ secrets\.AWS_DEPLOY_ROLE_ARN \}\}/);
+  assert.doesNotMatch(
+    workflow,
+    /arn:aws:iam::\d+/,
+    'the deploy role ARN comes from a repository secret, never a literal',
+  );
   assert.match(workflow, /Name=tag:Name,Values=macondo-services/);
   assert.match(workflow, /Expected exactly one running Macondo service host/);
-  assert.match(workflow, /broadcast\/production\/config/);
+  assert.match(workflow, /secrets\.ALCANTARA_CONFIG_SECRET_ID/);
   assert.match(workflow, /vars\.ARAUCO_SECRET_ARN/);
   assert.match(workflow, /vars\.MEDIA_S3_BUCKET/);
   assert.doesNotMatch(workflow, /MacondoStack/);
