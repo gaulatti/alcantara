@@ -2,10 +2,9 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ModoItalianoProgramRow } from './ModoItalianoProgramRow';
 
-// With a Giorgia that ships the program row, the library draws it and gets the same decisions the local row makes.
+// What the library row is handed: the stored settings of both components, unread, and the app's audio bus.
 const seen = vi.hoisted(() => [] as Record<string, unknown>[]);
 vi.mock('@modoitaliano/giorgia/scenes', () => ({
-  GIORGIA: { safeX: 0, safeBottom: 0 },
   ModoItalianoGiorgiaProgramRow: (props: Record<string, unknown>) => {
     seen.push(props);
     return <p>library program row</p>;
@@ -14,24 +13,21 @@ vi.mock('@modoitaliano/giorgia/scenes', () => ({
 
 afterEach(cleanup);
 
-it('hands the library row the settings of both components, with one key-safe switch', async () => {
+const plan = { clockType: 'modoitaliano-giorgia-clock', chyronType: 'modoitaliano-giorgia-chyron', ownedTypes: new Set() } as never;
+
+it('hands the library row the stored settings of both components', async () => {
+  const clock = { showLogo: 'false' };
+  const chyron = { show: 0, keySafe: true, textSequence: 'fictional' };
   render(
-    <ModoItalianoProgramRow
-      plan={{ clockType: 'modoitaliano-giorgia-clock', chyronType: 'modoitaliano-giorgia-chyron', ownedTypes: new Set() } as never}
-      metadata={{
-        'modoitaliano-giorgia-clock': { showLogo: 'false' },
-        'modoitaliano-giorgia-chyron': { show: 0, keySafe: true, textSequence: 'fictional' },
-      }}
-      programId='fictional-show'
-    />,
+    <ModoItalianoProgramRow plan={plan} metadata={{ 'modoitaliano-giorgia-clock': clock, 'modoitaliano-giorgia-chyron': chyron }} programId='fictional-show' />,
   );
   expect(await screen.findByText('library program row')).toBeInTheDocument();
-  expect(document.querySelector('[data-program-row]')).toBeNull();
-  expect(seen.at(-1)).toMatchObject({
-    programId: 'fictional-show',
-    timeOverride: null,
-    clockProps: { showWorldClocks: true, showLogo: false, showPlaybackProgress: true, keySafe: true },
-    chyronProps: { show: false, textSequence: 'fictional', keySafe: true },
-  });
+  expect(seen.at(-1)).toMatchObject({ programId: 'fictional-show', timeOverride: null, clockProps: clock, chyronProps: chyron });
   expect(seen.at(-1)).toHaveProperty('audioBus.getSnapshot');
+});
+
+it('hands an empty object for a component with no settings', async () => {
+  render(<ModoItalianoProgramRow plan={plan} metadata={{}} programId='fictional-show' />);
+  expect(await screen.findByText('library program row')).toBeInTheDocument();
+  expect(seen.at(-1)).toMatchObject({ clockProps: {}, chyronProps: {} });
 });

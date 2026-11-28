@@ -32,7 +32,11 @@ import {
   Scoreboard
 } from '../components';
 import RelojClone from '../components/RelojClone';
-import { CornerBug, FadeToBlack, FullScreen, LowerThird, SceneNotice } from '../components/sceneParts';
+import { CornerBug } from '@gaulatti/bleecker/components/corner-bug';
+import { FadeToBlack } from '@gaulatti/bleecker/components/fade-to-black';
+import { FullScreen } from '@gaulatti/bleecker/components/full-screen';
+import { LowerThird } from '@gaulatti/bleecker/components/lower-third';
+import { SceneNotice } from '@gaulatti/bleecker/components/scene-notice';
 import { normalizeSceneComponentTypes, normalizeSceneMetadata, resolveProgramRow } from '../utils/programRow';
 import { ModoItalianoProgramRow } from '../components/ModoItalianoProgramRow';
 import RelojLoopClock from '../components/RelojLoopClock';
@@ -1548,7 +1552,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
     }
   ) => {
     if (!scene) {
-      return <SceneNotice message='No Active Scene' placement='frame' />;
+      return <SceneNotice message='No Active Scene' />;
     }
 
     // A retired chyron or clock id renders through its Giorgia replacement, with the props stored under either key.
@@ -1933,7 +1937,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                 return <CronicaReiteramos key={componentType} text={props.text} show={props.show} />;
               default:
                 console.warn('Unknown component type:', componentType);
-                return <SceneNotice key={componentType} message={`Unknown component: ${componentType}`} placement='centre' />;
+                return <SceneNotice key={componentType} message={`Unknown component: ${componentType}`} variant='component' />;
             }
           };
 
@@ -1979,8 +1983,14 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
     return (
       <div className='relative overflow-hidden bg-black' style={{ width: '1920px', height: '1080px' }} data-confidence-monitor={confidenceMode}>
         <div className='absolute inset-0'>{renderScene(confidenceScene, { forceStreamMuted: true })}</div>
+        {/* The monitor's black layer carries its own marker, so a check for the program's never finds this one. */}
         {confidenceMode === 'program' ? (
-          <FadeToBlack marker='data-confidence-fade-to-black' active={Boolean(state?.fadeToBlack)} animate={shouldAnimateFadeToBlack} />
+          <FadeToBlack
+            data-fade-to-black={undefined}
+            data-confidence-fade-to-black={state?.fadeToBlack ? 'active' : 'inactive'}
+            active={Boolean(state?.fadeToBlack)}
+            animate={shouldAnimateFadeToBlack}
+          />
         ) : null}
       </div>
     );
@@ -2001,7 +2011,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
         </div>
       ))}
       {activeTransition && <SceneTransitionOverlay key={activeTransition.sequence} transition={activeTransition.preset} />}
-      <FadeToBlack marker='data-fade-to-black' active={Boolean(state?.fadeToBlack)} animate={shouldAnimateFadeToBlack} />
+      <FadeToBlack active={Boolean(state?.fadeToBlack)} animate={shouldAnimateFadeToBlack} />
     </div>
   );
 }
