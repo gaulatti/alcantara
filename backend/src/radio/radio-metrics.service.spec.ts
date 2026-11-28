@@ -214,7 +214,12 @@ describe('RadioMetricsService engine resyncs', () => {
       .filter((line) =>
         line.startsWith('alcantara_radio_engine_resyncs_total{'),
       );
-    expect(series).toHaveLength(17);
+    // unissued_playback (2026-11-28 07:07): a reconcile after a playback this backend did not issue.
+    expect(series).toHaveLength(21);
+    for (const result of ['resumed', 'playing', 'unavailable', 'undecided'])
+      expect(series).toContain(
+        `alcantara_radio_engine_resyncs_total{trigger="unissued_playback",result="${result}"} 0`,
+      );
     expect(metrics.snapshot().engineResyncs).toEqual({
       'foreign_ended:resumed': 1,
       'watchdog:resumed': 2,

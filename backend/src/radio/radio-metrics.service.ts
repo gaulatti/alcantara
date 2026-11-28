@@ -64,6 +64,7 @@ export type PalazzoMachineResult =
 export type EngineResyncTrigger =
   | 'boot'
   | 'foreign_ended'
+  | 'unissued_playback'
   | 'watchdog'
   | 'command_failed';
 export type EngineResyncResult =
@@ -97,6 +98,7 @@ export const ENGINE_DEGRADED_SITES: EngineDegradedSite[] = [
 const RESYNC_TRIGGERS: EngineResyncTrigger[] = [
   'boot',
   'foreign_ended',
+  'unissued_playback',
   'watchdog',
   'command_failed',
 ];
