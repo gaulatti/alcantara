@@ -90,7 +90,7 @@ It renders the station's renderer key (its program's `webrtcProgramKeys` entry, 
 
 ## Placing the programs' renderer keys
 
-Each program's machines (the return runner, its contribution worker, the pilot's Program window) present that program's own renderer key (gaulatti/alcantara#884). `backend/scripts/place-renderer-keys.cjs` issues the keys and places them in the runtime secret's `webrtcProgramKeys` in one command, so no key is ever shown. Its first step runs in the backend container, where the database is. Its second runs with operator AWS credentials in the backend image, which can write the secret. The key passes only on the pipe between them:
+Each program's machines (the return runner, its contribution worker, the pilot's Program window) present that program's own renderer key (gaulatti/alcantara#884). `backend/scripts/place-renderer-keys.cjs` issues the keys and places them in the runtime secret's `webrtcProgramKeys` in one command, so no key is ever shown. Its first step runs in the backend container, where the database is: it resolves the database from the container's `ARAUCO_SECRET_ID`, as the other production scripts do, so it needs no `DATABASE_URL` or wrapper. Its second runs with operator AWS credentials in the backend image, which can write the secret. The key passes only on the pipe between them:
 
 ```bash
 ssh <backend-ssh-target> "docker exec -i alcantara-backend node scripts/place-renderer-keys.cjs issue --allow-remote --program <program-id> [--program <program-id>…]" \
@@ -100,7 +100,7 @@ ssh <backend-ssh-target> "docker exec -i alcantara-backend node scripts/place-re
 
 - **First run** issues each named program a key and writes it into the secret, keeping every other field. The output is one line per program: `<program-id>: version <n>, written`.
 - **A program that already has a key is kept** (`kept, already placed`, or `kept, holder uses shared` when the secret has no copy, as for a key issued in the Shows panel or by the pilot). Its machines keep the key they hold, or the shared key. Add `--rotate` after `issue` to replace the key: every machine holding the old one stops until it is redeployed or reopened with the new one, and a key used in the last 15 minutes is warned about first.
-- **`--dry-run`** on both steps changes nothing and says what each would do.
+- **`--dry-run`** on both steps changes nothing and says what each would do. A dry run of the issue step emits no key lines, so the write step's dry run then says `dry run: nothing to write`.
 - **Then redeploy the holders** (`return-runner-up.sh`, `contribution-up.sh`) so their env files get the keys.
 - **If the write step fails** after an issue or a rotation, the database has a key no machine holds. Run both steps again with `--rotate`. A first issue breaks nothing meanwhile, because the shared key is still accepted.
 - Each issue and rotation is recorded as an operator change (via `script`), with the version only.

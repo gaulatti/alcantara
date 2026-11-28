@@ -214,13 +214,30 @@ describe('place-renderer-keys write', () => {
     expect(kept.validate).not.toHaveBeenCalled();
   });
 
-  it('writes nothing when the secret would not validate', async () => {
+  it('writes nothing when the secret would not validate, and marks the issued keys as not placed', async () => {
     const run = write(lines({ programId: 'station-a', version: 1, key: KEY_A }));
     run.validate.mockImplementation(() => {
       throw new Error('Alcantara runtime configuration field webrtcProgramKeys is malformed');
     });
-    await expect(run.done).rejects.toThrow('webrtcProgramKeys is malformed');
+    await expect(run.done).rejects.toMatchObject({ message: expect.stringContaining('webrtcProgramKeys is malformed'), unplaced: true });
     expect(run.putSecret).not.toHaveBeenCalled();
+  });
+
+  it('says a dry run with nothing on the input has nothing to write, and marks no failure of one as unplaced', async () => {
+    const empty = write('', true);
+    await empty.done;
+    expect(empty.reported).toEqual(['dry run: nothing to write']);
+    const dry = write(lines({ programId: 'station-a', version: 1, key: KEY_A }), true);
+    dry.validate.mockImplementation(() => {
+      throw new Error('malformed');
+    });
+    await expect(dry.done).rejects.not.toHaveProperty('unplaced');
+    const kept = write(lines({ programId: 'station-b', version: 4, kept: true }));
+    kept.putSecret.mockRejectedValue(new Error('never called'));
+    await kept.done;
+    const failing = write(lines({ programId: 'station-a', version: 1, key: KEY_A }));
+    failing.putSecret.mockRejectedValue('not an error');
+    await expect(failing.done).rejects.toBe('not an error');
   });
 
   it('starts a secret with no program keys, and refuses input that is not key lines', async () => {

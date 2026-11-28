@@ -15,8 +15,8 @@
 // --dry-run on either step changes nothing and says what it would do. An existing key is kept unless --rotate is given:
 // a kept key has no clear value to place, so that program's machines keep the key they already have or the shared key.
 // A rotation stops every machine holding the old key at once; one used in the last 15 minutes is warned about.
-// DATABASE_URL names the database; a host other than localhost, 127.0.0.1 or postgres is refused unless --allow-remote
-// is given. Only program ids, versions and outcomes are printed, never a key, a hash or the secret.
+// The database is the backend's: ARAUCO_SECRET_ID resolves it (as in the backend container), else DATABASE_URL names it.
+// A host other than localhost, 127.0.0.1 or postgres is refused unless --allow-remote is given. Only program ids, versions and outcomes are printed, never a key, a hash or the secret.
 
 const { createHash, randomBytes, randomUUID } = require('node:crypto');
 
@@ -161,10 +161,26 @@ function readKeyLines(text) {
  */
 async function writeKeys({ input, dryRun, getSecret, putSecret, validate, report, say }) {
   const entries = readKeyLines(input);
-  if (!entries.length) throw new Error('no key lines on the input; nothing written');
+  if (!entries.length) {
+    if (dryRun) {
+      report('dry run: nothing to write');
+      return;
+    }
+    throw new Error('no key lines on the input; nothing written');
+  }
+  const issued = entries.filter((entry) => !entry.kept);
+  try {
+    await placeKeys({ entries, issued, dryRun, getSecret, putSecret, validate, report, say });
+  } catch (error) {
+    // Keys the issue step made are in the database but no machine holds them: say how to recover.
+    if (issued.length && !dryRun && error instanceof Error) error.unplaced = true;
+    throw error;
+  }
+}
+
+async function placeKeys({ entries, issued, dryRun, getSecret, putSecret, validate, report, say }) {
   const payload = JSON.parse(await getSecret());
   const placed = payload.webrtcProgramKeys ?? {};
-  const issued = entries.filter((entry) => !entry.kept);
   for (const entry of entries.filter((entry) => entry.kept)) {
     report(
       placed[entry.programId]
@@ -203,8 +219,10 @@ async function main(argv = process.argv.slice(2)) {
     if (!options.dryRun && process.stdout.isTTY) {
       throw new Error('refusing to write keys to a terminal: pipe issue into write');
     }
+    // ARAUCO_SECRET_ID (as in the backend container) resolves DATABASE_URL, as every other production script does.
+    const { loadDatabaseSecret } = require('../dist/src/config/database-secrets.js');
+    await loadDatabaseSecret();
     const url = process.env.DATABASE_URL;
-    if (!url) throw new Error('DATABASE_URL is required');
     if (!hostAllowed(url, options.allowRemote)) {
       throw new Error(`refusing to write to host ${new URL(url).hostname}; pass --allow-remote only for the database you mean`);
     }
@@ -244,7 +262,8 @@ async function main(argv = process.argv.slice(2)) {
         say,
       });
     } catch (error) {
-      say('write failed: a key issued or rotated by the issue step is not placed. Run both steps again with --rotate');
+      if (error && error.unplaced)
+        say('write failed: a key issued or rotated by the issue step is not placed. Run both steps again with --rotate');
       throw error;
     }
     return;
