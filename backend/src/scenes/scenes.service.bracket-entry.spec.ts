@@ -51,7 +51,7 @@ describe('ScenesService bracket resolution', () => {
       expect.objectContaining({
         'harbor-light-bracket': expect.objectContaining({
           activeVotingMatchId: 2,
-        }),
+        }) as unknown,
       }),
       0,
     );
