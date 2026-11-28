@@ -330,6 +330,9 @@ model FlightSequence {
   /// gaulatti/alcantara#124: the clock this rundown was generated from and how it takes over; null when a person made it.
   clockId        Int?
   daypartStart   String?
+  /// What became of a machine-made hour ('failed' or 'skipped') and the revision the planner published.
+  daypartOutcome  String?
+  daypartRevision Int?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 

@@ -20,6 +20,7 @@ import { RadioClocksController } from './radio-clocks.controller';
 import { RadioClocksService } from './radio-clocks.service';
 import { RadioDaypartsController } from './radio-dayparts.controller';
 import { RadioDaypartsService } from './radio-dayparts.service';
+import { RadioDaypartPlanner } from './radio-daypart-planner.service';
 import {
   ARTIST_LABEL_LOOKUP,
   type ArtistLabelLookup,
@@ -49,6 +50,7 @@ import { ArtistLabelsService } from '../artist-labels/artist-labels.service';
     RecipeMcpTools,
     RadioClocksService,
     RadioDaypartsService,
+    RadioDaypartPlanner,
     // Here, so it shares this module's database client.
     ProgramTeamAccess,
     { provide: APP_INTERCEPTOR, useClass: ProgramTeamInterceptor },

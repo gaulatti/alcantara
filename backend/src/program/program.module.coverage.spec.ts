@@ -8,6 +8,7 @@ import { SongLeavesMcpTools } from '../mcp/capabilities/song-leaves';
 import { PrismaService } from '../prisma.service';
 import { RadioClocksController } from './radio-clocks.controller';
 import { RadioClocksService } from './radio-clocks.service';
+import { RadioDaypartPlanner } from './radio-daypart-planner.service';
 import { RadioDaypartsController } from './radio-dayparts.controller';
 import { RadioDaypartsService } from './radio-dayparts.service';
 import { FlightService } from './flight.service';
@@ -101,6 +102,8 @@ describe('ProgramModule wiring', () => {
       .useValue(fakeProgramService)
       .overrideProvider(FlightService)
       .useValue(fakeFlightService)
+      .overrideProvider(RadioDaypartPlanner)
+      .useValue({})
       .overrideProvider(PrismaService)
       .useValue(fakePrisma)
       .compile();
@@ -184,6 +187,7 @@ describe('ProgramModule wiring', () => {
       RecipeMcpTools,
       RadioClocksService,
       RadioDaypartsService,
+      RadioDaypartPlanner,
       ProgramTeamAccess,
       { provide: APP_INTERCEPTOR, useClass: ProgramTeamInterceptor },
       {

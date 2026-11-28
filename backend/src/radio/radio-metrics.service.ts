@@ -348,6 +348,13 @@ const OUTPUT_CONFIDENCE_STATES = [
   'audible',
   'silent',
 ] as const;
+const DAYPART_BLOCK_RESULTS = [
+  'generated',
+  'failed',
+  'removed',
+  'started',
+  'skipped',
+] as const;
 const RADIO_LOG_RESULTS = [
   'interrupted',
   'completed',
@@ -614,6 +621,7 @@ export class RadioMetricsService {
   };
   private readonly outputConfidenceTransitions = new Map<string, number>();
   private readonly radioLogResults = new Map<string, number>();
+  private readonly daypartBlocks = new Map<string, number>();
   private readonly recoveryPreparations = new Map<string, number>();
   private outputSilentPrograms = 0;
   private readonly deadAirSteps = new Map<string, number>();
@@ -976,6 +984,11 @@ export class RadioMetricsService {
   /** gaulatti/alcantara#242: whether the as-run review flag of a raised overlap was stored. */
   recordProgramBusOverlapFlag(result: 'flagged' | 'missing' | 'failed'): void {
     this.programBusOverlapFlags[result] += 1;
+  }
+
+  /** gaulatti/alcantara#124: what happened to an hour made from a clock. */
+  recordDaypartBlock(result: (typeof DAYPART_BLOCK_RESULTS)[number]): void {
+    this.daypartBlocks.set(result, (this.daypartBlocks.get(result) ?? 0) + 1);
   }
 
   recordRadioLogResult(result: string): void {
@@ -1399,6 +1412,14 @@ export class RadioMetricsService {
     for (const result of RADIO_LOG_RESULTS)
       lines.push(
         `alcantara_radio_log_transitions_total{result="${result}"} ${this.radioLogResults.get(result) ?? 0}`,
+      );
+    lines.push(
+      '# HELP alcantara_radio_daypart_blocks_total Hours made from daypart clocks by bounded result.',
+      '# TYPE alcantara_radio_daypart_blocks_total counter',
+    );
+    for (const result of DAYPART_BLOCK_RESULTS)
+      lines.push(
+        `alcantara_radio_daypart_blocks_total{result="${result}"} ${this.daypartBlocks.get(result) ?? 0}`,
       );
     lines.push(
       '# HELP alcantara_radio_recovery_preparations_total Recovery playlist preparation by bounded result.',
