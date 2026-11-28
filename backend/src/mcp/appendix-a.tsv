@@ -197,3 +197,5 @@ access	POST	/access/grants	access	grant	grant_role	D
 access	DELETE	/access/grants/:id	access	revokeGrant	revoke_role	D
 access	GET	/access/history	access	listHistory	list_access_history	R
 access	GET	/access/my-permissions	access	myPermissions	access_my_permissions	covered by whoami
+renderer-keys	GET	/program/:programId/renderer-key	program.read	metadata	webrtc_renderer_key	R
+renderer-keys	POST	/program/:programId/renderer-key/rotate	program.manage	rotate	webrtc_rotate_renderer_key	A

@@ -34,6 +34,17 @@ On **Shows**, a show's actions have **Renderer key**: the version and dates, and
 rotation asks first, because the old key stops working at once. The new key is shown once with a copy button and is
 dropped from the page when the panel closes.
 
+## Over MCP
+
+| Capability | Permission | Tier | Answer |
+| --- | --- | --- | --- |
+| `webrtc_renderer_key` | `program.read` | R | The metadata above, never the key or its hash. |
+| `webrtc_rotate_renderer_key` | `program.manage` | A (dry run, then confirm by program) | `{ programId, version, rotatedAt }` only. |
+
+The MCP rotation never returns the new key, so a key never lands in a client's transcript. Use it to revoke a key;
+issue a key to hand out from the Console panel above, which shows it once. The rotation is recorded as an operator change
+like the console's, under the capability `webrtc_rotate_renderer_key`.
+
 ## Checks on the calls endpoints
 
 Each endpoint reads `X-Renderer-Key` and the program it acts on (`backend/src/renderer-keys/renderer-auth.service.ts`):

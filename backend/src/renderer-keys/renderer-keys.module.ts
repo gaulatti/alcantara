@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { OperatorChangeModule } from '../operator-change/operator-change.module';
 import { PrismaService } from '../prisma.service';
 import { RendererKeyController } from './renderer-key.controller';
+import { RendererKeysMcpTools } from '../mcp/capabilities/renderer-keys';
 import { RendererAuthService } from './renderer-auth.service';
 import { RendererKeyService } from './renderer-key.service';
 
@@ -9,7 +10,12 @@ import { RendererKeyService } from './renderer-key.service';
 @Module({
   imports: [OperatorChangeModule],
   controllers: [RendererKeyController],
-  providers: [RendererKeyService, RendererAuthService, PrismaService],
+  providers: [
+    RendererKeyService,
+    RendererAuthService,
+    RendererKeysMcpTools,
+    PrismaService,
+  ],
   exports: [RendererKeyService, RendererAuthService],
 })
 export class RendererKeysModule {}

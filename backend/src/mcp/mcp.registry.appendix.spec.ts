@@ -155,7 +155,8 @@ describe('MCP registry against appendix A', () => {
   // literal (the brand-literal ratchet). Only name, permission and tier are read.
   it('reads all of appendix A: capabilities, covered rows and the 15 exclusions', () => {
     const { rows, excluded, covered } = appendix();
-    expect(rows.size + covered.size).toBe(183);
+    // +2: the renderer key's read and rotation (gaulatti/alcantara#884).
+    expect(rows.size + covered.size).toBe(185);
     expect(excluded).toBe(15);
     // auth_get_me is whoami (same permission, same tier, the caller's own
     // identity), as is access_my_permissions (the caller's own keys); the
