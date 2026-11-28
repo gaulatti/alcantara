@@ -288,12 +288,12 @@ export class ProgramRealtimeService implements OnModuleDestroy {
 
     this.clients.add(client);
     if (role === 'control') {
-      this.sendInitialProgramStateSnapshot(client);
-      this.sendInitialAudioBusSnapshot(client);
-      this.sendInitialBroadcastSettingsSnapshot(client);
-      this.sendInitialMeterSnapshot(client);
-      this.sendInitialSongPlaybackSnapshot(client);
-      this.sendInitialSceneInstantSnapshot(client);
+      void this.sendInitialProgramStateSnapshot(client);
+      void this.sendInitialAudioBusSnapshot(client);
+      void this.sendInitialBroadcastSettingsSnapshot(client);
+      void this.sendInitialMeterSnapshot(client);
+      void this.sendInitialSongPlaybackSnapshot(client);
+      void this.sendInitialSceneInstantSnapshot(client);
       this.sendRecentPlayoutCut(client);
     }
 

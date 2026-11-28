@@ -86,7 +86,7 @@ export class MediaAssetsReconciliationService
       return;
     }
     // Only the instance holding the playout lease (alcantara#873) reconciles: it writes.
-    startWhenActive(this.lease, () => {
+    void startWhenActive(this.lease, () => {
       this.running = this.reconcileAndFill();
     });
   }

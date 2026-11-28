@@ -65,7 +65,7 @@ export class DatabaseBackupService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     // Only the instance holding the playout lease (alcantara#873) backs up.
-    startWhenActive(this.lease, () => {
+    void startWhenActive(this.lease, () => {
       this.stopped = false;
       this.logger.log('Hourly PostgreSQL backups are enabled');
       this.scheduleNextBackup();

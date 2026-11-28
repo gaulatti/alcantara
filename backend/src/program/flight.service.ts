@@ -1403,7 +1403,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
           // A block made from a daypart clock has its own rules; one a person published starts as it always has.
           if (sequence.clockId != null) await this.startDaypartBlock(sequence);
           else await this.activateAndStart(sequence);
-        } catch (error) {
+        } catch {
           this.metrics.recordRadioLogResult('start-failed');
           // A claimed block never repeats automatically after an ambiguous failure.
           this.programService.broadcastUpdate(sequence.programState.programId, {

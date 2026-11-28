@@ -369,9 +369,6 @@
     "@typescript-eslint/no-unsafe-return": 2,
     "@typescript-eslint/require-await": 3
   },
-  "src/program/flight.service.ts": {
-    "@typescript-eslint/no-unused-vars": 1
-  },
   "src/program/flight.shadow.spec.ts": {
     "@typescript-eslint/await-thenable": 1,
     "@typescript-eslint/prefer-promise-reject-errors": 1,

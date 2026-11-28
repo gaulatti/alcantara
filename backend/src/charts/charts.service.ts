@@ -171,7 +171,7 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     // Only the instance holding the playout lease (alcantara#873) polls.
-    startWhenActive(this.lease, () => {
+    void startWhenActive(this.lease, () => {
       void this.refreshCache();
       this.refreshTimer = setInterval(() => {
         void this.refreshCache();

@@ -166,7 +166,7 @@ export class WebrtcService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     // Only the instance holding the playout lease (alcantara#873) sweeps: the sweeps write and remove participants.
-    startWhenActive(this.lease, () => {
+    void startWhenActive(this.lease, () => {
       this.lostCallSweep = setInterval(() => {
         // A database that is away is retried at the next sweep.
         void this.countLostCalls().catch(() => undefined);
