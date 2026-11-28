@@ -8,6 +8,8 @@ import { SongLeavesMcpTools } from '../mcp/capabilities/song-leaves';
 import { PrismaService } from '../prisma.service';
 import { RadioClocksController } from './radio-clocks.controller';
 import { RadioClocksService } from './radio-clocks.service';
+import { RadioDaypartsController } from './radio-dayparts.controller';
+import { RadioDaypartsService } from './radio-dayparts.service';
 import { FlightService } from './flight.service';
 import { ProgramController } from './program.controller';
 import { ProgramModule } from './program.module';
@@ -167,6 +169,7 @@ describe('ProgramModule wiring', () => {
       ProgramController,
       RecipesController,
       RadioClocksController,
+      RadioDaypartsController,
     ]);
     expect(Reflect.getMetadata('providers', ProgramModule)).toEqual([
       ProgramService,
@@ -180,6 +183,7 @@ describe('ProgramModule wiring', () => {
       RecipesService,
       RecipeMcpTools,
       RadioClocksService,
+      RadioDaypartsService,
       ProgramTeamAccess,
       { provide: APP_INTERCEPTOR, useClass: ProgramTeamInterceptor },
       {

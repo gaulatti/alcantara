@@ -18,6 +18,8 @@ import { RecipesController } from './recipes.controller';
 import { RecipesService } from './recipes.service';
 import { RadioClocksController } from './radio-clocks.controller';
 import { RadioClocksService } from './radio-clocks.service';
+import { RadioDaypartsController } from './radio-dayparts.controller';
+import { RadioDaypartsService } from './radio-dayparts.service';
 import {
   ARTIST_LABEL_LOOKUP,
   type ArtistLabelLookup,
@@ -28,7 +30,12 @@ import { ArtistLabelsService } from '../artist-labels/artist-labels.service';
 @Global()
 @Module({
   imports: [ArtistLabelsModule, OperatorChangeModule],
-  controllers: [ProgramController, RecipesController, RadioClocksController],
+  controllers: [
+    ProgramController,
+    RecipesController,
+    RadioClocksController,
+    RadioDaypartsController,
+  ],
   providers: [
     ProgramService,
     SceneAssetScope,
@@ -41,6 +48,7 @@ import { ArtistLabelsService } from '../artist-labels/artist-labels.service';
     RecipesService,
     RecipeMcpTools,
     RadioClocksService,
+    RadioDaypartsService,
     // Here, so it shares this module's database client.
     ProgramTeamAccess,
     { provide: APP_INTERCEPTOR, useClass: ProgramTeamInterceptor },

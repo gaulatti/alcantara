@@ -811,6 +811,18 @@
   },
   {
     "method": "GET",
+    "path": "/program/:programId/radio-dayparts",
+    "public": false,
+    "permission": "alcantara:flight:read"
+  },
+  {
+    "method": "PUT",
+    "path": "/program/:programId/radio-dayparts",
+    "public": false,
+    "permission": "alcantara:flight:manage"
+  },
+  {
+    "method": "GET",
     "path": "/program/:programId/recipes",
     "public": false,
     "permission": "alcantara:flight:read"
