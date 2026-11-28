@@ -440,6 +440,12 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         });
       } catch (error) {
         this.recoveryFailed(error);
+        // No half-recovered runtime stays behind: an operator's Go starts afresh.
+        const left = this.runtimes.get(row.programState.programId);
+        if (left?.sequenceId === row.id) {
+          this.clearTimer(left);
+          this.runtimes.delete(row.programState.programId);
+        }
         // Start-up goes on whatever this write does.
         try {
           await this.prisma.flightSequence.update({
@@ -503,8 +509,9 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     const diverged =
       row.activeItemId !== desired.activeCueId ||
       (desired.scene !== null && activeSceneId !== desired.scene.sceneId) ||
+      // A song that should be playing and is not confirmed counts too: just after a restart the engine may not have
+      // reported, and a timer armed on a guess could cut whatever is really on air.
       (typeof desired.song?.songId === 'number' &&
-        onAir !== null &&
         onAir !== desired.song.songId);
     const applied = items.findIndex((cue) => cue.id === row.activeItemId);
     const expected = items.findIndex((cue) => cue.id === desired.activeCueId);

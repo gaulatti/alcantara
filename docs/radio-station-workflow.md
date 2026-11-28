@@ -277,7 +277,8 @@ holds the playout lease. Each manual start records `lastStartedAt`. On start-up,
 backend computes where the rundown should be by now (`flight-resolver.ts`) and restores only the timer: a wait keeps its
 original end, and a song wait also moves on as soon as the engine reports the song ended (its own fallback fires 10 s
 after the song should have ended). No cue is executed and no scene or song is re-taken. When what is on Program or on
-air differs from where the rundown should be, or the executor had not reached that cue (an operator had advanced it),
+air differs from where the rundown should be (a song that should be playing but is not yet confirmed on air counts), or
+the executor had not reached that cue (an operator had advanced it),
 the rundown stays at its last applied cue with no timer, and the operator's next Go continues from there. A rundown past
 its last cue is marked not running; so is a loop started more than one loop ago, a row with no recorded start, one with
 clock-time cues, and one that is no longer the active rundown.
