@@ -906,18 +906,6 @@
   "src/stingers/stingers.tenancy.spec.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": 1
   },
-  "src/tenancy/library-team-backfill.migration.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 1,
-    "@typescript-eslint/no-unsafe-call": 20,
-    "@typescript-eslint/no-unsafe-member-access": 26,
-    "@typescript-eslint/no-unsafe-return": 2
-  },
-  "src/tenancy/library-team-id.migration.spec.ts": {
-    "@typescript-eslint/no-redundant-type-constituents": 1,
-    "@typescript-eslint/no-unsafe-assignment": 7,
-    "@typescript-eslint/no-unsafe-call": 8,
-    "@typescript-eslint/no-unsafe-member-access": 23
-  },
   "src/tenancy/program-team-access.cached.spec.ts": {
     "@typescript-eslint/require-await": 2
   },
@@ -943,7 +931,6 @@
     "@typescript-eslint/no-unsafe-return": 1
   },
   "src/webrtc/guest-cue-field.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 2,
     "@typescript-eslint/require-await": 19
   },
   "src/webrtc/guest-cue-parity.spec.ts": {
@@ -952,30 +939,17 @@
   "src/webrtc/host-mic-off.spec.ts": {
     "@typescript-eslint/require-await": 5
   },
-  "src/webrtc/return-router.metadata.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 1
-  },
   "src/webrtc/webrtc.dotted-program.http.spec.ts": {
     "@typescript-eslint/no-unsafe-assignment": 1,
     "@typescript-eslint/require-await": 1
   },
   "src/webrtc/webrtc.lifecycle.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 9,
-    "@typescript-eslint/no-unsafe-call": 2,
-    "@typescript-eslint/no-unsafe-member-access": 13,
-    "@typescript-eslint/no-unsafe-return": 7,
+    "@typescript-eslint/no-unsafe-assignment": 3,
     "@typescript-eslint/require-await": 7
   },
   "src/webrtc/webrtc.screening.spec.ts": {
-    "@typescript-eslint/no-unsafe-assignment": 2,
-    "@typescript-eslint/no-unsafe-call": 1,
-    "@typescript-eslint/no-unsafe-member-access": 13,
-    "@typescript-eslint/no-unsafe-return": 1,
+    "@typescript-eslint/no-unsafe-assignment": 1,
     "@typescript-eslint/require-await": 1
-  },
-  "src/webrtc/webrtc.telemetry.spec.ts": {
-    "@typescript-eslint/no-unsafe-member-access": 3,
-    "@typescript-eslint/no-unsafe-return": 1
   },
   "test/app.e2e-spec.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": 2

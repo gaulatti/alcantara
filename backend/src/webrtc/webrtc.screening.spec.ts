@@ -17,6 +17,16 @@ const claims = (jwt: string) =>
     sub: string;
   };
 
+/** The invitation updates these specs read: the conditions of a claim and what it writes. */
+type Condition = {
+  activeSessionId?: unknown;
+  activeSessionUntil?: { gte?: Date; lt?: Date };
+};
+type Update = {
+  where: Condition & { OR?: Condition[] };
+  data: Record<string, unknown>;
+};
+
 function setup(overrides: Record<string, unknown> = {}) {
   const invitation = {
     id,
@@ -44,8 +54,12 @@ function setup(overrides: Record<string, unknown> = {}) {
       findUnique: jest.fn().mockResolvedValue(invitation),
       findFirst: jest.fn().mockResolvedValue(invitation),
       findMany: jest.fn().mockResolvedValue([invitation]),
-      update: jest.fn().mockResolvedValue(invitation),
-      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      update: jest
+        .fn<Promise<unknown>, [Update]>()
+        .mockResolvedValue(invitation),
+      updateMany: jest
+        .fn<Promise<unknown>, [Update]>()
+        .mockResolvedValue({ count: 1 }),
     },
     guestEvent: { create: jest.fn() },
   };
@@ -149,9 +163,9 @@ describe('screening before air', () => {
       const { service, prisma, invitation } = fixture;
       const row = invitation as unknown as Record<string, unknown>;
       prisma.guestInvitation.updateMany.mockImplementation(
-        async ({ where, data }: any) => {
+        async ({ where, data }: Update) => {
           const until = row.activeSessionUntil as Date | null;
-          const matches = (condition: any) =>
+          const matches = (condition: Condition) =>
             (!('activeSessionId' in condition) ||
               condition.activeSessionId === row.activeSessionId) &&
             (!condition.activeSessionUntil?.gte ||

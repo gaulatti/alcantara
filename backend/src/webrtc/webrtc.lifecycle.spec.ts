@@ -35,8 +35,14 @@ const config = {
   WEBRTC_RENDERER_KEY: 'fictional-renderer-key',
 };
 
+/** What the guest command rows these specs read carry in their payload. */
+type CommandData = {
+  payload: { text?: unknown };
+  [field: string]: unknown;
+};
+
 function fixture(overrides: Record<string, unknown> = {}) {
-  let invitation: any = {
+  let invitation: Record<string, unknown> = {
     id,
     tokenHash: createHash('sha256').update(invitationToken).digest('hex'),
     programId: 'news',
@@ -60,21 +66,35 @@ function fixture(overrides: Record<string, unknown> = {}) {
   };
   const prisma = {
     guestInvitation: {
-      findUnique: jest.fn(async () => invitation),
-      findFirst: jest.fn(async () => invitation),
+      findUnique: jest.fn<Promise<Record<string, unknown> | null>, []>(
+        async () => invitation,
+      ),
+      findFirst: jest.fn<Promise<Record<string, unknown> | null>, []>(
+        async () => invitation,
+      ),
       findMany: jest.fn().mockResolvedValue([]),
-      create: jest.fn(async ({ data }: any) => ({ ...invitation, ...data })),
-      update: jest.fn(async ({ data }: any) => {
+      create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+        ...invitation,
+        ...data,
+      })),
+      update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         invitation = { ...invitation, ...data };
         return invitation;
       }),
-      updateMany: jest.fn(async ({ data }: any) => {
-        invitation = { ...invitation, ...data };
-        return { count: 1 };
-      }),
+      updateMany: jest.fn(
+        async ({
+          data,
+        }: {
+          data: Record<string, unknown>;
+          where?: Record<string, unknown>;
+        }) => {
+          invitation = { ...invitation, ...data };
+          return { count: 1 };
+        },
+      ),
     },
     guestCommand: {
-      create: jest.fn(async ({ data }: any) => ({
+      create: jest.fn(async ({ data }: { data: CommandData }) => ({
         id: 'command-1',
         createdAt: new Date(),
         ...data,
@@ -82,7 +102,15 @@ function fixture(overrides: Record<string, unknown> = {}) {
       findFirst: jest
         .fn()
         .mockResolvedValue({ id: 'command-1', invitationId: id }),
-      update: jest.fn(async ({ where, data }: any) => ({ ...where, ...data })),
+      update: jest.fn(
+        async ({
+          where,
+          data,
+        }: {
+          where: Record<string, unknown>;
+          data: Record<string, unknown>;
+        }) => ({ ...where, ...data }),
+      ),
     },
     guestEvent: { create: jest.fn() },
   };
@@ -99,7 +127,10 @@ describe('WebrtcService invitation/session and LiveKit boundary', () => {
   let createRoom: jest.SpyInstance;
   let participants: jest.SpyInstance;
   let remove: jest.SpyInstance;
-  let send: jest.SpyInstance;
+  let send: jest.SpyInstance<
+    Promise<void>,
+    Parameters<RoomServiceClient['sendData']>
+  >;
   let participant: jest.SpyInstance;
   let mute: jest.SpyInstance;
 
@@ -621,7 +652,7 @@ describe('WebrtcService invitation/session and LiveKit boundary', () => {
         payload: { version: 1, ...body },
       },
     });
-    const packet = JSON.parse(send.mock.calls[0][1].toString());
+    const packet = JSON.parse(send.mock.calls[0][1].toString()) as unknown;
     expect(packet).toEqual({
       version: 1,
       ...body,
