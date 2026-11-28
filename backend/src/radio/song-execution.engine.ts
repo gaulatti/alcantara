@@ -381,7 +381,28 @@ interface NextAnnouncement {
    * the held leaf plays, as the selection at the end would have recorded them.
    */
   effects: (() => void)[];
+  /**
+   * Taken over from the backend that announced it, and already queued in Palazzo: it is kept, not chosen again,
+   * until an operator changes the rotation or the queue.
+   */
+  held?: true;
 }
+
+/** An accepted announcement as stored for the backend that takes over (RadioPlayoutAnnounced). */
+type StoredAnnouncement = Pick<
+  NextAnnouncement,
+  | 'playbackId'
+  | 'forRequestId'
+  | 'itemId'
+  | 'queueEntryId'
+  | 'audioUrl'
+  | 'title'
+  | 'artist'
+  | 'selectAt'
+  | 'leaf'
+  | 'cycleReset'
+  | 'bumper'
+> & { bootId?: string; songId: number | null };
 
 /** The spot chosen for a bumper slot, once per song (gaulatti/alcantara#232). */
 interface BumperChoice {
@@ -471,6 +492,12 @@ interface SongEngineState {
   lastEnded: { songId: number | null; artist: string } | null;
   pendingCycleReset: boolean;
   announcement: NextAnnouncement | null;
+  /** The announcement stored for a takeover, as written; absent when none is. */
+  storedAnnouncement?: string;
+  /** Writes of it, in order. */
+  announcementWrites?: Promise<void>;
+  /** What the previous backend left queued in Palazzo, until its song is adopted. */
+  announcedAtBoot?: StoredAnnouncement;
   /** Serialises announcement refreshes per program. */
   announcementChain: Promise<void>;
   /** Palazzo boot from the latest snapshot. */
@@ -719,6 +746,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
             songRotation: true,
             bumperPosition: true,
             playoutHeard: true,
+            playoutAnnounced: true,
           },
         },
       },
@@ -732,6 +760,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       this.restoreBumperPosition(pid, s);
       await this.recallLastStartedSong(pid);
       await this.recallHeardPlayout(pid, s.programState.playoutHeard);
+      this.recallAnnouncement(pid, s.programState.playoutAnnounced);
       this.hydrate(pid, s.programState);
     }
     this.takingUp = false;
@@ -1066,6 +1095,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       if (first) seq.activeItemId = first.id;
     }
     state.sequence = seq;
+    // The rotation changed here, so what is queued is judged again.
+    delete state.announcement?.held;
     this.updateHighRotationFavoriteMetric();
     if (
       seq &&
@@ -1101,6 +1132,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   handleQueueUpdated(programId: string, rawQueue: unknown): void {
     const state = this.ensureState(programId);
     state.queue = normalizeProgramSongQueue(rawQueue);
+    delete state.announcement?.held;
     state.queueBlocked = false;
     this.updateQueueDepthMetric();
     if (
@@ -2765,11 +2797,130 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     this.refreshAnnouncement(programId);
   }
 
+  /**
+   * Records what Palazzo holds as next, for a backend that takes over; removes the record when nothing is queued.
+   * Best effort: a failed write costs at most a commanded change after a takeover.
+   */
+  private storeAnnouncement(
+    programId: string,
+    state: SongEngineState,
+  ): Promise<void> {
+    const queued = state.announcement;
+    const stored: StoredAnnouncement | null =
+      queued?.status === 'accepted' && queued.startedAt === null
+        ? {
+            bootId: state.palazzoBootId,
+            playbackId: queued.playbackId,
+            forRequestId: queued.forRequestId,
+            itemId: queued.itemId,
+            queueEntryId: queued.queueEntryId,
+            audioUrl: queued.audioUrl,
+            title: queued.title,
+            artist: queued.artist,
+            selectAt: queued.selectAt,
+            leaf: queued.leaf,
+            cycleReset: queued.cycleReset,
+            bumper: queued.bumper,
+            songId: state.commandedSongs?.get(queued.playbackId) ?? null,
+          }
+        : null;
+    const written = stored ? JSON.stringify(stored) : undefined;
+    if (written === state.storedAnnouncement)
+      return state.announcementWrites ?? Promise.resolve();
+    state.storedAnnouncement = written;
+    const write = async (): Promise<void> => {
+      if (this.playoutReleased()) return;
+      const row = await this.prisma.programState.findUnique({
+        where: { programId },
+        select: { id: true },
+      });
+      if (!row) return;
+      if (!stored) {
+        await this.prisma.radioPlayoutAnnounced.deleteMany({
+          where: { programStateId: row.id },
+        });
+        return;
+      }
+      const announcement = stored as unknown as Prisma.InputJsonObject;
+      await this.prisma.radioPlayoutAnnounced.upsert({
+        where: { programStateId: row.id },
+        create: { programStateId: row.id, announcement },
+        update: { announcement },
+      });
+    };
+    state.announcementWrites = (state.announcementWrites ?? Promise.resolve())
+      .then(write)
+      .catch((error) => {
+        this.logger.warn(
+          `Next song not stored on ${programId} (${errorClass(error)})`,
+        );
+      });
+    return state.announcementWrites;
+  }
+
+  /** What the previous backend recorded as queued in Palazzo, held until the song it follows is adopted. */
+  private recallAnnouncement(
+    programId: string,
+    row: { announcement: unknown } | null | undefined,
+  ): void {
+    const stored = row?.announcement as StoredAnnouncement | undefined;
+    if (!stored) return;
+    const state = this.ensureState(programId);
+    state.announcedAtBoot = stored;
+    state.storedAnnouncement = JSON.stringify(stored);
+  }
+
+  /**
+   * Takes the previous backend's announcement as this one's own, when it follows the song just adopted, the same
+   * Palazzo process holds it, and it is still something this rotation can play.
+   */
+  private takeHeldAnnouncement(
+    state: SongEngineState,
+    requestId: string,
+  ): void {
+    const stored = state.announcedAtBoot;
+    state.announcedAtBoot = undefined;
+    if (
+      !stored ||
+      state.announcement ||
+      stored.forRequestId !== requestId ||
+      stored.bootId !== state.palazzoBootId
+    )
+      return;
+    if (stored.queueEntryId) {
+      if (
+        state.queue.find((entry) => !entry.active)?.id !== stored.queueEntryId
+      )
+        return;
+    } else if (
+      state.queue.some((entry) => !entry.active) ||
+      (!stored.itemId.startsWith(CATALOG_ITEM_PREFIX) &&
+        findUniqueProgramSongLeafById(state.sequence, stored.itemId)
+          ?.audioUrl !== stored.audioUrl)
+    )
+      return;
+    const { bootId: _bootId, songId, ...queued } = stored;
+    state.announcement = {
+      ...queued,
+      status: 'accepted',
+      startedAt: null,
+      replaces: null,
+      effects: [],
+      held: true,
+    };
+    this.rememberSong(state, queued.playbackId, songId);
+    state.awaitingAir.set(queued.playbackId, {
+      reason: 'superseded',
+      deadline: null,
+    });
+  }
+
   private refreshAnnouncement(programId: string): void {
     const state = this.states.get(programId);
     if (!state || !this.isRadioCapable(programId)) return;
     state.announcementChain = state.announcementChain
       .then(() => this.updateAnnouncement(programId, state))
+      .then(() => this.storeAnnouncement(programId, state))
       .catch((error: unknown) => {
         this.logger.warn(
           `Next-song announcement skipped on ${programId}: ${String(error)}`,
@@ -2841,6 +2992,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     ) {
       return;
     }
+    // What the previous backend queued stays queued while there is still something to follow this song.
+    if (successor && current?.held) return;
     if (!successor) {
       state.announcement = null;
       if (current && (current.status !== 'not-announced' || current.replaces)) {
@@ -2882,6 +3035,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     };
     state.announcement = announcement;
     this.rememberSong(state, announcement.playbackId, leaf.songId);
+    // Palazzo drops what it holds on receiving this one, so nothing is to be kept until it accepts.
+    void this.storeAnnouncement(programId, state);
     let result: Awaited<ReturnType<RadioService['announceNext']>>;
     try {
       result = await this.radioService.announceNext(
@@ -3953,6 +4108,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     this.emitPlaybackActive(programId, state.activeSong);
     void this.publishNowPlaying(programId, state.activeSong);
     this.startProgress(programId);
+    this.takeHeldAnnouncement(state, requestId);
     // Its successor is announced as for any started song, so a restart in
     // the middle of a song does not cost a commanded (cold) change at its end.
     this.refreshAnnouncement(programId);

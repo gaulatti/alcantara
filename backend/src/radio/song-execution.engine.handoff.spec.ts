@@ -253,6 +253,8 @@ function harness(
     mode?: 'autoplay' | 'shuffle';
     favoriteItemId?: string;
     lease?: { current: string };
+    /** A second backend over the same database row and Palazzo, as after a deploy's handover. */
+    takeOverFrom?: { palazzo: FakePalazzo; stored: () => unknown };
   } = {},
 ) {
   const items = options.items ?? SONGS;
@@ -279,8 +281,25 @@ function harness(
     } as Record<string, unknown>,
     songQueue: [] as unknown[],
     songRotation: null as unknown,
+    ...((options.takeOverFrom?.stored() ?? {}) as object),
   };
   const prisma = {
+    asRunRecord: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    radioSettings: {
+      findMany: jest.fn(() =>
+        Promise.resolve([
+          {
+            palazzoUrl: 'http://palazzo:3100',
+            bumperInterval: null,
+            bumperInstantIds: [],
+            programState,
+          },
+        ]),
+      ),
+    },
     songIntro: {
       findUnique: jest.fn(({ where }: { where: { songId: number } }) =>
         Promise.resolve(
@@ -304,15 +323,25 @@ function harness(
         audioUrl: 'https://media.test/bumper.mp3',
       }),
     },
+    radioPlayoutAnnounced: {
+      upsert: jest.fn(({ update }: { update: Record<string, unknown> }) => {
+        programState = { ...programState, playoutAnnounced: update } as never;
+        return Promise.resolve({});
+      }),
+      deleteMany: jest.fn(() => {
+        programState = { ...programState, playoutAnnounced: null } as never;
+        return Promise.resolve({ count: 1 });
+      }),
+    },
     programState: {
-      findUnique: jest.fn(() => Promise.resolve(programState)),
+      findUnique: jest.fn(() => Promise.resolve({ id: 1, ...programState })),
       update: jest.fn(({ data }: { data: Record<string, unknown> }) => {
         programState = { ...programState, ...data };
         return Promise.resolve(programState);
       }),
     },
   };
-  const palazzo = new FakePalazzo();
+  const palazzo = options.takeOverFrom?.palazzo ?? new FakePalazzo();
   const metrics = options.metrics ?? new RadioMetricsService();
   const flight = {
     isClockedLogRunning: jest.fn(() => options.clockedLog?.() ?? false),
@@ -334,8 +363,10 @@ function harness(
   palazzo.engine = engine;
   engine.setPalazzoTelemetry({ isReconciled: () => true });
   engine.registerRadioProgram(PROGRAM);
-  engine.handleSequenceUpdated(PROGRAM, programState.songSequence);
-  let snapshotSequence = 0;
+  // A backend that takes over reads its rotation from the database instead.
+  if (!options.takeOverFrom)
+    engine.handleSequenceUpdated(PROGRAM, programState.songSequence);
+  let snapshotSequence = options.takeOverFrom ? 100 : 0;
   const idle = (bootId = 'boot-1') =>
     engine.handlePalazzoSnapshot(
       PROGRAM,
@@ -347,7 +378,18 @@ function harness(
       snapshot(bootId, ++snapshotSequence, track, options.capabilities),
     );
   const sequence = () => programState.songSequence;
-  return { engine, palazzo, metrics, prisma, flight, idle, playing, sequence };
+  const stored = () => programState;
+  return {
+    engine,
+    palazzo,
+    metrics,
+    prisma,
+    flight,
+    idle,
+    playing,
+    sequence,
+    stored,
+  };
 }
 
 async function settle(): Promise<void> {
@@ -3515,5 +3557,302 @@ describe('a song Palazzo ends as it starts', () => {
     const { reason, ended } = await play(1_001);
     expect(ended).toBe(1);
     expect(reason).toBeUndefined();
+  });
+});
+
+// gaulatti/alcantara#873: at a deploy's handover Palazzo already holds the next song. Palazzo drops a queued song
+// as soon as it is given another, before the other has resolved, so the backend taking over must keep it.
+describe('the next song across a handover', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-11-28T01:30:00.000Z'));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  /** A pure similarity pick: the song `step` after the one that ended. */
+  const picker = (step: number) => ({
+    isReady: () => true,
+    whenReady: () => Promise.resolve(),
+    getSettings: () => ({
+      mode: 'on',
+      pool: 'catalog',
+      threshold: 0.5,
+      windowSeconds: 30,
+    }),
+    propose: (_programId: string, input: { currentSongId: number | null }) => {
+      const index = SONGS.findIndex((song) => song.id === input.currentSongId);
+      const pick = SONGS[(index + step) % SONGS.length];
+      return {
+        result: {
+          outcome: 'selected',
+          chosen: { songId: pick.id, itemId: pick.itemId, score: 0.8 },
+          runnerUps: [],
+          cycleReset: false,
+        },
+        leaf: {
+          id: pick.itemId,
+          songId: pick.id,
+          title: pick.title,
+          artist: pick.artist,
+          coverUrl: '',
+          audioUrl: pick.url,
+          durationMs: 180_000,
+        },
+      };
+    },
+    recordDecision: jest.fn(),
+    noteSongStarted: jest.fn(),
+  });
+
+  const handOver = async () => {
+    const old = harness({ mode: 'shuffle', similarity: picker(1) });
+    await onAir(old);
+    const announced = old.palazzo.queued!;
+    old.engine.onModuleDestroy();
+    await settle();
+    // The new backend would choose differently if it chose again.
+    const next = harness({
+      mode: 'shuffle',
+      similarity: picker(3),
+      takeOverFrom: old,
+    });
+    await next.engine.onModuleInit();
+    next.playing(old.palazzo.current!);
+    await settle();
+    return { old, next, announced };
+  };
+  const record = (h: ReturnType<typeof harness>) =>
+    (h.stored() as { playoutAnnounced?: { announcement: unknown } | null })
+      .playoutAnnounced?.announcement as Record<string, unknown> | undefined;
+
+  /** The first backend on air and stopped, with its record changed as asked before the second reads it. */
+  const takeOver = async (options: {
+    change?: (row: Record<string, unknown>) => Record<string, unknown>;
+    queue?: unknown[];
+    playingBoot?: string;
+    clocked?: () => boolean;
+  }) => {
+    const old = harness({ mode: 'shuffle', similarity: picker(1) });
+    await onAir(old);
+    old.engine.onModuleDestroy();
+    await settle();
+    const announced = old.palazzo.queued!;
+    const row = record(old)!;
+    const next = harness({
+      mode: 'shuffle',
+      similarity: picker(3),
+      clockedLog: options.clocked,
+      takeOverFrom: {
+        palazzo: old.palazzo,
+        stored: () => ({
+          ...old.stored(),
+          playoutAnnounced: {
+            announcement: options.change ? options.change(row) : row,
+          },
+          ...(options.queue ? { songQueue: options.queue } : {}),
+        }),
+      },
+    });
+    await next.engine.onModuleInit();
+    next.playing(old.palazzo.current!, options.playingBoot);
+    await settle();
+    return { next, announced, row };
+  };
+
+  it('records what Palazzo accepted, and nothing once there is nothing to keep', async () => {
+    const h = harness();
+    await onAir(h);
+    expect(record(h)).toMatchObject({
+      bootId: 'boot-1',
+      playbackId: h.palazzo.queued!.id,
+      itemId: SONGS[1].itemId,
+      audioUrl: SONGS[1].url,
+    });
+    h.engine.handleSequenceUpdated(PROGRAM, {
+      ...h.sequence(),
+      mode: 'manual',
+    });
+    await settle();
+    expect(h.palazzo.queued).toBeNull();
+    expect(record(h)).toBeUndefined();
+  });
+
+  it('chooses again once an operator changes the rotation', async () => {
+    const { next, announced } = await handOver();
+    next.engine.handleSequenceUpdated(PROGRAM, next.stored().songSequence);
+    await settle();
+    expect(next.palazzo.queued).not.toBe(announced);
+    expect(next.palazzo.queued?.url).not.toBe(announced.url);
+  });
+
+  it('chooses again once an operator changes the queue', async () => {
+    const { next, announced } = await handOver();
+    next.engine.handleQueueUpdated(PROGRAM, []);
+    await settle();
+    expect(next.palazzo.queued?.url).not.toBe(announced.url);
+  });
+
+  it('withdraws what was held when a rundown block takes over', async () => {
+    let clocked = false;
+    const { next } = await takeOver({ clocked: () => clocked });
+    clocked = true;
+    next.engine.reviewAnnouncement(PROGRAM);
+    await settle();
+    expect(next.palazzo.queued).toBeNull();
+  });
+
+  it.each([
+    ['another Palazzo process holds nothing of it', { playingBoot: 'boot-2' }],
+    [
+      'it follows another song',
+      {
+        change: (row: Record<string, unknown>) => ({
+          ...row,
+          forRequestId: 'earlier',
+        }),
+      },
+    ],
+    [
+      'its audio is no longer in the rotation',
+      {
+        change: (row: Record<string, unknown>) => ({
+          ...row,
+          audioUrl: 'https://media.test/gone.mp3',
+        }),
+      },
+    ],
+    [
+      'a request waits in the queue that it is not',
+      {
+        queue: [
+          {
+            id: 'entry-1',
+            itemId: SONGS[4].itemId,
+            enqueuedAt: 1,
+          },
+        ],
+      },
+    ],
+    [
+      'it was a queue entry that is gone',
+      {
+        change: (row: Record<string, unknown>) => ({
+          ...row,
+          queueEntryId: 'entry-gone',
+        }),
+      },
+    ],
+  ])('chooses again when %s', async (_why, options) => {
+    const { next, announced } = await takeOver(options);
+    expect(next.palazzo.announced.length).toBeGreaterThan(1);
+    expect(next.palazzo.queued).not.toBe(announced);
+  });
+
+  it('keeps a queued request that still heads the queue', async () => {
+    const { next, announced } = await takeOver({
+      change: (row) => ({ ...row, queueEntryId: 'entry-1' }),
+      queue: [{ id: 'entry-1', itemId: SONGS[1].itemId, enqueuedAt: 1 }],
+    });
+    expect(next.palazzo.queued).toBe(announced);
+  });
+
+  it('writes nothing once it holds no lease, or for a program that is gone', async () => {
+    const lease = { current: 'active' };
+    const released = harness({ lease });
+    await onAir(released);
+    released.prisma.radioPlayoutAnnounced.upsert.mockClear();
+    const internals = released.engine as unknown as {
+      states: Map<string, object>;
+      storeAnnouncement: (id: string, state: object) => Promise<void>;
+    };
+    lease.current = 'released';
+    // A write still owed when the lease goes: the backend taking over owns the record now.
+    const state = internals.states.get(PROGRAM)!;
+    Object.assign(state, { storedAnnouncement: 'earlier' });
+    await internals.storeAnnouncement(PROGRAM, state);
+    expect(released.prisma.radioPlayoutAnnounced.upsert).not.toHaveBeenCalled();
+
+    const gone = harness();
+    gone.prisma.programState.findUnique.mockResolvedValue(null as never);
+    await onAir(gone);
+    expect(gone.prisma.radioPlayoutAnnounced.upsert).not.toHaveBeenCalled();
+  });
+
+  // The first deploy that carries the record: the backend it replaces wrote none.
+  it('announces as before when no announcement was stored', async () => {
+    const old = harness({ mode: 'shuffle', similarity: picker(1) });
+    await onAir(old);
+    old.engine.onModuleDestroy();
+    await settle();
+    const held = old.palazzo.queued;
+    const next = harness({
+      mode: 'shuffle',
+      similarity: picker(3),
+      takeOverFrom: {
+        palazzo: old.palazzo,
+        stored: () => ({ ...old.stored(), playoutAnnounced: null }),
+      },
+    });
+    await next.engine.onModuleInit();
+    next.playing(old.palazzo.current!);
+    await settle();
+    expect(next.palazzo.announced).toHaveLength(2);
+    expect(next.palazzo.queued).not.toBe(held);
+    expect(next.palazzo.queued?.url).toBe(SONGS[3].url);
+  });
+
+  it('announces for the song on air when the stored one has already played', async () => {
+    const old = harness({ mode: 'shuffle', similarity: picker(1) });
+    await onAir(old);
+    old.engine.onModuleDestroy();
+    await settle();
+    const stale = record(old)!;
+    const next = harness({
+      mode: 'shuffle',
+      similarity: picker(3),
+      takeOverFrom: old,
+    });
+    // Palazzo reached the cue while no backend listened: the stored song is the one on air now.
+    const played = next.palazzo.queued!;
+    next.palazzo.current = played;
+    next.palazzo.queued = null;
+    await next.engine.onModuleInit();
+    next.playing(played);
+    await settle();
+    expect(stale.playbackId).toBe(played.id);
+    expect(next.palazzo.announced).toHaveLength(2);
+    expect(next.palazzo.queued?.id).not.toBe(played.id);
+    expect(record(next)).toMatchObject({
+      forRequestId: played.id,
+      playbackId: next.palazzo.queued!.id,
+    });
+  });
+
+  it('keeps a catalog pick that is in no playlist', async () => {
+    const { next, announced } = await takeOver({
+      change: (row) => ({ ...row, itemId: 'catalog:9' }),
+    });
+    expect(next.palazzo.queued).toBe(announced);
+  });
+
+  it('goes on playing when the record cannot be written', async () => {
+    const h = harness();
+    h.prisma.radioPlayoutAnnounced.upsert.mockRejectedValue(new Error('down'));
+    await onAir(h);
+    h.palazzo.endCurrent();
+    await settle();
+    expect(h.palazzo.commands).toHaveLength(1);
+  });
+
+  it('keeps the song Palazzo holds and hands off to it with no command', async () => {
+    const { next, announced } = await handOver();
+    expect(next.palazzo.announced).toHaveLength(1);
+    expect(next.palazzo.withdrawals).toBe(0);
+    expect(next.palazzo.queued).toBe(announced);
+
+    next.palazzo.endCurrent();
+    await settle();
+    expect(next.palazzo.commands).toHaveLength(1);
+    expect(next.palazzo.current?.id).toBe(announced.id);
   });
 });

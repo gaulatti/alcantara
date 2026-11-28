@@ -93,6 +93,7 @@ model ProgramState {
   radioSettings          RadioSettings?
   bumperPosition         RadioBumperPosition?
   playoutHeard    RadioPlayoutHeard?
+  playoutAnnounced RadioPlayoutAnnounced?
   nowPlayingConsumers    NowPlayingConsumer[]
   songIntros             SongIntro[]
   broadcastSelections    BroadcastDestinationSelection[]
@@ -769,6 +770,13 @@ model RadioPlayoutHeard {
   artist            String
   audioUrl          String
   heardAt           DateTime
+}
+
+/// The next song Palazzo has accepted, kept for the backend that takes over at a deploy.
+model RadioPlayoutAnnounced {
+  programStateId Int          @id
+  programState   ProgramState @relation(fields: [programStateId], references: [id], onDelete: Cascade)
+  announcement   Json
 }
 
 model NowPlayingConsumer {

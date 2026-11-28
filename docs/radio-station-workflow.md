@@ -225,7 +225,7 @@ Standalone audio clips require an accurate declared duration; scheduled executio
 A backend deploy replaces the backend container. Palazzo, which puts the audio out, is not restarted.
 
 - **Songs play through.** The song on air keeps playing. A successor Palazzo already accepted, with its jingle in a bumper slot, starts at the cue-out even while the backend is down.
-- **The next song is re-armed.** The new backend adopts the song Palazzo is playing and announces what follows it ([Gapless handoff](#gapless-handoff-announcing-the-next-song)). If Palazzo is idle instead, an Autoplay or Shuffle rotation resumes without repeating a song that already started.
+- **The next song is kept.** The new backend adopts the song Palazzo is playing and keeps the next song the old one had queued there, or announces one when none was ([Gapless handoff](#gapless-handoff-announcing-the-next-song)). If Palazzo is idle instead, an Autoplay or Shuffle rotation resumes without repeating a song that already started.
 - **The jingle cadence survives.** The count of songs and the next spot are stored as songs end. A song that ends while the backend is down is not counted, so a jingle can still come one song late then.
 - **The desk and its tools drop for a moment.** Commands fail until the new backend answers; reload nothing, repeat the command.
 - **A running timed block does not resume.** It is marked interrupted and is not replayed; the continuous rotation carries on.
@@ -512,6 +512,14 @@ the current song plays and starts it itself at the cue-out (minus the segue's
 `overlapSeconds`, under overlap). With segue on, the announcement carries the
 same segue and loudness the song command would carry; with segue off, neither.
 
+- **Kept across a backend takeover.** Palazzo drops a queued song as soon as it is given a replacement, before the
+  replacement has resolved, so a replacement sent seconds before the cue-out leaves silence (2026-11-28 01:33Z: 1.9 s at
+  a deploy, four seconds after the new backend took over). The accepted announcement is stored
+  (`RadioPlayoutAnnounced`, one row per program, removed when nothing is queued). A backend that takes over keeps it
+  when it follows the song adopted, the same Palazzo process holds it, and it can still be played (the same audio in
+  the rotation, or the entry still heading the queue). It is judged again as soon as an operator changes the rotation
+  or the queue, and withdrawn when nothing should follow (Manual, a clocked rundown). The similarity decision recorded
+  when a held pick plays is not carried across.
 - **What is announced.** The queue head, else the playlist song the engine
   would select at the end, worked out on a copy without consuming the queue,
   moving the cursor or recording selection metrics. Selection is unchanged: at

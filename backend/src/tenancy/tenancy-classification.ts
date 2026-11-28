@@ -87,6 +87,7 @@ export const TENANCY_CLASSIFICATION: Readonly<Record<string, TenancyClass>> = {
   RadioSettings: childOf('ProgramState'),
   RadioBumperPosition: childOf('ProgramState'),
   RadioPlayoutHeard: childOf('ProgramState'),
+  RadioPlayoutAnnounced: childOf('ProgramState'),
   NowPlayingConsumer: childOf('ProgramState'),
 
   // Per person.
