@@ -6,6 +6,7 @@ import {
 } from '../observability/managed-metrics.service';
 import { PrismaService } from '../prisma.service';
 import { forTeam } from '../tenancy/scoped-prisma';
+import { readProgramTeam } from '../tenancy/program-team';
 
 /**
  * The media asset a scene's background audio take reads (gaulatti/alcantara#122). It is an on-air path, so scoping
@@ -29,11 +30,7 @@ export class SceneAssetScope {
   ): Promise<T | null> {
     if (this.pompeii.teamId === 0) return query(this.prisma);
     try {
-      const program = await this.prisma.program.findUnique({
-        where: { programId },
-        select: { teamId: true },
-      });
-      const teamId = program?.teamId;
+      const teamId = await readProgramTeam(this.prisma, programId);
       if (!teamId || teamId <= 0) {
         this.refuse(programId, 'no-team');
         return query(this.prisma);
