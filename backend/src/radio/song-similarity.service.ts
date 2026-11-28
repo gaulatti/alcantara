@@ -40,6 +40,7 @@ import {
   type SimilarityPickResult,
   type SimilaritySettings,
 } from './song-similarity.utils';
+import { readProgramTeam } from '../tenancy/program-team';
 
 export const MAX_UPLOAD_SONGS_PER_REQUEST = 25;
 const MAX_DECISIONS_PER_PROGRAM = 1000;
@@ -187,11 +188,8 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
    */
   private async teamOf(programId: string): Promise<number | null> {
     if (this.pompeii.teamId === 0) return 0;
-    const program = await this.prisma.program.findUnique({
-      where: { programId },
-      select: { teamId: true },
-    });
-    return program?.teamId && program.teamId > 0 ? program.teamId : null;
+    const teamId = await readProgramTeam(this.prisma, programId);
+    return teamId && teamId > 0 ? teamId : null;
   }
 
   /** The songs a program may read, or `null` (counted) when it has no team. */

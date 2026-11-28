@@ -56,7 +56,7 @@
     "instant": 3
   },
   "src/radio/song-similarity.service.ts": {
-    "program": 2,
+    "program": 1,
     "song": 1
   },
   "src/songs/songs.service.ts": {
