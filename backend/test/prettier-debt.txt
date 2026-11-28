@@ -20,8 +20,6 @@ src/media-analysis/media-analysis.metadata.spec.ts
 src/media-assets/media-asset-team-gauge.service.spec.ts
 src/media-assets/media-assets-reconciliation.service.coverage.spec.ts
 src/observability/managed-metrics.service.ts
-src/operator-change/change-record-team-backfill.spec.ts
-src/operator-change/operator-change-recorder.spec.ts
 src/playout/playout-lease.db.spec.ts
 src/playout/playout-lease.service.spec.ts
 src/radio/dead-air-watchdog.service.spec.ts
