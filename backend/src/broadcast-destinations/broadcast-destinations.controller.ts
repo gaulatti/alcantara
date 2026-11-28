@@ -91,8 +91,14 @@ export class BroadcastDestinationsController {
 
   @Put('destinations/order')
   @RequirePermission(ALCANTARA_PERMISSIONS.broadcast.manage)
-  reorderDestinations(@Body() body: { destinationIds?: unknown }) {
-    return this.service.reorderDestinations(body.destinationIds);
+  reorderDestinations(
+    @Body() body: { destinationIds?: unknown },
+    @Req() request: TeamRequest,
+  ) {
+    return this.service.reorderDestinations(
+      body.destinationIds,
+      request.user.authorization.teamId,
+    );
   }
 
   /** Writes a new version of the destination's key and pins it. */
@@ -128,20 +134,40 @@ export class BroadcastDestinationsController {
 
   @Post('destinations/:destinationId/retire')
   @RequirePermission(ALCANTARA_PERMISSIONS.broadcast.manage)
-  retireDestination(@Param('destinationId') destinationId: string) {
-    return this.service.setRetired(destinationId, true);
+  retireDestination(
+    @Param('destinationId') destinationId: string,
+    @Req() request: TeamRequest,
+  ) {
+    return this.service.setRetired(
+      destinationId,
+      true,
+      request.user.authorization.teamId,
+    );
   }
 
   @Post('destinations/:destinationId/restore')
   @RequirePermission(ALCANTARA_PERMISSIONS.broadcast.manage)
-  restoreDestination(@Param('destinationId') destinationId: string) {
-    return this.service.setRetired(destinationId, false);
+  restoreDestination(
+    @Param('destinationId') destinationId: string,
+    @Req() request: TeamRequest,
+  ) {
+    return this.service.setRetired(
+      destinationId,
+      false,
+      request.user.authorization.teamId,
+    );
   }
 
   @Get('programs/:programId')
   @RequirePermission(ALCANTARA_PERMISSIONS.broadcast.view)
-  getProgramState(@Param('programId') programId: string) {
-    return this.service.getProgramState(programId);
+  getProgramState(
+    @Param('programId') programId: string,
+    @Req() request: TeamRequest,
+  ) {
+    return this.service.getProgramState(
+      programId,
+      request.user.authorization.teamId,
+    );
   }
 
   @Post('programs/:programId/reload')
@@ -149,9 +175,14 @@ export class BroadcastDestinationsController {
   reload(
     @Param('programId') programId: string,
     @Body() body: Record<string, unknown>,
-    @Req() request: AuthorizedRequest,
+    @Req() request: TeamRequest,
   ) {
-    return this.service.reload(programId, body, request.user.sub);
+    return this.service.reload(
+      programId,
+      body,
+      request.user.sub,
+      request.user.authorization.teamId,
+    );
   }
 
   @Post('programs/:programId/start')
@@ -159,9 +190,14 @@ export class BroadcastDestinationsController {
   start(
     @Param('programId') programId: string,
     @Body() body: Record<string, unknown>,
-    @Req() request: AuthorizedRequest,
+    @Req() request: TeamRequest,
   ) {
-    return this.service.start(programId, body, request.user.sub);
+    return this.service.start(
+      programId,
+      body,
+      request.user.sub,
+      request.user.authorization.teamId,
+    );
   }
 
   @Post('programs/:programId/stop')

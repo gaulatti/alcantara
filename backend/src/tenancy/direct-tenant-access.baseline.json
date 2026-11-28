@@ -6,9 +6,6 @@
     "broadcastDestination": 4,
     "broadcastDestinationKeyChange": 2
   },
-  "src/broadcast-destinations/broadcast-destinations.service.ts": {
-    "broadcastDestination": 5
-  },
   "src/broadcast-destinations/broadcast-ingest.service.ts": {
     "broadcastDestination": 1,
     "broadcastIngestAccess": 1

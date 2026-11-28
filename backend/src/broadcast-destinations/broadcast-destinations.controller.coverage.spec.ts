@@ -58,9 +58,12 @@ describe('BroadcastDestinationsController coverage', () => {
       'operator-1',
     );
     await expect(
-      controller.reorderDestinations({ destinationIds: ['b', 'a'] }),
+      controller.reorderDestinations(
+        { destinationIds: ['b', 'a'] },
+        teamRequest,
+      ),
     ).resolves.toEqual(['ordered']);
-    expect(service.reorderDestinations).toHaveBeenCalledWith(['b', 'a']);
+    expect(service.reorderDestinations).toHaveBeenCalledWith(['b', 'a'], 7);
     await expect(
       controller.renameDestination('x', { displayName: 'Y' }, teamRequest),
     ).resolves.toEqual({ id: 'renamed' });
@@ -73,34 +76,36 @@ describe('BroadcastDestinationsController coverage', () => {
 
   it('retires and restores through setRetired', async () => {
     service.setRetired.mockResolvedValue({ ok: true });
-    await controller.retireDestination('x');
-    await controller.restoreDestination('x');
-    expect(service.setRetired).toHaveBeenNthCalledWith(1, 'x', true);
-    expect(service.setRetired).toHaveBeenNthCalledWith(2, 'x', false);
+    await controller.retireDestination('x', teamRequest);
+    await controller.restoreDestination('x', teamRequest);
+    expect(service.setRetired).toHaveBeenNthCalledWith(1, 'x', true, 7);
+    expect(service.setRetired).toHaveBeenNthCalledWith(2, 'x', false, 7);
   });
 
-  it('reads program state and runs commands as the authenticated subject', async () => {
+  it("reads program state and runs commands as the authenticated subject, in the caller's team", async () => {
     service.getProgramState.mockResolvedValue({ available: true });
     service.reload.mockResolvedValue('reloaded');
     service.start.mockResolvedValue('started');
     service.stop.mockResolvedValue('stopped');
     const body = { commandId: 'c1' };
 
-    await expect(controller.getProgramState('main')).resolves.toEqual({
+    await expect(
+      controller.getProgramState('main', teamRequest),
+    ).resolves.toEqual({
       available: true,
     });
-    expect(service.getProgramState).toHaveBeenCalledWith('main');
-    await expect(controller.reload('main', body, request)).resolves.toBe(
+    expect(service.getProgramState).toHaveBeenCalledWith('main', 7);
+    await expect(controller.reload('main', body, teamRequest)).resolves.toBe(
       'reloaded',
     );
-    await expect(controller.start('main', body, request)).resolves.toBe(
+    await expect(controller.start('main', body, teamRequest)).resolves.toBe(
       'started',
     );
     await expect(controller.stop('main', body, request)).resolves.toBe(
       'stopped',
     );
-    expect(service.reload).toHaveBeenCalledWith('main', body, 'operator-1');
-    expect(service.start).toHaveBeenCalledWith('main', body, 'operator-1');
+    expect(service.reload).toHaveBeenCalledWith('main', body, 'operator-1', 7);
+    expect(service.start).toHaveBeenCalledWith('main', body, 'operator-1', 7);
     expect(service.stop).toHaveBeenCalledWith('main', body, 'operator-1');
   });
 

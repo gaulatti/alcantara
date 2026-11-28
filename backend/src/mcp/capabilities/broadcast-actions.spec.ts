@@ -281,14 +281,22 @@ describe('broadcast destination writes', () => {
       b,
       'destination_retire_destination',
       { destination_id: 'youtube' },
-      () => b.controllers.destinations.retireDestination('youtube'),
+      () =>
+        b.controllers.destinations.retireDestination(
+          'youtube',
+          { user: { sub: 'u', authorization: { teamId: 0 } } },
+        ),
       [d.setRetired],
     );
     await parity(
       b,
       'destination_restore_destination',
       { destination_id: 'youtube' },
-      () => b.controllers.destinations.restoreDestination('youtube'),
+      () =>
+        b.controllers.destinations.restoreDestination(
+          'youtube',
+          { user: { sub: 'u', authorization: { teamId: 0 } } },
+        ),
       [d.setRetired],
     );
     await parity(
@@ -296,9 +304,10 @@ describe('broadcast destination writes', () => {
       'destination_reorder_destinations',
       { destination_ids: ['youtube'] },
       () =>
-        b.controllers.destinations.reorderDestinations({
-          destinationIds: ['youtube'],
-        }),
+        b.controllers.destinations.reorderDestinations(
+          { destinationIds: ['youtube'] },
+          { user: { sub: 'u', authorization: { teamId: 0 } } },
+        ),
       [d.reorderDestinations],
     );
   });
@@ -350,7 +359,14 @@ describe('broadcast destination writes', () => {
                   }),
               confirmed: true,
             },
-            request as never,
+            // The destination tools here run as team 0, the station's team.
+            {
+              ...request,
+              user: {
+                ...request.user,
+                authorization: { ...authorization, teamId: 0 },
+              },
+            } as never,
           ),
         [b.s.destinations[verb]],
       );
